@@ -62,3 +62,75 @@ Context: Parallel branch orchestration has been enabled for specialist delivery 
 Request: Use assigned branch/worktree from dispatch outputs and post handoff evidence before requesting merge.
 Evidence: scripts/agents/dispatch-parallel.ps1; scripts/agents/reintegrate-parallel.ps1; .agents/project-manager/parallel-work-items.json
 Due: 2026-06-25 18:00 UTC
+[2026-06-24 22:44 UTC] [PROJECT_MANAGER->AZURE_PLATFORM_AGENT] [P1] [OPEN]
+Context: Parallel dispatch for work item D2.
+Request: Deliver "staging swa publish workflow" on branch agents/azure-platform-agent/D2-staging-swa-publish-workflow using worktree C:\Users\standarduser\Code\nodezero-social\.agent-worktrees\D2-azure-platform-agent.
+Evidence: Commit history + tests + handoff note in this inbox.
+Due: Next coordination checkpoint.
+
+[2026-06-24 22:44 UTC] [PROJECT_MANAGER->STELLAR_CONTRACT_AGENT] [P1] [OPEN]
+Context: Parallel dispatch for work item C1.
+Request: Deliver "contract init verification" on branch agents/stellar-contract-agent/C1-contract-init-verification using worktree C:\Users\standarduser\Code\nodezero-social\.agent-worktrees\C1-stellar-contract-agent.
+Evidence: Commit history + tests + handoff note in this inbox.
+Due: Next coordination checkpoint.
+
+[2026-06-24 22:44 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: Parallel dispatch for work item B3.
+Request: Deliver "relay service staging deploy" on branch agents/p2p-relay-agent/B3-relay-service-staging-deploy using worktree C:\Users\standarduser\Code\nodezero-social\.agent-worktrees\B3-p2p-relay-agent.
+Evidence: Commit history + tests + handoff note in this inbox.
+Due: Next coordination checkpoint.
+
+[2026-06-24 22:44 UTC] [PROJECT_MANAGER->MOBILE_APP_AGENT] [P1] [OPEN]
+Context: Parallel dispatch for work item B4.
+Request: Deliver "solid auth release hardening" on branch agents/mobile-app-agent/B4-solid-auth-release-hardening using worktree C:\Users\standarduser\Code\nodezero-social\.agent-worktrees\B4-mobile-app-agent.
+Evidence: Commit history + tests + handoff note in this inbox.
+Due: Next coordination checkpoint.
+
+[2026-06-24 22:44 UTC] [PROJECT_MANAGER->QA_RELEASE_AGENT] [P1] [OPEN]
+Context: Parallel dispatch for work item E1.
+Request: Deliver "staging smoke suite" on branch agents/qa-release-agent/E1-staging-smoke-suite using worktree C:\Users\standarduser\Code\nodezero-social\.agent-worktrees\E1-qa-release-agent.
+Evidence: Commit history + tests + handoff note in this inbox.
+Due: Next coordination checkpoint.
+
+[2026-06-24 23:05 UTC] [STELLAR_CONTRACT_AGENT->PROJECT_MANAGER] [P1] [DONE]
+Context: C1 deployment hardening advanced with an explicit Lockb0x initialization-proof gate in the TestNet deploy script.
+Request: Review the new required proof input and decide whether to promote this slice to merge-queue once the proof source is wired.
+Evidence: scripts/stellar/deploy-testnet.sh; bash -n ./scripts/stellar/deploy-testnet.sh
+Due: Next coordination checkpoint.
+
+[2026-06-24 22:57 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item B3 ("relay service staging deploy") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-24 22:58 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item B3 ("relay service staging deploy") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-24 22:58 UTC] [PROJECT_MANAGER->MOBILE_APP_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item B4 ("solid auth release hardening") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=2026-06-24 22:44
+Due: Next coordination checkpoint.
+
+[2026-06-24 22:58 UTC] [PROJECT_MANAGER->STELLAR_CONTRACT_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item C1 ("contract init verification") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=2026-06-24 22:44
+Due: Next coordination checkpoint.
+
+[2026-06-24 22:58 UTC] [PROJECT_MANAGER->AZURE_PLATFORM_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item D2 ("staging swa publish workflow") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=2026-06-24 22:44
+Due: Next coordination checkpoint.
+
+[2026-06-24 22:58 UTC] [PROJECT_MANAGER->QA_RELEASE_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item E1 ("staging smoke suite") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=2026-06-24 22:44
+Due: Next coordination checkpoint.
+
