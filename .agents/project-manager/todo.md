@@ -29,3 +29,7 @@
 ## Milestone E: Validation and launch
 - [TODO] E1: End-to-end smoke suite and manual UAT checklist.
 - [TODO] E2: Staging sign-off and release announcement.
+
+## Milestone F: Multi-agent parallel delivery ops
+- [DONE] F1: Add PM branch/worktree dispatch automation.
+- [DONE] F2: Add PM merge-queue reintegration automation.

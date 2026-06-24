@@ -5,6 +5,8 @@ This folder defines the working agreement for a multi-agent team delivering stag
 ## Structure
 - agents/: role cards and operating instructions.
 - project-manager/todo.md: canonical PM task board.
+- project-manager/parallel-work-items.json: branch-level parallel assignment plan.
+- project-manager/merge-queue.txt: ordered reintegration queue.
 - shared-inbox/inbox.md: append-only communication channel across agents.
 
 ## Shared inbox protocol
