@@ -1,0 +1,73 @@
+[
+  {
+    "id": "D2",
+    "agent": "AZURE_PLATFORM_AGENT",
+    "title": "staging swa publish workflow",
+    "objective": "Implement GitHub Actions flow that builds Expo web and publishes to Azure staging-testnet with smoke validation.",
+    "acceptanceCriteria": [
+      "Workflow builds web artifact in CI.",
+      "Workflow deploys artifact to staging target only.",
+      "Post-deploy smoke checks fail fast on unhealthy routes."
+    ],
+    "dependsOn": [
+      "D1"
+    ]
+  },
+  {
+    "id": "C1",
+    "agent": "STELLAR_CONTRACT_AGENT",
+    "title": "contract init verification",
+    "objective": "Harden testnet deployment script to verify Lockb0x initialization and fail deployment on inconsistent on-chain state.",
+    "acceptanceCriteria": [
+      "Script enforces initialization checks.",
+      "Manifest captures initialization verification state.",
+      "Failure paths return non-zero exit codes."
+    ],
+    "dependsOn": []
+  },
+  {
+    "id": "B3",
+    "agent": "P2P_RELAY_AGENT",
+    "title": "relay service staging deploy",
+    "objective": "Deploy relay service to staging infrastructure with health endpoint and integration verification from mobile local messaging flow.",
+    "acceptanceCriteria": [
+      "Relay service has deployable target for staging.",
+      "Health endpoint is reachable from smoke checks.",
+      "Local messaging uses staging relay endpoint in staging profile."
+    ],
+    "dependsOn": [
+      "D1"
+    ]
+  },
+  {
+    "id": "B4",
+    "agent": "MOBILE_APP_AGENT",
+    "title": "solid auth release hardening",
+    "objective": "Complete cross-platform Solid auth runtime checks and ensure profile/env coherence for web and native staging builds.",
+    "acceptanceCriteria": [
+      "Web/native auth flow smoke passes.",
+      "Profile mismatch paths emit actionable errors.",
+      "Env profile constraints are validated in runtime startup."
+    ],
+    "dependsOn": [
+      "B1",
+      "B2"
+    ]
+  },
+  {
+    "id": "E1",
+    "agent": "QA_RELEASE_AGENT",
+    "title": "staging smoke suite",
+    "objective": "Create end-to-end smoke suite and manual UAT checklist for staging-testnet release gate.",
+    "acceptanceCriteria": [
+      "Smoke script covers auth, feed, local messaging, and wallet registration.",
+      "Manual checklist is documented and executable by non-authors.",
+      "CI can run smoke suite against staging domain."
+    ],
+    "dependsOn": [
+      "D2",
+      "B3",
+      "C1"
+    ]
+  }
+]

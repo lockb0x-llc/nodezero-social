@@ -19,6 +19,14 @@ Drive delivery to staging.nodezero.social on Stellar TestNet and Azure.
 
 ## Workflow
 1. Break milestones into tasks with owner and due date.
-2. Assign tasks to specialist agents.
+2. Dispatch tasks to specialist agents on separate branches/worktrees.
 3. Collect proof from inbox updates.
-4. Mark todo items DONE only after acceptance criteria pass.
+4. Reintegrate reviewed branches by merge queue with validation gates.
+5. Mark todo items DONE only after acceptance criteria pass.
+
+## Parallel branch control
+- Source assignments from .agents/project-manager/parallel-work-items.json.
+- Dispatch command: pnpm pm:dispatch
+- Dry-run dispatch: pnpm pm:dispatch:dry
+- Reintegrate command: pnpm pm:reintegrate
+- Dry-run reintegration: pnpm pm:reintegrate:dry

@@ -1,0 +1,4 @@
+# Add one fully-reviewed branch per line in merge order.
+# Example:
+# agents/stellar-contract-agent/C1-contract-init-verification
+# agents/azure-platform-agent/D2-staging-swa-publish-workflow

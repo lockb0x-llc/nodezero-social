@@ -56,3 +56,9 @@ Context: Functional integration slice shipped for feed and local messaging pathw
 Request: Continue hardening relay interoperability tests and improve contract deployment idempotency/initialization verification.
 Evidence: packages/mobile-app/app/feed.tsx; packages/mobile-app/app/local.tsx
 Due: 2026-06-25 18:00 UTC
+
+[2026-06-24 18:20 UTC] [PROJECT_MANAGER->ALL] [P1] [OPEN]
+Context: Parallel branch orchestration has been enabled for specialist delivery and PM reintegration.
+Request: Use assigned branch/worktree from dispatch outputs and post handoff evidence before requesting merge.
+Evidence: scripts/agents/dispatch-parallel.ps1; scripts/agents/reintegrate-parallel.ps1; .agents/project-manager/parallel-work-items.json
+Due: 2026-06-25 18:00 UTC

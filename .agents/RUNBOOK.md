@@ -112,3 +112,37 @@ Minimum release policy for staging:
 2) Specialists execute and post evidence.
 3) PM promotes tasks to IN_PROGRESS/DONE in todo board.
 4) Repeat until Gate E passes.
+
+## 9. Parallel branch orchestration
+
+Use this flow to run multiple specialist agents at the same time without branch collisions.
+
+Preparation:
+- Keep PM source-of-truth tasks in .agents/project-manager/parallel-work-items.json.
+- Keep integration order in .agents/project-manager/merge-queue.txt.
+- Ensure your main working tree is clean before dispatch.
+
+Dispatch parallel branches and worktrees:
+1) Optional preview:
+	- pnpm pm:dispatch:dry
+2) Create branches/worktrees and publish inbox assignments:
+	- pnpm pm:dispatch
+
+What dispatch does:
+- Creates branch pattern: agents/<agent>/<task-id>-<slug>
+- Creates worktree: .agent-worktrees/<task-id>-<agent>
+- Writes task brief to each worktree at .agents/project-manager/active-task.md
+- Appends assignment messages to .agents/shared-inbox/inbox.md
+
+Reintegrate completed branches:
+1) Add reviewed branches to .agents/project-manager/merge-queue.txt in merge order.
+2) Optional preview:
+	- pnpm pm:reintegrate:dry
+3) Merge + validate:
+	- pnpm pm:reintegrate
+
+Default reintegration validation command:
+- pnpm lint; pnpm type-check; pnpm test; pnpm policy:validate-env
+
+Override validation command example:
+- pwsh -NoProfile -File ./scripts/agents/reintegrate-parallel.ps1 -ValidationCommand "pnpm lint; pnpm type-check; pnpm policy:validate-env"
