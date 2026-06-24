@@ -141,6 +141,23 @@ Reintegrate completed branches:
 3) Merge + validate:
 	- pnpm pm:reintegrate
 
+Continuous follow-up loop:
+1) Check branch state and inbox progress:
+	- pnpm pm:status
+2) Post reminders for stale or idle branches:
+	- pnpm pm:followup
+3) Re-run status after reminders to confirm movement.
+
+What status reports:
+- Worktree state per dispatched branch.
+- Most recent PM touchpoint per agent.
+- Whether the branch only contains the task brief or has real work in progress.
+
+What follow-up does:
+- Appends reminder messages for branches that are idle or stale.
+- Keeps the shared inbox aligned with actual PM oversight.
+- Provides a repeated coordination signal without manual branch inspection.
+
 Default reintegration validation command:
 - pnpm lint; pnpm type-check; pnpm test; pnpm policy:validate-env
 
