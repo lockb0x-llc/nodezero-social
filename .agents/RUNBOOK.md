@@ -147,6 +147,9 @@ Continuous follow-up loop:
 2) Post reminders for stale or idle branches:
 	- pnpm pm:followup
 3) Re-run status after reminders to confirm movement.
+4) Run recurring status + follow-up on a cadence:
+	- pnpm pm:loop
+	- pnpm pm:loop:dry
 
 What status reports:
 - Worktree state per dispatched branch.
@@ -157,6 +160,11 @@ What follow-up does:
 - Appends reminder messages for branches that are idle or stale.
 - Keeps the shared inbox aligned with actual PM oversight.
 - Provides a repeated coordination signal without manual branch inspection.
+
+What loop mode does:
+- Runs status and follow-up together repeatedly.
+- Defaults to continuous operation until stopped.
+- Supports dry-run and bounded iterations for validation.
 
 Default reintegration validation command:
 - pnpm lint; pnpm type-check; pnpm test; pnpm policy:validate-env
