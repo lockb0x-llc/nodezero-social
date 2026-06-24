@@ -37,6 +37,7 @@ The following are non-optional guardrails for every deployment:
 2. Deploy Soroban contracts to Stellar TestNet:
    - `STELLAR_SOURCE_ACCOUNT=<alias> pnpm deploy:stellar:testnet`
    - Output: `/home/runner/work/nodezero-social/nodezero-social/deployments/stellar-testnet.contracts.json`
+   - Manifest now includes per-contract `deploymentMode` (`created` or `reused`) to support idempotency auditing.
 3. Update app deployment variables with new values:
    - `NZ_IDENTITY_CONTRACT_ID`
    - `NZ_LOCKBOX_CONTRACT_ID`

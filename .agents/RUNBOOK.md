@@ -1,6 +1,6 @@
 # Multi-Agent Runbook
 
-This runbook explains how to execute the agent team to deliver staging.nedzero.social.
+This runbook explains how to execute the agent team to deliver staging.nodezero.social.
 
 ## 1. Team roster
 - PROJECT_MANAGER

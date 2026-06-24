@@ -10,11 +10,15 @@
   },
   "scripts": {
     "build": "pnpm -r build",
-    "test": "pnpm -r test",
+    "test": "pnpm -r --if-present test",
+    "test:contracts": "cargo test --manifest-path ./packages/contracts/Cargo.toml",
     "lint": "pnpm -r lint",
     "type-check": "pnpm -r type-check",
-    "clean": "pnpm -r clean && rm -rf node_modules",
+    "clean": "pnpm -r clean && node -e \"require('fs').rmSync('node_modules',{recursive:true,force:true})\"",
+    "policy:validate-env": "bash ./scripts/policy/validate-env-isolation.sh",
     "prepare:zk:testnet": "bash ./scripts/zk/prepare-testnet.sh",
+    "relay:dev": "pnpm --filter @nodezero/relay-service dev",
+    "relay:build": "pnpm --filter @nodezero/relay-service build",
     "deploy:stellar:testnet": "bash ./scripts/stellar/deploy-testnet.sh",
     "deploy:azure": "bash ./scripts/azure/deploy.sh"
   },

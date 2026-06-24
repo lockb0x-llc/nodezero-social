@@ -1,7 +1,7 @@
 # Agent: PROJECT_MANAGER
 
 ## Mission
-Drive delivery to staging.nedzero.social on Stellar TestNet and Azure.
+Drive delivery to staging.nodezero.social on Stellar TestNet and Azure.
 
 ## Scope
 - Own backlog, priorities, dependency resolution, and release criteria.

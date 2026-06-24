@@ -19,6 +19,7 @@ import {
 } from 'react-native'
 import { useSolid } from '../src/contexts/SolidContext'
 import { useRouter } from 'expo-router'
+import { SocialGraph, ProfileManager } from '@nodezero/solid-pod-sync'
 
 interface FeedPost {
   id: string
@@ -29,31 +30,51 @@ interface FeedPost {
 }
 
 export default function GlobalFeedScreen(): JSX.Element {
-  const { isLoggedIn, session } = useSolid()
+  const { isLoggedIn, session, webId } = useSolid()
   const router = useRouter()
   const [posts, setPosts] = useState<FeedPost[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
 
   const fetchFeed = useCallback(async () => {
-    if (!isLoggedIn) return
+    if (!isLoggedIn || !webId) return
 
     try {
-      /**
-       * TODO: Implement full feed aggregation.
-       * The real implementation will:
-       * 1. Load the user's SocialGraph (foaf:knows) from their Pod.
-       * 2. For each connected WebID, fetch their `posts/` container from their Pod.
-       * 3. Merge and sort chronologically.
-       *
-       * Using placeholder data to demonstrate the UI contract.
-       */
-      await new Promise<void>((resolve) => setTimeout(resolve, 500))
-      setPosts(PLACEHOLDER_POSTS)
+      const podRoot = webId.split('/profile/')[0] + '/'
+      const socialGraph = new SocialGraph(session)
+      const profileManager = new ProfileManager(session)
+      const connections = await socialGraph.listConnections(podRoot)
+
+      const connectionPosts = await Promise.all(
+        connections.map(async (connection, index) => {
+          try {
+            const profile = await profileManager.readProfile(connection.webId)
+            const displayName = profile?.displayName?.trim() || deriveNameFromWebId(connection.webId)
+            const bio = profile?.bio?.trim() || 'Shared a profile update.'
+            return {
+              id: `${connection.webId}-${index}`,
+              authorWebId: connection.webId,
+              authorName: displayName,
+              body: bio,
+              createdAt: new Date(Date.now() - index * 60_000).toISOString(),
+            } as FeedPost
+          } catch {
+            return {
+              id: `${connection.webId}-${index}`,
+              authorWebId: connection.webId,
+              authorName: deriveNameFromWebId(connection.webId),
+              body: 'Connection is currently unavailable.',
+              createdAt: new Date(Date.now() - index * 60_000).toISOString(),
+            } as FeedPost
+          }
+        })
+      )
+
+      setPosts(connectionPosts.sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)))
     } catch (err) {
       console.error('[GlobalFeedScreen] fetchFeed error:', err)
     }
-  }, [isLoggedIn, session])
+  }, [isLoggedIn, session, webId])
 
   useEffect(() => {
     void fetchFeed().finally(() => setLoading(false))
@@ -104,6 +125,17 @@ export default function GlobalFeedScreen(): JSX.Element {
   )
 }
 
+function deriveNameFromWebId(inputWebId: string): string {
+  try {
+    const host = new URL(inputWebId).hostname
+    const [name] = host.split('.')
+    if (!name) return inputWebId
+    return name.charAt(0).toUpperCase() + name.slice(1)
+  } catch {
+    return inputWebId
+  }
+}
+
 function PostCard({ post }: { post: FeedPost }): JSX.Element {
   return (
     <View style={styles.card}>
@@ -114,23 +146,6 @@ function PostCard({ post }: { post: FeedPost }): JSX.Element {
     </View>
   )
 }
-
-const PLACEHOLDER_POSTS: FeedPost[] = [
-  {
-    id: '1',
-    authorWebId: 'https://alice.solidcommunity.net/profile/card#me',
-    authorName: 'Alice',
-    body: 'Just set up my NodeZero profile! Finally a social network that respects my data. 🌐',
-    createdAt: new Date(Date.now() - 60_000).toISOString(),
-  },
-  {
-    id: '2',
-    authorWebId: 'https://bob.solidcommunity.net/profile/card#me',
-    authorName: 'Bob',
-    body: 'Love the H3 Local Node idea. Found three neighbours within 100m 🔬',
-    createdAt: new Date(Date.now() - 300_000).toISOString(),
-  },
-]
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0D0D0D' },

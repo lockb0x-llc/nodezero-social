@@ -14,6 +14,7 @@ import React, {
   useState,
   type ReactNode,
 } from 'react'
+import { Platform } from 'react-native'
 import {
   Session,
   handleIncomingRedirect,
@@ -40,6 +41,14 @@ interface SolidContextValue {
 
 const SolidContext = createContext<SolidContextValue | null>(null)
 
+function resolveRedirectUrl(): string {
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.href) {
+    return window.location.href
+  }
+  // Keep native flows explicit and deterministic under the app's scheme.
+  return 'nodezero://auth/callback'
+}
+
 /**
  * Wrap your application root with `SolidProvider` to make Solid auth state
  * available throughout the component tree.
@@ -51,19 +60,26 @@ export function SolidProvider({ children }: { children: ReactNode }): JSX.Elemen
   const [isRestoring, setIsRestoring] = useState(true)
 
   useEffect(() => {
-    void handleIncomingRedirect({ restorePreviousSession: true }).then((info) => {
-      if (info?.isLoggedIn) {
-        setIsLoggedIn(true)
-        setWebId(info.webId ?? null)
-      }
-      setIsRestoring(false)
-    })
+    void handleIncomingRedirect({ restorePreviousSession: true })
+      .then((info) => {
+        if (info?.isLoggedIn) {
+          setIsLoggedIn(true)
+          setWebId(info.webId ?? null)
+        }
+      })
+      .catch((err) => {
+        console.warn('[SolidContext] Session restore failed:', err)
+      })
+      .finally(() => {
+        setIsRestoring(false)
+      })
   }, [])
 
   const signIn = useCallback(async (idpUrl: string) => {
+    const redirectUrl = resolveRedirectUrl()
     await login({
       oidcIssuer: idpUrl,
-      redirectUrl: window.location.href,
+      redirectUrl,
       clientName: 'NodeZero.social',
     })
   }, [])

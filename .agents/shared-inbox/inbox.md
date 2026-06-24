@@ -32,3 +32,27 @@ Context: Runtime policy enforcement started for staging/mainnet separation.
 Request: Validate strict profile checks in packages/mobile-app/app.config.js and runtime coherence assertions in packages/mobile-app/src/contexts/WalletContext.tsx.
 Evidence: packages/mobile-app/app.config.js; packages/mobile-app/src/contexts/WalletContext.tsx
 Due: 2026-06-25 12:00 UTC
+
+[2026-06-24 16:05 UTC] [PROJECT_MANAGER->ALL] [P1] [DONE]
+Context: Completed first implementation tranche for environment isolation and script normalization.
+Request: Proceed to CI gating and functional refactor tranche.
+Evidence: scripts/azure/deploy.sh; scripts/stellar/deploy-testnet.sh; scripts/policy/validate-env-isolation.sh; .github/workflows/ci.yml; .github/workflows/staging-deploy.yml; package.json updates
+Due: 2026-06-25 18:00 UTC
+
+[2026-06-24 16:30 UTC] [PROJECT_MANAGER->ALL] [P1] [DONE]
+Context: CI governance and critical data-path refactors advanced.
+Request: Continue with feed/local messaging implementation and relay backend delivery.
+Evidence: packages/mobile-app/src/contexts/SolidContext.tsx; packages/solid-pod-sync/src/ProfileManager.ts; packages/p2p-comms/src/types.ts; infrastructure/azure/main.parameters.staging-testnet.json
+Due: 2026-06-25 18:00 UTC
+
+[2026-06-24 16:45 UTC] [PROJECT_MANAGER->ALL] [P1] [DONE]
+Context: Environment policy matrix published and relay backend scaffolded.
+Request: Integrate local messaging screen with relay signaling flow and begin feed aggregation integration.
+Evidence: docs/environment-isolation-matrix.md; packages/relay-service/package.json; packages/relay-service/src/index.ts
+Due: 2026-06-25 18:00 UTC
+
+[2026-06-24 17:05 UTC] [PROJECT_MANAGER->ALL] [P1] [DONE]
+Context: Functional integration slice shipped for feed and local messaging pathways.
+Request: Continue hardening relay interoperability tests and improve contract deployment idempotency/initialization verification.
+Evidence: packages/mobile-app/app/feed.tsx; packages/mobile-app/app/local.tsx
+Due: 2026-06-25 18:00 UTC

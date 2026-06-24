@@ -1,0 +1,30 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": {
+      "value": "eastus2"
+    },
+    "environmentName": {
+      "value": "staging-testnet"
+    },
+    "appName": {
+      "value": "nodezero-social"
+    },
+    "staticWebAppLocation": {
+      "value": "eastus2"
+    },
+    "identityContractId": {
+      "value": "REPLACE_WITH_STAGING_TESTNET_IDENTITY_CONTRACT_ID"
+    },
+    "lockboxContractId": {
+      "value": "REPLACE_WITH_STAGING_TESTNET_LOCKBOX_CONTRACT_ID"
+    },
+    "zkArtifactsUrl": {
+      "value": "https://REPLACE_WITH_STAGING_STORAGE.blob.core.windows.net/zk-artifacts/"
+    },
+    "zkManifestUrl": {
+      "value": "https://REPLACE_WITH_STAGING_STORAGE.blob.core.windows.net/zk-artifacts/zk-testnet-artifacts.json"
+    }
+  }
+}

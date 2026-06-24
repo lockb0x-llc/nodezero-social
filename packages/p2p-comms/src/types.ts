@@ -16,14 +16,16 @@ export interface P2PMessage {
 }
 
 /** WebRTC ICE / SDP signalling message used to establish a data channel. */
+export type SignalPayload = RTCSessionDescriptionInit | RTCIceCandidateInit
+
 export interface SignalMessage {
   type: 'offer' | 'answer' | 'ice-candidate'
   /** The local peer's Solid WebID. */
   from: string
   /** The remote peer's Solid WebID. */
   to: string
-  /** The opaque payload: SDP string or ICE candidate JSON. */
-  payload: string
+  /** SDP offer/answer object or ICE candidate JSON object. */
+  payload: SignalPayload
 }
 
 /** Options for constructing a {@link P2PChannel}. */

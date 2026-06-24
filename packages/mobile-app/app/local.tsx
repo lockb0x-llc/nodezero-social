@@ -9,7 +9,7 @@
  * Only the H3 cell index is shared.
  */
 
-import React, { useCallback, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
   View,
   Text,
@@ -23,6 +23,8 @@ import {
 } from 'react-native'
 import { useDiscovery } from '../src/contexts/DiscoveryContext'
 import { useSolid } from '../src/contexts/SolidContext'
+import Constants from 'expo-constants'
+import { P2PChannel, SignalRelay, type SignalMessage } from '@nodezero/p2p-comms'
 
 interface LocalMessage {
   id: string
@@ -34,30 +36,163 @@ interface LocalMessage {
 export default function LocalNodeScreen(): JSX.Element {
   const { currentNode, surroundingNodes, locationStatus, refresh } = useDiscovery()
   const { webId, isLoggedIn } = useSolid()
+  const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
+  const relayUrl = appExtra?.relayUrl ?? ''
+
   const [message, setMessage] = useState('')
+  const [targetWebId, setTargetWebId] = useState('')
   const [messages, setMessages] = useState<LocalMessage[]>([])
   const [sending, setSending] = useState(false)
+  const [relayState, setRelayState] = useState<'idle' | 'connecting' | 'connected' | 'error'>('idle')
+  const [relayError, setRelayError] = useState<string | null>(null)
+  const [openPeers, setOpenPeers] = useState<Record<string, boolean>>({})
 
-  const sendMessage = useCallback(() => {
-    if (!message.trim() || !webId) return
+  const relayRef = useRef<SignalRelay | null>(null)
+  const channelsRef = useRef<Map<string, P2PChannel>>(new Map())
+
+  const upsertChannel = useCallback((remoteWebId: string): P2PChannel | null => {
+    if (!webId) return null
+    const existing = channelsRef.current.get(remoteWebId)
+    if (existing) return existing
+
+    const channel = new P2PChannel({ localWebId: webId, remoteWebId })
+
+    channel.on('message', (incoming) => {
+      setMessages((prev) => [incoming, ...prev])
+    })
+
+    channel.on('open', () => {
+      setOpenPeers((prev) => ({ ...prev, [remoteWebId]: true }))
+    })
+
+    channel.on('close', () => {
+      setOpenPeers((prev) => ({ ...prev, [remoteWebId]: false }))
+    })
+
+    channel.on('iceCandidate', (candidate) => {
+      if (!relayRef.current || !webId) return
+      relayRef.current.send({
+        type: 'ice-candidate',
+        from: webId,
+        to: remoteWebId,
+        payload: candidate,
+      })
+    })
+
+    channel.on('error', (err) => {
+      console.warn('[LocalNodeScreen] P2P channel error:', err)
+    })
+
+    channelsRef.current.set(remoteWebId, channel)
+    return channel
+  }, [webId])
+
+  useEffect(() => {
+    if (!isLoggedIn || !webId || !relayUrl) {
+      setRelayState('idle')
+      return
+    }
+
+    setRelayState('connecting')
+    setRelayError(null)
+
+    const relay = new SignalRelay({ relayUrl, localWebId: webId })
+    relayRef.current = relay
+
+    relay.on('connected', () => {
+      setRelayState('connected')
+      setRelayError(null)
+    })
+
+    relay.on('disconnected', () => {
+      setRelayState('idle')
+    })
+
+    relay.on('error', (err) => {
+      setRelayState('error')
+      setRelayError(err.message)
+    })
+
+    relay.on('signal', async (signal: SignalMessage) => {
+      if (!webId || signal.to !== webId) return
+      const channel = upsertChannel(signal.from)
+      if (!channel || !relayRef.current) return
+
+      try {
+        if (signal.type === 'offer') {
+          await channel.receiveOffer(signal.payload as RTCSessionDescriptionInit)
+          const answer = await channel.createAnswer()
+          relayRef.current.send({
+            type: 'answer',
+            from: webId,
+            to: signal.from,
+            payload: answer,
+          })
+          return
+        }
+
+        if (signal.type === 'answer') {
+          await channel.receiveAnswer(signal.payload as RTCSessionDescriptionInit)
+          return
+        }
+
+        await channel.addIceCandidate(signal.payload as RTCIceCandidateInit)
+      } catch (err) {
+        console.warn('[LocalNodeScreen] Failed to process signal:', err)
+      }
+    })
+
+    relay.connect()
+
+    return () => {
+      relay.disconnect()
+      relayRef.current = null
+      for (const channel of channelsRef.current.values()) {
+        channel.close()
+      }
+      channelsRef.current.clear()
+      setOpenPeers({})
+    }
+  }, [isLoggedIn, relayUrl, upsertChannel, webId])
+
+  const sendMessage = useCallback(async () => {
+    if (!message.trim() || !webId || !targetWebId.trim()) return
+    if (!relayRef.current || relayState !== 'connected') {
+      setRelayError('Relay is not connected yet. Please wait and retry.')
+      return
+    }
+
     setSending(true)
 
-    /**
-     * TODO: Route through P2PChannel / SignalRelay.
-     * For now, messages are optimistically added to local state.
-     * The real implementation will broadcast via the WebRTC data channel
-     * to all peers sharing the same H3 index.
-     */
-    const msg: LocalMessage = {
-      id: String(Date.now()),
-      senderWebId: webId,
-      body: message.trim(),
-      timestamp: new Date().toISOString(),
+    const target = targetWebId.trim()
+
+    try {
+      const channel = upsertChannel(target)
+      if (!channel) return
+
+      if (!openPeers[target]) {
+        const offer = await channel.createOffer()
+        relayRef.current.send({
+          type: 'offer',
+          from: webId,
+          to: target,
+          payload: offer,
+        })
+        setRelayError('Establishing secure channel. Tap send again once connected.')
+        return
+      }
+
+      const sent = channel.send(message.trim())
+      setMessages((prev) => [sent, ...prev])
+      setMessage('')
+      setRelayError(null)
+    } catch (err) {
+      setRelayError(err instanceof Error ? err.message : 'Failed to send message.')
+      console.warn('[LocalNodeScreen] sendMessage error:', err)
+    } finally {
+      setSending(false)
     }
-    setMessages((prev) => [msg, ...prev])
-    setMessage('')
-    setSending(false)
-  }, [message, webId])
+  }, [message, openPeers, relayState, targetWebId, upsertChannel, webId])
 
   if (!isLoggedIn) {
     return (
@@ -150,10 +285,30 @@ export default function LocalNodeScreen(): JSX.Element {
       {/* Compose row */}
       <View style={styles.composeRow}>
         <TextInput
+          style={styles.targetInput}
+          value={targetWebId}
+          onChangeText={setTargetWebId}
+          placeholder="Recipient WebID"
+          placeholderTextColor="#555"
+          autoCapitalize="none"
+          autoCorrect={false}
+          accessibilityLabel="Recipient WebID"
+        />
+      </View>
+
+      {relayState !== 'connected' && (
+        <Text style={styles.systemText}>
+          {relayState === 'connecting' ? 'Connecting to secure relay…' : 'Relay disconnected.'}
+        </Text>
+      )}
+      {relayError && <Text style={styles.errorText}>{relayError}</Text>}
+
+      <View style={styles.composeRow}>
+        <TextInput
           style={styles.composeInput}
           value={message}
           onChangeText={setMessage}
-          placeholder="Broadcast to your Local Node…"
+          placeholder="Send encrypted message…"
           placeholderTextColor="#555"
           multiline
           maxLength={280}
@@ -161,8 +316,8 @@ export default function LocalNodeScreen(): JSX.Element {
         />
         <TouchableOpacity
           style={[styles.sendBtn, (!message.trim() || sending) && styles.sendBtnDisabled]}
-          onPress={sendMessage}
-          disabled={!message.trim() || sending}
+          onPress={() => void sendMessage()}
+          disabled={!message.trim() || sending || !targetWebId.trim()}
           accessibilityRole="button"
           accessibilityLabel="Send message"
         >
@@ -195,6 +350,19 @@ const styles = StyleSheet.create({
   messageSender: { color: '#6C63FF', fontSize: 11, marginBottom: 4 },
   messageBody: { color: '#DDD', fontSize: 14, lineHeight: 20 },
   messageTime: { color: '#555', fontSize: 10, marginTop: 4, textAlign: 'right' },
+  targetInput: {
+    width: '100%',
+    backgroundColor: '#1A1A1A',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    color: '#FFF',
+    fontSize: 13,
+    borderWidth: 1,
+    borderColor: '#2A2A2A',
+  },
+  systemText: { color: '#8C80B3', fontSize: 12, paddingHorizontal: 12, paddingBottom: 6 },
+  errorText: { color: '#FF7A7A', fontSize: 12, paddingHorizontal: 12, paddingBottom: 6 },
   composeRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
