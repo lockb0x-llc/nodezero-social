@@ -7,9 +7,9 @@
 - DONE
 
 ## Milestone A: Build and release hygiene
-- [TODO] A1: Normalize package scripts and fix manifest anomalies.
+- [IN_PROGRESS] A1: Normalize package scripts and fix manifest anomalies.
 - [TODO] A2: Add CI pipelines for lint, type-check, test, contracts.
-- [TODO] A3: Define release environment variable matrix for staging.
+- [IN_PROGRESS] A3: Define release environment variable matrix for staging.
 
 ## Milestone B: Functional completion
 - [TODO] B1: Replace feed placeholder with Solid-based aggregation.
@@ -18,11 +18,11 @@
 - [TODO] B4: Make Solid auth cross-platform safe for Expo web/native.
 
 ## Milestone C: Chain and ZK reliability
-- [TODO] C1: Harden contract deployment sequence and initialization.
+- [IN_PROGRESS] C1: Harden contract deployment sequence and initialization.
 - [TODO] C2: Publish artifact manifest validation and checksum process.
 
 ## Milestone D: Azure staging readiness
-- [TODO] D1: Add custom domain/TLS configuration runbook.
+- [IN_PROGRESS] D1: Add custom domain/TLS configuration runbook.
 - [TODO] D2: Add SWA publish workflow from Expo web build.
 - [TODO] D3: Add monitoring/alerting and cost guardrails.
 

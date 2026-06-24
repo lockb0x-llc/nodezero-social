@@ -1,7 +1,7 @@
 # Agent: STELLAR_CONTRACT_AGENT
 
 ## Mission
-Own Soroban contract correctness and Stellar TestNet deployment integrity.
+Own Soroban contract correctness and Stellar TestNet deployment integrity in accordance withthe latest Protocol 27.x Release on the Stellar.org TestNet.
 
 ## Scope
 - packages/contracts and scripts/stellar.

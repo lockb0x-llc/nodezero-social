@@ -1,7 +1,7 @@
 # NodeZero Staging Deployment Blueprint
 
 Date: 2026-06-24
-Target URL: staging.nedzero.social
+Target URL: staging.nodezero.social
 Network: Stellar TestNet
 Cloud: Azure
 
@@ -46,8 +46,8 @@ Cloud platform:
   - Retention and ingestion controls for telemetry.
 
 ### Networking and domain
-- DNS zone control for nedzero.social.
-- CNAME for staging.nedzero.social to SWA default hostname.
+- DNS zone control for nodezero.social.
+- CNAME for staging.nodezero.social to SWA default hostname.
 - TLS certificate validation completed in SWA custom domain settings.
 
 ### Secret and configuration management
@@ -110,7 +110,7 @@ G5: Build/test governance inconsistent
 
 G6: Azure staging hardening incomplete
 - Required outcome: custom domain and TLS configured with publish workflow and rollback steps.
-- Acceptance: successful blue/green or atomic publish to staging.nedzero.social with smoke pass.
+- Acceptance: successful blue/green or atomic publish to staging.nodezero.social with smoke pass.
 
 G7: Contract/toolchain compatibility risk
 - Required outcome: explicit protocol and SDK compatibility matrix documented and validated.
@@ -147,7 +147,7 @@ Deliverables:
 - Bicep deployment validated with what-if.
 - SWA publish pipeline from Expo web build output.
 - Key Vault and telemetry configuration in place.
-- Custom domain + TLS active for staging.nedzero.social.
+- Custom domain + TLS active for staging.nodezero.social.
 Gate:
 - Public staging URL reachable with healthy telemetry and alerts.
 
@@ -179,7 +179,7 @@ Gate:
 
 7) Build and publish Expo web artifact to SWA
 
-8) Bind and verify staging.nedzero.social domain + TLS
+8) Bind and verify staging.nodezero.social domain + TLS
 
 9) Run smoke suite and publish release decision
 

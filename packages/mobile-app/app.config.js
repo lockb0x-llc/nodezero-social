@@ -20,6 +20,62 @@
  */
 
 /** @type {import('@expo/config').ExpoConfig} */
+const envProfile = process.env.NZ_ENV_PROFILE ?? 'local'
+
+const profiles = {
+  local: {
+    rpcUrl: process.env.NZ_STELLAR_RPC_URL ?? 'https://soroban-testnet.stellar.org',
+    passphrase:
+      process.env.NZ_STELLAR_NETWORK_PASSPHRASE ?? 'Test SDF Network ; September 2015',
+    enforceStrictVariables: false,
+  },
+  'staging-testnet': {
+    rpcUrl: process.env.NZ_STELLAR_RPC_URL ?? 'https://soroban-testnet.stellar.org',
+    passphrase:
+      process.env.NZ_STELLAR_NETWORK_PASSPHRASE ?? 'Test SDF Network ; September 2015',
+    enforceStrictVariables: true,
+  },
+  'production-mainnet': {
+    rpcUrl: process.env.NZ_STELLAR_RPC_URL ?? 'https://soroban.stellar.org',
+    passphrase:
+      process.env.NZ_STELLAR_NETWORK_PASSPHRASE ?? 'Public Global Stellar Network ; September 2015',
+    enforceStrictVariables: true,
+  },
+}
+
+if (!profiles[envProfile]) {
+  throw new Error(
+    `Invalid NZ_ENV_PROFILE '${envProfile}'. Allowed values: local, staging-testnet, production-mainnet.`
+  )
+}
+
+const profile = profiles[envProfile]
+const relayUrl = process.env.NZ_RELAY_URL ?? ''
+const identityContractId = process.env.NZ_IDENTITY_CONTRACT_ID ?? ''
+const lockboxContractId = process.env.NZ_LOCKBOX_CONTRACT_ID ?? ''
+const zkArtifactsUrl = process.env.NZ_ZK_ARTIFACTS_URL ?? ''
+const zkManifestUrl = process.env.NZ_ZK_MANIFEST_URL ?? ''
+
+if (profile.enforceStrictVariables) {
+  if (!relayUrl) {
+    throw new Error(`NZ_RELAY_URL is required for ${envProfile}.`)
+  }
+  if (!identityContractId || !lockboxContractId) {
+    throw new Error(`NZ_IDENTITY_CONTRACT_ID and NZ_LOCKBOX_CONTRACT_ID are required for ${envProfile}.`)
+  }
+  if (!zkArtifactsUrl || !zkManifestUrl) {
+    throw new Error(`NZ_ZK_ARTIFACTS_URL and NZ_ZK_MANIFEST_URL are required for ${envProfile}.`)
+  }
+}
+
+if (envProfile === 'staging-testnet' && profile.passphrase !== 'Test SDF Network ; September 2015') {
+  throw new Error('Staging profile must use the Stellar TestNet passphrase.')
+}
+
+if (envProfile === 'production-mainnet' && profile.passphrase !== 'Public Global Stellar Network ; September 2015') {
+  throw new Error('Production profile must use the Stellar MainNet passphrase.')
+}
+
 module.exports = {
   name: process.env.NZ_APP_NAME ?? 'NodeZero',
   slug: 'nodezero-social',
@@ -61,15 +117,15 @@ module.exports = {
   },
 
   extra: {
+    envProfile,
     primaryColor: process.env.NZ_PRIMARY_COLOR ?? '#6C63FF',
     backgroundColor: process.env.NZ_BACKGROUND_COLOR ?? '#0D0D0D',
-    relayUrl: process.env.NZ_RELAY_URL ?? 'wss://relay.nodezero.social',
-    stellarRpcUrl: process.env.NZ_STELLAR_RPC_URL ?? 'https://soroban-testnet.stellar.org',
-    stellarNetworkPassphrase:
-      process.env.NZ_STELLAR_NETWORK_PASSPHRASE ?? 'Test SDF Network ; September 2015',
-    identityContractId: process.env.NZ_IDENTITY_CONTRACT_ID ?? '',
-    lockboxContractId: process.env.NZ_LOCKBOX_CONTRACT_ID ?? '',
-    zkArtifactsUrl: process.env.NZ_ZK_ARTIFACTS_URL ?? '',
-    zkManifestUrl: process.env.NZ_ZK_MANIFEST_URL ?? '',
+    relayUrl,
+    stellarRpcUrl: profile.rpcUrl,
+    stellarNetworkPassphrase: profile.passphrase,
+    identityContractId,
+    lockboxContractId,
+    zkArtifactsUrl,
+    zkManifestUrl,
   },
 }

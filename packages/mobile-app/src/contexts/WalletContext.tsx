@@ -34,6 +34,36 @@ const WalletContext = createContext<WalletContextValue | null>(null)
 let _adapter: EnclaveAdapter | null = null
 let _walletService: WalletService | null = null
 
+function assertNetworkCoherence(appExtra: Record<string, string> | undefined): void {
+  const envProfile = appExtra?.envProfile ?? 'local'
+  const rpcUrl = appExtra?.stellarRpcUrl ?? ''
+  const networkPassphrase = appExtra?.stellarNetworkPassphrase ?? ''
+
+  const expected = {
+    'staging-testnet': {
+      rpcUrl: 'https://soroban-testnet.stellar.org',
+      passphrase: 'Test SDF Network ; September 2015',
+    },
+    'production-mainnet': {
+      rpcUrl: 'https://soroban.stellar.org',
+      passphrase: 'Public Global Stellar Network ; September 2015',
+    },
+  } as const
+
+  if (envProfile === 'local') return
+
+  const profile = expected[envProfile as keyof typeof expected]
+  if (!profile) {
+    throw new Error(`Unsupported envProfile '${envProfile}'.`)
+  }
+
+  if (rpcUrl !== profile.rpcUrl || networkPassphrase !== profile.passphrase) {
+    throw new Error(
+      `Environment mismatch for '${envProfile}'. Expected rpc/passphrase '${profile.rpcUrl}'/'${profile.passphrase}'.`
+    )
+  }
+}
+
 function getWalletService(): WalletService {
   if (!_adapter) {
     _adapter = new EnclaveAdapter(SecureStore)
@@ -42,6 +72,7 @@ function getWalletService(): WalletService {
     const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
     const rpcUrl = appExtra?.stellarRpcUrl ?? 'https://soroban-testnet.stellar.org'
     const networkPassphrase = appExtra?.stellarNetworkPassphrase ?? 'Test SDF Network ; September 2015'
+    assertNetworkCoherence(appExtra)
 
     _walletService = new WalletService(_adapter, rpcUrl, networkPassphrase)
   }

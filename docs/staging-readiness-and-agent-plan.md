@@ -1,7 +1,7 @@
 # NodeZero Staging Readiness Review and Agent Operating Plan
 
 Date: 2026-06-24
-Target: staging.nedzero.social on Stellar TestNet and Azure
+Target: staging.nodezero.social on Stellar TestNet and Azure
 
 ## 1) Repository purpose and product shape
 
@@ -44,8 +44,8 @@ NodeZero is a decentralized social application that combines:
   - Static Web App
 
 ### Domain and DNS requirements
-- staging.nedzero.social DNS ownership and zone access.
-- CNAME binding from staging.nedzero.social to Azure Static Web App hostname.
+- staging.nodezero.social DNS ownership and zone access.
+- CNAME binding from staging.nodezero.social to Azure Static Web App hostname.
 - TLS certificate validation in Azure Static Web App custom domains.
 
 ## 4) Deployment readiness summary
@@ -69,7 +69,7 @@ Readiness by area:
 7. Root workspace test script can fail because some packages do not define test scripts.
 8. Package manifest issue in solid-pod-sync (duplicate peerDependencies key with overwrite risk).
 
-## 6) Roadmap to staging.nedzero.social (Stellar TestNet + Azure)
+## 6) Roadmap to staging.nodezero.social (Stellar TestNet + Azure)
 
 ### Phase 0: Stabilize build and policy (1-2 days)
 - Fix package manifest issues and standardize scripts in every package.
@@ -95,7 +95,7 @@ Readiness by area:
 ### Phase 4: Staging validation and go-live (2-3 days)
 - End-to-end smoke tests (auth, profile save/load, feed, local node, wallet registration).
 - Synthetic monitoring and health dashboard.
-- Sign-off and launch staging.nedzero.social.
+- Sign-off and launch staging.nodezero.social.
 
 ## 7) Agent operating model
 
