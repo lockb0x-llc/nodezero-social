@@ -3,6 +3,11 @@ param location string = resourceGroup().location
 
 @description('Short environment identifier (e.g. testnet, staging, prod).')
 @minLength(2)
+@allowed([
+  'testnet'
+  'staging-testnet'
+  'production-mainnet'
+])
 param environmentName string = 'testnet'
 
 @description('Global application name prefix.')
@@ -34,10 +39,16 @@ var keyVaultName = take(replace('${appName}-${environmentName}-kv-${resourceToke
 var staticWebAppName = '${appName}-${environmentName}-web'
 var appInsightsName = '${appName}-${environmentName}-appi'
 var logAnalyticsName = '${appName}-${environmentName}-law'
+var commonTags = {
+  application: appName
+  environment: environmentName
+  runtimeBoundary: environmentName == 'production-mainnet' ? 'production' : 'non-production'
+}
 
 resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2022-10-01' = {
   name: logAnalyticsName
   location: location
+  tags: commonTags
   properties: {
     retentionInDays: 30
     sku: {
@@ -49,6 +60,7 @@ resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2022-10-01' = {
 resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
   name: appInsightsName
   location: location
+  tags: commonTags
   kind: 'web'
   properties: {
     Application_Type: 'web'
@@ -59,6 +71,7 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
 resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' = {
   name: storageAccountName
   location: location
+  tags: commonTags
   sku: {
     name: 'Standard_LRS'
   }
@@ -73,6 +86,7 @@ resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' = {
 resource keyVault 'Microsoft.KeyVault/vaults@2023-02-01' = {
   name: keyVaultName
   location: location
+  tags: commonTags
   properties: {
     tenantId: tenant().tenantId
     sku: {
@@ -122,6 +136,7 @@ resource zkManifestSecret 'Microsoft.KeyVault/vaults/secrets@2023-02-01' = {
 resource staticWebApp 'Microsoft.Web/staticSites@2022-09-01' = {
   name: staticWebAppName
   location: staticWebAppLocation
+  tags: commonTags
   sku: {
     name: 'Standard'
     tier: 'Standard'
