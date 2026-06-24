@@ -2,9 +2,11 @@
 param location string = resourceGroup().location
 
 @description('Short environment identifier (e.g. testnet, staging, prod).')
+@minLength(2)
 param environmentName string = 'testnet'
 
 @description('Global application name prefix.')
+@minLength(3)
 param appName string = 'nodezero-social'
 
 @description('Static Web App deployment region.')
@@ -27,7 +29,7 @@ param zkArtifactsUrl string
 param zkManifestUrl string
 
 var resourceToken = toLower(uniqueString(resourceGroup().id, appName, environmentName))
-var storageAccountName = take(replace('${appName}${environmentName}${resourceToken}', '-', ''), 24)
+var storageAccountName = 'st${take(resourceToken, 22)}'
 var keyVaultName = take(replace('${appName}-${environmentName}-kv-${resourceToken}', '--', '-'), 24)
 var staticWebAppName = '${appName}-${environmentName}-web'
 var appInsightsName = '${appName}-${environmentName}-appi'
@@ -86,28 +88,32 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-02-01' = {
 }
 
 resource identityContractSecret 'Microsoft.KeyVault/vaults/secrets@2023-02-01' = {
-  name: '${keyVault.name}/stellar-identity-contract-id'
+  name: 'stellar-identity-contract-id'
+  parent: keyVault
   properties: {
     value: identityContractId
   }
 }
 
 resource lockboxContractSecret 'Microsoft.KeyVault/vaults/secrets@2023-02-01' = {
-  name: '${keyVault.name}/stellar-lockbox-contract-id'
+  name: 'stellar-lockbox-contract-id'
+  parent: keyVault
   properties: {
     value: lockboxContractId
   }
 }
 
 resource zkArtifactsSecret 'Microsoft.KeyVault/vaults/secrets@2023-02-01' = {
-  name: '${keyVault.name}/zk-artifacts-url'
+  name: 'zk-artifacts-url'
+  parent: keyVault
   properties: {
     value: zkArtifactsUrl
   }
 }
 
 resource zkManifestSecret 'Microsoft.KeyVault/vaults/secrets@2023-02-01' = {
-  name: '${keyVault.name}/zk-manifest-url'
+  name: 'zk-manifest-url'
+  parent: keyVault
   properties: {
     value: zkManifestUrl
   }
