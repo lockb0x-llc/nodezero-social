@@ -1,0 +1,10 @@
+{
+  "name": "@nodezero/zk-crypto",
+  "version": "0.0.1",
+  "description": "Zero-Knowledge circuits for NodeZero Proof of Humanity and nullifier generation",
+  "license": "MIT",
+  "scripts": {
+    "compile": "circom circuits/poh.circom --r1cs --wasm --sym -o build/ && circom circuits/nullifier.circom --r1cs --wasm --sym -o build/",
+    "clean": "rm -rf build/"
+  }
+}

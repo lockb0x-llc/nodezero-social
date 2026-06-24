@@ -1,0 +1,186 @@
+/**
+ * @module SocialGraph
+ *
+ * Manages the social graph (connections / follows) for a NodeZero user.
+ *
+ * Connections are modelled using the standard FOAF vocabulary:
+ * `http://xmlns.com/foaf/0.1/knows` – semantically "this person knows X".
+ *
+ * Data is stored in the user's Solid Pod under `social/connections`, keeping
+ * it separate from the profile card. The user retains full ownership and can
+ * revoke access or delete the dataset at any time.
+ */
+
+import {
+  getSolidDataset,
+  saveSolidDatasetAt,
+  getThing,
+  setThing,
+  removeThing,
+  createSolidDataset,
+  buildThing,
+  createThing,
+  getUrlAll,
+  type SolidDataset,
+  type WithServerResourceInfo,
+} from '@inrupt/solid-client'
+import type { Session } from '@inrupt/solid-client-authn-node'
+
+// ─── Vocabulary constants ─────────────────────────────────────────────────────
+const FOAF_KNOWS = 'http://xmlns.com/foaf/0.1/knows'
+const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type'
+const FOAF_PERSON = 'http://xmlns.com/foaf/0.1/Person'
+
+/** Represents a connection (follow relationship) in the social graph. */
+export interface Connection {
+  /** The WebID of the connected user. */
+  webId: string
+}
+
+/**
+ * Manages follow/unfollow operations against the user's Solid Pod.
+ *
+ * @example
+ * ```ts
+ * const graph = new SocialGraph(session)
+ *
+ * // Follow Alice:
+ * await graph.addConnection('https://myPod.example.com/', 'https://alice.solidcommunity.net/profile/card#me')
+ *
+ * // List all connections:
+ * const connections = await graph.listConnections('https://myPod.example.com/')
+ *
+ * // Unfollow Alice:
+ * await graph.removeConnection('https://myPod.example.com/', 'https://alice.solidcommunity.net/profile/card#me')
+ * ```
+ */
+export class SocialGraph {
+  private readonly session: Session
+
+  constructor(session: Session) {
+    this.session = session
+  }
+
+  /**
+   * Returns all `foaf:knows` connections stored in the user's Pod.
+   *
+   * @param podRootUrl - Root URL of the user's Pod.
+   * @returns Array of {@link Connection} objects, or an empty array when none exist.
+   */
+  async listConnections(podRootUrl: string): Promise<Connection[]> {
+    const datasetUrl = this.connectionsUrl(podRootUrl)
+
+    let dataset: SolidDataset & WithServerResourceInfo
+
+    try {
+      dataset = await getSolidDataset(datasetUrl, { fetch: this.session.fetch })
+    } catch {
+      // No connections dataset yet – return empty list.
+      return []
+    }
+
+    const ownerWebId = `${datasetUrl}#me`
+    const thing = getThing(dataset, ownerWebId)
+    if (!thing) return []
+
+    return getUrlAll(thing, FOAF_KNOWS).map((webId) => ({ webId }))
+  }
+
+  /**
+   * Adds a `foaf:knows` triple to the user's social graph.
+   *
+   * Idempotent – calling this multiple times with the same target WebID is safe.
+   *
+   * @param podRootUrl - Root URL of the user's Pod.
+   * @param targetWebId - WebID of the user to follow.
+   * @returns The URL of the updated dataset.
+   */
+  async addConnection(podRootUrl: string, targetWebId: string): Promise<string> {
+    const datasetUrl = this.connectionsUrl(podRootUrl)
+    const ownerWebId = `${datasetUrl}#me`
+
+    const dataset = await this.getOrCreateDataset(datasetUrl)
+    const existing = getThing(dataset, ownerWebId)
+
+    // Build updated thing – preserve existing `foaf:knows` entries.
+    const existingUrls = existing ? getUrlAll(existing, FOAF_KNOWS) : []
+    const allUrls = Array.from(new Set([...existingUrls, targetWebId]))
+
+    let thingBuilder = buildThing(createThing({ url: ownerWebId })).setUrl(
+      RDF_TYPE,
+      FOAF_PERSON
+    )
+    for (const url of allUrls) {
+      thingBuilder = thingBuilder.addUrl(FOAF_KNOWS, url)
+    }
+
+    const updated = setThing(dataset, thingBuilder.build())
+    await saveSolidDatasetAt(datasetUrl, updated, { fetch: this.session.fetch })
+
+    return datasetUrl
+  }
+
+  /**
+   * Removes a `foaf:knows` triple from the user's social graph.
+   *
+   * Idempotent – if the connection does not exist this is a no-op.
+   *
+   * @param podRootUrl - Root URL of the user's Pod.
+   * @param targetWebId - WebID of the user to unfollow.
+   * @returns The URL of the updated dataset.
+   */
+  async removeConnection(podRootUrl: string, targetWebId: string): Promise<string> {
+    const datasetUrl = this.connectionsUrl(podRootUrl)
+    const ownerWebId = `${datasetUrl}#me`
+
+    let dataset: SolidDataset & WithServerResourceInfo
+
+    try {
+      dataset = await getSolidDataset(datasetUrl, { fetch: this.session.fetch })
+    } catch {
+      // No dataset – nothing to remove.
+      return datasetUrl
+    }
+
+    const existing = getThing(dataset, ownerWebId)
+    if (!existing) return datasetUrl
+
+    const remainingUrls = getUrlAll(existing, FOAF_KNOWS).filter((u) => u !== targetWebId)
+
+    if (remainingUrls.length === 0) {
+      // Remove the whole thing if no connections remain.
+      const stripped = removeThing(dataset, ownerWebId)
+      await saveSolidDatasetAt(datasetUrl, stripped, { fetch: this.session.fetch })
+      return datasetUrl
+    }
+
+    let thingBuilder = buildThing(createThing({ url: ownerWebId })).setUrl(
+      RDF_TYPE,
+      FOAF_PERSON
+    )
+    for (const url of remainingUrls) {
+      thingBuilder = thingBuilder.addUrl(FOAF_KNOWS, url)
+    }
+
+    const updated = setThing(dataset, thingBuilder.build())
+    await saveSolidDatasetAt(datasetUrl, updated, { fetch: this.session.fetch })
+
+    return datasetUrl
+  }
+
+  // ─── Private helpers ──────────────────────────────────────────────────────
+
+  private connectionsUrl(podRootUrl: string): string {
+    return `${podRootUrl.replace(/\/$/, '')}/social/connections`
+  }
+
+  private async getOrCreateDataset(
+    datasetUrl: string
+  ): Promise<SolidDataset & Partial<WithServerResourceInfo>> {
+    try {
+      return await getSolidDataset(datasetUrl, { fetch: this.session.fetch })
+    } catch {
+      return createSolidDataset()
+    }
+  }
+}
