@@ -30,3 +30,5 @@ Drive delivery to staging.nodezero.social on Stellar TestNet and Azure.
 - Dry-run dispatch: pnpm pm:dispatch:dry
 - Reintegrate command: pnpm pm:reintegrate
 - Dry-run reintegration: pnpm pm:reintegrate:dry
+- Loop command: pnpm pm:loop
+- Dry-run loop: pnpm pm:loop:dry

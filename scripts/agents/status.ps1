@@ -3,6 +3,9 @@ param(
     [string]$ConfigPath = ".agents/project-manager/parallel-work-items.json",
     [string]$InboxPath = ".agents/shared-inbox/inbox.md",
     [int]$StaleHours = 6,
+    [switch]$Loop,
+    [int]$LoopIntervalMinutes = 30,
+    [int]$MaxIterations = 0,
     [switch]$FollowUp,
     [switch]$DryRun
 )
@@ -47,6 +50,7 @@ function Get-InboxMessages {
                 Evidence = @()
                 Due = @()
             }
+
             continue
         }
 
@@ -57,7 +61,7 @@ function Get-InboxMessages {
         foreach ($field in @('Context', 'Request', 'Evidence', 'Due')) {
             $prefix = $field + ': '
             if ($line.StartsWith($prefix)) {
-                $current[$field] += $line.Substring($field.Length + 2)
+                $current[$field] += $line.Substring($prefix.Length)
             }
         }
     }
@@ -104,6 +108,7 @@ function Get-BranchStatus {
         if ($other.Count -eq 0) {
             return "brief-only"
         }
+
         return "working"
     }
 
@@ -111,7 +116,10 @@ function Get-BranchStatus {
 }
 
 function Get-WorkItemMap {
-    param([string]$Path)
+    param(
+        [string]$Path,
+        [string]$RepoRoot
+    )
 
     if (-not (Test-Path $Path)) {
         throw "Missing work-item config: $Path"
@@ -131,7 +139,7 @@ function Get-WorkItemMap {
         $titleSlug = ([string]$item.title).ToLowerInvariant() -replace '[^a-z0-9]+', '-'
         $titleSlug = $titleSlug.Trim('-')
         $branchName = "agents/$agentSlug/$itemId-$titleSlug"
-        $worktreePath = Join-Path $repoRoot ".agent-worktrees/$itemId-$agentSlug"
+        $worktreePath = Join-Path $RepoRoot ".agent-worktrees/$itemId-$agentSlug"
 
         $map[$itemId] = [pscustomobject]@{
             Id = $itemId
@@ -168,13 +176,18 @@ Due: Next coordination checkpoint.
     Add-Content -Path $InboxFile -Value $entry -Encoding utf8
 }
 
-$repoRoot = Get-RepoRoot
-Push-Location $repoRoot
-try {
-    $configAbsolute = Join-Path $repoRoot $ConfigPath
-    $inboxAbsolute = Join-Path $repoRoot $InboxPath
-    $messages = @(Get-InboxMessages -Path $inboxAbsolute)
-    $items = Get-WorkItemMap -Path $configAbsolute
+function Invoke-StatusPass {
+    param(
+        [string]$RepoRoot,
+        [string]$ConfigAbsolute,
+        [string]$InboxAbsolute,
+        [int]$StaleHours,
+        [switch]$FollowUp,
+        [switch]$DryRun
+    )
+
+    $messages = @(Get-InboxMessages -Path $InboxAbsolute)
+    $items = Get-WorkItemMap -Path $ConfigAbsolute -RepoRoot $RepoRoot
 
     $rows = foreach ($itemId in ($items.Keys | Sort-Object)) {
         $item = $items[$itemId]
@@ -222,11 +235,36 @@ try {
                     continue
                 }
 
-                Write-StatusMessage -InboxFile $inboxAbsolute -Agent $row.Agent -ItemId $row.Id -Title $row.Title -State $row.Worktree -Evidence "worktree=$($row.Worktree); lastPmMessage=$($row.LastPmMessage)"
+                Write-StatusMessage -InboxFile $InboxAbsolute -Agent $row.Agent -ItemId $row.Id -Title $row.Title -State $row.Worktree -Evidence "worktree=$($row.Worktree); lastPmMessage=$($row.LastPmMessage)"
                 Write-Host "Followed up on $($row.Id) -> $($row.Agent)"
             }
         }
     }
+}
+
+$repoRoot = Get-RepoRoot
+Push-Location $repoRoot
+try {
+    $configAbsolute = Join-Path $repoRoot $ConfigPath
+    $inboxAbsolute = Join-Path $repoRoot $InboxPath
+    $iteration = 0
+
+    do {
+        $iteration += 1
+        Invoke-StatusPass -RepoRoot $repoRoot -ConfigAbsolute $configAbsolute -InboxAbsolute $inboxAbsolute -StaleHours $StaleHours -FollowUp:($FollowUp -or $Loop) -DryRun:$DryRun
+
+        if (-not $Loop) {
+            break
+        }
+
+        if ($MaxIterations -gt 0 -and $iteration -ge $MaxIterations) {
+            break
+        }
+
+        if ($LoopIntervalMinutes -gt 0) {
+            Start-Sleep -Seconds ($LoopIntervalMinutes * 60)
+        }
+    } while ($true)
 }
 finally {
     Pop-Location

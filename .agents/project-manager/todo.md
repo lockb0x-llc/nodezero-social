@@ -34,3 +34,4 @@
 - [DONE] F1: Add PM branch/worktree dispatch automation.
 - [DONE] F2: Add PM merge-queue reintegration automation.
 - [DONE] F3: Add PM status and follow-up control loop.
+- [DONE] F4: Add bounded PM loop mode for recurring oversight.
