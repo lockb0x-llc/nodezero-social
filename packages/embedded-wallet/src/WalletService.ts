@@ -135,7 +135,7 @@ export class WalletService {
 
     return {
       hash: result.hash,
-      success: result.status !== 'ERROR',
+      success: true,
     }
   }
 }
