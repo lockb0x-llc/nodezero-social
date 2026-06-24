@@ -13,7 +13,10 @@
     "test": "pnpm -r test",
     "lint": "pnpm -r lint",
     "type-check": "pnpm -r type-check",
-    "clean": "pnpm -r clean && rm -rf node_modules"
+    "clean": "pnpm -r clean && rm -rf node_modules",
+    "prepare:zk:testnet": "bash ./scripts/zk/prepare-testnet.sh",
+    "deploy:stellar:testnet": "bash ./scripts/stellar/deploy-testnet.sh",
+    "deploy:azure": "bash ./scripts/azure/deploy.sh"
   },
   "devDependencies": {
     "typescript": "^5.4.5",

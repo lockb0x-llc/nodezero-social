@@ -11,6 +11,12 @@
  *   NZ_PRIMARY_COLOR     – Brand primary hex colour (default: "#6C63FF")
  *   NZ_BACKGROUND_COLOR  – Splash/background hex colour (default: "#0D0D0D")
  *   NZ_RELAY_URL         – WebSocket URL for the P2P signalling relay
+ *   NZ_STELLAR_RPC_URL   – Stellar Soroban RPC URL
+ *   NZ_STELLAR_NETWORK_PASSPHRASE – Stellar network passphrase
+ *   NZ_IDENTITY_CONTRACT_ID – NodeZeroIdentity contract ID on Testnet
+ *   NZ_LOCKBOX_CONTRACT_ID  – Lockb0x contract ID on Testnet
+ *   NZ_ZK_ARTIFACTS_URL     – Published ZK artifacts base URL
+ *   NZ_ZK_MANIFEST_URL      – ZK artifact manifest URL
  */
 
 /** @type {import('@expo/config').ExpoConfig} */
@@ -58,5 +64,12 @@ module.exports = {
     primaryColor: process.env.NZ_PRIMARY_COLOR ?? '#6C63FF',
     backgroundColor: process.env.NZ_BACKGROUND_COLOR ?? '#0D0D0D',
     relayUrl: process.env.NZ_RELAY_URL ?? 'wss://relay.nodezero.social',
+    stellarRpcUrl: process.env.NZ_STELLAR_RPC_URL ?? 'https://soroban-testnet.stellar.org',
+    stellarNetworkPassphrase:
+      process.env.NZ_STELLAR_NETWORK_PASSPHRASE ?? 'Test SDF Network ; September 2015',
+    identityContractId: process.env.NZ_IDENTITY_CONTRACT_ID ?? '',
+    lockboxContractId: process.env.NZ_LOCKBOX_CONTRACT_ID ?? '',
+    zkArtifactsUrl: process.env.NZ_ZK_ARTIFACTS_URL ?? '',
+    zkManifestUrl: process.env.NZ_ZK_MANIFEST_URL ?? '',
   },
 }
