@@ -24,7 +24,13 @@ import {
   type SolidDataset,
   type WithServerResourceInfo,
 } from '@inrupt/solid-client'
-import type { Session } from '@inrupt/solid-client-authn-node'
+
+// ─── Session interface ────────────────────────────────────────────────────────
+/** Minimal authenticated session interface – structurally compatible with
+ * `@inrupt/solid-client-authn-node` Session without requiring it as a direct dep. */
+interface AuthenticatedSession {
+  fetch: typeof globalThis.fetch
+}
 
 // ─── Vocabulary constants ─────────────────────────────────────────────────────
 const FOAF_KNOWS = 'http://xmlns.com/foaf/0.1/knows'
@@ -55,9 +61,9 @@ export interface Connection {
  * ```
  */
 export class SocialGraph {
-  private readonly session: Session
+  private readonly session: AuthenticatedSession
 
-  constructor(session: Session) {
+  constructor(session: AuthenticatedSession) {
     this.session = session
   }
 
