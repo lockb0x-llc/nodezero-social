@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-native",
+    "lib": ["ES2022", "DOM"],
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "exactOptionalPropertyTypes": false,
+    "paths": {
+      "@nodezero/solid-pod-sync": ["../solid-pod-sync/src/index.ts"],
+      "@nodezero/geo-discovery": ["../geo-discovery/src/index.ts"],
+      "@nodezero/embedded-wallet": ["../embedded-wallet/src/index.ts"],
+      "@nodezero/p2p-comms": ["../p2p-comms/src/index.ts"]
+    }
+  },
+  "include": ["app/**/*", "src/**/*"],
+  "exclude": ["node_modules"]
+}

@@ -1,0 +1,27 @@
+{
+  "name": "@nodezero/p2p-comms",
+  "version": "0.0.1",
+  "description": "Ephemeral P2P messaging for NodeZero – WebRTC signalling and relay protocol",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc --project tsconfig.json",
+    "lint": "eslint src --ext .ts",
+    "type-check": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "eventemitter3": "^5.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.4.5"
+  }
+}
