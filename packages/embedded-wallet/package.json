@@ -13,6 +13,7 @@
   },
   "scripts": {
     "build": "tsc --project tsconfig.json",
+    "test": "echo \"No tests yet for @nodezero/embedded-wallet\"",
     "lint": "eslint src --ext .ts",
     "type-check": "tsc --noEmit",
     "clean": "rm -rf dist"

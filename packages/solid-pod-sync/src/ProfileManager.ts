@@ -20,6 +20,7 @@ import {
   buildThing,
   createThing,
   getStringNoLocale,
+  getStringNoLocaleAll,
   getUrl,
   getBoolean,
   type SolidDataset,
@@ -224,11 +225,7 @@ function thingToProfile(thing: Thing): UserProfile {
  * Returns all string values for a given predicate on a Thing (multi-value).
  */
 function getAllStrings(thing: Thing, predicate: string): string[] {
-  // @inrupt/solid-client does not expose a multi-value string getter in the
-  // public API, so we read the underlying dataset via the thing's predicates.
-  // We fall back to a single value if the predicate only has one entry.
-  const single = getStringNoLocale(thing, predicate)
-  return single ? [single] : []
+  return getStringNoLocaleAll(thing, predicate)
 }
 
 /**

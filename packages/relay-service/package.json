@@ -1,28 +1,26 @@
 {
-  "name": "@nodezero/p2p-comms",
+  "name": "@nodezero/relay-service",
   "version": "0.0.1",
-  "description": "Ephemeral P2P messaging for NodeZero – WebRTC signalling and relay protocol",
+  "description": "WebSocket signaling relay service for NodeZero P2P negotiation",
   "license": "MIT",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "exports": {
-    ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
-    }
-  },
   "scripts": {
     "build": "tsc --project tsconfig.json",
-    "test": "echo \"No tests yet for @nodezero/p2p-comms\"",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "test": "echo \"No tests yet for @nodezero/relay-service\"",
     "lint": "eslint src --ext .ts",
     "type-check": "tsc --noEmit",
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "eventemitter3": "^5.0.1"
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
+    "@types/ws": "^8.5.10",
+    "tsx": "^4.19.2",
     "typescript": "^5.4.5"
   }
 }

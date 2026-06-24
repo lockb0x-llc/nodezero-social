@@ -5,6 +5,7 @@
   "license": "MIT",
   "scripts": {
     "compile": "circom circuits/poh.circom --r1cs --wasm --sym -o build/ && circom circuits/nullifier.circom --r1cs --wasm --sym -o build/",
+    "test": "echo \"No tests yet for @nodezero/zk-crypto\"",
     "clean": "rm -rf build/"
   }
 }

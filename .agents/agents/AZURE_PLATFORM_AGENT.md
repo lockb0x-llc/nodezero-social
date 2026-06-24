@@ -20,5 +20,5 @@ Provision and harden Azure staging infrastructure and publishing flow.
 ## Workflow
 1. Prepare secure Bicep parameter file.
 2. Deploy and validate resources.
-3. Configure staging.nedzero.social custom domain + TLS.
+3. Configure staging.nodezero.social custom domain + TLS.
 4. Hand off endpoint and telemetry links to QA_RELEASE_AGENT.

@@ -1,6 +1,6 @@
 # NodeZero Agent Operations
 
-This folder defines the working agreement for a multi-agent team delivering staging.nedzero.social.
+This folder defines the working agreement for a multi-agent team delivering staging.nodezero.social.
 
 ## Structure
 - agents/: role cards and operating instructions.

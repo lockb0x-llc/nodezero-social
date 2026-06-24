@@ -16,6 +16,7 @@ AUTO_FUND_SOURCE_ACCOUNT="${AUTO_FUND_SOURCE_ACCOUNT:-0}"
 EXPECTED_TESTNET_NAME="testnet"
 EXPECTED_TESTNET_PASSPHRASE="Test SDF Network ; September 2015"
 EXPECTED_TESTNET_RPC_URL="https://soroban-testnet.stellar.org"
+declare -A CONTRACT_MODES
 
 fail() {
   echo "$1"
@@ -68,9 +69,12 @@ resolve_or_deploy_contract() {
 
   existing_id="$(stellar contract id --network "$NETWORK_NAME" --alias "$alias" 2>/dev/null || true)"
   if [[ -n "$existing_id" ]]; then
+    CONTRACT_MODES["$alias"]="reused"
     echo "$existing_id"
     return
   fi
+
+  CONTRACT_MODES["$alias"]="created"
 
   stellar contract deploy \
     --wasm "$WASM_PATH" \
@@ -129,6 +133,8 @@ jq -n \
   --arg rpcUrl "$NETWORK_RPC_URL" \
   --arg sourceAccount "$SOURCE_ACCOUNT" \
   --arg strictMode "$([[ "$ALLOW_NON_TESTNET" == "1" ]] && echo "false" || echo "true")" \
+  --arg identityMode "${CONTRACT_MODES[$IDENTITY_ALIAS]:-unknown}" \
+  --arg lockboxMode "${CONTRACT_MODES[$LOCKBOX_ALIAS]:-unknown}" \
   --arg identityContractId "$IDENTITY_CONTRACT_ID" \
   --arg lockboxContractId "$LOCKBOX_CONTRACT_ID" \
   --arg generatedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
@@ -141,8 +147,14 @@ jq -n \
     sourceAccount: $sourceAccount,
     strictTestnetMode: ($strictMode == "true"),
     contracts: {
-      identity: $identityContractId,
-      lockbox: $lockboxContractId
+      identity: {
+        id: $identityContractId,
+        deploymentMode: $identityMode
+      },
+      lockbox: {
+        id: $lockboxContractId,
+        deploymentMode: $lockboxMode
+      }
     },
     generatedAt: $generatedAt
   }' > "$OUTPUT_FILE"

@@ -1,0 +1,54 @@
+name: Staging Deploy
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy-staging:
+    name: Deploy staging-testnet
+    runs-on: ubuntu-latest
+    environment: staging-testnet
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate environment isolation policy
+        run: pnpm policy:validate-env
+
+      - name: Setup Azure CLI
+        uses: azure/CLI@v2
+        with:
+          inlineScript: |
+            az version
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy Azure infrastructure with strict staging guardrails
+        env:
+          AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+          AZURE_BICEP_PARAMETERS_FILE: infrastructure/azure/main.parameters.staging-testnet.json
+          AZURE_ENVIRONMENT_NAME: staging-testnet
+        run: pnpm deploy:azure
+
+      - name: Staging deployment summary
+        run: echo "Staging infrastructure deployment completed. Continue with app publish and smoke tests."
