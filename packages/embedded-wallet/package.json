@@ -1,0 +1,35 @@
+{
+  "name": "@nodezero/embedded-wallet",
+  "version": "0.0.1",
+  "description": "Invisible Stellar wallet for NodeZero – Ed25519 keypair management via secure enclave",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc --project tsconfig.json",
+    "lint": "eslint src --ext .ts",
+    "type-check": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@stellar/stellar-sdk": "^16.0.0"
+  },
+  "peerDependencies": {
+    "expo-secure-store": ">=13.0.0"
+  },
+  "peerDependenciesMeta": {
+    "expo-secure-store": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.4.5"
+  }
+}
