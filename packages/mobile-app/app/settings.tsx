@@ -51,9 +51,10 @@ export default function SettingsScreen(): JSX.Element {
         {
           text: 'Clear',
           style: 'destructive',
-          onPress: async () => {
-            await AsyncStorage.clear()
-            Alert.alert('Done', 'Local cache cleared.')
+          onPress: () => {
+            void AsyncStorage.clear().then(() => {
+              Alert.alert('Done', 'Local cache cleared.')
+            })
           },
         },
       ]

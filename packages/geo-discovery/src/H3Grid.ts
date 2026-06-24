@@ -6,7 +6,7 @@
  * on every call.
  */
 
-import { latLngToCell, gridDisk, cellToLatLng, getResolution, cellsToDirectedEdge } from 'h3-js'
+import { latLngToCell, gridDisk, cellToLatLng } from 'h3-js'
 import { getSurroundingNodes, DEFAULT_RESOLUTION } from './h3-grid.js'
 import type { LocalNode, SurroundingNodesResult } from './h3-grid.js'
 

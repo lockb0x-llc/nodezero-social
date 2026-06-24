@@ -43,7 +43,7 @@ interface P2PChannelEvents {
  */
 export class P2PChannel extends EventEmitter<P2PChannelEvents> {
   private readonly localWebId: string
-  private readonly remoteWebId: string
+  readonly remoteWebId: string
   private readonly pc: RTCPeerConnection
   private dataChannel: RTCDataChannel | null = null
 
@@ -148,8 +148,7 @@ export class P2PChannel extends EventEmitter<P2PChannelEvents> {
     channel.onopen = () => this.emit('open')
     channel.onclose = () => this.emit('close')
     channel.onerror = (ev) => {
-      const errEv = ev as RTCErrorEvent
-      this.emit('error', errEv.error ?? new Error('RTCDataChannel error'))
+      this.emit('error', ev.error ?? new Error('RTCDataChannel error'))
     }
     channel.onmessage = ({ data }) => {
       try {
