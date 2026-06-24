@@ -68,7 +68,7 @@ export function DiscoveryProvider({ children }: { children: ReactNode }): JSX.El
 
       if (!mounted) return
 
-      if (status !== 'granted') {
+      if (status !== Location.PermissionStatus.GRANTED) {
         setLocationStatus('denied')
         return
       }

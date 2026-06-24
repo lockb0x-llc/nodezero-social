@@ -22,15 +22,18 @@ import {
   getStringNoLocale,
   getUrl,
   getBoolean,
-  setStringNoLocale,
-  setUrl,
-  setBoolean,
   type SolidDataset,
   type Thing,
   type WithServerResourceInfo,
 } from '@inrupt/solid-client'
-import type { Session } from '@inrupt/solid-client-authn-node'
 import { NsfwScanner } from './NsfwScanner.js'
+
+// ─── Session interface ────────────────────────────────────────────────────────
+/** Minimal authenticated session interface – structurally compatible with
+ * `@inrupt/solid-client-authn-node` Session without requiring it as a direct dep. */
+interface AuthenticatedSession {
+  fetch: typeof globalThis.fetch
+}
 
 // ─── NodeZero custom RDF namespace ────────────────────────────────────────────
 const NZ_NS = 'https://vocab.nodezero.social/ns#'
@@ -92,7 +95,7 @@ export interface ProfileWriteOptions {
  * ```
  */
 export class ProfileManager {
-  private readonly session: Session
+  private readonly session: AuthenticatedSession
   private readonly nsfwScanner: NsfwScanner
 
   /**
@@ -100,7 +103,7 @@ export class ProfileManager {
    * @param nsfwScanner - Optional custom scanner instance. Defaults to a
    *   standard {@link NsfwScanner}.
    */
-  constructor(session: Session, nsfwScanner?: NsfwScanner) {
+  constructor(session: AuthenticatedSession, nsfwScanner?: NsfwScanner) {
     this.session = session
     this.nsfwScanner = nsfwScanner ?? new NsfwScanner()
   }
@@ -205,11 +208,13 @@ export class ProfileManager {
  * Deserialises an RDF `Thing` into a {@link UserProfile}.
  */
 function thingToProfile(thing: Thing): UserProfile {
+  const avatarUrl = getUrl(thing, VCARD_PHOTO)
+  const externalUrl = getUrl(thing, VCARD_URL)
   return {
     displayName: getStringNoLocale(thing, VCARD_FN) ?? '',
     bio: getStringNoLocale(thing, VCARD_NOTE) ?? '',
-    avatarUrl: getUrl(thing, VCARD_PHOTO) ?? undefined,
-    externalUrl: getUrl(thing, VCARD_URL) ?? undefined,
+    ...(avatarUrl !== null ? { avatarUrl } : {}),
+    ...(externalUrl !== null ? { externalUrl } : {}),
     interests: getAllStrings(thing, NZ_INTERESTS),
     isNsfw: getBoolean(thing, NZ_IS_NSFW) ?? false,
   }

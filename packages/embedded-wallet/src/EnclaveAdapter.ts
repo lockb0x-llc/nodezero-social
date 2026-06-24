@@ -24,14 +24,16 @@ export interface ISecureStore {
 class MemorySecureStore implements ISecureStore {
   private store: Map<string, string> = new Map()
 
-  async getItemAsync(key: string): Promise<string | null> {
-    return this.store.get(key) ?? null
+  getItemAsync(key: string): Promise<string | null> {
+    return Promise.resolve(this.store.get(key) ?? null)
   }
-  async setItemAsync(key: string, value: string): Promise<void> {
+  setItemAsync(key: string, value: string): Promise<void> {
     this.store.set(key, value)
+    return Promise.resolve()
   }
-  async deleteItemAsync(key: string): Promise<void> {
+  deleteItemAsync(key: string): Promise<void> {
     this.store.delete(key)
+    return Promise.resolve()
   }
 }
 
