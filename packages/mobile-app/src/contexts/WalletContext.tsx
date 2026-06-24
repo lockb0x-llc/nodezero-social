@@ -25,7 +25,7 @@ interface WalletContextValue {
   /** Whether the wallet is currently loading / initialising. */
   isLoading: boolean
   /** Registers the user's WebID on-chain against their Stellar public key. */
-  registerIdentity: (webId: string, contractId: string) => Promise<string>
+  registerIdentity: (webId: string, contractId?: string) => Promise<string>
 }
 
 const WalletContext = createContext<WalletContextValue | null>(null)
@@ -39,12 +39,11 @@ function getWalletService(): WalletService {
     _adapter = new EnclaveAdapter(SecureStore)
   }
   if (!_walletService) {
-    const relayUrl: string =
-      (Constants.expoConfig?.extra as Record<string, string> | undefined)?.relayUrl ??
-      'wss://relay.nodezero.social'
+    const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
+    const rpcUrl = appExtra?.stellarRpcUrl ?? 'https://soroban-testnet.stellar.org'
+    const networkPassphrase = appExtra?.stellarNetworkPassphrase ?? 'Test SDF Network ; September 2015'
 
-    // For now we use the default testnet endpoint.
-    _walletService = new WalletService(_adapter)
+    _walletService = new WalletService(_adapter, rpcUrl, networkPassphrase)
   }
   return _walletService
 }
@@ -69,12 +68,20 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
     })()
   }, [])
 
-  const registerIdentity = useCallback(async (webId: string, contractId: string) => {
+  const registerIdentity = useCallback(async (webId: string, contractId?: string) => {
     const service = getWalletService()
     const info = walletInfo ?? (await service.getWalletInfo())
+    const defaultContractId =
+      (Constants.expoConfig?.extra as Record<string, string> | undefined)?.identityContractId ?? ''
+    const resolvedContractId = contractId ?? defaultContractId
+
+    if (!resolvedContractId) {
+      throw new Error('Missing identity contract ID. Set NZ_IDENTITY_CONTRACT_ID in app configuration.')
+    }
+
     const result = await service.registerIdentityOnChain(
       { webId, stellarPublicKey: info.publicKey },
-      contractId
+      resolvedContractId
     )
     return result.hash
   }, [walletInfo])
