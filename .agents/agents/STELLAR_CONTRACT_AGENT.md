@@ -22,3 +22,4 @@ Own Soroban contract correctness and Stellar TestNet deployment integrity in acc
 2. Deploy/update contracts on testnet.
 3. Publish deployments/stellar-testnet.contracts.json evidence.
 4. Handoff IDs to AZURE_PLATFORM_AGENT and MOBILE_APP_AGENT.
+
