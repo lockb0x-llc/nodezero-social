@@ -13,3 +13,10 @@ Geo discovery uses H3 indexing to find nearby users while preserving privacy con
 - Converts user location to grid cells.
 - Applies radius constraints for nearby results.
 - Supports documentation-time mocked geolocation via `docs/dev-only/mock-geolocation.js`.
+
+## Visual evidence
+
+![Geo Discovery](../docs/screenshots/geo-discovery-step1.png)
+![Local Messaging](../docs/screenshots/local-messaging-step1.png)
+
+- Video: ../docs/videos/local-and-geo-discovery.webm

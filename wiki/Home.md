@@ -39,3 +39,10 @@ flowchart LR
 - Monorepo overview: ../README.md
 - Staging release requirements: ../docs/testnet-azure-release-requirements.md
 - Staging UAT checklist: ../docs/staging-uat-checklist.md
+
+## Walkthrough evidence
+
+![Onboarding](../docs/screenshots/onboarding-solid-step1.png)
+![Feed](../docs/screenshots/feed-view-post-step1.png)
+
+- Video: ../docs/videos/onboarding-and-feed.webm
