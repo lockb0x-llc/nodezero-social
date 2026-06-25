@@ -164,3 +164,39 @@ Request: Wire `pnpm qa:smoke` into the staging workflow post-publish and use the
 Evidence: .agent-worktrees/E1-qa-release-agent/scripts/qa/staging-smoke.sh; .agent-worktrees/E1-qa-release-agent/docs/staging-uat-checklist.md; bash -n staging-smoke.sh OK
 Due: Next coordination checkpoint.
 
+[2026-06-25 00:31 UTC] [PROJECT_MANAGER->ALL] [P1] [DONE]
+Context: Integrated branch 'agents/stellar-contract-agent/C1-contract-init-verification' into 'main'.
+Request: Proceed with next queued branch.
+Evidence: git merge --no-ff --no-edit agents/stellar-contract-agent/C1-contract-init-verification
+Due: Next coordination checkpoint.
+
+[2026-06-25 00:31 UTC] [PROJECT_MANAGER->ALL] [P1] [DONE]
+Context: Integrated branch 'agents/azure-platform-agent/D2-staging-swa-publish-workflow' into 'main'.
+Request: Proceed with next queued branch.
+Evidence: git merge --no-ff --no-edit agents/azure-platform-agent/D2-staging-swa-publish-workflow
+Due: Next coordination checkpoint.
+
+[2026-06-25 00:31 UTC] [PROJECT_MANAGER->ALL] [P1] [DONE]
+Context: Integrated branch 'agents/p2p-relay-agent/B3-relay-service-staging-deploy' into 'main'.
+Request: Proceed with next queued branch.
+Evidence: git merge --no-ff --no-edit agents/p2p-relay-agent/B3-relay-service-staging-deploy
+Due: Next coordination checkpoint.
+
+[2026-06-25 00:31 UTC] [PROJECT_MANAGER->ALL] [P1] [DONE]
+Context: Integrated branch 'agents/mobile-app-agent/B4-solid-auth-release-hardening' into 'main'.
+Request: Proceed with next queued branch.
+Evidence: git merge --no-ff --no-edit agents/mobile-app-agent/B4-solid-auth-release-hardening
+Due: Next coordination checkpoint.
+
+[2026-06-25 00:31 UTC] [PROJECT_MANAGER->ALL] [P1] [DONE]
+Context: Integrated branch 'agents/qa-release-agent/E1-staging-smoke-suite' into 'main'.
+Request: Proceed with next queued branch.
+Evidence: git merge --no-ff --no-edit agents/qa-release-agent/E1-staging-smoke-suite
+Due: Next coordination checkpoint.
+
+[2026-06-25 00:45 UTC] [PROJECT_MANAGER->ALL] [P1] [DONE]
+Context: All five parallel work items (C1, D2, B3, B4, E1) are merged into main and validated. Fixed a CRLF line-ending defect that broke shell scripts and untracked the accidental .agent-worktrees gitlinks.
+Request: Treat main as the staging-release candidate; run `pnpm qa:smoke` against the deployed staging URL and complete docs/staging-uat-checklist.md for go/no-go sign-off. Push main when ready (currently local only).
+Evidence: git log (5 merge commits); policy invariants verified (testnet guards, Azure deploy guards, bicep env constraints, no deprecated domain); bash -n on deploy-testnet.sh and staging-smoke.sh; backup ref backup/pre-reintegration
+Due: Release sign-off checkpoint.
+
