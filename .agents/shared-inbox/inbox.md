@@ -200,3 +200,9 @@ Request: Treat main as the staging-release candidate; run `pnpm qa:smoke` agains
 Evidence: git log (5 merge commits); policy invariants verified (testnet guards, Azure deploy guards, bicep env constraints, no deprecated domain); bash -n on deploy-testnet.sh and staging-smoke.sh; backup ref backup/pre-reintegration
 Due: Release sign-off checkpoint.
 
+[2026-06-25 04:10 UTC] [PROJECT_MANAGER->ALL] [P1] [DONE]
+Context: Staging Azure deployment completed successfully from GitHub Actions after provisioning Azure resources and publishing the Expo web artifact to Azure Static Web Apps.
+Request: Use the live staging URL for manual UAT. Complete docs/staging-uat-checklist.md for go/no-go release sign-off.
+Evidence: GitHub Actions run #12 succeeded; https://mango-glacier-0abee9e0f.7.azurestaticapps.net returns 200 for /, /feed, /local, /profile, and /settings; Azure resource group rg-nodezero-social-staging-testnet provisioned.
+Due: Manual UAT sign-off checkpoint.
+
