@@ -33,6 +33,13 @@
     "domain": "nodezero.social",
     "host": "staging",
     "githubSecretPresent": "NAMECHEAP_API_KEY",
+    "githubSecretShape": {
+      "NAMECHEAP_API_KEY_present": true,
+      "NAMECHEAP_API_KEY_length": 32,
+      "NAMECHEAP_API_KEY_shape": "looks-like-32-char-hex-key",
+      "NAMECHEAP_API_USER_present": false,
+      "NAMECHEAP_USERNAME_present": false
+    },
     "requiredAdditionalCredential": "NAMECHEAP_API_USER or NAMECHEAP_USERNAME matching the API key owner",
     "attemptedApiUsers": [
       "steven-tomlinson",
