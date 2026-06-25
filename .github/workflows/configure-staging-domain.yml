@@ -19,6 +19,10 @@ on:
         description: Namecheap username if different from API user
         required: false
         type: string
+      namecheap_client_ip:
+        description: Namecheap API ClientIp override, if API access is allowlisted to a known IP
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -42,6 +46,7 @@ jobs:
       NAMECHEAP_API_KEY: ${{ secrets.NAMECHEAP_API_KEY }}
       NAMECHEAP_API_USER: ${{ inputs.namecheap_api_user || vars.NAMECHEAP_API_USER || secrets.NAMECHEAP_API_USER }}
       NAMECHEAP_USERNAME: ${{ inputs.namecheap_username || inputs.namecheap_api_user || vars.NAMECHEAP_USERNAME || secrets.NAMECHEAP_USERNAME || vars.NAMECHEAP_API_USER || secrets.NAMECHEAP_API_USER }}
+      NAMECHEAP_CLIENT_IP: ${{ inputs.namecheap_client_ip || vars.NAMECHEAP_CLIENT_IP || secrets.NAMECHEAP_CLIENT_IP }}
 
     steps:
       - name: Checkout
