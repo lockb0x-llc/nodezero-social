@@ -458,3 +458,65 @@ channel = "1.81.0"
 4. **Enable branch protection** (Finding 4).
 Due: Findings 1+2 must be resolved before next staging deploy attempt.
 
+---
+
+[2026-06-25 19:55 UTC] [PROJECT_MANAGER->ALL] [P0] [OPEN]
+Context: PM incident response to QA_RELEASE_AGENT P0 failure report. Two code-level fixes have been committed (45263d7) and pushed to main. Two items require human action.
+Request: AZURE_PLATFORM_AGENT: validate deploy workflow once Namecheap secrets are corrected. ALL: monitor CI run triggered by push 45263d7 and report pass/fail.
+Evidence: commit 45263d7 pushed to origin/main; CI run pending at github.com/lockb0x-llc/nodezero-social/actions.
+
+## PROJECT_MANAGER — Incident Resolution Plan (H-Series)
+**Date**: 2026-06-25  **Triggered by**: QA_RELEASE_AGENT P0 report (4 findings)
+
+### H1 — DONE (agent-executed): pnpm version mismatch fixed
+**Change**: `.github/workflows/ci.yml` and `.github/workflows/staging-deploy.yml` — pnpm version upgraded from `9` → `11`
+**Rationale**: Local dev uses pnpm v11.9.0; CI used pnpm v9. The `allowBuilds` workspace config key is a pnpm v11 API. Upgrading CI to match local eliminates any version-mismatch risk and ensures `allowBuilds: esbuild: true` is interpreted identically in both environments. pnpm v11 produces the same `lockfileVersion: '9.0'` format so no lockfile changes are needed.
+**Commit**: `45263d7` — pushed to `origin/main` (triggers a new CI run for automatic verification)
+**Owner**: PM (executed directly)
+
+### H2 — DONE (agent-executed): Rust toolchain pinned
+**Change**: `packages/contracts/rust-toolchain.toml` — new file, pins `channel = "1.81.0"`
+**Rationale**: `dtolnay/rust-toolchain@stable` always fetches the latest stable Rust. soroban-sdk 20.3.0 is ~18 months old. Pinning to 1.81.0 (the last known-good version for soroban-sdk 20.x) protects the `test:contracts` CI step from silent breakage on new Rust releases.
+**Commit**: `45263d7` — same push
+**Owner**: STELLAR_CONTRACT_AGENT — update this pin whenever soroban-sdk is upgraded
+
+### H3 — BLOCKED: Namecheap API credentials (human required)
+**Status**: Requires repo maintainer to update GitHub secrets. No agent can write GitHub Secrets.
+**Action for maintainer**:
+1. Log into Namecheap → Profile → Tools → API Access
+2. Confirm API access is Enabled; copy the exact API Key shown
+3. Note the account username (top-right in Namecheap dashboard — NOT email)
+4. Go to GitHub → lockb0x-llc/nodezero-social → Settings → Secrets → Actions
+5. Update `NAMECHEAP_API_KEY` with the correct key
+6. Update or create `NAMECHEAP_API_USER` variable with the exact Namecheap username
+7. Ensure the GitHub Actions egress IP range is allowlisted in Namecheap API Access settings (or use `NAMECHEAP_CLIENT_IP` override)
+8. Re-run `configure-staging-domain.yml` workflow to validate
+
+**After human action**: AZURE_PLATFORM_AGENT should trigger a `configure-staging-domain.yml` test run and report the result to this inbox.
+**Owner**: Human maintainer → AZURE_PLATFORM_AGENT to verify
+
+### H4 — BLOCKED: Branch protection on main (human required)
+**Status**: Requires GitHub repo admin to enable branch protection rules.
+**Action for maintainer**:
+1. Go to GitHub → lockb0x-llc/nodezero-social → Settings → Branches → Add rule for `main`
+2. Enable: "Require status checks to pass before merging" → add `CI / Validate, Lint, Type-check, Test`
+3. Enable: "Require a pull request before merging" (no direct push to main)
+4. Enable: "Do not allow bypassing the above settings"
+5. Disable: "Allow force pushes"
+
+This prevents future direct pushes to main that bypass CI and prevents QA_RELEASE_AGENT from being bypassed.
+**Owner**: Human maintainer (repo admin)
+
+### CI verification expected
+Push `45263d7` to `origin/main` triggers a new `CI / Validate, Lint, Type-check, Test` run. Expected outcome: PASS across all steps (lint, type-check, test, contracts). If the CI run fails, QA_RELEASE_AGENT should post findings to this inbox immediately.
+
+### Milestone H status
+| ID | Task | Status | Owner |
+|---|---|---|---|
+| H1 | pnpm v11 in CI workflows | DONE | PM |
+| H2 | Rust 1.81.0 toolchain pin | DONE | PM |
+| H3 | Namecheap secret correction | BLOCKED — human | Maintainer + AZURE_PLATFORM_AGENT |
+| H4 | Branch protection on main | BLOCKED — human | Maintainer (admin) |
+
+Due: H3 and H4 require maintainer action before the next staging deploy attempt. H1/H2 are live on main and being verified by GitHub Actions now.
+

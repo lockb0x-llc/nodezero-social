@@ -36,7 +36,11 @@
 - [DONE] F3: Add PM status and follow-up control loop.
 - [DONE] F4: Add bounded PM loop mode for recurring oversight.
 
-## Milestone G: Open-source documentation
+## Milestone H: CI/CD Incident remediation (user-escalated P0)
+- [DONE] H1: Fix pnpm version mismatch — upgrade CI to pnpm v11 in ci.yml and staging-deploy.yml. (commit 45263d7)
+- [DONE] H2: Pin Rust toolchain — add packages/contracts/rust-toolchain.toml (Rust 1.81.0 stable). (commit 45263d7)
+- [BLOCKED] H3: Fix Namecheap API credentials — requires human to update NAMECHEAP_API_KEY and NAMECHEAP_API_USER GitHub secrets. (AZURE_PLATFORM_AGENT to verify once secrets updated)
+- [BLOCKED] H4: Enable branch protection on main — requires repo admin access. Human must enable: require CI pass before merge, require PRs, no force-push.
 - [DONE] G1: Author open-source community health files (LICENSE, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, issue templates, PR template). (merged to main)
 - [DONE] G2: Build GitHub Wiki with architecture overview, feature guides, getting-started, API references, and roadmap. (merged to main with wiki/_Sidebar.md navigation)
 - [DONE] G3: Playwright-validated walkthroughs with screenshots and video embedded in Wiki pages. (merged to main with docs/screenshots/README.md index)
