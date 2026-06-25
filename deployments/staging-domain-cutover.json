@@ -1,0 +1,50 @@
+{
+  "environment": "staging-testnet",
+  "customHostname": "staging.nodezero.social",
+  "status": "blocked-on-namecheap-api-access",
+  "azure": {
+    "subscriptionId": "1f002267-9614-4a2a-a0e0-217493d6d011",
+    "resourceGroup": "rg-nodezero-social-staging-testnet",
+    "staticWebAppName": "nodezero-social-staging-testnet-web",
+    "staticWebAppDefaultHostname": "mango-glacier-0abee9e0f.7.azurestaticapps.net",
+    "azureDnsZone": "nodezero.social",
+    "azureDnsNameServers": [
+      "ns1-09.azure-dns.com.",
+      "ns2-09.azure-dns.net.",
+      "ns3-09.azure-dns.org.",
+      "ns4-09.azure-dns.info."
+    ],
+    "stagingCname": {
+      "host": "staging",
+      "fqdn": "staging.nodezero.social.",
+      "type": "CNAME",
+      "target": "mango-glacier-0abee9e0f.7.azurestaticapps.net",
+      "ttl": 300
+    }
+  },
+  "publicDnsObserved": {
+    "zoneNameServers": [
+      "dns1.registrar-servers.com",
+      "dns2.registrar-servers.com"
+    ],
+    "stagingRecordPresent": false
+  },
+  "namecheap": {
+    "domain": "nodezero.social",
+    "host": "staging",
+    "githubSecretPresent": "NAMECHEAP_API_KEY",
+    "requiredAdditionalCredential": "NAMECHEAP_API_USER or NAMECHEAP_USERNAME matching the API key owner",
+    "attemptedApiUsers": [
+      "steven-tomlinson",
+      "lockb0x",
+      "lockb0xllc",
+      "steventomlinson"
+    ],
+    "lastObservedError": "API Key is invalid or API access has not been enabled"
+  },
+  "automation": {
+    "workflow": ".github/workflows/configure-staging-domain.yml",
+    "script": "scripts/dns/configure-namecheap-staging-domain.mjs",
+    "runOnceCredentialIsFixed": "workflow_dispatch configure-staging-domain with namecheap_api_user set to the Namecheap API user"
+  }
+}
