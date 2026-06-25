@@ -69,5 +69,50 @@
       "B3",
       "C1"
     ]
+  },
+  {
+    "id": "G1",
+    "agent": "DOCS_AGENT",
+    "title": "open-source community health files",
+    "objective": "Create all GitHub Community Standards files (LICENSE, CONTRIBUTING.md, CODE_OF_CONDUCT.md, SECURITY.md, issue templates, PR template, CODEOWNERS) so the repo passes the GitHub Community Standards checklist before going public.",
+    "acceptanceCriteria": [
+      "LICENSE, CONTRIBUTING.md, CODE_OF_CONDUCT.md, SECURITY.md present and non-empty.",
+      "Bug report and feature request issue templates present under .github/ISSUE_TEMPLATE/.",
+      "PR template present at .github/pull_request_template.md.",
+      "CODEOWNERS routes docs changes to DOCS_AGENT scope.",
+      "All GitHub Community Standards indicators confirmed green."
+    ],
+    "dependsOn": []
+  },
+  {
+    "id": "G2",
+    "agent": "DOCS_AGENT",
+    "title": "github wiki architecture and feature docs",
+    "objective": "Author comprehensive GitHub Wiki covering all packages, architecture, getting-started guide, contributing workflow, security model, and project roadmap. Maintain _Sidebar.md for navigation.",
+    "acceptanceCriteria": [
+      "Wiki pages exist for every package in packages/ plus cross-cutting topics.",
+      "_Sidebar.md renders correct hierarchical navigation.",
+      "Every page cross-links to relevant source files and docs/ references.",
+      "Home page includes architecture diagram and quick links."
+    ],
+    "dependsOn": [
+      "G1"
+    ]
+  },
+  {
+    "id": "G3",
+    "agent": "DOCS_AGENT",
+    "title": "playwright walkthrough screenshots and video",
+    "objective": "Use Playwright browser automation to validate all user journeys end-to-end, capturing screenshots and video walkthroughs. Embed visual evidence in Wiki pages and produce a docs/screenshots/README.md index.",
+    "acceptanceCriteria": [
+      "Every user journey in staging-uat-checklist.md has at least one screenshot in docs/screenshots/.",
+      "Multi-step journeys have a video recording in docs/videos/.",
+      "docs/screenshots/README.md index lists all artifacts with journey cross-references.",
+      "Screenshots are embedded inline in the corresponding Wiki pages."
+    ],
+    "dependsOn": [
+      "G2",
+      "E1"
+    ]
   }
 ]

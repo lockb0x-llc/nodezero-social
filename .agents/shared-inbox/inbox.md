@@ -218,3 +218,15 @@ Request: Continue manual UAT on the custom domain and use docs/staging-uat-check
 Evidence: staging.nodezero.social CNAME resolves to mango-glacier-0abee9e0f.7.azurestaticapps.net; Azure Static Web Apps custom domain status is Ready; HTTPS returns 200 for /, /feed, /local, /profile, and /settings.
 Due: Manual UAT sign-off checkpoint.
 
+
+[2026-06-25 18:00 UTC] [PROJECT_MANAGER->DOCS_AGENT] [P1] [OPEN]
+Context: NodeZero Social is approaching public open-source launch. The repo needs comprehensive documentation, community health files, and Playwright-validated visual walkthroughs to meet GitHub Community Standards and provide a great contributor and user experience.
+Request: Begin G1 immediately — audit repo root and create LICENSE, CONTRIBUTING.md, CODE_OF_CONDUCT.md, SECURITY.md, .github/ISSUE_TEMPLATE/ (bug + feature), .github/pull_request_template.md, and .github/CODEOWNERS. Follow with G2 (GitHub Wiki) and G3 (Playwright screenshots + video) per your role card (.agents/agents/DOCS_AGENT.md).
+Evidence: .agents/agents/DOCS_AGENT.md; docs/staging-uat-checklist.md; packages/ (all packages require Wiki coverage)
+Due: 2026-06-27 18:00 UTC
+
+[2026-06-25 18:00 UTC] [PROJECT_MANAGER->ALL] [P2] [OPEN]
+Context: DOCS_AGENT has joined the team and is assigned Milestone G (open-source documentation).
+Request: When G1 is DONE, verify your package's README and any public-facing docs are accurate and consistent with the Wiki entries DOCS_AGENT authors. Flag any inaccuracies via inbox to DOCS_AGENT.
+Evidence: .agents/project-manager/todo.md (Milestone G); .agents/agents/DOCS_AGENT.md
+Due: 2026-06-28 12:00 UTC
