@@ -1,0 +1,72 @@
+name: Configure Staging Domain From Local Runner
+
+on:
+  workflow_dispatch:
+
+jobs:
+  configure-domain-local:
+    name: Configure staging.nodezero.social from local runner
+    runs-on: [self-hosted, Windows, X64]
+    environment: staging-testnet
+
+    env:
+      STATIC_WEB_APP_NAME: nodezero-social-staging-testnet-web
+      STAGING_CUSTOM_DOMAIN: staging.nodezero.social
+      AZURE_RESOURCE_GROUP: rg-nodezero-social-staging-testnet
+      NAMECHEAP_DOMAIN: nodezero.social
+      NAMECHEAP_HOST: staging
+      NAMECHEAP_API_KEY: ${{ secrets.NAMECHEAP_API_KEY }}
+      NAMECHEAP_API_USER: pakana
+      NAMECHEAP_USERNAME: pakana
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Confirm local Azure session
+        shell: pwsh
+        run: |
+          az account show --query "{name:name,id:id,tenantId:tenantId}" -o json
+
+      - name: Resolve Static Web Apps default hostname
+        id: swa
+        shell: pwsh
+        run: |
+          $hostname = az staticwebapp show --name $env:STATIC_WEB_APP_NAME --resource-group $env:AZURE_RESOURCE_GROUP --query defaultHostname -o tsv
+          if (-not $hostname) {
+            throw 'Unable to resolve Static Web Apps default hostname.'
+          }
+          "hostname=$hostname" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Configure Namecheap CNAME from local IP
+        shell: pwsh
+        env:
+          NAMECHEAP_TARGET: ${{ steps.swa.outputs.hostname }}
+        run: |
+          node scripts/dns/configure-namecheap-staging-domain.mjs
+
+      - name: Bind custom hostname in Azure Static Web Apps
+        shell: pwsh
+        run: |
+          for ($attempt = 1; $attempt -le 30; $attempt++) {
+            az staticwebapp hostname set `
+              --name $env:STATIC_WEB_APP_NAME `
+              --resource-group $env:AZURE_RESOURCE_GROUP `
+              --hostname $env:STAGING_CUSTOM_DOMAIN `
+              --validation-method cname-delegation
+            if ($LASTEXITCODE -eq 0) {
+              exit 0
+            }
+            Write-Output "Azure hostname validation not ready yet ($attempt/30). Waiting for DNS propagation..."
+            Start-Sleep -Seconds 30
+          }
+          throw 'Azure Static Web Apps custom hostname binding failed after waiting for DNS propagation.'
+
+      - name: Validate custom hostname smoke suite
+        shell: pwsh
+        run: |
+          bash ./scripts/qa/staging-smoke.sh "https://$env:STAGING_CUSTOM_DOMAIN"
+
+      - name: Domain summary
+        shell: pwsh
+        run: Write-Output 'staging.nodezero.social DNS, Azure custom domain, TLS, and smoke checks completed.'
