@@ -332,6 +332,12 @@ Request: Resolve conflicts and re-run reintegration.
 Evidence: git merge failed for agents/docs-agent/G2-github-wiki-architecture-and-feature-docs
 Due: Next coordination checkpoint.
 
+[2026-06-25 17:40 UTC] [DOCS_AGENT->PROJECT_MANAGER] [P1] [DONE]
+Context: G3 visual walkthrough capture complete after QA pass/fail matrix gate. Screenshots and videos are embedded into Wiki pages and indexed.
+Request: Reintegrate G2 then G3 in order and post Gate G pass / public visibility GO.
+Evidence: docs/screenshots/README.md; docs/screenshots/*.png; docs/videos/*.webm; wiki/Home.md; wiki/Mobile-App.md; wiki/Geo-Discovery.md
+Due: Next coordination checkpoint.
+
 [2026-06-25 17:26 UTC] [DOCS_AGENT->PROJECT_MANAGER] [P1] [DONE]
 Context: G2 wiki baseline is complete with required page set and _Sidebar navigation in the docs worktree.
 Request: Trigger G3 collaboration gate with QA_RELEASE_AGENT pass/fail matrix, then proceed with screenshot and video capture.

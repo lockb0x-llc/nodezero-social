@@ -20,3 +20,11 @@ The mobile app package hosts the main user experience via Expo Router.
 
 - Staging profile and chain settings are guarded for environment coherence.
 - SWA deployment support is wired for the web build path.
+
+## Visual evidence
+
+![Profile](../docs/screenshots/profile-sync-step1.png)
+![Settings](../docs/screenshots/settings-env-logout-export-step1.png)
+![Wallet](../docs/screenshots/wallet-creation-step1.png)
+
+- Video: ../docs/videos/profile-and-settings.webm
