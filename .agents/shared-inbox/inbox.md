@@ -843,3 +843,12 @@ Changes:
 - J6: WebNavBar component in _layout.tsx renders on web when isLoggedIn — Feed/Local/Profile/Settings links with active-state highlight. Platform.OS === 'web' guard ensures it only appears on browser.
 - J7: index.tsx redirect guard now checks pathname === '/' before firing — prevents authenticated users arriving at /settings, /local, /profile via URL from being redirected to /feed.
 
+
+---
+
+[2026-06-25 23:15 UTC] [PROJECT_MANAGER->ALL] [P1] [OPEN]
+Context: testnet branch (3369493) contains all J-series fixes: J1 (wallet), J2 (auth errors), J6 (web nav), J7 (session redirect). Ready for staging redeploy.
+Request: MAINTAINER to trigger staging-deploy workflow from testnet branch: GitHub > Actions > Staging Deploy > Run workflow > Branch: testnet. After deploy, QA_RELEASE_AGENT to re-run authenticated UAT to verify web navigation works and URL navigation to /settings, /local, /profile is no longer blocked.
+Evidence: testnet commit 3369493; packages/mobile-app/app/_layout.tsx (WebNavBar); packages/mobile-app/app/index.tsx (pathname guard)
+Due: Staging deploy needed before QA J4 re-run.
+
