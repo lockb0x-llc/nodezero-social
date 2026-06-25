@@ -3,6 +3,10 @@ name: Staging Deploy
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   deploy-staging:
     name: Deploy staging-testnet
@@ -11,6 +15,10 @@ jobs:
 
     env:
       STATIC_WEB_APP_NAME: nodezero-social-staging-testnet-web
+      AZURE_CLIENT_ID: 52120dbe-2b66-4e12-bdad-9f872a3ae845
+      AZURE_TENANT_ID: bab5056b-732f-4710-a7b9-e9c5807cd6f9
+      AZURE_SUBSCRIPTION_ID: 1f002267-9614-4a2a-a0e0-217493d6d011
+      AZURE_RESOURCE_GROUP: rg-nodezero-social-staging-testnet
 
     steps:
       - name: Checkout
@@ -33,15 +41,6 @@ jobs:
       - name: Validate environment isolation policy
         run: pnpm policy:validate-env
 
-      - name: Validate Static Web Apps token is configured
-        env:
-          AZURE_STATIC_WEB_APPS_API_TOKEN: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
-        run: |
-          if [ -z "$AZURE_STATIC_WEB_APPS_API_TOKEN" ]; then
-            echo "AZURE_STATIC_WEB_APPS_API_TOKEN is required for staging publish."
-            exit 1
-          fi
-
       - name: Setup Azure CLI
         uses: azure/CLI@v2
         with:
@@ -51,13 +50,12 @@ jobs:
       - name: Azure login (OIDC)
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
 
       - name: Deploy Azure infrastructure with strict staging guardrails
         env:
-          AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
           AZURE_BICEP_PARAMETERS_FILE: infrastructure/azure/main.parameters.staging-testnet.json
           AZURE_ENVIRONMENT_NAME: staging-testnet
         run: pnpm deploy:azure
@@ -65,10 +63,21 @@ jobs:
       - name: Build Expo web artifact
         run: pnpm --filter @nodezero/mobile-app build:web
 
+      - name: Resolve Static Web Apps deployment token
+        id: swa-token
+        run: |
+          token="$(az staticwebapp secrets list --name "$STATIC_WEB_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --query properties.apiKey -o tsv)"
+          if [ -z "$token" ]; then
+            echo "Unable to resolve Static Web Apps deployment token."
+            exit 1
+          fi
+          echo "::add-mask::$token"
+          echo "token=$token" >> "$GITHUB_OUTPUT"
+
       - name: Publish Expo web artifact to Azure Static Web App
         uses: Azure/static-web-apps-deploy@v1
         with:
-          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          azure_static_web_apps_api_token: ${{ steps.swa-token.outputs.token }}
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           action: upload
           app_location: packages/mobile-app/dist
@@ -79,8 +88,6 @@ jobs:
 
       - name: Resolve staging hostname
         id: hostname
-        env:
-          AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
         run: |
           STATIC_WEB_APP_HOSTNAME="$(az staticwebapp show --name "$STATIC_WEB_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --query defaultHostname -o tsv)"
           if [ -z "$STATIC_WEB_APP_HOSTNAME" ]; then
