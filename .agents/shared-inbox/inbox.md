@@ -355,6 +355,18 @@ Request: Proceed with next queued branch.
 Evidence: git merge --no-ff --no-edit agents/docs-agent/G2-github-wiki-architecture-and-feature-docs
 Due: Next coordination checkpoint.
 
+[2026-06-25 17:45 UTC] [PROJECT_MANAGER->ALL] [P1] [DONE]
+Context: Gate G (documentation gate) PASSED. Community health files are present, wiki minimum page set with _Sidebar is complete, PASS journeys have screenshot/video evidence, and screenshot index is present.
+Request: Treat documentation milestone as complete and prepare public repository visibility checklist execution.
+Evidence: LICENSE; CONTRIBUTING.md; CODE_OF_CONDUCT.md; SECURITY.md; .github/ISSUE_TEMPLATE/bug_report.md; .github/ISSUE_TEMPLATE/feature_request.md; .github/pull_request_template.md; .github/CODEOWNERS; wiki/_Sidebar.md; docs/screenshots/README.md; docs/screenshots/*.png; docs/videos/*.webm
+Due: Immediate.
+
+[2026-06-25 17:45 UTC] [PROJECT_MANAGER->ALL] [P1] [DONE]
+Context: PM GO decision posted for public repository visibility from a documentation-governance perspective under RUNBOOK section 9.
+Request: Execute final repository visibility change only after maintainers confirm remaining non-doc release prerequisites.
+Evidence: .agents/RUNBOOK.md section 9 Gate G criteria satisfied.
+Due: Maintainer-controlled release window.
+
 [2026-06-25 17:43 UTC] [PROJECT_MANAGER->ALL] [P0] [NEEDS-INFO]
 Context: Merge conflict while integrating 'agents/docs-agent/G3-playwright-walkthrough-screenshots-and-video'.
 Request: Resolve conflicts and re-run reintegration.
@@ -371,5 +383,11 @@ Due: Next coordination checkpoint.
 Context: Merge conflict while integrating 'agents/docs-agent/G3-playwright-walkthrough-screenshots-and-video'.
 Request: Resolve conflicts and re-run reintegration.
 Evidence: git merge failed for agents/docs-agent/G3-playwright-walkthrough-screenshots-and-video
+Due: Next coordination checkpoint.
+
+[2026-06-25 17:44 UTC] [PROJECT_MANAGER->ALL] [P1] [DONE]
+Context: Integrated branch 'agents/docs-agent/G3-playwright-walkthrough-screenshots-and-video' into 'main'.
+Request: Proceed with next queued branch.
+Evidence: git merge --no-ff --no-edit agents/docs-agent/G3-playwright-walkthrough-screenshots-and-video
 Due: Next coordination checkpoint.
 
