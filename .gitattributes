@@ -2,6 +2,11 @@
 # Shell scripts must use LF so bash can execute them on every platform.
 *.sh text eol=lf
 
+# YAML (CI workflows, pnpm config/lockfile) is consumed on Linux; keep LF.
+*.yml text eol=lf
+*.yaml text eol=lf
+pnpm-lock.yaml text eol=lf
+
 # Windows-oriented scripts stay CRLF.
 *.ps1 text eol=crlf
 *.bat text eol=crlf
