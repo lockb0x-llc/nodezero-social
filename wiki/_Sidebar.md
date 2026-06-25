@@ -1,0 +1,21 @@
+# NodeZero Social Wiki
+
+- [Home](Home)
+- [Architecture](Architecture)
+- [Getting Started](Getting-Started)
+- Features
+- [Mobile App](Mobile-App)
+- [Solid Pod Sync](Solid-Pod-Sync)
+- [P2P Comms](P2P-Comms)
+- [Relay Service](Relay-Service)
+- [Embedded Wallet](Embedded-Wallet)
+- [ZK Crypto](ZK-Crypto)
+- [Smart Contracts](Smart-Contracts)
+- [Geo Discovery](Geo-Discovery)
+- Platform
+- [Azure Platform](Azure-Platform)
+- Community
+- [Contributing](Contributing)
+- [Security](Security)
+- [Roadmap](Roadmap)
+- [FAQ](FAQ)
