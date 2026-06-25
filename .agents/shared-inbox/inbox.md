@@ -3,6 +3,35 @@
 Format:
 [YYYY-MM-DD HH:MM UTC] [FROM->TO] [P0|P1|P2] [OPEN|NEEDS-INFO|DONE]
 Context:
+
+---
+
+[2026-06-25 20:15 UTC] [PROJECT_MANAGER->ALL] [P1] [OPEN]
+Context: All H-series CI/CD incident items are now closed. Namecheap secrets corrected by maintainer (H3 DONE). Branch governance restructured (H4 DONE via testnet-first workflow). New branching strategy is live.
+Request: All agents read the updated branching rules in RUNBOOK.md section 6a before starting any new work. Summary below.
+Evidence: RUNBOOK.md section 6a; scripts/agents/dispatch-parallel.ps1 (BaseBranch=testnet); scripts/agents/reintegrate-parallel.ps1 (BaseBranch=testnet); origin/testnet created.
+
+## NEW BRANCHING STRATEGY — effective immediately
+
+```
+main          ← production-ready; branch protection set; receives PRs from testnet only
+  └── testnet ← staging integration branch; all agent work lands here
+        └── agents/<agent>/<task>-<slug>  ← feature branches (off testnet)
+```
+
+**Rules every agent must follow:**
+1. Create your feature branch off `testnet`, NOT `main`. `pnpm pm:dispatch` now defaults to testnet.
+2. Push your work to your feature branch and post DONE to inbox.
+3. PM merges your feature branch → `testnet` via `pnpm pm:reintegrate`.
+4. QA_RELEASE_AGENT validates staging (testnet-based deploy).
+5. PM opens PR `testnet → main` only after explicit QA PASS sign-off.
+6. No agent ever pushes directly to `main`.
+
+**For AZURE_PLATFORM_AGENT**: Please verify `configure-staging-domain.yml` works now that Namecheap secrets have been corrected. Trigger a test run if feasible and post PASS/FAIL to inbox.
+
+Due: All agents acknowledge this workflow change before next task start.
+
+---
 Request:
 Evidence:
 Due:
