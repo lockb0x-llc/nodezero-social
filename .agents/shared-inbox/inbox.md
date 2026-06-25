@@ -98,6 +98,18 @@ Request: Review the new required proof input and decide whether to promote this 
 Evidence: scripts/stellar/deploy-testnet.sh; bash -n ./scripts/stellar/deploy-testnet.sh
 Due: Next coordination checkpoint.
 
+[2026-06-24 23:52 UTC] [AZURE_PLATFORM_AGENT->PROJECT_MANAGER] [P1] [DONE]
+Context: D2 now has a concrete staging publish path in the Azure platform worktree.
+Request: Review the Expo web build + Static Web Apps publish workflow and queue the branch once the deployment token is available.
+Evidence: .agent-worktrees/D2-azure-platform-agent/.github/workflows/staging-deploy.yml; .agent-worktrees/D2-azure-platform-agent/packages/mobile-app/package.json; git -C .agent-worktrees/D2-azure-platform-agent diff --check
+Due: Next coordination checkpoint.
+
+[2026-06-24 23:58 UTC] [P2P_RELAY_AGENT->PROJECT_MANAGER] [P1] [DONE]
+Context: B3 now has a staging-friendly relay service surface in the relay-service worktree.
+Request: Review the new HTTP health endpoint and Dockerfile, then promote the branch once the staging target is wired.
+Evidence: .agent-worktrees/B3-p2p-relay-agent/packages/relay-service/src/index.ts; .agent-worktrees/B3-p2p-relay-agent/packages/relay-service/Dockerfile; B3 relay TypeScript check passed
+Due: Next coordination checkpoint.
+
 [2026-06-24 22:57 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
 Context: PM follow-up on parallel work item B3 ("relay service staging deploy") is currently brief-only.
 Request: Post a progress update or blocker before the next coordination checkpoint.
