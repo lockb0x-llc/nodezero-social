@@ -17,6 +17,7 @@ EXPECTED_TESTNET_NAME="testnet"
 EXPECTED_TESTNET_PASSPHRASE="Test SDF Network ; September 2015"
 EXPECTED_TESTNET_RPC_URL="https://soroban-testnet.stellar.org"
 declare -A CONTRACT_MODES
+declare -A CONTRACT_INIT_PROOFS
 
 fail() {
   echo "$1"
@@ -83,6 +84,21 @@ resolve_or_deploy_contract() {
     --alias "$alias"
 }
 
+require_lockbox_initialization_proof() {
+  local contract_id="$1"
+  local proof="${LOCKBOX_INITIALIZATION_PROOF:-}"
+
+  if [[ -z "$contract_id" ]]; then
+    fail "Lockb0x contract ID is missing; cannot record initialization proof."
+  fi
+
+  if [[ -z "$proof" ]]; then
+    fail "Lockb0x initialization proof is required. Set LOCKBOX_INITIALIZATION_PROOF before deploying."
+  fi
+
+  CONTRACT_INIT_PROOFS["$LOCKBOX_ALIAS"]="$proof"
+}
+
 require_cmd cargo
 require_cmd rustup
 require_cmd stellar
@@ -121,6 +137,7 @@ fi
 
 IDENTITY_CONTRACT_ID="$(resolve_or_deploy_contract "$IDENTITY_ALIAS")"
 LOCKBOX_CONTRACT_ID="$(resolve_or_deploy_contract "$LOCKBOX_ALIAS")"
+require_lockbox_initialization_proof "$LOCKBOX_CONTRACT_ID"
 
 STELLAR_CLI_VERSION="$(stellar --version 2>/dev/null || true)"
 
@@ -135,6 +152,7 @@ jq -n \
   --arg strictMode "$([[ "$ALLOW_NON_TESTNET" == "1" ]] && echo "false" || echo "true")" \
   --arg identityMode "${CONTRACT_MODES[$IDENTITY_ALIAS]:-unknown}" \
   --arg lockboxMode "${CONTRACT_MODES[$LOCKBOX_ALIAS]:-unknown}" \
+  --arg lockboxInitProof "${CONTRACT_INIT_PROOFS[$LOCKBOX_ALIAS]:-missing}" \
   --arg identityContractId "$IDENTITY_CONTRACT_ID" \
   --arg lockboxContractId "$LOCKBOX_CONTRACT_ID" \
   --arg generatedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
@@ -153,7 +171,8 @@ jq -n \
       },
       lockbox: {
         id: $lockboxContractId,
-        deploymentMode: $lockboxMode
+        deploymentMode: $lockboxMode,
+        initializationProof: $lockboxInitProof
       }
     },
     generatedAt: $generatedAt
