@@ -18,7 +18,7 @@ import {
   Platform,
   ScrollView,
 } from 'react-native'
-import { useRouter } from 'expo-router'
+import { useRouter, usePathname } from 'expo-router'
 import { useSolid } from '../src/contexts/SolidContext'
 
 const DEFAULT_IDP = 'https://solidcommunity.net'
@@ -26,17 +26,21 @@ const DEFAULT_IDP = 'https://solidcommunity.net'
 export default function LandingScreen(): JSX.Element {
   const { signIn, isLoggedIn, isRestoring } = useSolid()
   const router = useRouter()
+  const pathname = usePathname()
 
   const [idpUrl, setIdpUrl] = useState(DEFAULT_IDP)
   const [isSigningIn, setIsSigningIn] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Redirect to feed once authenticated.
+  // Redirect authenticated users from the landing page to the feed.
+  // Only fire when we are genuinely at the root path ('/') — this prevents
+  // the redirect from intercepting direct-URL navigation to /feed, /local,
+  // /profile, or /settings on web where the SPA may mount index.tsx first.
   React.useEffect(() => {
-    if (!isRestoring && isLoggedIn) {
+    if (!isRestoring && isLoggedIn && pathname === '/') {
       router.replace('/feed')
     }
-  }, [isLoggedIn, isRestoring, router])
+  }, [isLoggedIn, isRestoring, pathname, router])
 
   const handleSignIn = async (): Promise<void> => {
     setError(null)
