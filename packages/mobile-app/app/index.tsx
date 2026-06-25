@@ -40,9 +40,22 @@ export default function LandingScreen(): JSX.Element {
 
   const handleSignIn = async (): Promise<void> => {
     setError(null)
+
+    const trimmed = idpUrl.trim()
+
+    if (!trimmed) {
+      setError('An Identity Provider URL is required.')
+      return
+    }
+
+    if (!trimmed.startsWith('https://')) {
+      setError('Identity Provider must use HTTPS (e.g. https://solidcommunity.net).')
+      return
+    }
+
     setIsSigningIn(true)
     try {
-      await signIn(idpUrl.trim())
+      await signIn(trimmed)
     } catch (err) {
       setError('Login failed. Please check the Identity Provider URL and try again.')
       console.error('[LandingScreen] signIn error:', err)

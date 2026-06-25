@@ -15,6 +15,7 @@ import React, {
   type ReactNode,
 } from 'react'
 import * as SecureStore from 'expo-secure-store'
+import { Platform } from 'react-native'
 import { EnclaveAdapter, WalletService, type WalletInfo } from '@nodezero/embedded-wallet'
 import Constants from 'expo-constants'
 
@@ -66,7 +67,11 @@ function assertNetworkCoherence(appExtra: Record<string, string> | undefined): v
 
 function getWalletService(): WalletService {
   if (!_adapter) {
-    _adapter = new EnclaveAdapter(SecureStore)
+    // expo-secure-store relies on native bridge methods (getValueWithKeyAsync)
+    // that are unavailable in web/browser contexts. Fall back to EnclaveAdapter's
+    // built-in in-memory store on web so the wallet can still provision.
+    const store = Platform.OS === 'web' ? undefined : SecureStore
+    _adapter = new EnclaveAdapter(store)
   }
   if (!_walletService) {
     const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
