@@ -1,2 +1,2 @@
-# Milestone G queue (ordered per RUNBOOK section 9)
-agents/docs-agent/G3-playwright-walkthrough-screenshots-and-video
+# Post-G idle state
+# Add one fully-reviewed branch per line in merge order.
