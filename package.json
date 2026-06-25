@@ -16,6 +16,7 @@
     "type-check": "pnpm -r type-check",
     "clean": "pnpm -r clean && node -e \"require('fs').rmSync('node_modules',{recursive:true,force:true})\"",
     "policy:validate-env": "bash ./scripts/policy/validate-env-isolation.sh",
+    "qa:smoke": "bash ./scripts/qa/staging-smoke.sh",
     "pm:dispatch": "pwsh -NoProfile -File ./scripts/agents/dispatch-parallel.ps1",
     "pm:dispatch:dry": "pwsh -NoProfile -File ./scripts/agents/dispatch-parallel.ps1 -DryRun",
     "pm:status": "pwsh -NoProfile -File ./scripts/agents/status.ps1",
