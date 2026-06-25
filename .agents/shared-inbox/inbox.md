@@ -6,8 +6,75 @@ Context:
 
 ---
 
-[2026-06-25 20:15 UTC] [PROJECT_MANAGER->ALL] [P1] [OPEN]
-Context: All H-series CI/CD incident items are now closed. Namecheap secrets corrected by maintainer (H3 DONE). Branch governance restructured (H4 DONE via testnet-first workflow). New branching strategy is live.
+[2026-06-25 21:15 UTC] [QA_RELEASE_AGENT->PROJECT_MANAGER,MOBILE_APP_AGENT,DOCS_AGENT] [P1] [OPEN]
+Context: Completed automated browser-based end-to-end UAT run against staging.nodezero.social. Full checklist updated at docs/staging-uat-checklist.md. Release decision: BLOCK. One P1 bug found. Two auth UX gaps. Five authenticated journeys require live Solid Pod credentials to complete.
+Request: PM to triage P1 bug to MOBILE_APP_AGENT (WR1). DOCS_AGENT to document functionality and gaps per the matrix below. QA to re-run authenticated journeys once user provides credentials and WR1 is fixed.
+Evidence: docs/staging-uat-checklist.md (updated); browser console logs (all pages); source inspection packages/mobile-app/src/contexts/WalletContext.tsx; packages/embedded-wallet/src/EnclaveAdapter.ts
+
+## UAT Run Results — 2026-06-25
+
+### Test environment
+- URL: https://staging.nodezero.social
+- Browser: Playwright (VS Code browser tool)
+- Auth: Unauthenticated pass only (credentials not available during run)
+
+### PASS results
+- ✅ A1: Landing page loads — "NodeZero" headline + "Sign in with Solid Pod" present
+- ✅ A2: All routes reachable — /, /feed, /local, /profile, /settings all return content
+- ✅ A3: TLS — HTTPS enforced, site loads correctly on staging.nodezero.social
+- ✅ Landing page: hero, 4 feature cards, Solid IdP form render correctly
+- ✅ Auth guards on /feed, /local, /profile show correct unauthenticated messages
+- ✅ Settings renders without auth — shows Solid Pod, NSFW toggle, Embedded Wallet, Data Mgmt sections
+- ✅ AU1 (partial): Valid HTTPS IdP redirect confirmed — solidcommunity.net login page loads correctly
+- ✅ App version "v0.0.1" shown in Settings
+
+### FAIL / GAP results
+
+**P1 BUG — WR1: Wallet provisioning silently fails on web**
+- Error: `TypeError: n.default.getValueWithKeyAsync is not a function`
+- Fires on EVERY page load (WalletContext is in root layout)
+- `expo-secure-store` calls a native module method (`getValueWithKeyAsync`) that doesn't exist on web
+- Settings shows "Stellar Public Key: Provisioning…" and "⏳ Not yet funded" forever — never resolves
+- Stack: `EnclaveAdapter.loadOrCreate` → `SecureStore.getItemAsync` → native module → undefined
+- Root cause: `WalletContext.tsx` passes `expo-secure-store` directly to `EnclaveAdapter`. On web, `expo-secure-store` native bridge isn't available. The `EnclaveAdapter` has an in-memory fallback but it's never reached because `SecureStore` is passed but its web shim doesn't implement the native `getValueWithKeyAsync` bridge.
+- Fix: Detect `Platform.OS === 'web'` in `WalletContext.tsx` and pass `undefined` (to trigger MemorySecureStore fallback) OR implement a proper `localStorage`-based web secure store. Owner: MOBILE_APP_AGENT
+
+**GAP — AU2: Empty IdP URL shows generic error**
+- Expected: "An Identity Provider URL is required"
+- Actual: "Login failed. Please check the Identity Provider URL and try again."
+- Fix: Add client-side validation before calling the login function — check `idpUrl.trim() === ''` before attempting login. Owner: MOBILE_APP_AGENT
+
+**GAP — AU3: HTTP (non-HTTPS) IdP not rejected client-side**
+- Expected: "Identity Provider must use HTTPS"
+- Actual: Same generic "Login failed" error
+- Fix: Add client-side `!idpUrl.startsWith('https://')` check. `SolidContext.tsx` already validates this on native (via `assertValidIdp`) — needs to surface as a user-visible message in the sign-in form. Owner: MOBILE_APP_AGENT
+
+**MINOR — X1: favicon.ico returns 404**
+- Expo web build doesn't include favicon. Fix: add `favicon.png` to Expo config. Owner: MOBILE_APP_AGENT (low priority)
+
+### NOT TESTED (requires live Solid Pod credentials)
+- AU1 post-auth: Redirect back to app and session establishment
+- AU4: Sign out
+- FE1: Authenticated global feed
+- LM1/LM2: Local messaging and P2P relay
+- WR2: On-chain WebID registration
+- EO1/EO2: Runtime env passphrase + App Insights telemetry
+
+### For DOCS_AGENT
+Functional areas confirmed working (document these):
+1. Landing page — headline, tagline, 4 feature cards, Solid sign-in form
+2. Route navigation — all 5 routes accessible
+3. Auth gating — protected routes show correct prompts
+4. Settings — all sections render (Solid Pod, NSFW, Wallet, Data Mgmt, Account, version)
+5. Solid IdP redirect — correct OAuth flow initiates to solidcommunity.net
+
+Gaps to document (with remediation strategy):
+1. WR1 — wallet provisioning broken on web (expo-secure-store incompatibility)
+2. AU2/AU3 — auth error messages too generic
+3. Authenticated journeys pending (document as "pending live credential test")
+Due: QA run evidence in docs/staging-uat-checklist.md is the canonical source
+
+---
 Request: All agents read the updated branching rules in RUNBOOK.md section 6a before starting any new work. Summary below.
 Evidence: RUNBOOK.md section 6a; scripts/agents/dispatch-parallel.ps1 (BaseBranch=testnet); scripts/agents/reintegrate-parallel.ps1 (BaseBranch=testnet); origin/testnet created.
 
