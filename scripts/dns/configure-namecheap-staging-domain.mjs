@@ -56,6 +56,8 @@ const config = {
   sandbox: (process.env.NAMECHEAP_SANDBOX ?? 'false').toLowerCase() === 'true',
 }
 
+const checkOnly = process.argv.includes('--check-only')
+
 function fail(message) {
   console.error(`[namecheap] FAIL: ${message}`)
   process.exit(1)
@@ -145,7 +147,9 @@ async function main() {
   requireValue('NAMECHEAP_API_KEY', config.apiKey)
   requireValue('NAMECHEAP_API_USER', config.apiUser)
   requireValue('NAMECHEAP_USERNAME', config.username)
-  requireValue('NAMECHEAP_TARGET', config.target)
+  if (!checkOnly) {
+    requireValue('NAMECHEAP_TARGET', config.target)
+  }
 
   config.clientIp = await resolveClientIp()
   const { sld, tld } = parseDomain(config.domain)
@@ -155,6 +159,12 @@ async function main() {
 
   const existingXml = await namecheapRequest('namecheap.domains.dns.getHosts', { SLD: sld, TLD: tld })
   const existingHosts = parseHosts(existingXml)
+
+  if (checkOnly) {
+    console.log(`[namecheap] Credential check succeeded; ${existingHosts.length} host record(s) visible for ${config.domain}.`)
+    return
+  }
+
   const preservedHosts = existingHosts.filter((host) => (host.Name ?? '').toLowerCase() !== config.host.toLowerCase())
   const nextHosts = [
     ...preservedHosts,
