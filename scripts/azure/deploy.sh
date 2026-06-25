@@ -15,7 +15,7 @@ require_cmd() {
 }
 
 require_cmd az
-require_cmd jq
+require_cmd node
 
 if [[ -z "$RESOURCE_GROUP" ]]; then
   echo "AZURE_RESOURCE_GROUP is required."
@@ -62,7 +62,7 @@ if ! az group show --name "$RESOURCE_GROUP" >/dev/null 2>&1; then
   exit 1
 fi
 
-PARAM_ENVIRONMENT="$(jq -r '.parameters.environmentName.value // empty' "$PARAM_FILE")"
+PARAM_ENVIRONMENT="$(node -e "const fs = require('fs'); const p = JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); console.log(p?.parameters?.environmentName?.value ?? '')" "$PARAM_FILE")"
 if [[ -z "$PARAM_ENVIRONMENT" ]]; then
   echo "Parameters file is missing parameters.environmentName.value."
   exit 1
