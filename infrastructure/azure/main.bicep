@@ -35,7 +35,7 @@ param zkManifestUrl string
 
 var resourceToken = toLower(uniqueString(resourceGroup().id, appName, environmentName))
 var storageAccountName = 'st${take(resourceToken, 22)}'
-var keyVaultName = take(replace('${appName}-${environmentName}-kv-${resourceToken}', '--', '-'), 24)
+var keyVaultName = take('${replace(appName, '-', '')}${replace(environmentName, '-', '')}kv${resourceToken}', 24)
 var staticWebAppName = '${appName}-${environmentName}-web'
 var appInsightsName = '${appName}-${environmentName}-appi'
 var logAnalyticsName = '${appName}-${environmentName}-law'
