@@ -104,6 +104,9 @@ function parseHosts(xml) {
 function assertNamecheapSuccess(xml) {
   if (!/Status="OK"/i.test(xml)) {
     const error = xml.match(/<Error[^>]*>([^<]+)<\/Error>/i)?.[1] ?? 'Unknown Namecheap API error.'
+    if (/API Key is invalid|API access has not been enabled/i.test(error)) {
+      fail(`${error}. Confirm the API key belongs to NAMECHEAP_API_USER, API access is enabled in Namecheap, and the GitHub runner public IP printed above is allowed in Namecheap API access settings.`)
+    }
     fail(error)
   }
 }
