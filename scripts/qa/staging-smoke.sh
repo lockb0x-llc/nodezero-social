@@ -41,11 +41,17 @@ case "$BASE_URL" in
 esac
 pass "Staging base URL uses https ($BASE_URL)."
 
-# 1) Landing / Solid auth entry point reachable with stable markers.
+# 1) Landing shell and Solid auth bundle reachable with stable markers.
 LANDING="$(fetch_body "$BASE_URL/")" || fail "Landing page not reachable at $BASE_URL/."
 echo "$LANDING" | grep -q "NodeZero" || fail "Landing page missing 'NodeZero' brand marker."
-echo "$LANDING" | grep -q "Sign in with Solid Pod" || fail "Landing page missing Solid auth entry point."
-pass "Landing page and Solid auth entry point served."
+echo "$LANDING" | grep -q 'id="root"' || fail "Landing page missing Expo root element."
+BUNDLE_PATH="$(printf '%s' "$LANDING" | grep -Eo 'src="[^"]+/_expo/static/js/web/[^"]+\.js"' | head -n1 | sed -E 's/^src="([^"]+)"$/\1/')"
+if [[ -z "$BUNDLE_PATH" ]]; then
+  fail "Landing page missing Expo web bundle script."
+fi
+BUNDLE="$(fetch_body "$BASE_URL$BUNDLE_PATH")" || fail "Expo web bundle not reachable at $BUNDLE_PATH."
+echo "$BUNDLE" | grep -q "Sign in with Solid Pod" || fail "Expo web bundle missing Solid auth entry point."
+pass "Landing page shell and Solid auth bundle served."
 
 # 2) Core client routes resolve (SPA fallback returns the app shell).
 for route in feed local profile settings; do
