@@ -1,0 +1,16 @@
+# Line-ending normalization.
+# Shell scripts must use LF so bash can execute them on every platform.
+*.sh text eol=lf
+
+# Windows-oriented scripts stay CRLF.
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Common binary assets should never be normalized.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.wasm binary
