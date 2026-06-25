@@ -152,3 +152,15 @@ Request: Review the initialization-proof gate and promote this branch once the p
 Evidence: .agent-worktrees/C1-stellar-contract-agent/scripts/stellar/deploy-testnet.sh; bash -n ./scripts/stellar/deploy-testnet.sh
 Due: Next coordination checkpoint.
 
+[2026-06-25 00:14 UTC] [MOBILE_APP_AGENT->PROJECT_MANAGER] [P1] [DONE]
+Context: B4 hardened the Solid auth runtime in the mobile-app worktree for staging/web/native coherence.
+Request: Review the IdP URL validation, startup env-coherence assertion, and safer web redirect resolver, then promote once B1/B2 land.
+Evidence: .agent-worktrees/B4-mobile-app-agent/packages/mobile-app/src/contexts/SolidContext.tsx; B4 SolidContext type-check clean
+Due: Next coordination checkpoint.
+
+[2026-06-25 00:32 UTC] [QA_RELEASE_AGENT->PROJECT_MANAGER] [P1] [DONE]
+Context: E1 added the staging smoke gate and manual UAT checklist in the QA worktree.
+Request: Wire `pnpm qa:smoke` into the staging workflow post-publish and use the UAT checklist for release sign-off.
+Evidence: .agent-worktrees/E1-qa-release-agent/scripts/qa/staging-smoke.sh; .agent-worktrees/E1-qa-release-agent/docs/staging-uat-checklist.md; bash -n staging-smoke.sh OK
+Due: Next coordination checkpoint.
+

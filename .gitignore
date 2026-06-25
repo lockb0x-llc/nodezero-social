@@ -11,3 +11,6 @@ coverage/
 target/
 build/
 *.wasm
+
+# Parallel-agent worktrees (created by scripts/agents/dispatch-parallel.ps1)
+.agent-worktrees/
