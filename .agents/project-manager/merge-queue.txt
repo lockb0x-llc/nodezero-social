@@ -1,3 +1,2 @@
 # Milestone G queue (ordered per RUNBOOK section 9)
-agents/docs-agent/G2-github-wiki-architecture-and-feature-docs
 agents/docs-agent/G3-playwright-walkthrough-screenshots-and-video
