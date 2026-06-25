@@ -1,0 +1,92 @@
+name: Configure Staging Domain
+
+on:
+  workflow_dispatch:
+    inputs:
+      namecheap_api_user:
+        description: Namecheap API user/account username
+        required: true
+        type: string
+      namecheap_username:
+        description: Namecheap username if different from API user
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  configure-domain:
+    name: Configure staging.nodezero.social
+    runs-on: ubuntu-latest
+    environment: staging-testnet
+
+    env:
+      STATIC_WEB_APP_NAME: nodezero-social-staging-testnet-web
+      STAGING_CUSTOM_DOMAIN: staging.nodezero.social
+      AZURE_CLIENT_ID: 52120dbe-2b66-4e12-bdad-9f872a3ae845
+      AZURE_TENANT_ID: bab5056b-732f-4710-a7b9-e9c5807cd6f9
+      AZURE_SUBSCRIPTION_ID: 1f002267-9614-4a2a-a0e0-217493d6d011
+      AZURE_RESOURCE_GROUP: rg-nodezero-social-staging-testnet
+      NAMECHEAP_DOMAIN: nodezero.social
+      NAMECHEAP_HOST: staging
+      NAMECHEAP_API_KEY: ${{ secrets.NAMECHEAP_API_KEY }}
+      NAMECHEAP_API_USER: ${{ inputs.namecheap_api_user }}
+      NAMECHEAP_USERNAME: ${{ inputs.namecheap_username || inputs.namecheap_api_user }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Azure CLI
+        uses: azure/CLI@v2
+        with:
+          inlineScript: |
+            az version
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Resolve Static Web Apps default hostname
+        id: swa
+        run: |
+          hostname="$(az staticwebapp show --name "$STATIC_WEB_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --query defaultHostname -o tsv)"
+          if [ -z "$hostname" ]; then
+            echo "Unable to resolve Static Web Apps default hostname."
+            exit 1
+          fi
+          echo "hostname=$hostname" >> "$GITHUB_OUTPUT"
+
+      - name: Configure Namecheap CNAME
+        env:
+          NAMECHEAP_TARGET: ${{ steps.swa.outputs.hostname }}
+        run: node scripts/dns/configure-namecheap-staging-domain.mjs
+
+      - name: Bind custom hostname in Azure Static Web Apps
+        run: |
+          for attempt in $(seq 1 30); do
+            if az staticwebapp hostname set \
+              --name "$STATIC_WEB_APP_NAME" \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --hostname "$STAGING_CUSTOM_DOMAIN" \
+              --validation-method cname-delegation; then
+              exit 0
+            fi
+            echo "Azure hostname validation not ready yet ($attempt/30). Waiting for DNS propagation..."
+            sleep 30
+          done
+          echo "Azure Static Web Apps custom hostname binding failed after waiting for DNS propagation."
+          exit 1
+
+      - name: Validate custom hostname smoke suite
+        env:
+          STAGING_BASE_URL: https://${{ env.STAGING_CUSTOM_DOMAIN }}
+        run: bash ./scripts/qa/staging-smoke.sh
+
+      - name: Domain summary
+        run: echo "staging.nodezero.social DNS, Azure custom domain, TLS, and smoke checks completed."
