@@ -9,6 +9,9 @@ jobs:
     runs-on: ubuntu-latest
     environment: staging-testnet
 
+    env:
+      STATIC_WEB_APP_NAME: nodezero-social-staging-testnet-web
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -30,6 +33,15 @@ jobs:
       - name: Validate environment isolation policy
         run: pnpm policy:validate-env
 
+      - name: Validate Static Web Apps token is configured
+        env:
+          AZURE_STATIC_WEB_APPS_API_TOKEN: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+        run: |
+          if [ -z "$AZURE_STATIC_WEB_APPS_API_TOKEN" ]; then
+            echo "AZURE_STATIC_WEB_APPS_API_TOKEN is required for staging publish."
+            exit 1
+          fi
+
       - name: Setup Azure CLI
         uses: azure/CLI@v2
         with:
@@ -50,5 +62,39 @@ jobs:
           AZURE_ENVIRONMENT_NAME: staging-testnet
         run: pnpm deploy:azure
 
+      - name: Build Expo web artifact
+        run: pnpm --filter @nodezero/mobile-app build:web
+
+      - name: Publish Expo web artifact to Azure Static Web App
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: upload
+          app_location: packages/mobile-app/dist
+          api_location: ""
+          output_location: ""
+          skip_app_build: true
+          skip_api_build: true
+
+      - name: Resolve staging hostname
+        id: hostname
+        env:
+          AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+        run: |
+          STATIC_WEB_APP_HOSTNAME="$(az staticwebapp show --name "$STATIC_WEB_APP_NAME" --resource-group "$AZURE_RESOURCE_GROUP" --query defaultHostname -o tsv)"
+          if [ -z "$STATIC_WEB_APP_HOSTNAME" ]; then
+            echo "Unable to resolve the Static Web App hostname."
+            exit 1
+          fi
+          echo "hostname=$STATIC_WEB_APP_HOSTNAME" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke test landing page
+        env:
+          STATIC_WEB_APP_HOSTNAME: ${{ steps.hostname.outputs.hostname }}
+        run: |
+          curl -fsSL "https://$STATIC_WEB_APP_HOSTNAME" | grep -q "NodeZero"
+          curl -fsSL "https://$STATIC_WEB_APP_HOSTNAME" | grep -q "Sign in with Solid Pod"
+
       - name: Staging deployment summary
-        run: echo "Staging infrastructure deployment completed. Continue with app publish and smoke tests."
+        run: echo "Staging infrastructure deployment, Expo web publish, and smoke tests completed."
