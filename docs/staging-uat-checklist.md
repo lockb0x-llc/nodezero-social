@@ -96,9 +96,17 @@ code.
 ## Sign-off
 
 - Release decision: **BLOCK**
-- Rationale: P1 bug WR1 (wallet provisioning fails on web due to `expo-secure-store` incompatibility). Auth error messages AU2/AU3 need specificity improvement. Authenticated journeys (FE1, LM1, LM2, WR2, AU4) not yet executed — require live Solid Pod credentials.
+- Rationale: P1 bug WR1 (wallet provisioning fails on web due to `expo-secure-store` incompatibility) — FIXED in testnet branch commit 778c37f, pending staging redeploy. Auth error messages AU2/AU3 — FIXED in same commit. Authenticated journeys (FE1, LM1, LM2, WR2, AU4) not yet executed — pending password reset for admin@nodezero.social and staging redeploy.
 - Reviewer: QA_RELEASE_AGENT (automated browser session, 2026-06-25)
 - Date: 2026-06-25
+
+## Authentication status for re-test
+
+- Solid Pod: `https://solidcommunity.net/nodezero/` — CONFIRMED LIVE
+- Email: `admin@nodezero.social`
+- Password reset email sent to `admin@nodezero.social` on 2026-06-25 via solidcommunity.net forgot-password flow
+- When reset link arrives: set password to value stored in `docs/dev-only/nodezero pod solidcommunity-net.txt`
+- After password reset + staging redeploy: re-run QA starting at AU1 to complete all authenticated journeys
 
 
 Release gate for the NodeZero.social `staging-testnet` environment. The
