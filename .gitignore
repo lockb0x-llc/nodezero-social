@@ -14,3 +14,4 @@ build/
 
 # Parallel-agent worktrees (created by scripts/agents/dispatch-parallel.ps1)
 .agent-worktrees/
+docs/dev-only/nodezero pod solidcommunity-net.txt
