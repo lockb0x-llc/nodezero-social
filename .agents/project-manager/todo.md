@@ -37,6 +37,6 @@
 - [DONE] F4: Add bounded PM loop mode for recurring oversight.
 
 ## Milestone G: Open-source documentation
-- [TODO] G1: Author open-source community health files (LICENSE, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, issue templates, PR template).
-- [TODO] G2: Build GitHub Wiki with architecture overview, feature guides, getting-started, API references, and roadmap.
-- [TODO] G3: Playwright-validated walkthroughs with screenshots and video embedded in Wiki pages.
+- [DONE] G1: Author open-source community health files (LICENSE, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, issue templates, PR template). (merged to main)
+- [DONE] G2: Build GitHub Wiki with architecture overview, feature guides, getting-started, API references, and roadmap. (merged to main with wiki/_Sidebar.md navigation)
+- [DONE] G3: Playwright-validated walkthroughs with screenshots and video embedded in Wiki pages. (merged to main with docs/screenshots/README.md index)
