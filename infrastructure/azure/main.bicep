@@ -33,6 +33,12 @@ param zkArtifactsUrl string
 @secure()
 param zkManifestUrl string
 
+@description('DNS zone name for the staging custom domain.')
+param dnsZoneName string = 'nodezero.social'
+
+@description('DNS host label for the staging Static Web App custom domain.')
+param stagingHostLabel string = 'staging'
+
 var resourceToken = toLower(uniqueString(resourceGroup().id, appName, environmentName))
 var storageAccountName = 'st${take(resourceToken, 22)}'
 var keyVaultName = take('${replace(appName, '-', '')}${replace(environmentName, '-', '')}kv${resourceToken}', 24)
@@ -147,7 +153,26 @@ resource staticWebApp 'Microsoft.Web/staticSites@2022-09-01' = {
   }
 }
 
+resource dnsZone 'Microsoft.Network/dnsZones@2018-05-01' = {
+  name: dnsZoneName
+  location: 'global'
+  tags: commonTags
+}
+
+resource stagingCname 'Microsoft.Network/dnsZones/CNAME@2018-05-01' = {
+  parent: dnsZone
+  name: stagingHostLabel
+  properties: {
+    TTL: 300
+    CNAMERecord: {
+      cname: staticWebApp.properties.defaultHostname
+    }
+  }
+}
+
 output staticWebAppName string = staticWebApp.name
 output staticWebAppDefaultHostname string = staticWebApp.properties.defaultHostname
+output stagingCustomHostname string = '${stagingHostLabel}.${dnsZoneName}'
+output azureDnsNameServers array = dnsZone.properties.nameServers
 output appInsightsConnectionString string = appInsights.properties.ConnectionString
 output keyVaultUri string = keyVault.properties.vaultUri
