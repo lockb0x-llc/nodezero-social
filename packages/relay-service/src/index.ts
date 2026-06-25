@@ -1,4 +1,5 @@
 import { createServer } from 'node:http'
+import type { IncomingMessage, ServerResponse } from 'node:http'
 import { WebSocketServer, type WebSocket } from 'ws'
 
 type SignalType = 'offer' | 'answer' | 'ice-candidate'
@@ -48,6 +49,50 @@ function sendJson(ws: WebSocket, payload: unknown): void {
   if (ws.readyState === ws.OPEN) {
     ws.send(JSON.stringify(payload))
   }
+}
+
+function sendHttpJson(
+  res: ServerResponse,
+  statusCode: number,
+  payload: unknown,
+): void {
+  res.writeHead(statusCode, { 'content-type': 'application/json; charset=utf-8' })
+  res.end(JSON.stringify(payload))
+}
+
+function handleHttpRequest(req: IncomingMessage, res: ServerResponse): void {
+  const requestUrl = new URL(req.url ?? '/', 'http://localhost')
+
+  if (req.method === 'GET' && requestUrl.pathname === '/health') {
+    sendHttpJson(res, 200, {
+      ok: true,
+      service: 'relay-service',
+      activePeers: peers.size,
+      uptimeMs: Math.round(process.uptime() * 1000),
+    })
+    return
+  }
+
+  if (req.method === 'GET' && requestUrl.pathname === '/') {
+    sendHttpJson(res, 200, {
+      ok: true,
+      service: 'relay-service',
+      endpoints: ['/health', '/healthz', '?webId=...'],
+    })
+    return
+  }
+
+  if (req.method === 'GET' && requestUrl.pathname === '/healthz') {
+    sendHttpJson(res, 200, {
+      ok: true,
+      service: 'relay-service',
+      activePeers: peers.size,
+      uptimeMs: Math.round(process.uptime() * 1000),
+    })
+    return
+  }
+
+  sendHttpJson(res, 404, { error: 'Not found' })
 }
 
 wss.on('connection', (ws, req) => {
@@ -115,6 +160,8 @@ const pingTimer = setInterval(() => {
     ws.ping()
   }
 }, PING_INTERVAL_MS)
+
+server.on('request', handleHttpRequest)
 
 server.listen(PORT, () => {
   console.log(`[relay-service] listening on :${PORT}`)
