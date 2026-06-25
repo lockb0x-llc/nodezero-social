@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [string]$ConfigPath = ".agents/project-manager/parallel-work-items.json",
-    [string]$BaseBranch = "main",
+    [string]$BaseBranch = "testnet",
     [string]$WorktreeRoot = ".agent-worktrees",
     [switch]$DryRun
 )

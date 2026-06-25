@@ -99,6 +99,34 @@ Blocker hook checklist:
 - P0 blockers pause dependent work.
 - Scope changes require inbox announcement.
 
+## 6a. Branching strategy (established 2026-06-25)
+
+### Branch hierarchy
+```
+main          ← production-ready; protected; only receives PRs from testnet
+  └── testnet ← staging integration branch; all agent work lands here first
+        ├── agents/<agent>/<task-id>-<slug>  ← specialist feature branches
+        └── agents/pm/<task-id>-<slug>        ← PM coordination branches
+```
+
+### Rules
+- **Agents NEVER push directly to `main`.** All work targets `testnet` or sub-branches of `testnet`.
+- Feature branches (`agents/*`) are created off `testnet`, not `main`.
+- PM reintegrates completed agent branches INTO `testnet` (not `main`).
+- QA_RELEASE_AGENT runs the full smoke suite against `testnet`-based staging before any promotion.
+- Only after PM + QA explicit DONE sign-off does PM open a PR: `testnet → main`.
+- The `main → testnet` merge happens at the start of each sprint to keep `testnet` up to date.
+
+### Dispatch workflow (updated)
+1. `pnpm pm:dispatch` — creates branches off `testnet` (not `main`).
+2. Agents work in their branch, post DONE to inbox.
+3. PM reintegrates agent branches → `testnet`: `pnpm pm:reintegrate`.
+4. QA_RELEASE_AGENT validates `testnet` on staging.
+5. PM opens PR `testnet → main` only after QA pass.
+
+### Why branch protection on Free plan is still useful
+GitHub Free enforces protection rules for public repos. If the repo is public, the CI-pass requirement on `main` is enforced. If private, consider making it public once the open-source documentation milestone (G) is complete.
+
 ## 7. Quality and release policy
 
 Minimum release policy for staging:

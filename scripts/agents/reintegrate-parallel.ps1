@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [string]$QueuePath = ".agents/project-manager/merge-queue.txt",
-    [string]$BaseBranch = "main",
+    [string]$BaseBranch = "testnet",
     [string]$ValidationCommand = "pnpm lint; pnpm type-check; pnpm test; pnpm policy:validate-env",
     [switch]$NoValidation,
     [switch]$DryRun

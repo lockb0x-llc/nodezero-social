@@ -39,8 +39,13 @@
 ## Milestone H: CI/CD Incident remediation (user-escalated P0)
 - [DONE] H1: Fix pnpm version mismatch — upgrade CI to pnpm v11 in ci.yml and staging-deploy.yml. (commit 45263d7)
 - [DONE] H2: Pin Rust toolchain — add packages/contracts/rust-toolchain.toml (Rust 1.81.0 stable). (commit 45263d7)
-- [BLOCKED] H3: Fix Namecheap API credentials — requires human to update NAMECHEAP_API_KEY and NAMECHEAP_API_USER GitHub secrets. (AZURE_PLATFORM_AGENT to verify once secrets updated)
-- [BLOCKED] H4: Enable branch protection on main — requires repo admin access. Human must enable: require CI pass before merge, require PRs, no force-push.
+- [DONE] H3: Fix Namecheap API credentials — maintainer updated NAMECHEAP_API_KEY and NAMECHEAP_API_USER GitHub secrets. (2026-06-25)
+- [DONE] H4: Branch governance — created `testnet` integration branch; dispatch/reintegrate scripts default to testnet; RUNBOOK section 6a documents new flow; branch protection rules set on main (enforcement limited to public-repo-only on Free plan). Agent work now targets testnet; PM opens testnet→main PRs after QA sign-off.
+
+## Milestone I: Next sprint (testnet-first)
+- [TODO] I1: Keep testnet current — merge main into testnet at start of each sprint.
+- [TODO] I2: Agent branches created off testnet, not main.
+- [TODO] I3: PM opens testnet→main PR only after QA_RELEASE_AGENT posts explicit PASS.
 - [DONE] G1: Author open-source community health files (LICENSE, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, issue templates, PR template). (merged to main)
 - [DONE] G2: Build GitHub Wiki with architecture overview, feature guides, getting-started, API references, and roadmap. (merged to main with wiki/_Sidebar.md navigation)
 - [DONE] G3: Playwright-validated walkthroughs with screenshots and video embedded in Wiki pages. (merged to main with docs/screenshots/README.md index)
