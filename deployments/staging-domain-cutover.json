@@ -38,13 +38,24 @@
       "steven-tomlinson",
       "lockb0x",
       "lockb0xllc",
-      "steventomlinson"
+      "steventomlinson",
+      "steven.tomlinson",
+      "stomlinson",
+      "stevent",
+      "lockb0x-llc",
+      "lockbox",
+      "lockboxllc",
+      "nodezero",
+      "nodezerosocial",
+      "nodezero-social"
     ],
-    "lastObservedError": "API Key is invalid or API access has not been enabled"
+    "lastObservedError": "API Key is invalid or API access has not been enabled",
+    "conclusion": "The GitHub secret NAMECHEAP_API_KEY is present, but it is not usable with any inferred Namecheap account username. Namecheap API access may be disabled for the account, the key may belong to a different username, or the secret value may be incorrect."
   },
   "automation": {
     "workflow": ".github/workflows/configure-staging-domain.yml",
     "script": "scripts/dns/configure-namecheap-staging-domain.mjs",
-    "runOnceCredentialIsFixed": "workflow_dispatch configure-staging-domain with namecheap_api_user set to the Namecheap API user"
+    "runOnceCredentialIsFixed": "workflow_dispatch configure-staging-domain with dns_mode=namecheap and namecheap_api_user set to the Namecheap API user",
+    "runOnceRegistrarDelegatesToAzureDns": "workflow_dispatch configure-staging-domain with dns_mode=preconfigured after nodezero.social nameservers are changed to the azureDnsNameServers values"
   }
 }
