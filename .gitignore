@@ -15,3 +15,6 @@ build/
 # Parallel-agent worktrees (created by scripts/agents/dispatch-parallel.ps1)
 .agent-worktrees/
 docs/dev-only/nodezero pod solidcommunity-net.txt
+
+# Playwright MCP session artifacts (tool output, not project files)
+.playwright-mcp/
