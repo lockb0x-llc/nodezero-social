@@ -113,33 +113,35 @@ export default function LocalNodeScreen(): JSX.Element {
       setRelayError(err.message)
     })
 
-    relay.on('signal', async (signal: SignalMessage) => {
-      if (!webId || signal.to !== webId) return
-      const channel = upsertChannel(signal.from)
-      if (!channel || !relayRef.current) return
+    relay.on('signal', (signal: SignalMessage) => {
+      void (async (): Promise<void> => {
+        if (!webId || signal.to !== webId) return
+        const channel = upsertChannel(signal.from)
+        if (!channel || !relayRef.current) return
 
-      try {
-        if (signal.type === 'offer') {
-          await channel.receiveOffer(signal.payload as RTCSessionDescriptionInit)
-          const answer = await channel.createAnswer()
-          relayRef.current.send({
-            type: 'answer',
-            from: webId,
-            to: signal.from,
-            payload: answer,
-          })
-          return
+        try {
+          if (signal.type === 'offer') {
+            await channel.receiveOffer(signal.payload as RTCSessionDescriptionInit)
+            const answer = await channel.createAnswer()
+            relayRef.current.send({
+              type: 'answer',
+              from: webId,
+              to: signal.from,
+              payload: answer,
+            })
+            return
+          }
+
+          if (signal.type === 'answer') {
+            await channel.receiveAnswer(signal.payload as RTCSessionDescriptionInit)
+            return
+          }
+
+          await channel.addIceCandidate(signal.payload as RTCIceCandidateInit)
+        } catch (err) {
+          console.warn('[LocalNodeScreen] Failed to process signal:', err)
         }
-
-        if (signal.type === 'answer') {
-          await channel.receiveAnswer(signal.payload as RTCSessionDescriptionInit)
-          return
-        }
-
-        await channel.addIceCandidate(signal.payload as RTCIceCandidateInit)
-      } catch (err) {
-        console.warn('[LocalNodeScreen] Failed to process signal:', err)
-      }
+      })()
     })
 
     relay.connect()
