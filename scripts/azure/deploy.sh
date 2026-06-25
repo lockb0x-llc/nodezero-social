@@ -82,10 +82,13 @@ echo "Running preflight what-if for environment '$TARGET_ENVIRONMENT'..."
 az deployment group what-if \
   --resource-group "$RESOURCE_GROUP" \
   --template-file "$TEMPLATE_FILE" \
-  --parameters "@$PARAM_FILE"
+  --parameters "@$PARAM_FILE" \
+  --result-format ResourceIdOnly
 
 echo "Applying deployment for environment '$TARGET_ENVIRONMENT'..."
 az deployment group create \
   --resource-group "$RESOURCE_GROUP" \
   --template-file "$TEMPLATE_FILE" \
-  --parameters "@$PARAM_FILE"
+  --parameters "@$PARAM_FILE" \
+  --query properties.provisioningState \
+  -o tsv
