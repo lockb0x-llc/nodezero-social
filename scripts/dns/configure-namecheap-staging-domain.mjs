@@ -1,10 +1,54 @@
 #!/usr/bin/env node
 import { setTimeout as delay } from 'node:timers/promises'
 
+function parseNamecheapCredentials() {
+  const rawApiKey = process.env.NAMECHEAP_API_KEY ?? ''
+  let apiKey = rawApiKey
+  let apiUser = process.env.NAMECHEAP_API_USER ?? ''
+  let username = process.env.NAMECHEAP_USERNAME ?? apiUser
+
+  if (rawApiKey.trim().startsWith('{')) {
+    try {
+      const parsed = JSON.parse(rawApiKey)
+      apiKey = parsed.apiKey ?? parsed.ApiKey ?? apiKey
+      apiUser = apiUser || parsed.apiUser || parsed.ApiUser || parsed.username || parsed.UserName || ''
+      username = username || parsed.username || parsed.UserName || apiUser
+    } catch {
+      // Keep raw API key handling below; validation will fail with a clear message if needed.
+    }
+  } else if (!apiUser && rawApiKey.includes('|')) {
+    const parts = rawApiKey.split('|').map((part) => part.trim())
+    if (parts.length === 2) {
+      apiUser = parts[0]
+      username = username || parts[0]
+      apiKey = parts[1]
+    } else if (parts.length >= 3) {
+      apiUser = parts[0]
+      username = username || parts[1]
+      apiKey = parts.slice(2).join('|')
+    }
+  } else if (!apiUser && rawApiKey.includes(':')) {
+    const parts = rawApiKey.split(':').map((part) => part.trim())
+    if (parts.length === 2) {
+      apiUser = parts[0]
+      username = username || parts[0]
+      apiKey = parts[1]
+    } else if (parts.length >= 3) {
+      apiUser = parts[0]
+      username = username || parts[1]
+      apiKey = parts.slice(2).join(':')
+    }
+  }
+
+  return { apiKey, apiUser, username }
+}
+
+const credentials = parseNamecheapCredentials()
+
 const config = {
-  apiKey: process.env.NAMECHEAP_API_KEY ?? '',
-  apiUser: process.env.NAMECHEAP_API_USER ?? '',
-  username: process.env.NAMECHEAP_USERNAME ?? process.env.NAMECHEAP_API_USER ?? '',
+  apiKey: credentials.apiKey,
+  apiUser: credentials.apiUser,
+  username: credentials.username,
   clientIp: process.env.NAMECHEAP_CLIENT_IP ?? '',
   domain: process.env.NAMECHEAP_DOMAIN ?? 'nodezero.social',
   host: process.env.NAMECHEAP_HOST ?? 'staging',
