@@ -22,7 +22,7 @@
 - [IN_PROGRESS] C2: Publish artifact manifest validation and checksum process.
 
 ## Milestone D: Azure staging readiness
-- [IN_PROGRESS] D1: Add custom domain/TLS configuration runbook.
+- [BLOCKED] D1: Add custom domain/TLS configuration runbook. (Azure DNS zone + staging CNAME provisioned; blocked on correct Namecheap API user/API access or registrar NS delegation to Azure DNS)
 - [DONE] D2: Add SWA publish workflow from Expo web build. (merged to main: build:web + SWA publish + landing smoke)
 - [TODO] D3: Add monitoring/alerting and cost guardrails.
 
