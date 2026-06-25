@@ -1,7 +1,3 @@
-# Add one fully-reviewed branch per line in merge order.
-# Dependency order: C1 (no deps) -> D2/B3 (D1) -> B4 (B1/B2) -> E1 (D2,B3,C1).
-agents/stellar-contract-agent/C1-contract-init-verification
-agents/azure-platform-agent/D2-staging-swa-publish-workflow
-agents/p2p-relay-agent/B3-relay-service-staging-deploy
-agents/mobile-app-agent/B4-solid-auth-release-hardening
-agents/qa-release-agent/E1-staging-smoke-suite
+# Milestone G queue (ordered per RUNBOOK section 9)
+agents/docs-agent/G2-github-wiki-architecture-and-feature-docs
+agents/docs-agent/G3-playwright-walkthrough-screenshots-and-video
