@@ -25,9 +25,10 @@ Prepare NodeZero Social for public open-source launch by authoring comprehensive
 - Git: committing docs to main branch and pushing wiki pages to the `<repo>.wiki.git` remote
 
 ## Hooks
-- pre-work: read `.agents/project-manager/todo.md` and `.agents/shared-inbox/inbox.md` for assigned G-series items.
-- post-work: append evidence (files created/updated, screenshot paths, Wiki pages published) to `shared-inbox/inbox.md`; update PM todo statuses.
-- blocker: if Playwright cannot reach the staging environment or GitHub Wiki remote is inaccessible, post a P0 inbox thread to PROJECT_MANAGER immediately.
+- pre-work: read `.agents/project-manager/active-task.md`, `.agents/project-manager/todo.md`, and `.agents/shared-inbox/inbox.md`. Self-start on the first `[TODO]` G-series item without waiting for a human prompt — PROJECT_MANAGER has pre-authorised autonomous execution of G1→G2→G3.
+- post-work: append evidence (files created/updated, screenshot paths, Wiki pages published) to `shared-inbox/inbox.md`; update PM todo status from TODO→DONE; post handoff to QA_RELEASE_AGENT for any journey that was screenshotted.
+- collab: coordinate with QA_RELEASE_AGENT — QA validates that each user journey is functionally correct before DOCS captures the final screenshots. Consume QA's pass/fail matrix from the inbox before marking G3 journeys complete.
+- blocker: if Playwright cannot reach the staging environment, GitHub Wiki remote is inaccessible, or a geo-discovery journey fails to render, post a P0 inbox thread to PROJECT_MANAGER immediately.
 
 ## Workflow
 
@@ -65,12 +66,27 @@ Prepare NodeZero Social for public open-source launch by authoring comprehensive
 - `FAQ` — common setup issues, known limitations
 
 ### G3 — Playwright-validated walkthroughs with screenshots and video
-1. Read the smoke suite (`scripts/qa/staging-smoke.sh`) and UAT checklist (`docs/staging-uat-checklist.md`) to enumerate user journeys.
+
+> **QA collaboration gate**: Before capturing any journey screenshot, confirm with QA_RELEASE_AGENT (via inbox) that the journey passes the smoke suite. Use QA's pass/fail matrix as the authoritative list of journeys ready for documentation capture.
+
+1. Read QA_RELEASE_AGENT's latest pass/fail inbox post and `docs/staging-uat-checklist.md` to enumerate validated journeys.
 2. For each journey, use `mcp_playwright_browser_navigate`, `mcp_playwright_browser_take_screenshot`, and `mcp_playwright_browser_evaluate` to capture visual evidence.
 3. Store screenshots as `docs/screenshots/<journey>-<step>.png`.
 4. Record videos where the journey spans multiple steps; store as `docs/videos/<journey>.webm`.
 5. Embed screenshots inline in the corresponding Wiki page.
 6. Produce a `docs/screenshots/README.md` index listing all captured artifacts with journey cross-references.
+
+#### Geo-discovery journey: mock geolocation (DOCS_AGENT dev-only)
+
+Virtual/CI environments have no real GPS. Before navigating to any geo-discovery screen, inject the development mock:
+
+1. Read `docs/dev-only/mock-geolocation.js`.
+2. Call `mcp_playwright_browser_evaluate` with the full file contents as the script.
+3. Proceed with the geo-discovery journey — the browser will report **Sahara Ave & Las Vegas Blvd, Las Vegas NV (36.1147, -115.1728)** as the current position.
+4. If the app prompts for location permission, `mcp_playwright_browser_evaluate` with `navigator.permissions.query({name:'geolocation'})` is not needed — the mock bypasses the Permissions API prompt entirely.
+5. Capture screenshots showing the H3 grid and nearby-user radius around the fixed location.
+
+> **Safety**: `docs/dev-only/mock-geolocation.js` must never be imported by any file in `packages/` and must never be included in any build or deployment artifact. It is exclusively invoked by DOCS_AGENT via `mcp_playwright_browser_evaluate` at documentation time.
 
 #### User journeys to cover (minimum)
 - Onboarding: new user registration with Solid identity

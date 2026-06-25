@@ -114,6 +114,47 @@ Minimum release policy for staging:
 3) PM promotes tasks to IN_PROGRESS/DONE in todo board.
 4) Repeat until Gate E passes.
 
+## 9. Milestone G — PM-orchestrated autonomous documentation
+
+The PM drives the entire G-series without operator intervention. Start it with a single prompt:
+
+> **Operator prompt**: "You are PROJECT_MANAGER. Execute Milestone G end-to-end per the RUNBOOK section 9 protocol."
+
+### G-series execution protocol (PM runs this autonomously)
+
+Step 1 — Verify dispatch
+- Confirm G1/G2/G3 worktrees exist under `.agent-worktrees/`.
+- If missing: `pnpm pm:dispatch` to create them.
+
+Step 2 — Kick off G1 (community health files)
+- Post P1 OPEN assignment to DOCS_AGENT in inbox.
+- In the G1 worktree (`.agent-worktrees/G1-docs-agent`), invoke DOCS_AGENT with: "Execute G1 per active-task.md and role card."
+- DOCS_AGENT self-starts: creates LICENSE, CONTRIBUTING.md, CODE_OF_CONDUCT.md, SECURITY.md, .github templates; commits; posts DONE to inbox.
+
+Step 3 — Reintegrate G1, kick off G2
+- On DOCS_AGENT DONE signal: add `agents/docs-agent/G1-open-source-community-health-files` to merge-queue.txt; run `pnpm pm:reintegrate`.
+- Immediately post G2 assignment to DOCS_AGENT.
+- DOCS_AGENT authors Wiki pages in `.agent-worktrees/G2-docs-agent`; commits; posts DONE.
+
+Step 4 — G3 QA collaboration gate
+- On G2 DONE signal: post concurrent assignments to both agents:
+  - QA_RELEASE_AGENT (P1): "Run smoke suite against staging.nodezero.social; post journey pass/fail matrix to inbox as signal for DOCS_AGENT G3."
+  - DOCS_AGENT (P1): "Await QA_RELEASE_AGENT pass/fail matrix in inbox before capturing any screenshot. When matrix arrives, proceed with G3 per role card."
+- QA_RELEASE_AGENT posts matrix → DOCS_AGENT reads it → DOCS_AGENT captures only PASS journeys.
+- For geo-discovery: DOCS_AGENT injects `docs/dev-only/mock-geolocation.js` via `mcp_playwright_browser_evaluate` (dev-only, never deployed).
+
+Step 5 — Reintegrate G2 then G3
+- On G3 DONE: add G2 then G3 to merge-queue.txt in order; run `pnpm pm:reintegrate`.
+- Update todo.md: G1, G2, G3 → DONE.
+- Post Gate G pass notice to inbox.
+
+### Gate G: Documentation gate (new)
+- All GitHub Community Standards indicators green.
+- Wiki has minimum page set with _Sidebar.md navigation.
+- Every UAT journey has a screenshot; multi-step journeys have video.
+- `docs/screenshots/README.md` index is present.
+- PM posts explicit GO for public repo visibility.
+
 ## 9. Parallel branch orchestration
 
 Use this flow to run multiple specialist agents at the same time without branch collisions.

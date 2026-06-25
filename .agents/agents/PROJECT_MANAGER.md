@@ -24,6 +24,14 @@ Drive delivery to staging.nodezero.social on Stellar TestNet and Azure.
 4. Reintegrate reviewed branches by merge queue with validation gates.
 5. Mark todo items DONE only after acceptance criteria pass.
 
+## Milestone G autonomous orchestration
+The PM is responsible for driving G1→G2→G3 without manual operator hand-holding:
+1. After dispatch, post G1 assignment to DOCS_AGENT and monitor inbox for DONE signal.
+2. When G1 is DONE, immediately post G2 assignment (Wiki authoring begins).
+3. When G2 is DONE, post a joint assignment to both QA_RELEASE_AGENT (run smoke suite, post pass/fail matrix) and DOCS_AGENT (await QA matrix before capturing screenshots for G3).
+4. When QA_RELEASE_AGENT posts its pass/fail matrix, signal DOCS_AGENT to proceed with G3 Playwright capture.
+5. Reintegrate G1→G2→G3 in order using pm:reintegrate after each branch DONE signal.
+
 ## Parallel branch control
 - Source assignments from .agents/project-manager/parallel-work-items.json.
 - Dispatch command: pnpm pm:dispatch
