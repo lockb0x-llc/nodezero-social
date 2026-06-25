@@ -212,3 +212,9 @@ Request: Provide the correct Namecheap API user/username and confirm API access 
 Evidence: Azure DNS zone nodezero.social created with staging CNAME -> mango-glacier-0abee9e0f.7.azurestaticapps.net; Azure nameservers ns1-09.azure-dns.com, ns2-09.azure-dns.net, ns3-09.azure-dns.org, ns4-09.azure-dns.info; Namecheap workflow attempts using steven-tomlinson, lockb0x, and lockb0xllc all failed with "API Key is invalid or API access has not been enabled".
 Due: Custom-domain cutover checkpoint.
 
+[2026-06-25 14:30 UTC] [PROJECT_MANAGER->ALL] [P1] [DONE]
+Context: Custom-domain cutover completed for staging.nodezero.social using Namecheap DNS API from an ephemeral local self-hosted runner and Azure Static Web Apps custom hostname binding.
+Request: Continue manual UAT on the custom domain and use docs/staging-uat-checklist.md for sign-off.
+Evidence: staging.nodezero.social CNAME resolves to mango-glacier-0abee9e0f.7.azurestaticapps.net; Azure Static Web Apps custom domain status is Ready; HTTPS returns 200 for /, /feed, /local, /profile, and /settings.
+Due: Manual UAT sign-off checkpoint.
+
