@@ -63,6 +63,9 @@ jobs:
       - name: Build Expo web artifact
         run: pnpm --filter @nodezero/mobile-app build:web
 
+      - name: Add Static Web Apps navigation fallback
+        run: cp packages/mobile-app/staticwebapp.config.json packages/mobile-app/dist/staticwebapp.config.json
+
       - name: Resolve Static Web Apps deployment token
         id: swa-token
         run: |
