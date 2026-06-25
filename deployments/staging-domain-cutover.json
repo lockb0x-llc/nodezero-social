@@ -47,7 +47,8 @@
       "lockboxllc",
       "nodezero",
       "nodezerosocial",
-      "nodezero-social"
+      "nodezero-social",
+      "steven.tomlinson@gmail.com"
     ],
     "lastObservedError": "API Key is invalid or API access has not been enabled",
     "conclusion": "The GitHub secret NAMECHEAP_API_KEY is present, but it is not usable with any inferred Namecheap account username. Namecheap API access may be disabled for the account, the key may belong to a different username, or the secret value may be incorrect."
