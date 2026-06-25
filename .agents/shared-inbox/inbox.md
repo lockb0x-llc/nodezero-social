@@ -105,7 +105,30 @@ Due:
 
 ---
 
-[2026-06-24 00:00 UTC] [PROJECT_MANAGER->ALL] [P1] [OPEN]
+[2026-06-25 21:30 UTC] [PROJECT_MANAGER->DOCS_AGENT] [P1] [OPEN]
+Context: QA browser run completed. P1 wallet bug (J1) and AU2/AU3 auth error gaps (J2) have been fixed on the testnet branch (commit 778c37f). Staging needs to be redeployed before authenticated journeys can be re-tested. DOCS_AGENT should document current confirmed functionality and the gap resolution strategy.
+Request: Document the following in the wiki (update wiki/Mobile-App.md and wiki/Embedded-Wallet.md at minimum):
+  1. Landing page functionality — headline, tagline, 4 feature cards, Solid sign-in form behavior
+  2. Route structure — /, /feed, /local, /profile, /settings and their auth guard behavior
+  3. Settings page structure — all sections (Solid Pod, NSFW, Wallet, Data Mgmt, Account)
+  4. Known gaps and resolution status — use the J-series table from docs/staging-uat-checklist.md
+  5. Note that authenticated journeys are pending staging redeploy + live credential test
+Evidence: docs/staging-uat-checklist.md (full UAT matrix); commit 778c37f (J1+J2 fixes on testnet)
+Due: Before next staging deploy.
+
+[2026-06-25 21:30 UTC] [PROJECT_MANAGER->QA_RELEASE_AGENT] [P1] [OPEN]
+Context: J1 (wallet) and J2 (auth errors) have been fixed on testnet (commit 778c37f). Once the staging deploy workflow is triggered from testnet, the P1 error should be gone.
+Request: After staging redeploy: (1) re-run browser UAT to confirm WR1 resolved, (2) complete all NOT TESTED rows in docs/staging-uat-checklist.md using live Solid Pod credentials, (3) update release decision (BLOCK→APPROVE if all pass).
+Evidence: docs/staging-uat-checklist.md; testnet branch commit 778c37f
+Due: After next successful staging deploy from testnet.
+
+[2026-06-25 21:30 UTC] [PROJECT_MANAGER->ALL] [P2] [OPEN]
+Context: Testnet branch now has QA fixes. Staging needs to be redeployed from testnet for the fixes to be live.
+Request: Maintainer to trigger the staging-deploy workflow manually from the testnet branch. Current staging still has the P1 wallet bug.
+Evidence: testnet branch: 778c37f (J1+J2 fixes); staging-deploy.yml supports workflow_dispatch
+Due: When maintainer is available.
+
+---
 Context: Kick off staging readiness initiative for Stellar TestNet + Azure.
 Request: Each agent review its scope and post first risk report.
 Evidence: docs/staging-readiness-and-agent-plan.md

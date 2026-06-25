@@ -48,10 +48,10 @@
 - [TODO] I3: PM opens testnet→main PR only after QA_RELEASE_AGENT posts explicit PASS.
 
 ## Milestone J: QA-identified bug fixes and gap closures (2026-06-25)
-- [TODO] J1: Fix wallet provisioning on web — `expo-secure-store` incompatibility in `WalletContext.tsx`. Owner: MOBILE_APP_AGENT. Branch off testnet.
-- [TODO] J2: Fix auth error message specificity (AU2/AU3) — add client-side empty URL and non-HTTPS validation in sign-in form. Owner: MOBILE_APP_AGENT. Branch off testnet.
+- [DONE] J1: Fix wallet provisioning on web — Platform.OS === 'web' guard in WalletContext.tsx skips expo-secure-store on web. (commit 778c37f, testnet)
+- [DONE] J2: Fix auth error message specificity — client-side empty URL and non-HTTPS checks in index.tsx. (commit 778c37f, testnet)
 - [TODO] J3: Add favicon to Expo web export. Owner: MOBILE_APP_AGENT. Low priority.
-- [TODO] J4: Complete authenticated UAT journeys (AU1 full, AU4, FE1, LM1, LM2, WR2, EO1, EO2) — requires live Solid Pod credentials. Owner: QA_RELEASE_AGENT (runs after J1 fix + user provides credentials).
+- [TODO] J4: Complete authenticated UAT journeys (AU1 full, AU4, FE1, LM1, LM2, WR2, EO1, EO2) — requires staging redeploy of J1/J2 fixes + live Solid Pod credentials. Owner: QA_RELEASE_AGENT.
 - [TODO] J5: DOCS_AGENT to document confirmed functionality, gaps, and resolution strategy per inbox message [2026-06-25 21:15 UTC]. Owner: DOCS_AGENT.
 - [DONE] G1: Author open-source community health files (LICENSE, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, issue templates, PR template). (merged to main)
 - [DONE] G2: Build GitHub Wiki with architecture overview, feature guides, getting-started, API references, and roadmap. (merged to main with wiki/_Sidebar.md navigation)
