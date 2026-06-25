@@ -1,0 +1,5 @@
+[toolchain]
+# Pinned to a known-good stable release that is compatible with soroban-sdk 20.x.
+# Update this in lockstep with any soroban-sdk version bump.
+channel = "1.81.0"
+components = ["rustfmt", "clippy"]

@@ -391,3 +391,70 @@ Request: Proceed with next queued branch.
 Evidence: git merge --no-ff --no-edit agents/docs-agent/G3-playwright-walkthrough-screenshots-and-video
 Due: Next coordination checkpoint.
 
+---
+
+[2026-06-25 19:30 UTC] [QA_RELEASE_AGENT->PROJECT_MANAGER,ALL] [P0] [OPEN]
+Context: User-escalated incident — repeated GitHub Actions failures reported. Conducted full investigative sweep: all 6 workflow YAML files, pnpm lockfile, Cargo.lock, policy scripts, 20+ commit history on origin/main, and agent inbox evidence. NOTE: Direct access to GitHub Actions run logs was not possible (private repo, no authenticated browser session, no gh CLI). Analysis is code/evidence-derived.
+Request: PM to triage the findings below and assign remediation owners. Findings 1 and 2 require action before any further pushes to main.
+Evidence: .github/workflows/ci.yml; .github/workflows/configure-staging-domain.yml; pnpm-workspace.yaml (commit 15dcab3); packages/contracts/Cargo.lock; agent inbox (Namecheap failure thread)
+Due: Immediate — before next push to main.
+
+## QA_RELEASE_AGENT — GitHub Actions Failure Report
+**Incident date**: 2026-06-25  **Severity**: P0 (repeated CI/deploy failures on main)
+
+### FINDING 1 — CONFIRMED P0: `configure-staging-domain.yml` repeated failures
+**Workflow**: `.github/workflows/configure-staging-domain.yml`
+**Root cause**: Multiple manual workflow runs failed because the `NAMECHEAP_API_KEY` secret in GitHub does not correspond to a valid API key for any username attempted (steven-tomlinson, lockb0x, lockb0xllc). Either the key is wrong, or Namecheap API access is not enabled for that account.
+**Status**: Workaround in place — domain cutover succeeded via local self-hosted runner. The GitHub-hosted path remains permanently broken until the secret is corrected.
+**Fix**:
+1. Log into Namecheap → Profile → Tools → API Access. Copy the exact API Key shown.
+2. Confirm the Namecheap login username (top-right in dashboard, not email).
+3. Update `NAMECHEAP_API_KEY` and `NAMECHEAP_API_USER` in GitHub repo Settings → Secrets/Variables.
+4. Allowlist GitHub Actions egress IPs in Namecheap API access, or set `NAMECHEAP_CLIENT_IP` to a known allowlisted IP.
+**Owner**: AZURE_PLATFORM_AGENT
+
+### FINDING 2 — HIGH RISK: Invalid pnpm workspace config key `allowBuilds`
+**Workflow**: `.github/workflows/ci.yml` — step `pnpm install --frozen-lockfile`
+**Introduced by**: commit `15dcab3` — modified `pnpm-workspace.yaml`
+**Details**: `allowBuilds: esbuild: true` was added to `pnpm-workspace.yaml`. This is not a valid pnpm v9 configuration key. The correct pnpm v9 key is `onlyBuiltDependencies` (list format). pnpm v11 silently ignores unknown workspace YAML keys; pnpm v9 (used in CI via `pnpm/action-setup@v4 version: 9`) may raise `ERR_PNPM_CONFIG_ERROR` or silently ignore it. If pnpm v9 errors, **every CI run since `15dcab3` fails at the install step**.
+**Fix** (one-line change to `pnpm-workspace.yaml`):
+```yaml
+packages:
+  - 'packages/*'
+onlyBuiltDependencies:
+  - esbuild
+```
+**Owner**: PROJECT_MANAGER / any dev
+
+### FINDING 3 — MEDIUM RISK: Unpinned Rust toolchain + soroban-sdk v20 age
+**Workflow**: `.github/workflows/ci.yml` — step `pnpm test:contracts` (`cargo test`)
+**Details**: CI uses `dtolnay/rust-toolchain@stable` (always latest stable Rust). soroban-sdk 20.3.0 is ~18 months old. Breaking changes in recent stable Rust releases (proc-macro changes, stricter lints) can silently break old SDK crates.
+**Fix**: Add `packages/contracts/rust-toolchain.toml` pinning a known-good version, e.g.:
+```toml
+[toolchain]
+channel = "1.81.0"
+```
+**Owner**: STELLAR_CONTRACT_AGENT
+
+### FINDING 4 — PROCESS: No branch protection — CI bypass via direct push
+**Details**: All Milestone G commits (12+ in one session) were pushed directly to `origin/main` without PR or CI gate. This means code reaches production-candidate branch regardless of CI status. The QA_RELEASE_AGENT had no opportunity to gate or flag failures.
+**Fix**: Enable branch protection on `main`: require `CI / Validate, Lint, Type-check, Test` to pass; require PRs; disallow force-push.
+**Owner**: PROJECT_MANAGER
+
+### Local reproduction results
+| Check | Result |
+|---|---|
+| pnpm install --frozen-lockfile | PASS |
+| pnpm lint | PASS (warnings only) |
+| pnpm type-check | PASS |
+| pnpm test (jest) | PASS (23 tests) |
+| policy:validate-env | PASS (all 5 guards present) |
+| cargo test | FAIL (local Windows: MSVC linker absent — expected; should PASS on ubuntu-latest) |
+
+### Immediate action order
+1. **Fix Finding 2** (`allowBuilds` → `onlyBuiltDependencies`) — 1-line change, push to main via PR, verify CI green.
+2. **Fix Finding 1** (Namecheap secrets) — re-run `configure-staging-domain.yml` to validate.
+3. **Fix Finding 3** (pin Rust toolchain) — add `rust-toolchain.toml`.
+4. **Enable branch protection** (Finding 4).
+Due: Findings 1+2 must be resolved before next staging deploy attempt.
+
