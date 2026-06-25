@@ -3,6 +3,14 @@ name: Configure Staging Domain
 on:
   workflow_dispatch:
     inputs:
+      dns_mode:
+        description: DNS management mode
+        required: true
+        default: namecheap
+        type: choice
+        options:
+          - namecheap
+          - preconfigured
       namecheap_api_user:
         description: Namecheap API user/account username
         required: false
@@ -62,10 +70,33 @@ jobs:
           fi
           echo "hostname=$hostname" >> "$GITHUB_OUTPUT"
 
+      - name: Print DNS cutover values
+        run: |
+          echo "Static Web App CNAME target: ${{ steps.swa.outputs.hostname }}"
+          echo "Namecheap record: staging.nodezero.social CNAME ${{ steps.swa.outputs.hostname }}"
+          echo "Azure DNS delegation option for nodezero.social:"
+          az network dns zone show \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name nodezero.social \
+            --query nameServers \
+            -o tsv || true
+
       - name: Configure Namecheap CNAME
+        if: ${{ inputs.dns_mode == 'namecheap' }}
         env:
           NAMECHEAP_TARGET: ${{ steps.swa.outputs.hostname }}
         run: node scripts/dns/configure-namecheap-staging-domain.mjs
+
+      - name: Verify preconfigured DNS
+        if: ${{ inputs.dns_mode == 'preconfigured' }}
+        run: |
+          expected="${{ steps.swa.outputs.hostname }}"
+          observed="$(dig +short CNAME "$STAGING_CUSTOM_DOMAIN" | sed 's/\.$//' | head -n1)"
+          if [ "$observed" != "$expected" ]; then
+            echo "$STAGING_CUSTOM_DOMAIN must be a CNAME to $expected before Azure can bind the hostname."
+            echo "Observed CNAME: ${observed:-<none>}"
+            exit 1
+          fi
 
       - name: Bind custom hostname in Azure Static Web Apps
         run: |
