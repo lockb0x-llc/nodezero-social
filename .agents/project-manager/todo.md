@@ -14,20 +14,20 @@
 ## Milestone B: Functional completion
 - [IN_PROGRESS] B1: Replace feed placeholder with Solid-based aggregation.
 - [IN_PROGRESS] B2: Replace local chat placeholder with live P2P relay flow.
-- [IN_PROGRESS] B3: Deliver relay backend for SignalRelay endpoint.
-- [IN_PROGRESS] B4: Make Solid auth cross-platform safe for Expo web/native.
+- [DONE] B3: Deliver relay backend for SignalRelay endpoint. (merged to main: /health + /healthz + Dockerfile)
+- [DONE] B4: Make Solid auth cross-platform safe for Expo web/native. (merged to main: IdP validation, env coherence, safer redirect)
 
 ## Milestone C: Chain and ZK reliability
-- [IN_PROGRESS] C1: Harden contract deployment sequence and initialization.
+- [DONE] C1: Harden contract deployment sequence and initialization. (merged to main: Lockb0x initialization-proof gate)
 - [IN_PROGRESS] C2: Publish artifact manifest validation and checksum process.
 
 ## Milestone D: Azure staging readiness
 - [IN_PROGRESS] D1: Add custom domain/TLS configuration runbook.
-- [TODO] D2: Add SWA publish workflow from Expo web build.
+- [DONE] D2: Add SWA publish workflow from Expo web build. (merged to main: build:web + SWA publish + landing smoke)
 - [TODO] D3: Add monitoring/alerting and cost guardrails.
 
 ## Milestone E: Validation and launch
-- [TODO] E1: End-to-end smoke suite and manual UAT checklist.
+- [DONE] E1: End-to-end smoke suite and manual UAT checklist. (merged to main: scripts/qa/staging-smoke.sh + docs/staging-uat-checklist.md + qa:smoke)
 - [TODO] E2: Staging sign-off and release announcement.
 
 ## Milestone F: Multi-agent parallel delivery ops
