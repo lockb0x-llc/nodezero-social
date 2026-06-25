@@ -206,3 +206,9 @@ Request: Use the live staging URL for manual UAT. Complete docs/staging-uat-chec
 Evidence: GitHub Actions run #12 succeeded; https://mango-glacier-0abee9e0f.7.azurestaticapps.net returns 200 for /, /feed, /local, /profile, and /settings; Azure resource group rg-nodezero-social-staging-testnet provisioned.
 Due: Manual UAT sign-off checkpoint.
 
+[2026-06-25 05:35 UTC] [PROJECT_MANAGER->AZURE_PLATFORM_AGENT] [P1] [NEEDS-INFO]
+Context: Azure DNS has been provisioned for nodezero.social and the staging CNAME exists in Azure DNS, but public DNS is still delegated to Namecheap nameservers.
+Request: Provide the correct Namecheap API user/username and confirm API access is enabled for the NAMECHEAP_API_KEY secret, or change registrar nameservers to Azure DNS.
+Evidence: Azure DNS zone nodezero.social created with staging CNAME -> mango-glacier-0abee9e0f.7.azurestaticapps.net; Azure nameservers ns1-09.azure-dns.com, ns2-09.azure-dns.net, ns3-09.azure-dns.org, ns4-09.azure-dns.info; Namecheap workflow attempts using steven-tomlinson, lockb0x, and lockb0xllc all failed with "API Key is invalid or API access has not been enabled".
+Due: Custom-domain cutover checkpoint.
+
