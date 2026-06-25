@@ -51,8 +51,10 @@
 - [DONE] J1: Fix wallet provisioning on web — Platform.OS === 'web' guard in WalletContext.tsx skips expo-secure-store on web. (commit 778c37f, testnet)
 - [DONE] J2: Fix auth error message specificity — client-side empty URL and non-HTTPS checks in index.tsx. (commit 778c37f, testnet)
 - [TODO] J3: Add favicon to Expo web export. Owner: MOBILE_APP_AGENT. Low priority.
-- [TODO] J4: Complete authenticated UAT journeys (AU1 full, AU4, FE1, LM1, LM2, WR2, EO1, EO2) — requires staging redeploy of J1/J2 fixes + live Solid Pod credentials. Owner: QA_RELEASE_AGENT.
-- [TODO] J5: DOCS_AGENT to document confirmed functionality, gaps, and resolution strategy per inbox message [2026-06-25 21:15 UTC]. Owner: DOCS_AGENT.
+- [TODO] J4: Complete LM1/LM2/WR2/AU4 authenticated UAT — requires X5 fix first.
+- [TODO] J5: DOCS_AGENT to document confirmed functionality and gaps.
+- [TODO] J6 (P1): Add web navigation UI — authenticated web users stuck on feed with no way to access /local, /profile, /settings (X5). Add tab bar or nav menu for web in _layout.tsx. Owner: MOBILE_APP_AGENT.
+- [TODO] J7 (P1): Fix Solid session persistence — @inrupt/solid-client-authn-browser session is in-memory only; any navigation away from OIDC callback page loses auth (X6). Owner: MOBILE_APP_AGENT.
 - [DONE] G1: Author open-source community health files (LICENSE, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, issue templates, PR template). (merged to main)
 - [DONE] G2: Build GitHub Wiki with architecture overview, feature guides, getting-started, API references, and roadmap. (merged to main with wiki/_Sidebar.md navigation)
 - [DONE] G3: Playwright-validated walkthroughs with screenshots and video embedded in Wiki pages. (merged to main with docs/screenshots/README.md index)
