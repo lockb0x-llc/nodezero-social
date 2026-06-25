@@ -1,118 +1,38 @@
 [
   {
-    "id": "D2",
-    "agent": "AZURE_PLATFORM_AGENT",
-    "title": "staging swa publish workflow",
-    "objective": "Implement GitHub Actions flow that builds Expo web and publishes to Azure staging-testnet with smoke validation.",
-    "acceptanceCriteria": [
-      "Workflow builds web artifact in CI.",
-      "Workflow deploys artifact to staging target only.",
-      "Post-deploy smoke checks fail fast on unhealthy routes."
-    ],
-    "dependsOn": [
-      "D1"
-    ]
-  },
-  {
-    "id": "C1",
-    "agent": "STELLAR_CONTRACT_AGENT",
-    "title": "contract init verification",
-    "objective": "Harden testnet deployment script to verify Lockb0x initialization and fail deployment on inconsistent on-chain state.",
-    "acceptanceCriteria": [
-      "Script enforces initialization checks.",
-      "Manifest captures initialization verification state.",
-      "Failure paths return non-zero exit codes."
-    ],
-    "dependsOn": []
-  },
-  {
-    "id": "B3",
-    "agent": "P2P_RELAY_AGENT",
-    "title": "relay service staging deploy",
-    "objective": "Deploy relay service to staging infrastructure with health endpoint and integration verification from mobile local messaging flow.",
-    "acceptanceCriteria": [
-      "Relay service has deployable target for staging.",
-      "Health endpoint is reachable from smoke checks.",
-      "Local messaging uses staging relay endpoint in staging profile."
-    ],
-    "dependsOn": [
-      "D1"
-    ]
-  },
-  {
-    "id": "B4",
-    "agent": "MOBILE_APP_AGENT",
-    "title": "solid auth release hardening",
-    "objective": "Complete cross-platform Solid auth runtime checks and ensure profile/env coherence for web and native staging builds.",
-    "acceptanceCriteria": [
-      "Web/native auth flow smoke passes.",
-      "Profile mismatch paths emit actionable errors.",
-      "Env profile constraints are validated in runtime startup."
-    ],
-    "dependsOn": [
-      "B1",
-      "B2"
-    ]
-  },
-  {
-    "id": "E1",
+    "id": "J4",
     "agent": "QA_RELEASE_AGENT",
-    "title": "staging smoke suite",
-    "objective": "Create end-to-end smoke suite and manual UAT checklist for staging-testnet release gate.",
+    "title": "authenticated UAT re-run",
+    "objective": "Re-run authenticated UAT journeys after staging deploy of J1/J2/J6/J7 fixes. Verify web nav, session persistence, and all protected routes.",
     "acceptanceCriteria": [
-      "Smoke script covers auth, feed, local messaging, and wallet registration.",
-      "Manual checklist is documented and executable by non-authors.",
-      "CI can run smoke suite against staging domain."
+      "AU1 confirmed PASS on deployed fix build.",
+      "Web nav bar visible after auth on /feed.",
+      "Direct URL to /settings, /local, /profile works without redirect.",
+      "AU4 sign-out confirmed.",
+      "UAT checklist sign-off decision updated."
     ],
-    "dependsOn": [
-      "D2",
-      "B3",
-      "C1"
-    ]
+    "dependsOn": ["staging-deploy-from-testnet"]
   },
   {
-    "id": "G1",
+    "id": "J5",
     "agent": "DOCS_AGENT",
-    "title": "open-source community health files",
-    "objective": "Create all GitHub Community Standards files (LICENSE, CONTRIBUTING.md, CODE_OF_CONDUCT.md, SECURITY.md, issue templates, PR template, CODEOWNERS) so the repo passes the GitHub Community Standards checklist before going public.",
+    "title": "document functionality and gaps",
+    "objective": "Update wiki pages with confirmed functionality from authenticated UAT. Document X5/X6 as resolved after J6/J7 fix.",
     "acceptanceCriteria": [
-      "LICENSE, CONTRIBUTING.md, CODE_OF_CONDUCT.md, SECURITY.md present and non-empty.",
-      "Bug report and feature request issue templates present under .github/ISSUE_TEMPLATE/.",
-      "PR template present at .github/pull_request_template.md.",
-      "CODEOWNERS routes docs changes to DOCS_AGENT scope.",
-      "All GitHub Community Standards indicators confirmed green."
+      "wiki/Mobile-App.md updated with web nav section.",
+      "wiki/Embedded-Wallet.md reflects session persistence status.",
+      "Gap analysis reflects current fix state."
+    ],
+    "dependsOn": ["J4"]
+  },
+  {
+    "id": "J3",
+    "agent": "MOBILE_APP_AGENT",
+    "title": "add favicon to web export",
+    "objective": "Add favicon.png to Expo web config to fix 404 on favicon.ico.",
+    "acceptanceCriteria": [
+      "favicon.ico no longer 404 in browser."
     ],
     "dependsOn": []
-  },
-  {
-    "id": "G2",
-    "agent": "DOCS_AGENT",
-    "title": "github wiki architecture and feature docs",
-    "objective": "Author comprehensive GitHub Wiki covering all packages, architecture, getting-started guide, contributing workflow, security model, and project roadmap. Maintain _Sidebar.md for navigation.",
-    "acceptanceCriteria": [
-      "Wiki pages exist for every package in packages/ plus cross-cutting topics.",
-      "_Sidebar.md renders correct hierarchical navigation.",
-      "Every page cross-links to relevant source files and docs/ references.",
-      "Home page includes architecture diagram and quick links."
-    ],
-    "dependsOn": [
-      "G1"
-    ]
-  },
-  {
-    "id": "G3",
-    "agent": "DOCS_AGENT",
-    "title": "playwright walkthrough screenshots and video",
-    "objective": "Use Playwright browser automation to validate all user journeys end-to-end, capturing screenshots and video walkthroughs. Embed visual evidence in Wiki pages and produce a docs/screenshots/README.md index.",
-    "acceptanceCriteria": [
-      "Every user journey in staging-uat-checklist.md has at least one screenshot in docs/screenshots/.",
-      "Multi-step journeys have a video recording in docs/videos/.",
-      "docs/screenshots/README.md index lists all artifacts with journey cross-references.",
-      "Screenshots are embedded inline in the corresponding Wiki pages."
-    ],
-    "dependsOn": [
-      "G2",
-      "E1"
-    ]
   }
 ]
