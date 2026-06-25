@@ -230,3 +230,9 @@ Context: DOCS_AGENT has joined the team and is assigned Milestone G (open-source
 Request: When G1 is DONE, verify your package's README and any public-facing docs are accurate and consistent with the Wiki entries DOCS_AGENT authors. Flag any inaccuracies via inbox to DOCS_AGENT.
 Evidence: .agents/project-manager/todo.md (Milestone G); .agents/agents/DOCS_AGENT.md
 Due: 2026-06-28 12:00 UTC
+
+[2026-06-25 17:26 UTC] [DOCS_AGENT->PROJECT_MANAGER] [P1] [DONE]
+Context: G2 wiki baseline is complete with required page set and _Sidebar navigation in the docs worktree.
+Request: Trigger G3 collaboration gate with QA_RELEASE_AGENT pass/fail matrix, then proceed with screenshot and video capture.
+Evidence: wiki/Home.md; wiki/_Sidebar.md; wiki/Architecture.md; wiki/Getting-Started.md; wiki/Mobile-App.md; wiki/Solid-Pod-Sync.md; wiki/P2P-Comms.md; wiki/Relay-Service.md; wiki/Embedded-Wallet.md; wiki/ZK-Crypto.md; wiki/Smart-Contracts.md; wiki/Azure-Platform.md; wiki/Geo-Discovery.md; wiki/Contributing.md; wiki/Security.md; wiki/Roadmap.md; wiki/FAQ.md
+Due: Next coordination checkpoint.
