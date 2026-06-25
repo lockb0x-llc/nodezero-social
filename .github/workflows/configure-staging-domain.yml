@@ -81,6 +81,19 @@ jobs:
             --query nameServers \
             -o tsv || true
 
+      - name: Validate Namecheap credential inputs
+        if: ${{ inputs.dns_mode == 'namecheap' }}
+        run: |
+          if [ -z "$NAMECHEAP_API_KEY" ]; then
+            echo "NAMECHEAP_API_KEY GitHub secret is required."
+            exit 1
+          fi
+          if [ -z "$NAMECHEAP_API_USER" ] || [ -z "$NAMECHEAP_USERNAME" ]; then
+            echo "NAMECHEAP_API_USER / NAMECHEAP_USERNAME is required."
+            echo "Provide workflow input namecheap_api_user or set repo variable/secret NAMECHEAP_API_USER."
+            exit 1
+          fi
+
       - name: Configure Namecheap CNAME
         if: ${{ inputs.dns_mode == 'namecheap' }}
         env:
