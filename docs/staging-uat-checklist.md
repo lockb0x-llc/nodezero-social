@@ -102,10 +102,15 @@ code.
 
 ## Authentication status for re-test
 
-- Solid Pod: `https://solidcommunity.net/nodezero/` — CONFIRMED LIVE
-- Email: `admin@nodezero.social`
-- Password reset email sent to `admin@nodezero.social` on 2026-06-25 via solidcommunity.net forgot-password flow
-- When reset link arrives: set password to value stored in `docs/dev-only/nodezero pod solidcommunity-net.txt`
+- Solid Pod: `https://nodezero.solidcommunity.net/` — CONFIRMED LIVE ✅
+- WebID: `https://nodezero.solidcommunity.net/profile/card#me` — CONFIRMED VIA TOKEN AUTH ✅
+- IdP URL for app sign-in form: `https://solidcommunity.net/` ✅
+- CSS token credentials: CONFIRMED WORKING — 200 OK Bearer token from `.oidc/token` ✅
+- Pod structure verified: `README`, `inbox/`, `public/`, `profile/`, `settings/`, `robots.txt` ✅
+- Profile card: `foaf:Person` with `solid:oidcIssuer`, no custom display name yet (fresh pod)
+- Social graph (`/social/`): not yet created — pending B1/B2 implementation
+- Browser OAuth (web sign-in): requires web password — reset email sent to `admin@nodezero.social` 2026-06-25
+- When reset link received: set password to value in `docs/dev-only/nodezero pod solidcommunity-net.txt`
 - After password reset + staging redeploy: re-run QA starting at AU1 to complete all authenticated journeys
 
 
