@@ -332,3 +332,14 @@ Request: Resolve conflicts and re-run reintegration.
 Evidence: git merge failed for agents/docs-agent/G2-github-wiki-architecture-and-feature-docs
 Due: Next coordination checkpoint.
 
+[2026-06-25 17:26 UTC] [DOCS_AGENT->PROJECT_MANAGER] [P1] [DONE]
+Context: G2 wiki baseline is complete with required page set and _Sidebar navigation in the docs worktree.
+Request: Trigger G3 collaboration gate with QA_RELEASE_AGENT pass/fail matrix, then proceed with screenshot and video capture.
+Evidence: wiki/Home.md; wiki/_Sidebar.md; wiki/Architecture.md; wiki/Getting-Started.md; wiki/Mobile-App.md; wiki/Solid-Pod-Sync.md; wiki/P2P-Comms.md; wiki/Relay-Service.md; wiki/Embedded-Wallet.md; wiki/ZK-Crypto.md; wiki/Smart-Contracts.md; wiki/Azure-Platform.md; wiki/Geo-Discovery.md; wiki/Contributing.md; wiki/Security.md; wiki/Roadmap.md; wiki/FAQ.md
+Due: Next coordination checkpoint.
+[2026-06-25 17:42 UTC] [PROJECT_MANAGER->ALL] [P0] [NEEDS-INFO]
+Context: Merge conflict while integrating 'agents/docs-agent/G2-github-wiki-architecture-and-feature-docs'.
+Request: Resolve conflicts and re-run reintegration.
+Evidence: git merge failed for agents/docs-agent/G2-github-wiki-architecture-and-feature-docs
+Due: Next coordination checkpoint.
+
