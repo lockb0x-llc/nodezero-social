@@ -53,8 +53,8 @@
 - [TODO] J3: Add favicon to Expo web export. Owner: MOBILE_APP_AGENT. Low priority.
 - [TODO] J4: Complete LM1/LM2/WR2/AU4 authenticated UAT — requires X5 fix first.
 - [TODO] J5: DOCS_AGENT to document confirmed functionality and gaps.
-- [TODO] J6 (P1): Add web navigation UI — authenticated web users stuck on feed with no way to access /local, /profile, /settings (X5). Add tab bar or nav menu for web in _layout.tsx. Owner: MOBILE_APP_AGENT.
-- [TODO] J7 (P1): Fix Solid session persistence — @inrupt/solid-client-authn-browser session is in-memory only; any navigation away from OIDC callback page loses auth (X6). Owner: MOBILE_APP_AGENT.
+- [DONE] J6 (P1): Web navigation bar added to _layout.tsx — WebNavBar renders on Platform.OS==='web' when isLoggedIn. Feed/Local/Profile/Settings links with active state. (commit 9118ac7, merged to testnet)
+- [DONE] J7 (P1): index.tsx redirect now guards on pathname==='/' — prevents authenticated users at /settings, /local, /profile from being bounced to /feed. (commit 9118ac7, merged to testnet)
 - [DONE] G1: Author open-source community health files (LICENSE, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, issue templates, PR template). (merged to main)
 - [DONE] G2: Build GitHub Wiki with architecture overview, feature guides, getting-started, API references, and roadmap. (merged to main with wiki/_Sidebar.md navigation)
 - [DONE] G3: Playwright-validated walkthroughs with screenshots and video embedded in Wiki pages. (merged to main with docs/screenshots/README.md index)

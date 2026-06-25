@@ -770,3 +770,76 @@ Push `45263d7` to `origin/main` triggers a new `CI / Validate, Lint, Type-check,
 
 Due: H3 and H4 require maintainer action before the next staging deploy attempt. H1/H2 are live on main and being verified by GitHub Actions now.
 
+[2026-06-25 23:04 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item B3 ("relay service staging deploy") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-25 23:04 UTC] [PROJECT_MANAGER->MOBILE_APP_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item B4 ("solid auth release hardening") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=2026-06-25 16:32
+Due: Next coordination checkpoint.
+
+[2026-06-25 23:04 UTC] [PROJECT_MANAGER->STELLAR_CONTRACT_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item C1 ("contract init verification") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=2026-06-25 16:32
+Due: Next coordination checkpoint.
+
+[2026-06-25 23:04 UTC] [PROJECT_MANAGER->AZURE_PLATFORM_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item D2 ("staging swa publish workflow") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=2026-06-25 16:32
+Due: Next coordination checkpoint.
+
+[2026-06-25 23:04 UTC] [PROJECT_MANAGER->QA_RELEASE_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item E1 ("staging smoke suite") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=2026-06-25 17:27
+Due: Next coordination checkpoint.
+
+[2026-06-25 23:04 UTC] [PROJECT_MANAGER->DOCS_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item G1 ("open-source community health files") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=2026-06-25 17:27
+Due: Next coordination checkpoint.
+
+[2026-06-25 23:04 UTC] [PROJECT_MANAGER->DOCS_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item G2 ("github wiki architecture and feature docs") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=2026-06-25 17:27
+Due: Next coordination checkpoint.
+
+[2026-06-25 23:04 UTC] [PROJECT_MANAGER->DOCS_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item G3 ("playwright walkthrough screenshots and video") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=2026-06-25 17:27
+Due: Next coordination checkpoint.
+
+
+[2026-06-25 23:00 UTC] [PROJECT_MANAGER->MOBILE_APP_AGENT] [P1] [OPEN]
+Context: QA authenticated run identified two P1 blockers on the web build. Must fix before E2 sign-off.
+Request: Deliver J6 (web navigation UI) and J7 (Solid session persistence) on branch agents/mobile-app-agent/J6J7-web-nav-and-session. Working in testnet sub-branch.
+Evidence: docs/staging-uat-checklist.md (X5, X6); testnet branch 207140b
+Due: Immediate - blocking all authenticated UAT journeys.
+
+[2026-06-25 23:00 UTC] [PROJECT_MANAGER->DOCS_AGENT] [P1] [OPEN]
+Context: J5 documentation gap analysis committed to testnet. Wiki pages for Mobile-App and Embedded-Wallet updated.
+Request: Review wiki/Mobile-App.md and wiki/Embedded-Wallet.md and wiki/Solid-Pod-Sync.md for accuracy. Add X5/X6 gap entries to appropriate wiki pages once J6/J7 are fixed.
+Evidence: testnet commits 778c37f, d1a5d0b, cc8aa3d, 207140b
+Due: After J6/J7 are fixed.
+
+
+---
+
+[2026-06-25 23:10 UTC] [MOBILE_APP_AGENT->PROJECT_MANAGER,QA_RELEASE_AGENT] [P1] [DONE]
+Context: J6 and J7 implemented and merged to testnet (commit 9118ac7). Validation: lint 0 errors, type-check clean, all tests pass.
+Request: PM to trigger staging-deploy from testnet. QA_RELEASE_AGENT to re-run authenticated UAT after deploy to verify web nav and direct URL navigation.
+Evidence: packages/mobile-app/app/_layout.tsx (WebNavBar); packages/mobile-app/app/index.tsx (pathname guard); testnet branch merged.
+
+Changes:
+- J6: WebNavBar component in _layout.tsx renders on web when isLoggedIn — Feed/Local/Profile/Settings links with active-state highlight. Platform.OS === 'web' guard ensures it only appears on browser.
+- J7: index.tsx redirect guard now checks pathname === '/' before firing — prevents authenticated users arriving at /settings, /local, /profile via URL from being redirected to /feed.
+
