@@ -45,7 +45,7 @@ pass "Staging base URL uses https ($BASE_URL)."
 LANDING="$(fetch_body "$BASE_URL/")" || fail "Landing page not reachable at $BASE_URL/."
 echo "$LANDING" | grep -q "NodeZero" || fail "Landing page missing 'NodeZero' brand marker."
 echo "$LANDING" | grep -q 'id="root"' || fail "Landing page missing Expo root element."
-BUNDLE_PATH="$(printf '%s' "$LANDING" | grep -Eo 'src="[^"]+/_expo/static/js/web/[^"]+\.js"' | head -n1 | sed -E 's/^src="([^"]+)"$/\1/')"
+BUNDLE_PATH="$(printf '%s' "$LANDING" | sed -nE 's/.*src="([^"]*\/_expo\/static\/js\/web\/[^"]+\.js)".*/\1/p' | head -n1 || true)"
 if [[ -z "$BUNDLE_PATH" ]]; then
   fail "Landing page missing Expo web bundle script."
 fi
