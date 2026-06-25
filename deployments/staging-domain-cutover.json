@@ -1,7 +1,7 @@
 {
   "environment": "staging-testnet",
   "customHostname": "staging.nodezero.social",
-  "status": "blocked-on-namecheap-api-access",
+  "status": "complete",
   "azure": {
     "subscriptionId": "1f002267-9614-4a2a-a0e0-217493d6d011",
     "resourceGroup": "rg-nodezero-social-staging-testnet",
@@ -27,7 +27,8 @@
       "dns1.registrar-servers.com",
       "dns2.registrar-servers.com"
     ],
-    "stagingRecordPresent": false
+    "stagingRecordPresent": true,
+    "stagingCname": "mango-glacier-0abee9e0f.7.azurestaticapps.net"
   },
   "namecheap": {
     "domain": "nodezero.social",
@@ -58,12 +59,24 @@
       "steven.tomlinson@gmail.com"
     ],
     "lastObservedError": "API Key is invalid or API access has not been enabled",
-    "conclusion": "The GitHub secret NAMECHEAP_API_KEY is present, but it is not usable with any inferred Namecheap account username. Namecheap API access may be disabled for the account, the key may belong to a different username, or the secret value may be incorrect."
+    "conclusion": "Namecheap API succeeded when run from an ephemeral local self-hosted runner using ApiUser/UserName pakana, so the account is IP-allowlisted. GitHub-hosted runners were rejected because their dynamic public IPs were not allowed."
   },
   "automation": {
     "workflow": ".github/workflows/configure-staging-domain.yml",
+    "localRunnerWorkflow": ".github/workflows/configure-staging-domain-local-runner.yml",
     "script": "scripts/dns/configure-namecheap-staging-domain.mjs",
     "runOnceCredentialIsFixed": "workflow_dispatch configure-staging-domain with dns_mode=namecheap and namecheap_api_user set to the Namecheap API user",
     "runOnceRegistrarDelegatesToAzureDns": "workflow_dispatch configure-staging-domain with dns_mode=preconfigured after nodezero.social nameservers are changed to the azureDnsNameServers values"
+  },
+  "validation": {
+    "azureStaticWebAppCustomDomainStatus": "Ready",
+    "httpsRoutes": [
+      "/",
+      "/feed",
+      "/local",
+      "/profile",
+      "/settings"
+    ],
+    "httpsStatus": 200
   }
 }
