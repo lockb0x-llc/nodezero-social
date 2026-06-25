@@ -89,12 +89,10 @@ jobs:
           fi
           echo "hostname=$STATIC_WEB_APP_HOSTNAME" >> "$GITHUB_OUTPUT"
 
-      - name: Smoke test landing page
+      - name: Run staging smoke suite
         env:
-          STATIC_WEB_APP_HOSTNAME: ${{ steps.hostname.outputs.hostname }}
-        run: |
-          curl -fsSL "https://$STATIC_WEB_APP_HOSTNAME" | grep -q "NodeZero"
-          curl -fsSL "https://$STATIC_WEB_APP_HOSTNAME" | grep -q "Sign in with Solid Pod"
+          STAGING_BASE_URL: https://${{ steps.hostname.outputs.hostname }}
+        run: pnpm qa:smoke
 
       - name: Staging deployment summary
-        run: echo "Staging infrastructure deployment, Expo web publish, and smoke tests completed."
+        run: echo "Staging infrastructure deployment, Expo web publish, and smoke suite completed."
