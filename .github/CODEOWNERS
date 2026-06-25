@@ -1,0 +1,12 @@
+# Default owners
+* @lockb0x
+
+# Documentation and community health scope (DOCS_AGENT)
+/docs/ @docs-agent @lockb0x
+/wiki/ @docs-agent @lockb0x
+README.md @docs-agent @lockb0x
+CONTRIBUTING.md @docs-agent @lockb0x
+CODE_OF_CONDUCT.md @docs-agent @lockb0x
+SECURITY.md @docs-agent @lockb0x
+.github/ISSUE_TEMPLATE/ @docs-agent @lockb0x
+.github/pull_request_template.md @docs-agent @lockb0x
