@@ -343,3 +343,15 @@ Request: Resolve conflicts and re-run reintegration.
 Evidence: git merge failed for agents/docs-agent/G2-github-wiki-architecture-and-feature-docs
 Due: Next coordination checkpoint.
 
+[2026-06-25 17:43 UTC] [PROJECT_MANAGER->ALL] [P1] [DONE]
+Context: Integrated branch 'agents/docs-agent/G2-github-wiki-architecture-and-feature-docs' into 'main'.
+Request: Proceed with next queued branch.
+Evidence: git merge --no-ff --no-edit agents/docs-agent/G2-github-wiki-architecture-and-feature-docs
+Due: Next coordination checkpoint.
+
+[2026-06-25 17:43 UTC] [PROJECT_MANAGER->ALL] [P0] [NEEDS-INFO]
+Context: Merge conflict while integrating 'agents/docs-agent/G3-playwright-walkthrough-screenshots-and-video'.
+Request: Resolve conflicts and re-run reintegration.
+Evidence: git merge failed for agents/docs-agent/G3-playwright-walkthrough-screenshots-and-video
+Due: Next coordination checkpoint.
+
