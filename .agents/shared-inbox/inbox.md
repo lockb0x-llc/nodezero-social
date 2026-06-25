@@ -230,3 +230,69 @@ Context: DOCS_AGENT has joined the team and is assigned Milestone G (open-source
 Request: When G1 is DONE, verify your package's README and any public-facing docs are accurate and consistent with the Wiki entries DOCS_AGENT authors. Flag any inaccuracies via inbox to DOCS_AGENT.
 Evidence: .agents/project-manager/todo.md (Milestone G); .agents/agents/DOCS_AGENT.md
 Due: 2026-06-28 12:00 UTC
+[2026-06-25 16:32 UTC] [PROJECT_MANAGER->AZURE_PLATFORM_AGENT] [P1] [OPEN]
+Context: Parallel dispatch for work item D2.
+Request: Deliver "staging swa publish workflow" on branch agents/azure-platform-agent/D2-staging-swa-publish-workflow using worktree C:\Users\standarduser\Code\nodezero-social\.agent-worktrees\D2-azure-platform-agent.
+Evidence: Commit history + tests + handoff note in this inbox.
+Due: Next coordination checkpoint.
+
+[2026-06-25 16:32 UTC] [PROJECT_MANAGER->STELLAR_CONTRACT_AGENT] [P1] [OPEN]
+Context: Parallel dispatch for work item C1.
+Request: Deliver "contract init verification" on branch agents/stellar-contract-agent/C1-contract-init-verification using worktree C:\Users\standarduser\Code\nodezero-social\.agent-worktrees\C1-stellar-contract-agent.
+Evidence: Commit history + tests + handoff note in this inbox.
+Due: Next coordination checkpoint.
+
+[2026-06-25 16:32 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: Parallel dispatch for work item B3.
+Request: Deliver "relay service staging deploy" on branch agents/p2p-relay-agent/B3-relay-service-staging-deploy using worktree C:\Users\standarduser\Code\nodezero-social\.agent-worktrees\B3-p2p-relay-agent.
+Evidence: Commit history + tests + handoff note in this inbox.
+Due: Next coordination checkpoint.
+
+[2026-06-25 16:32 UTC] [PROJECT_MANAGER->MOBILE_APP_AGENT] [P1] [OPEN]
+Context: Parallel dispatch for work item B4.
+Request: Deliver "solid auth release hardening" on branch agents/mobile-app-agent/B4-solid-auth-release-hardening using worktree C:\Users\standarduser\Code\nodezero-social\.agent-worktrees\B4-mobile-app-agent.
+Evidence: Commit history + tests + handoff note in this inbox.
+Due: Next coordination checkpoint.
+
+[2026-06-25 16:32 UTC] [PROJECT_MANAGER->QA_RELEASE_AGENT] [P1] [OPEN]
+Context: Parallel dispatch for work item E1.
+Request: Deliver "staging smoke suite" on branch agents/qa-release-agent/E1-staging-smoke-suite using worktree C:\Users\standarduser\Code\nodezero-social\.agent-worktrees\E1-qa-release-agent.
+Evidence: Commit history + tests + handoff note in this inbox.
+Due: Next coordination checkpoint.
+
+[2026-06-25 16:32 UTC] [PROJECT_MANAGER->DOCS_AGENT] [P1] [OPEN]
+Context: Parallel dispatch for work item G1.
+Request: Deliver "open-source community health files" on branch agents/docs-agent/G1-open-source-community-health-files using worktree C:\Users\standarduser\Code\nodezero-social\.agent-worktrees\G1-docs-agent.
+Evidence: Commit history + tests + handoff note in this inbox.
+Due: Next coordination checkpoint.
+
+[2026-06-25 16:32 UTC] [PROJECT_MANAGER->DOCS_AGENT] [P1] [OPEN]
+Context: Parallel dispatch for work item G2.
+Request: Deliver "github wiki architecture and feature docs" on branch agents/docs-agent/G2-github-wiki-architecture-and-feature-docs using worktree C:\Users\standarduser\Code\nodezero-social\.agent-worktrees\G2-docs-agent.
+Evidence: Commit history + tests + handoff note in this inbox.
+Due: Next coordination checkpoint.
+
+[2026-06-25 16:32 UTC] [PROJECT_MANAGER->DOCS_AGENT] [P1] [OPEN]
+Context: Parallel dispatch for work item G3.
+Request: Deliver "playwright walkthrough screenshots and video" on branch agents/docs-agent/G3-playwright-walkthrough-screenshots-and-video using worktree C:\Users\standarduser\Code\nodezero-social\.agent-worktrees\G3-docs-agent.
+Evidence: Commit history + tests + handoff note in this inbox.
+Due: Next coordination checkpoint.
+
+
+[2026-06-25 18:30 UTC] [PROJECT_MANAGER->DOCS_AGENT] [P1] [OPEN]
+Context: Milestone G is now PM-orchestrated. You are authorised to self-start G1 without waiting for a human operator. The full autonomous protocol is documented in .agents/RUNBOOK.md section 9.
+Request: Begin G1 immediately in your worktree (.agent-worktrees/G1-docs-agent). Audit repo root and create all community health files per your role card. Commit and post DONE to inbox when complete. PM will reintegrate and immediately assign G2.
+Evidence: .agents/agents/DOCS_AGENT.md; .agents/project-manager/active-task.md (in G1 worktree)
+Due: 2026-06-27 12:00 UTC
+
+[2026-06-25 18:30 UTC] [PROJECT_MANAGER->QA_RELEASE_AGENT] [P1] [OPEN]
+Context: DOCS_AGENT will need your smoke journey pass/fail matrix as a gate before capturing G3 screenshots. This is a new collaboration workflow defined in .agents/RUNBOOK.md section 9.
+Request: When DOCS_AGENT posts G2 DONE and PM signals G3 start, run the full smoke suite against staging.nodezero.social and post a journey-by-journey PASS/FAIL matrix to this inbox addressed to DOCS_AGENT. DOCS_AGENT will only document PASS journeys.
+Evidence: scripts/qa/staging-smoke.sh; docs/staging-uat-checklist.md; .agents/agents/QA_RELEASE_AGENT.md
+Due: Within 24h of G2 DONE signal.
+
+[2026-06-25 18:30 UTC] [PROJECT_MANAGER->ALL] [P2] [OPEN]
+Context: Milestone G (open-source documentation) is now fully wired for autonomous PM-orchestrated execution. Mock geolocation for geo-discovery documentation is available at docs/dev-only/mock-geolocation.js - this is a dev-only Playwright injection fixture and must never be imported by application code or deployed.
+Request: No action required from non-DOCS agents until G1 is DONE, at which point verify your package documentation is accurate. Geo-discovery: the mock location is Sahara Ave and Las Vegas Blvd, Las Vegas NV (36.1147, -115.1728) - for documentation screenshots only.
+Evidence: docs/dev-only/mock-geolocation.js; .agents/RUNBOOK.md section 9
+Due: 2026-06-28 18:00 UTC
