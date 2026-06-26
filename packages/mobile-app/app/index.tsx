@@ -61,7 +61,8 @@ export default function LandingScreen(): JSX.Element {
     try {
       await signIn(trimmed)
     } catch (err) {
-      setError('Login failed. Please check the Identity Provider URL and try again.')
+      const message = err instanceof Error ? err.message : 'Login failed. Please check the Identity Provider URL and try again.'
+      setError(message)
       console.error('[LandingScreen] signIn error:', err)
     } finally {
       setIsSigningIn(false)

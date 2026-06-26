@@ -43,8 +43,13 @@ jobs:
       - name: Unit tests
         run: pnpm test
 
-      - name: Setup Rust toolchain
+      - name: Setup Rust toolchain (stable, for general checks)
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Rust 1.85 (contracts require edition2024 / ark-groth16)
+        uses: dtolnay/rust-toolchain@1.85.0
+        with:
+          targets: wasm32-unknown-unknown
 
       - name: Contract tests
         run: pnpm test:contracts

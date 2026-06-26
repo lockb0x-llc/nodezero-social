@@ -30,7 +30,7 @@ interface FeedPost {
 }
 
 export default function GlobalFeedScreen(): JSX.Element {
-  const { isLoggedIn, session, webId } = useSolid()
+  const { isLoggedIn, isRestoring, session, webId } = useSolid()
   const router = useRouter()
   const [posts, setPosts] = useState<FeedPost[]>([])
   const [loading, setLoading] = useState(true)
@@ -85,6 +85,14 @@ export default function GlobalFeedScreen(): JSX.Element {
     await fetchFeed()
     setRefreshing(false)
   }, [fetchFeed])
+
+  if (isRestoring) {
+    return (
+      <View style={styles.centred}>
+        <ActivityIndicator color="#6C63FF" size="large" />
+      </View>
+    )
+  }
 
   if (!isLoggedIn) {
     return (

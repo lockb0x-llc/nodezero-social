@@ -35,7 +35,7 @@ interface LocalMessage {
 
 export default function LocalNodeScreen(): JSX.Element {
   const { currentNode, surroundingNodes, locationStatus, refresh } = useDiscovery()
-  const { webId, isLoggedIn } = useSolid()
+  const { webId, isLoggedIn, isRestoring } = useSolid()
   const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
   const relayUrl = appExtra?.relayUrl ?? ''
 
@@ -195,6 +195,15 @@ export default function LocalNodeScreen(): JSX.Element {
       setSending(false)
     }
   }, [message, openPeers, relayState, targetWebId, upsertChannel, webId])
+
+  if (isRestoring) {
+    return (
+      <View style={styles.centred}>
+        <ActivityIndicator color="#6C63FF" size="large" />
+        <Text style={styles.infoText}>Restoring your session…</Text>
+      </View>
+    )
+  }
 
   if (!isLoggedIn) {
     return (

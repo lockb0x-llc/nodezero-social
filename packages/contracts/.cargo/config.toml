@@ -1,0 +1,37 @@
+# .cargo/config.toml — contracts package
+#
+# ── Windows developer setup ────────────────────────────────────────────────────
+#
+# Soroban contracts target wasm32-unknown-unknown for production.
+# On Windows, `cargo check` / `cargo test` require a native linker because
+# Soroban's proc-macros (#[contract], #[contractimpl]) compile as host
+# executables.  Two options:
+#
+# Option A — Install MSVC Build Tools (recommended):
+#   winget install Microsoft.VisualStudio.2022.BuildTools \
+#     --override "--quiet --add Microsoft.VisualStudio.Workload.VCTools \
+#       --add Microsoft.VisualStudio.Component.Windows11SDK.22621 --norestart"
+#
+# Option B — Use WSL2 (zero Windows toolchain needed):
+#   wsl -- cargo check --manifest-path packages/contracts/Cargo.toml
+#
+# Option C — Check WASM target only (no proc-macro host linking):
+#   cargo build --target wasm32-unknown-unknown --release
+#   (proc-macros still link, but wasm-ld is bundled with the wasm32 target)
+#
+# ── CI ────────────────────────────────────────────────────────────────────────
+# CI uses ubuntu-latest where the GNU linker is available by default.
+# The `cargo test --manifest-path packages/contracts/Cargo.toml` step in
+# ci.yml validates all contract code on every push.
+#
+# ── lld-link setup (Option D for advanced users) ──────────────────────────────
+# If you have lld-link available (e.g. from LLVM or llvm-tools-preview):
+#   [target.x86_64-pc-windows-msvc]
+#   linker = "lld-link"
+# Still requires Windows SDK .lib files (kernel32.lib etc.).
+
+[build]
+# Default to WASM target for local builds so `cargo build` produces the
+# contract WASM without needing a Windows native linker.
+# Override with --target for host-targeted checks.
+target = "wasm32-unknown-unknown"
