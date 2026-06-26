@@ -2,6 +2,9 @@ name: Staging Deploy
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - testnet
 
 permissions:
   contents: read
