@@ -1,38 +1,62 @@
-[
+[ 
   {
-    "id": "J4",
-    "agent": "QA_RELEASE_AGENT",
-    "title": "authenticated UAT re-run",
-    "objective": "Re-run authenticated UAT journeys after staging deploy of J1/J2/J6/J7 fixes. Verify web nav, session persistence, and all protected routes.",
-    "acceptanceCriteria": [
-      "AU1 confirmed PASS on deployed fix build.",
-      "Web nav bar visible after auth on /feed.",
-      "Direct URL to /settings, /local, /profile works without redirect.",
-      "AU4 sign-out confirmed.",
-      "UAT checklist sign-off decision updated."
-    ],
-    "dependsOn": ["staging-deploy-from-testnet"]
-  },
-  {
-    "id": "J5",
-    "agent": "DOCS_AGENT",
-    "title": "document functionality and gaps",
-    "objective": "Update wiki pages with confirmed functionality from authenticated UAT. Document X5/X6 as resolved after J6/J7 fix.",
-    "acceptanceCriteria": [
-      "wiki/Mobile-App.md updated with web nav section.",
-      "wiki/Embedded-Wallet.md reflects session persistence status.",
-      "Gap analysis reflects current fix state."
-    ],
-    "dependsOn": ["J4"]
-  },
-  {
-    "id": "J3",
+    "id": "K2",
     "agent": "MOBILE_APP_AGENT",
-    "title": "add favicon to web export",
-    "objective": "Add favicon.png to Expo web config to fix 404 on favicon.ico.",
+    "title": "onboarding pairing registration",
+    "objective": "Wire onboarding to register WebID<->Stellar pairing using existing NodeZeroIdentity contract and persist attestation inputs.",
     "acceptanceCriteria": [
-      "favicon.ico no longer 404 in browser."
+      "On authenticated onboarding, register_webid is invoked for active wallet/webId pair.",
+      "Attestation inputs are persisted for later verification.",
+      "Failure path surfaces actionable user messaging."
     ],
     "dependsOn": []
+  },
+  {
+    "id": "K3",
+    "agent": "STELLAR_CONTRACT_AGENT",
+    "title": "chain reads for pairing verification",
+    "objective": "Provide client read paths for get_webid and get_state_root using existing contracts only.",
+    "acceptanceCriteria": [
+      "Wallet/client layer reads NodeZeroIdentity.get_webid successfully.",
+      "Wallet/client layer reads Lockb0x.get_state_root successfully.",
+      "No new contract deployment requirement introduced."
+    ],
+    "dependsOn": []
+  },
+  {
+    "id": "K4",
+    "agent": "SOLID_DATA_AGENT",
+    "title": "returning sign-in attestation verification",
+    "objective": "Implement and validate returning sign-in pairing verification flow against lockb0x-root-backed attestation proof inputs.",
+    "acceptanceCriteria": [
+      "Returning sign-in validates mapping + root-backed attestation state.",
+      "Mismatch path fails closed and prompts relink/re-attest.",
+      "Validation evidence is posted to inbox with reproducible steps."
+    ],
+    "dependsOn": ["K2", "K3"]
+  },
+  {
+    "id": "K5",
+    "agent": "QA_RELEASE_AGENT",
+    "title": "attestation staging validation",
+    "objective": "Execute attestation-focused smoke/UAT matrix and produce release evidence for onboarding and returning-sign-in pairing checks.",
+    "acceptanceCriteria": [
+      "UAT includes register_webid tx evidence and lockbox root-read verification.",
+      "Pass/fail matrix for attestation states is posted to inbox.",
+      "Release recommendation (GO/BLOCK) is updated with rationale."
+    ],
+    "dependsOn": ["K4"]
+  },
+  {
+    "id": "K5D",
+    "agent": "DOCS_AGENT",
+    "title": "attestation evidence docs update",
+    "objective": "Publish attestation-focused release evidence and remove remaining PoH drift from docs/wiki after QA results.",
+    "acceptanceCriteria": [
+      "README/docs/wiki reflect final attestation evidence.",
+      "Future-scope PoH wording remains non-gating.",
+      "Linked evidence paths added for QA validation outcomes."
+    ],
+    "dependsOn": ["K5"]
   }
 ]

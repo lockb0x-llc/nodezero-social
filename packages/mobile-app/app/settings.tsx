@@ -29,7 +29,7 @@ const SHOW_NSFW_KEY = 'settings.showNsfw'
 export default function SettingsScreen(): JSX.Element {
   const { signOut, webId } = useSolid()
   const router = useRouter()
-  const { walletInfo } = useWallet()
+  const { walletInfo, attestationStatus, attestationMessage } = useWallet()
   const [showNsfw, setShowNsfw] = useState(false)
 
   // Load persisted NSFW setting on mount.
@@ -109,6 +109,13 @@ export default function SettingsScreen(): JSX.Element {
           label="Network Status"
           value={walletInfo?.isFunded ? '✅ Active on Testnet' : '⏳ Not yet funded'}
         />
+        <Row
+          label="Pairing Attestation"
+          value={attestationStatus === 'verified' ? '✅ Verified' : attestationStatus === 'verifying' ? '⏳ Verifying' : attestationStatus === 'unlinked' ? '⚠️ Unlinked' : attestationStatus === 'error' ? '❌ Error' : '—'}
+        />
+        {attestationMessage ? (
+          <Text style={styles.rowSubDetail}>{attestationMessage}</Text>
+        ) : null}
       </View>
 
       {/* ── Data Management ──────────────────────────────────────── */}
@@ -174,6 +181,7 @@ const styles = StyleSheet.create({
   rowTextWrap: { flex: 1, marginRight: 12 },
   rowLabel: { color: '#DDD', fontSize: 14, fontWeight: '600' },
   rowSub: { color: '#777', fontSize: 12, marginTop: 2 },
+  rowSubDetail: { color: '#777', fontSize: 12, marginHorizontal: 14, marginBottom: 12, marginTop: -4 },
   rowValue: { color: '#AAA', fontSize: 12, textAlign: 'right', flex: 1 },
   rowValueMono: { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 10, color: '#6C63FF' },
   dangerButton: { padding: 14, alignItems: 'center' },

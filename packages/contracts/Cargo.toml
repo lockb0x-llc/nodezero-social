@@ -13,10 +13,12 @@ testutils = ["soroban-sdk/testutils"]
 
 [dependencies]
 soroban-sdk = { version = "20.0.0" }
+wee_alloc = { version = "0.4", default-features = false }
 
 # Arkworks — no_std Groth16/BN254 for on-chain ZK proof verification
 ark-bn254      = { version = "0.4", default-features = false, features = ["curve"] }
 ark-groth16    = { version = "0.4", default-features = false }
+ark-snark      = { version = "0.4", default-features = false }
 ark-ec         = { version = "0.4", default-features = false }
 ark-ff         = { version = "0.4", default-features = false }
 ark-serialize  = { version = "0.4", default-features = false }

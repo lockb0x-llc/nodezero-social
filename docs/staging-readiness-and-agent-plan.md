@@ -8,7 +8,7 @@ Target: staging.nodezero.social on Stellar TestNet and Azure
 NodeZero is a decentralized social application that combines:
 - Solid Pods for user-owned profile and social graph data.
 - Stellar Soroban smart contracts for identity anchoring and ZK state root management.
-- ZK artifacts/circuits for Proof-of-Humanity-related flows.
+- ZK artifacts/circuits for Stellar<->Solid pairing attestation flows.
 - Expo mobile/web app UI as the user-facing product.
 - Azure infrastructure as the hosting and operational plane.
 

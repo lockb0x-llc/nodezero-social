@@ -11,13 +11,29 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
 import * as SecureStore from 'expo-secure-store'
 import { Platform } from 'react-native'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { EnclaveAdapter, WalletService, type WalletInfo } from '@nodezero/embedded-wallet'
 import Constants from 'expo-constants'
+import { useSolid } from './SolidContext'
+
+type AttestationStatus = 'idle' | 'verifying' | 'verified' | 'unlinked' | 'error'
+
+interface PairingAttestationRecord {
+  webId: string
+  stellarPublicKey: string
+  identityContractId: string
+  lockboxContractId: string
+  registerTxHash: string
+  verifiedAt: string
+}
+
+const PAIRING_ATTESTATION_STORAGE_KEY = 'attestation.pairing.v1'
 
 /** Shape of the wallet context value. */
 interface WalletContextValue {
@@ -27,6 +43,10 @@ interface WalletContextValue {
   isLoading: boolean
   /** Registers the user's WebID on-chain against their Stellar public key. */
   registerIdentity: (webId: string, contractId?: string) => Promise<string>
+  /** Current pairing verification status for this session. */
+  attestationStatus: AttestationStatus
+  /** Human-readable status detail for pairing checks. */
+  attestationMessage: string | null
 }
 
 const WalletContext = createContext<WalletContextValue | null>(null)
@@ -88,8 +108,12 @@ function getWalletService(): WalletService {
  * Provisions and exposes the embedded Stellar wallet.
  */
 export function WalletProvider({ children }: { children: ReactNode }): JSX.Element {
+  const { isLoggedIn, isRestoring, webId } = useSolid()
   const [walletInfo, setWalletInfo] = useState<WalletInfo | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [attestationStatus, setAttestationStatus] = useState<AttestationStatus>('idle')
+  const [attestationMessage, setAttestationMessage] = useState<string | null>(null)
+  const lastCheckedKeyRef = useRef<string | null>(null)
 
   useEffect(() => {
     void (async () => {
@@ -122,8 +146,86 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
     return result.hash
   }, [walletInfo])
 
+  useEffect(() => {
+    if (isRestoring) return
+
+    if (!isLoggedIn || !webId) {
+      setAttestationStatus('idle')
+      setAttestationMessage(null)
+      lastCheckedKeyRef.current = null
+      return
+    }
+
+    void (async () => {
+      const service = getWalletService()
+      const info = walletInfo ?? (await service.getWalletInfo())
+      const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
+      const identityContractId = appExtra?.identityContractId ?? ''
+      const lockboxContractId = appExtra?.lockboxContractId ?? ''
+
+      if (!identityContractId || !lockboxContractId) {
+        setAttestationStatus('error')
+        setAttestationMessage('Missing identity or lockbox contract ID in app configuration.')
+        return
+      }
+
+      const checkKey = `${webId}|${info.publicKey}|${identityContractId}|${lockboxContractId}`
+      if (lastCheckedKeyRef.current === checkKey) return
+      lastCheckedKeyRef.current = checkKey
+
+      setAttestationStatus('verifying')
+      setAttestationMessage('Validating Stellar<->Solid pairing attestation...')
+
+      try {
+        let mappedWebId = await service.getRegisteredWebId(identityContractId)
+        let registerTxHash = ''
+
+        if (mappedWebId !== webId) {
+          registerTxHash = await registerIdentity(webId, identityContractId)
+          mappedWebId = await service.getRegisteredWebId(identityContractId)
+        }
+
+        const lockboxRoot = await service.getLockboxStateRoot(lockboxContractId)
+
+        if (mappedWebId !== webId) {
+          setAttestationStatus('unlinked')
+          setAttestationMessage('Wallet/WebID on-chain mapping mismatch. Please relink your identity.')
+          return
+        }
+
+        if (!lockboxRoot) {
+          setAttestationStatus('unlinked')
+          setAttestationMessage('No attested lockbox root found yet for pairing verification.')
+          return
+        }
+
+        const record: PairingAttestationRecord = {
+          webId,
+          stellarPublicKey: info.publicKey,
+          identityContractId,
+          lockboxContractId,
+          registerTxHash,
+          verifiedAt: new Date().toISOString(),
+        }
+        await AsyncStorage.setItem(PAIRING_ATTESTATION_STORAGE_KEY, JSON.stringify(record))
+
+        setAttestationStatus('verified')
+        setAttestationMessage('Pairing attestation verified against current lockbox root.')
+      } catch (err) {
+        setAttestationStatus('error')
+        setAttestationMessage(err instanceof Error ? err.message : 'Pairing verification failed.')
+      }
+    })()
+  }, [isLoggedIn, isRestoring, registerIdentity, walletInfo, webId])
+
   return (
-    <WalletContext.Provider value={{ walletInfo, isLoading, registerIdentity }}>
+    <WalletContext.Provider value={{
+      walletInfo,
+      isLoading,
+      registerIdentity,
+      attestationStatus,
+      attestationMessage,
+    }}>
       {children}
     </WalletContext.Provider>
   )

@@ -102,7 +102,6 @@ require_lockbox_initialization_proof() {
 require_cmd cargo
 require_cmd rustup
 require_cmd stellar
-require_cmd jq
 
 require_stellar_cli_major_27
 validate_testnet_invariants
@@ -142,40 +141,31 @@ require_lockbox_initialization_proof "$LOCKBOX_CONTRACT_ID"
 STELLAR_CLI_VERSION="$(stellar --version 2>/dev/null || true)"
 
 OUTPUT_FILE="$DEPLOYMENTS_DIR/stellar-testnet.contracts.json"
-jq -n \
-  --arg protocolMajor "27" \
-  --arg stellarCliVersion "$STELLAR_CLI_VERSION" \
-  --arg network "$NETWORK_NAME" \
-  --arg passphrase "$NETWORK_PASSPHRASE" \
-  --arg rpcUrl "$NETWORK_RPC_URL" \
-  --arg sourceAccount "$SOURCE_ACCOUNT" \
-  --arg strictMode "$([[ "$ALLOW_NON_TESTNET" == "1" ]] && echo "false" || echo "true")" \
-  --arg identityMode "${CONTRACT_MODES[$IDENTITY_ALIAS]:-unknown}" \
-  --arg lockboxMode "${CONTRACT_MODES[$LOCKBOX_ALIAS]:-unknown}" \
-  --arg lockboxInitProof "${CONTRACT_INIT_PROOFS[$LOCKBOX_ALIAS]:-missing}" \
-  --arg identityContractId "$IDENTITY_CONTRACT_ID" \
-  --arg lockboxContractId "$LOCKBOX_CONTRACT_ID" \
-  --arg generatedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  '{
-    protocolMajor: $protocolMajor,
-    stellarCliVersion: $stellarCliVersion,
-    network: $network,
-    networkPassphrase: $passphrase,
-    rpcUrl: $rpcUrl,
-    sourceAccount: $sourceAccount,
-    strictTestnetMode: ($strictMode == "true"),
-    contracts: {
-      identity: {
-        id: $identityContractId,
-        deploymentMode: $identityMode
-      },
-      lockbox: {
-        id: $lockboxContractId,
-        deploymentMode: $lockboxMode,
-        initializationProof: $lockboxInitProof
-      }
+STRICT_TESTNET_MODE="$([[ "$ALLOW_NON_TESTNET" == "1" ]] && echo "false" || echo "true")"
+GENERATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+cat > "$OUTPUT_FILE" <<EOF
+{
+  "protocolMajor": "27",
+  "stellarCliVersion": "$STELLAR_CLI_VERSION",
+  "network": "$NETWORK_NAME",
+  "networkPassphrase": "$NETWORK_PASSPHRASE",
+  "rpcUrl": "$NETWORK_RPC_URL",
+  "sourceAccount": "$SOURCE_ACCOUNT",
+  "strictTestnetMode": $STRICT_TESTNET_MODE,
+  "contracts": {
+    "identity": {
+      "id": "$IDENTITY_CONTRACT_ID",
+      "deploymentMode": "${CONTRACT_MODES[$IDENTITY_ALIAS]:-unknown}"
     },
-    generatedAt: $generatedAt
-  }' > "$OUTPUT_FILE"
+    "lockbox": {
+      "id": "$LOCKBOX_CONTRACT_ID",
+      "deploymentMode": "${CONTRACT_MODES[$LOCKBOX_ALIAS]:-unknown}",
+      "initializationProof": "${CONTRACT_INIT_PROOFS[$LOCKBOX_ALIAS]:-missing}"
+    }
+  },
+  "generatedAt": "$GENERATED_AT"
+}
+EOF
 
 echo "Wrote deployment manifest: $OUTPUT_FILE"

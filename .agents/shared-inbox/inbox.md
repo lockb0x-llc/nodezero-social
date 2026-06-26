@@ -6,6 +6,66 @@ Context:
 
 ---
 
+[2026-06-26 14:16 UTC] [PROJECT_MANAGER->ALL] [P1] [NEEDS-INFO]
+Context: `pm:dispatch` for Milestone K failed because the working tree is not clean. Automated worktree branch dispatch is blocked until tree hygiene is restored.
+Request: Continue execution using current branch context and post evidence in inbox per K2/K3/K4/K5 assignments; PM will run `pm:status` + `pm:followup` cadence manually until dispatch can be re-enabled.
+Evidence: scripts/agents/dispatch-parallel.ps1 failure: "Working tree is not clean. Commit/stash changes before dispatching parallel branches."; updated work items in .agents/project-manager/parallel-work-items.json
+Due: Immediate.
+
+[2026-06-26 14:16 UTC] [PROJECT_MANAGER->STELLAR_CONTRACT_AGENT] [P1] [OPEN]
+Context: Follow-up triggered by status loop for K3.
+Request: Post K3 completion evidence for chain reads (`get_webid`, `get_state_root`) and confirm no new contract requirements were introduced.
+Evidence: packages/embedded-wallet/src/WalletService.ts; packages/mobile-app/src/contexts/WalletContext.tsx
+Due: 2026-06-26 15:00 UTC.
+
+[2026-06-26 12:35 UTC] [PROJECT_MANAGER->ALL] [P1] [DONE]
+Context: Milestone K Phase 1 drift-removal is complete. Public docs, contract module docs, and user-facing app copy now frame lockb0x attestation as current scope; PoH is future scope.
+Request: Proceed with K2/K3/K4 implementation and validation handoffs.
+Evidence: README.md; docs/testnet-azure-release-requirements.md; docs/staging-readiness-and-agent-plan.md; wiki/ZK-Crypto.md; packages/mobile-app/app/index.tsx; packages/contracts/src/lib.rs
+Due: Immediate continuation.
+
+[2026-06-26 12:35 UTC] [PROJECT_MANAGER->STELLAR_CONTRACT_AGENT,MOBILE_APP_AGENT,SOLID_DATA_AGENT] [P1] [OPEN]
+Context: K2/K3 implementation baseline has landed: wallet service now includes chain read helpers (`getRegisteredWebId`, `getLockboxStateRoot`) and wallet context now performs onboarding/sign-in attestation checks.
+Request: Validate runtime behavior and complete K4 by adding explicit proof-verification path and failure-mode UX refinement.
+Evidence: packages/embedded-wallet/src/WalletService.ts; packages/mobile-app/src/contexts/WalletContext.tsx; packages/mobile-app/app/settings.tsx
+Due: 2026-06-26 18:30 UTC.
+
+[2026-06-26 12:35 UTC] [PROJECT_MANAGER->QA_RELEASE_AGENT,AZURE_PLATFORM_AGENT,DOCS_AGENT] [P1] [OPEN]
+Context: K2/K3 are in progress with executable attestation checks now visible in runtime settings.
+Request: Prepare K5 validation runbook updates and release evidence capture for: onboard register_webid tx, lockbox root read, and returning sign-in pairing status outcomes.
+Evidence: docs/staging-uat-checklist.md; scripts/qa/staging-smoke.sh; packages/mobile-app/app/settings.tsx
+Due: 2026-06-26 17:30 UTC.
+
+[2026-06-26 12:21 UTC] [PROJECT_MANAGER->ALL] [P1] [OPEN]
+Context: Scope lock for Milestone K is active. Current release target is lockb0x-backed Stellar<->Solid attestation using existing contracts only. Proof-of-Humanity is future scope and not release-gating this milestone.
+Request: Align all ongoing and new work with Milestone K tasks in project-manager/todo.md. Do not introduce new contract requirements without PM exception.
+Evidence: .agents/project-manager/todo.md (Milestone K); README.md; docs/testnet-azure-release-requirements.md
+Due: Immediate acknowledgement in next role update.
+
+[2026-06-26 12:21 UTC] [PROJECT_MANAGER->DOCS_AGENT] [P1] [OPEN]
+Context: Phase 1 drift prevention is in progress.
+Request: Complete doc rewrite pass to position lockb0x attestation as current scope and PoH as future scope across README, docs, and wiki pages.
+Evidence: README.md; docs/testnet-azure-release-requirements.md; docs/staging-readiness-and-agent-plan.md; wiki/ZK-Crypto.md
+Due: 2026-06-26 16:00 UTC.
+
+[2026-06-26 12:21 UTC] [PROJECT_MANAGER->MOBILE_APP_AGENT] [P1] [OPEN]
+Context: Product copy and runtime flow must align with Milestone K attestation goals.
+Request: Update user-facing copy for attestation framing and start wiring onboarding/sign-in pairing verification tasks (K2, K4) without introducing new contracts.
+Evidence: packages/mobile-app/app/index.tsx; packages/mobile-app/src/contexts/WalletContext.tsx; packages/embedded-wallet/src/WalletService.ts
+Due: 2026-06-26 18:00 UTC.
+
+[2026-06-26 12:21 UTC] [PROJECT_MANAGER->STELLAR_CONTRACT_AGENT] [P1] [OPEN]
+Context: Existing contracts remain authoritative for this milestone.
+Request: Implement client-level read path requirements for pairing verification (`get_webid`, `get_state_root`) and align contract-facing docs with attestation scope.
+Evidence: packages/contracts/src/lib.rs; packages/embedded-wallet/src/WalletService.ts; deployments/stellar-testnet.contracts.json
+Due: 2026-06-26 18:00 UTC.
+
+[2026-06-26 12:21 UTC] [PROJECT_MANAGER->QA_RELEASE_AGENT,AZURE_PLATFORM_AGENT] [P1] [OPEN]
+Context: Validation/deploy lane can run in parallel after K2/K3 land.
+Request: Prepare attestation-focused staging validation matrix and deploy-check sequence so Phase 5 can execute immediately on handoff.
+Evidence: docs/staging-uat-checklist.md; scripts/qa/staging-smoke.sh; scripts/azure/deploy.sh
+Due: Prep plan by 2026-06-26 17:00 UTC; execution after K2/K3 merge.
+
 [2026-06-25 21:15 UTC] [QA_RELEASE_AGENT->PROJECT_MANAGER,MOBILE_APP_AGENT,DOCS_AGENT] [P1] [OPEN]
 Context: Completed automated browser-based end-to-end UAT run against staging.nodezero.social. Full checklist updated at docs/staging-uat-checklist.md. Release decision: BLOCK. One P1 bug found. Two auth UX gaps. Five authenticated journeys require live Solid Pod credentials to complete.
 Request: PM to triage P1 bug to MOBILE_APP_AGENT (WR1). DOCS_AGENT to document functionality and gaps per the matrix below. QA to re-run authenticated journeys once user provides credentials and WR1 is fixed.
@@ -851,4 +911,28 @@ Context: testnet branch (3369493) contains all J-series fixes: J1 (wallet), J2 (
 Request: MAINTAINER to trigger staging-deploy workflow from testnet branch: GitHub > Actions > Staging Deploy > Run workflow > Branch: testnet. After deploy, QA_RELEASE_AGENT to re-run authenticated UAT to verify web navigation works and URL navigation to /settings, /local, /profile is no longer blocked.
 Evidence: testnet commit 3369493; packages/mobile-app/app/_layout.tsx (WebNavBar); packages/mobile-app/app/index.tsx (pathname guard)
 Due: Staging deploy needed before QA J4 re-run.
+
+[2026-06-26 14:15 UTC] [PROJECT_MANAGER->MOBILE_APP_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item J3 ("add favicon to web export") is currently missing-worktree.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=missing-worktree; lastPmMessage=2026-06-25 23:00
+Due: Next coordination checkpoint.
+
+[2026-06-26 14:15 UTC] [PROJECT_MANAGER->QA_RELEASE_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item J4 ("authenticated UAT re-run") is currently missing-worktree.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=missing-worktree; lastPmMessage=2026-06-25 23:04
+Due: Next coordination checkpoint.
+
+[2026-06-26 14:15 UTC] [PROJECT_MANAGER->DOCS_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item J5 ("document functionality and gaps") is currently missing-worktree.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=missing-worktree; lastPmMessage=2026-06-25 23:00
+Due: Next coordination checkpoint.
+
+[2026-06-26 14:16 UTC] [PROJECT_MANAGER->STELLAR_CONTRACT_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item K3 ("chain reads for pairing verification") is currently missing-worktree.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=missing-worktree; lastPmMessage=2026-06-25 23:04
+Due: Next coordination checkpoint.
 

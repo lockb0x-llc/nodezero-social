@@ -151,7 +151,7 @@ const FEATURES = [
   { icon: '🔐', title: 'Data Sovereignty', desc: 'Your profile lives in your Solid Pod, not our servers.' },
   { icon: '🌍', title: 'Local Nodes', desc: 'Discover people near you using H3 hexagonal grids.' },
   { icon: '🚫', title: 'No Algorithms', desc: 'Strictly chronological feeds. No engagement farming.' },
-  { icon: '🛡️', title: 'Privacy First', desc: 'Zero-Knowledge proofs verify you\'re human without revealing who you are.' },
+  { icon: '🛡️', title: 'Privacy First', desc: 'Zero-Knowledge attestations verify your Stellar<->Solid pairing without exposing private profile data.' },
 ]
 
 const styles = StyleSheet.create({

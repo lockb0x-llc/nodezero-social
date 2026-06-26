@@ -39,9 +39,9 @@
 use alloc::vec::Vec;
 
 use ark_bn254::{Bn254, Fq, Fq2, Fr, G1Affine, G2Affine};
-use ark_ec::AffineRepr;
-use ark_ff::{BigInteger, PrimeField};
-use ark_groth16::{Groth16, PreparedVerifyingKey, Proof, VerifyingKey};
+use ark_ff::PrimeField;
+use ark_groth16::{Groth16, Proof, VerifyingKey};
+use ark_snark::SNARK;
 use ark_serialize::CanonicalDeserialize;
 use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Bytes, BytesN, Env};
 
@@ -104,7 +104,7 @@ impl PoHVerifier {
     /// * `operator` — The operator `Address` (auth-gated init).
     /// * `vk_bytes` — Canonical-serialised `VerifyingKey<Bn254>` produced by
     ///   `snarkjs zkey export verificationkey … | node vk_to_bytes.mjs`.
-    pub fn initialize(env: Env, operator: Address, vk_bytes: Bytes) {
+    pub fn init_verifier(env: Env, operator: Address, vk_bytes: Bytes) {
         operator.require_auth();
         assert!(
             !env.storage().persistent().has(&PoHKey::VerifyingKey),
@@ -231,7 +231,7 @@ mod poh_tests {
         // We test double-spend detection, which runs BEFORE proof verification.
         let operator = Address::generate(&env);
         let vk_placeholder = Bytes::from_slice(&env, &[0u8; 32]); // placeholder
-        client.initialize(&operator, &vk_placeholder);
+        client.init_verifier(&operator, &vk_placeholder);
 
         // Mark a nullifier as spent by directly setting storage
         let nullifier = zero_bytes32(&env);
@@ -274,7 +274,7 @@ mod poh_tests {
 
         let operator = Address::generate(&env);
         let vk = Bytes::from_slice(&env, &[0u8; 32]);
-        client.initialize(&operator, &vk);
-        client.initialize(&operator, &vk); // must panic
+        client.init_verifier(&operator, &vk);
+        client.init_verifier(&operator, &vk); // must panic
     }
 }

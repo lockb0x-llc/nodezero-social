@@ -58,3 +58,10 @@
 - [DONE] G1: Author open-source community health files (LICENSE, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, issue templates, PR template). (merged to main)
 - [DONE] G2: Build GitHub Wiki with architecture overview, feature guides, getting-started, API references, and roadmap. (merged to main with wiki/_Sidebar.md navigation)
 - [DONE] G3: Playwright-validated walkthroughs with screenshots and video embedded in Wiki pages. (merged to main with docs/screenshots/README.md index)
+
+## Milestone K: Lockb0x attestation implementation (2026-06-26)
+- [DONE] K1: Rewrite PoH-first documentation and product copy to lockb0x attestation scope. Owners: DOCS_AGENT, MOBILE_APP_AGENT, STELLAR_CONTRACT_AGENT.
+- [IN_PROGRESS] K2: Wire onboarding flow to register WebID<->Stellar pairing and persist attestation inputs. Owners: MOBILE_APP_AGENT, SOLID_DATA_AGENT.
+- [IN_PROGRESS] K3: Add client-side chain reads for pairing verification (`get_webid`, `get_state_root`) with existing contracts only. Owner: STELLAR_CONTRACT_AGENT.
+- [TODO] K4: Implement returning sign-in pairing verification against lockb0x-root-backed attestation proof. Owners: MOBILE_APP_AGENT, SOLID_DATA_AGENT.
+- [TODO] K5: Validate staging deployment, UAT matrix, and release evidence for attestation flow. Owners: QA_RELEASE_AGENT, AZURE_PLATFORM_AGENT, DOCS_AGENT.
