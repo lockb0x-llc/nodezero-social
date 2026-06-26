@@ -1,11 +1,26 @@
 {
   "name": "@nodezero/zk-crypto",
   "version": "0.0.1",
-  "description": "Zero-Knowledge circuits for NodeZero Proof of Humanity and nullifier generation",
+  "description": "Zero-Knowledge circuits and prover library for NodeZero Proof of Humanity",
   "license": "MIT",
+  "type": "module",
+  "main": "./src/index.ts",
   "scripts": {
-    "compile": "circom circuits/poh.circom --r1cs --wasm --sym -o build/ && circom circuits/nullifier.circom --r1cs --wasm --sym -o build/",
-    "test": "echo \"No tests yet for @nodezero/zk-crypto\"",
+    "build:circuits": "node scripts/compile-circuits.mjs",
+    "build:setup": "node scripts/trusted-setup.mjs",
+    "build:all": "pnpm run build:circuits && pnpm run build:setup",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
     "clean": "rm -rf build/"
+  },
+  "dependencies": {
+    "circomlibjs": "^0.1.7",
+    "ffjavascript": "^0.3.0",
+    "snarkjs": "^0.7.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "jest": "^29.0.0",
+    "ts-jest": "^29.0.0",
+    "typescript": "^5.4.5"
   }
 }

@@ -2,7 +2,7 @@
 name = "nodezero-contracts"
 version = "0.0.1"
 edition = "2021"
-description = "NodeZero.social Soroban smart contracts – Identity registry and Lockb0x ZK state root"
+description = "NodeZero.social Soroban smart contracts – Identity registry, Lockb0x ZK state root, and PoH verifier"
 license = "MIT"
 
 [lib]
@@ -13,6 +13,13 @@ testutils = ["soroban-sdk/testutils"]
 
 [dependencies]
 soroban-sdk = { version = "20.0.0" }
+
+# Arkworks — no_std Groth16/BN254 for on-chain ZK proof verification
+ark-bn254      = { version = "0.4", default-features = false, features = ["curve"] }
+ark-groth16    = { version = "0.4", default-features = false }
+ark-ec         = { version = "0.4", default-features = false }
+ark-ff         = { version = "0.4", default-features = false }
+ark-serialize  = { version = "0.4", default-features = false }
 
 [dev-dependencies]
 soroban-sdk = { version = "20.0.0", features = ["testutils"] }
@@ -30,3 +37,4 @@ lto = true
 [profile.release-with-logs]
 inherits = "release"
 debug-assertions = true
+

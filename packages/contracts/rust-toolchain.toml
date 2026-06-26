@@ -1,5 +1,7 @@
 [toolchain]
-# Pinned to a known-good stable release that is compatible with soroban-sdk 20.x.
-# Update this in lockstep with any soroban-sdk version bump.
-channel = "1.81.0"
+# Pinned to 1.85.0 — first stable Rust with edition 2024 support.
+# Required by zeroize_derive 1.5.0 (pulled in by ark-groth16/ark-ff 0.4).
+# soroban-sdk 20.x is compatible with this toolchain.
+# Update this in lockstep with any soroban-sdk or ark-* version bumps.
+channel = "1.85.0"
 components = ["rustfmt", "clippy"]
