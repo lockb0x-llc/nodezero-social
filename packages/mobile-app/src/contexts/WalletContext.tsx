@@ -25,15 +25,73 @@ import { useSolid } from './SolidContext'
 type AttestationStatus = 'idle' | 'verifying' | 'verified' | 'unlinked' | 'error'
 
 interface PairingAttestationRecord {
+  proofVersion: number
   webId: string
   stellarPublicKey: string
   identityContractId: string
   lockboxContractId: string
+  lockboxStateRoot: string
   registerTxHash: string
   verifiedAt: string
 }
 
 const PAIRING_ATTESTATION_STORAGE_KEY = 'attestation.pairing.v1'
+
+interface PairingProofInputs {
+  webId: string
+  stellarPublicKey: string
+  identityContractId: string
+  lockboxContractId: string
+  lockboxStateRoot: string
+}
+
+function normalizeRoot(root: string): string {
+  return root.trim().toLowerCase()
+}
+
+function hasMatchingProof(record: PairingAttestationRecord, inputs: PairingProofInputs): boolean {
+  return (
+    record.proofVersion === 1 &&
+    record.webId === inputs.webId &&
+    record.stellarPublicKey === inputs.stellarPublicKey &&
+    record.identityContractId === inputs.identityContractId &&
+    record.lockboxContractId === inputs.lockboxContractId &&
+    normalizeRoot(record.lockboxStateRoot) === normalizeRoot(inputs.lockboxStateRoot)
+  )
+}
+
+async function loadPairingRecord(): Promise<PairingAttestationRecord | null> {
+  const raw = await AsyncStorage.getItem(PAIRING_ATTESTATION_STORAGE_KEY)
+  if (!raw) return null
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<PairingAttestationRecord>
+    if (
+      typeof parsed.webId !== 'string' ||
+      typeof parsed.stellarPublicKey !== 'string' ||
+      typeof parsed.identityContractId !== 'string' ||
+      typeof parsed.lockboxContractId !== 'string' ||
+      typeof parsed.lockboxStateRoot !== 'string' ||
+      typeof parsed.verifiedAt !== 'string' ||
+      typeof parsed.proofVersion !== 'number'
+    ) {
+      return null
+    }
+
+    return {
+      proofVersion: parsed.proofVersion,
+      webId: parsed.webId,
+      stellarPublicKey: parsed.stellarPublicKey,
+      identityContractId: parsed.identityContractId,
+      lockboxContractId: parsed.lockboxContractId,
+      lockboxStateRoot: parsed.lockboxStateRoot,
+      registerTxHash: typeof parsed.registerTxHash === 'string' ? parsed.registerTxHash : '',
+      verifiedAt: parsed.verifiedAt,
+    }
+  } catch {
+    return null
+  }
+}
 
 /** Shape of the wallet context value. */
 interface WalletContextValue {
@@ -116,7 +174,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
   const lastCheckedKeyRef = useRef<string | null>(null)
 
   useEffect(() => {
-    void (async () => {
+    void (async (): Promise<void> => {
       try {
         const info = await getWalletService().getWalletInfo()
         setWalletInfo(info)
@@ -128,7 +186,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
     })()
   }, [])
 
-  const registerIdentity = useCallback(async (webId: string, contractId?: string) => {
+  const registerIdentity = useCallback(async (webId: string, contractId?: string): Promise<string> => {
     const service = getWalletService()
     const info = walletInfo ?? (await service.getWalletInfo())
     const defaultContractId =
@@ -156,7 +214,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
       return
     }
 
-    void (async () => {
+    void (async (): Promise<void> => {
       const service = getWalletService()
       const info = walletInfo ?? (await service.getWalletInfo())
       const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
@@ -178,9 +236,16 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
 
       try {
         let mappedWebId = await service.getRegisteredWebId(identityContractId)
+        const priorRecord = await loadPairingRecord()
+        const isReturningSignIn =
+          priorRecord?.webId === webId &&
+          priorRecord.stellarPublicKey === info.publicKey &&
+          priorRecord.identityContractId === identityContractId &&
+          priorRecord.lockboxContractId === lockboxContractId
+
         let registerTxHash = ''
 
-        if (mappedWebId !== webId) {
+        if (!isReturningSignIn && mappedWebId !== webId) {
           registerTxHash = await registerIdentity(webId, identityContractId)
           mappedWebId = await service.getRegisteredWebId(identityContractId)
         }
@@ -199,18 +264,38 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
           return
         }
 
-        const record: PairingAttestationRecord = {
+        const proofInputs: PairingProofInputs = {
           webId,
           stellarPublicKey: info.publicKey,
           identityContractId,
           lockboxContractId,
+          lockboxStateRoot: lockboxRoot,
+        }
+
+        if (isReturningSignIn && priorRecord && !hasMatchingProof(priorRecord, proofInputs)) {
+          setAttestationStatus('unlinked')
+          setAttestationMessage('Stored pairing proof no longer matches the current lockbox root. Relink required.')
+          return
+        }
+
+        const record: PairingAttestationRecord = {
+          proofVersion: 1,
+          webId,
+          stellarPublicKey: info.publicKey,
+          identityContractId,
+          lockboxContractId,
+          lockboxStateRoot: lockboxRoot,
           registerTxHash,
           verifiedAt: new Date().toISOString(),
         }
         await AsyncStorage.setItem(PAIRING_ATTESTATION_STORAGE_KEY, JSON.stringify(record))
 
         setAttestationStatus('verified')
-        setAttestationMessage('Pairing attestation verified against current lockbox root.')
+        setAttestationMessage(
+          isReturningSignIn
+            ? 'Returning sign-in proof verified against current lockbox root.'
+            : 'Pairing attestation verified against current lockbox root.'
+        )
       } catch (err) {
         setAttestationStatus('error')
         setAttestationMessage(err instanceof Error ? err.message : 'Pairing verification failed.')

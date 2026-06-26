@@ -150,7 +150,10 @@ export class WalletService {
     const value = await this.simulateContractCall(contractId, 'get_webid', [new Address(info.publicKey).toScVal()])
 
     if (typeof value === 'string') return value
-    if (Array.isArray(value) && typeof value[0] === 'string') return value[0]
+    if (Array.isArray(value)) {
+      const first = (value as unknown[])[0]
+      if (typeof first === 'string') return first
+    }
     return null
   }
 
@@ -162,7 +165,7 @@ export class WalletService {
 
     if (value == null) return null
     if (Array.isArray(value) && value.length > 0) {
-      const inner = value[0]
+      const inner = (value as unknown[])[0]
       if (inner instanceof Uint8Array) return Buffer.from(inner).toString('hex')
       if (typeof inner === 'string') return inner
     }
@@ -179,7 +182,7 @@ export class WalletService {
     const secret = await this.adapter.loadOrCreate()
     const keypair = Keypair.fromSecret(secret)
 
-    let account
+    let account: Awaited<ReturnType<rpc.Server['getAccount']>>
     try {
       account = await this.server.getAccount(keypair.publicKey())
     } catch {
@@ -211,6 +214,7 @@ export class WalletService {
     if (!retval) return null
 
     const scVal = xdr.ScVal.fromXDR(retval, 'base64')
-    return scValToNative(scVal)
+    const decoded: unknown = scValToNative(scVal)
+    return decoded
   }
 }
