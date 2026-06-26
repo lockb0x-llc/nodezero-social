@@ -20,6 +20,7 @@ import {
   Platform,
 } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import { useRouter } from 'expo-router'
 import { useSolid } from '../src/contexts/SolidContext'
 import { useWallet } from '../src/contexts/WalletContext'
 
@@ -27,6 +28,7 @@ const SHOW_NSFW_KEY = 'settings.showNsfw'
 
 export default function SettingsScreen(): JSX.Element {
   const { signOut, webId } = useSolid()
+  const router = useRouter()
   const { walletInfo } = useWallet()
   const [showNsfw, setShowNsfw] = useState(false)
 
@@ -60,6 +62,11 @@ export default function SettingsScreen(): JSX.Element {
       ]
     )
   }, [])
+
+  const handleSignOut = useCallback(async () => {
+    await signOut()
+    router.replace('/')
+  }, [router, signOut])
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -122,7 +129,7 @@ export default function SettingsScreen(): JSX.Element {
       <View style={styles.card}>
         <TouchableOpacity
           style={styles.signOutButton}
-          onPress={() => void signOut()}
+          onPress={() => void handleSignOut()}
           accessibilityRole="button"
           accessibilityLabel="Sign out"
         >
