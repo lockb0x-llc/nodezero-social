@@ -81,7 +81,7 @@ code.
 
 | # | Observation | Severity | Notes |
 |---|---|---|---|
-| X1 | favicon.ico returns 404 | Minor | Missing favicon in Expo web export. No functional impact. |
+| X1 | favicon.ico returns 404 | Fixed | `packages/mobile-app/app.config.js` now sets `web.favicon` to `./assets/favicon.png`. |
 | X2 | Settings page accessible without auth | By design | Shows WebID=Not signed in, NSFW toggle, wallet section. Correct behavior. |
 | X3 | WalletContext expo-secure-store error | FIXED | Fixed by web localStorage fallback in EnclaveAdapter; no longer fires on web. |
 | X4 | App version shown as `v0.0.1` | Info | Correct pre-release version. |
@@ -105,7 +105,7 @@ code.
 ## Sign-off
 
 - Release decision: **CONDITIONAL GO** for Milestone K attestation scope
-- Rationale: All Milestone K objectives (K1–K5) are DONE. WR1/WR2 wallet provisiong fixed and confirmed on staging. AT1/AT2/AT3 attestation flow PASS. Known open items: B1 (feed), B2 (local messaging), D1 (custom DNS), J3 (favicon), D3 (alerting) — all explicitly post-hackathon scope.
+- Rationale: All Milestone K objectives (K1–K5) are DONE. WR1/WR2 wallet provisioning fixed and confirmed on staging. AT1/AT2/AT3 attestation flow PASS. Remaining release work is focused on authenticated LM1/LM2/AU4 rerun and ongoing platform hardening (D1/D3).
 - Reviewer: QA_RELEASE_AGENT + PM direct evidence (automated browser session, 2026-06-26)
 - Date: 2026-06-26
 

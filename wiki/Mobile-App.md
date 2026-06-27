@@ -45,15 +45,23 @@ Settings is partially accessible without authentication:
 - `SolidContext`: SOLID identity/session handling.
 - `DiscoveryContext`: location/discovery state.
 
-## Known issues and resolution status
+## Confirmed functionality
+
+- Landing page renders headline, feature cards, and Solid sign-in form.
+- Route guards correctly protect `/feed`, `/local`, and `/profile` when unauthenticated.
+- Feed screen now aggregates connections from Solid social graph and orders posts chronologically.
+- Local Node screen uses relay-backed P2P signaling and supports target selection from known peers.
+- Settings renders wallet state, NSFW toggle, and account controls for signed-in and signed-out users.
+
+## Known gaps and resolution status
 
 | ID | Issue | Status | Fix |
 |---|---|---|---|
 | WR1 | Wallet provisioning silently fails on web — `expo-secure-store` calls `getValueWithKeyAsync` (native-only bridge method); Settings shows "Provisioning…" forever | **FIXED** in testnet commit 778c37f | `Platform.OS === 'web'` guard in `WalletContext.tsx` skips `SecureStore` on web, using in-memory fallback |
 | AU2 | Empty IdP URL shows generic "Login failed" error | **FIXED** in testnet commit 778c37f | Client-side empty-URL check added before login call |
 | AU3 | Non-HTTPS IdP not rejected client-side | **FIXED** in testnet commit 778c37f | Client-side `https://` prefix check added |
-| X1 | Missing favicon (404 on `/favicon.ico`) | **Open** (J3, low priority) | Add `favicon.png` to Expo web config |
-| J4 | Authenticated journeys not yet verified | **Pending** | Requires staging redeploy of 778c37f + Solid Pod login |
+| X1 | Missing favicon (404 on `/favicon.ico`) | **FIXED** | `favicon.png` is present and wired in `app.config.js` web config |
+| J4 | Authenticated journeys (LM1/LM2/WR2/AU4) not fully re-run on latest branch set | **Pending QA rerun** | Execute authenticated staging checklist after B1/B2 integration deploy |
 
 ## Notes
 
@@ -68,29 +76,10 @@ Settings is partially accessible without authentication:
 
 - Video: ../docs/videos/profile-and-settings.webm
 
-## Primary routes
+## Primary route files
 
 - `packages/mobile-app/app/index.tsx`
 - `packages/mobile-app/app/feed.tsx`
 - `packages/mobile-app/app/local.tsx`
 - `packages/mobile-app/app/profile.tsx`
 - `packages/mobile-app/app/settings.tsx`
-
-## Contexts
-
-- `WalletContext`: wallet lifecycle and registration.
-- `SolidContext`: SOLID identity/session handling.
-- `DiscoveryContext`: location/discovery state.
-
-## Notes
-
-- Staging profile and chain settings are guarded for environment coherence.
-- SWA deployment support is wired for the web build path.
-
-## Visual evidence
-
-![Profile](../docs/screenshots/profile-sync-step1.png)
-![Settings](../docs/screenshots/settings-env-logout-export-step1.png)
-![Wallet](../docs/screenshots/wallet-creation-step1.png)
-
-- Video: ../docs/videos/profile-and-settings.webm
