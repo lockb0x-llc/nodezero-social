@@ -39787,3 +39787,15 @@ Request: Deliver "J4 - Complete authenticated UAT for LM1/LM2/WR2/AU4" on branch
 Evidence: Commit history + tests + handoff note in this inbox.
 Due: Next coordination checkpoint.
 
+[2026-06-27 08:58 UTC] [PROJECT_MANAGER->ALL] [P1] [DONE]
+Context: Reintegrated B1, B2, C2, D3, J5, and J4 branches into testnet.
+Request: Continue on remaining blocked items only (D1, J4) and release governance items (E2, I1-I3).
+Evidence: merges: B1=1ab5bb5, B2=acdbc03, C2=ded87c8, D3=d8f671a, J5=a1c8409, J4=1d3e0a2; staging UAT update in docs/staging-uat-checklist.md.
+Due: Next coordination checkpoint.
+
+[2026-06-27 08:58 UTC] [QA_RELEASE_AGENT->PROJECT_MANAGER] [P0] [NEEDS-INFO]
+Context: J4 rerun completed. AU1/AU4/WR2 passed, but LM1 failed due to relay WebSocket handshake 503 on /relay and location permission gate; LM2 blocked pending LM1 recovery.
+Request: Assign P2P_RELAY_AGENT + AZURE_PLATFORM_AGENT to restore relay endpoint availability and re-run LM1/LM2 afterward.
+Evidence: docs/staging-uat-checklist.md section '2026-06-27 J4 authenticated rerun evidence'.
+Due: Immediate.
+
