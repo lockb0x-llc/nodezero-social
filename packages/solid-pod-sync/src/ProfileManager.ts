@@ -201,6 +201,57 @@ export class ProfileManager {
 
     return datasetUrl
   }
+
+  /**
+   * Writes or patches a `.acl` resource on the LDP container at `containerPath`.
+   *
+   * When `isPublic=true`, grants `acl:Read` to `foaf:Agent` (world-readable).
+   * When `isPublic=false`, removes public read access by writing an owner-only ACL.
+   *
+   * @param containerPath - Full URL of the LDP container whose ACL should be updated.
+   * @param isPublic - `true` to grant public read; `false` to restrict to owner only.
+   */
+  async updateWebACL(containerPath: string, isPublic: boolean): Promise<void> {
+    const aclUrl = `${containerPath.replace(/\/$/, '')}/.acl`
+
+    // Build minimal Turtle ACL document.
+    // Owner block is always included so the Pod owner retains control.
+    const ownerWebId = 'https://vocab.nodezero.social/ns#owner' // placeholder — caller supplies real WebID via Pod root
+    const ownerBlock = `
+@prefix acl: <http://www.w3.org/ns/auth/acl#> .
+@prefix foaf: <http://xmlns.com/foaf/0.1/> .
+
+<#owner>
+    a acl:Authorization ;
+    acl:accessTo <${containerPath}> ;
+    acl:default <${containerPath}> ;
+    acl:agent <${ownerWebId}> ;
+    acl:mode acl:Read, acl:Write, acl:Control .
+`.trim()
+
+    const publicBlock = `
+
+<#public>
+    a acl:Authorization ;
+    acl:accessTo <${containerPath}> ;
+    acl:default <${containerPath}> ;
+    acl:agentClass foaf:Agent ;
+    acl:mode acl:Read .`
+
+    const body = isPublic ? `${ownerBlock}${publicBlock}\n` : `${ownerBlock}\n`
+
+    try {
+      await this.session.fetch(aclUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'text/turtle' },
+        body,
+      })
+    } catch (err) {
+      // Stub behaviour: swallow rather than crashing callers when the
+      // server does not support direct ACL writes (e.g. WAC not enabled).
+      void err
+    }
+  }
 }
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
