@@ -1,3 +1,9 @@
-# Post-G idle state
-# Add one fully-reviewed branch per line in merge order.
-# J6/J7 merged to testnet 2026-06-25
+# UX Phase 1 — feat/ux-phase1 merge order
+# Dependency-safe: L4 (no mobile conflicts) first, then new files, then augments, then binding, then QA
+agents/SOLID_DATA_AGENT/L4-ux-solid-backend
+agents/MOBILE_APP_AGENT/L1-ux-new-screens
+agents/MOBILE_APP_AGENT/L3-ux-nav-deps
+agents/MOBILE_APP_AGENT/L2-ux-augment-screens
+agents/MOBILE_APP_AGENT/L5-ux-context-binding
+agents/P2P_RELAY_AGENT/L6-ux-compose-routing
+agents/QA_RELEASE_AGENT/L7-ux-qa-smoke

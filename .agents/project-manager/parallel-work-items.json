@@ -1,62 +1,141 @@
-[ 
+[
   {
-    "id": "K2",
+    "id": "L1",
     "agent": "MOBILE_APP_AGENT",
-    "title": "onboarding pairing registration",
-    "objective": "Wire onboarding to register WebID<->Stellar pairing using existing NodeZeroIdentity contract and persist attestation inputs.",
+    "slug": "ux-new-screens",
+    "title": "UX Phase 1 - new screens scaffold (backpack, compose, docustream)",
+    "objective": "Create packages/mobile-app/app/backpack.tsx, compose.tsx, and docustream.tsx with full UI from docs/dev-only/prototypes/. Use internal useState mock only - no live context calls. Port Lucide icons to Ionicons. Each file must compile under tsc --noEmit.",
     "acceptanceCriteria": [
-      "On authenticated onboarding, register_webid is invoked for active wallet/webId pair.",
-      "Attestation inputs are persisted for later verification.",
-      "Failure path surfaces actionable user messaging."
+      "app/backpack.tsx: card-based list with Switch toggles for profile/interests/location; educational Web3 info box.",
+      "app/compose.tsx: Trust Circles orbital UI with three concentric dashed rings (local/verified/foaf), center user node, dynamic audience label.",
+      "app/docustream.tsx: infinite-scroll timeline with ALL/REDDIT/X/RSS filter tabs, Save to Pod and Share to Grid actions per item.",
+      "All three files compile clean under tsc --noEmit with no imports of SolidContext, WalletContext, or DocustreamManager.",
+      "No existing files modified."
+    ],
+    "sourceReferences": [
+      "docs/dev-only/prototypes/data_backpack.tsx",
+      "docs/dev-only/prototypes/compose.tsx",
+      "docs/dev-only/prototypes/docustream_screen_preview.tsx",
+      "docs/dev-only/prototypes/UX-Implementation-Specification.md sections 4.1 4.2 4.5"
     ],
     "dependsOn": []
   },
   {
-    "id": "K3",
-    "agent": "STELLAR_CONTRACT_AGENT",
-    "title": "chain reads for pairing verification",
-    "objective": "Provide client read paths for get_webid and get_state_root using existing contracts only.",
+    "id": "L2",
+    "agent": "MOBILE_APP_AGENT",
+    "slug": "ux-augment-screens",
+    "title": "UX Phase 1 - augment feed, profile, settings",
+    "objective": "Augment three existing screens: (a) Add Algorithm Tuner bottom-sheet modal to feed.tsx (sliders + SFW switch, internal state). (b) Add Shared Threads gradient card + ZK badge tooltip to profile.tsx (mock state). (c) Remove WebACL toggles from settings.tsx.",
     "acceptanceCriteria": [
-      "Wallet/client layer reads NodeZeroIdentity.get_webid successfully.",
-      "Wallet/client layer reads Lockb0x.get_state_root successfully.",
-      "No new contract deployment requirement introduced."
+      "feed.tsx: Tuner icon opens bottom-sheet with Serendipity/Deep Ties sliders (0-100) and SFW Mode switch; existing fetchFeed logic untouched.",
+      "profile.tsx: non-empty sharedThreads mock renders gradient Shared Threads card; ZK shield opens educational tooltip.",
+      "settings.tsx: WebACL/Pod permission toggles removed; remaining settings intact.",
+      "tsc --noEmit clean. No new files created."
+    ],
+    "sourceReferences": [
+      "docs/dev-only/prototypes/feed.tsx",
+      "docs/dev-only/prototypes/UX-Implementation-Specification.md sections 4.3 4.4"
     ],
     "dependsOn": []
   },
   {
-    "id": "K4",
+    "id": "L3",
+    "agent": "MOBILE_APP_AGENT",
+    "slug": "ux-nav-deps",
+    "title": "UX Phase 1 - navigation restructure and dependency additions",
+    "objective": "Restructure _layout.tsx to match prototype bottom nav and register all new routes. Add npm deps.",
+    "acceptanceCriteria": [
+      "package.json: @react-native-community/slider and react-native-rss-parser added.",
+      "_layout.tsx: bottom nav primary bar = Local Grid | + Compose | Docustream; Backpack reachable from Profile header icon.",
+      "Routes registered: /, /feed, /local, /compose, /backpack, /docustream, /profile, /settings.",
+      "tsc --noEmit clean."
+    ],
+    "sourceReferences": [
+      "docs/dev-only/prototypes/UX-Implementation-Specification.md section 3.1"
+    ],
+    "dependsOn": []
+  },
+  {
+    "id": "L4",
     "agent": "SOLID_DATA_AGENT",
-    "title": "returning sign-in attestation verification",
-    "objective": "Implement and validate returning sign-in pairing verification flow against lockb0x-root-backed attestation proof inputs.",
+    "slug": "ux-solid-backend",
+    "title": "UX Phase 1 - solid-pod-sync backend methods",
+    "objective": "Add updateWebACL(), findSemanticOverlap(), and DocustreamManager.ts to packages/solid-pod-sync/src/.",
     "acceptanceCriteria": [
-      "Returning sign-in validates mapping + root-backed attestation state.",
-      "Mismatch path fails closed and prompts relink/re-attest.",
-      "Validation evidence is posted to inbox with reproducible steps."
+      "ProfileManager.ts: updateWebACL(containerPath, isPublic) patches .acl resource for public acl:Read.",
+      "SocialGraph.ts: findSemanticOverlap(peerWebId) intersects peer schema:interest triples with local interests[], returns string[].",
+      "DocustreamManager.ts: appendActivity(podRoot, item) and listActivities(podRoot) using W3C ActivityStreams 2.0 RDF in /public/docustream/.",
+      "index.ts re-exports all new types/classes.",
+      "Existing 12 tests pass. Unit test stubs added for each new method.",
+      "tsc --noEmit clean."
     ],
-    "dependsOn": ["K2", "K3"]
+    "sourceReferences": [
+      "docs/dev-only/prototypes/UX-Implementation-Specification.md sections 4.1 4.4 4.5",
+      "packages/solid-pod-sync/src/ProfileManager.ts",
+      "packages/solid-pod-sync/src/SocialGraph.ts",
+      "packages/solid-pod-sync/src/index.ts"
+    ],
+    "dependsOn": []
   },
   {
-    "id": "K5",
+    "id": "L5",
+    "agent": "MOBILE_APP_AGENT",
+    "slug": "ux-context-binding",
+    "title": "UX Phase 2 - context binding (Backpack, Docustream, Profile overlap)",
+    "objective": "Replace mock state in Phase 1 screens with live context calls (L1-L4 must be merged first).",
+    "acceptanceCriteria": [
+      "backpack.tsx togglePermission calls updateWebACL() via SolidContext.",
+      "docustream.tsx fetches RSS via react-native-rss-parser, writes to DocustreamManager.appendActivity(), reads via listActivities().",
+      "profile.tsx calls findSemanticOverlap(peerWebId); renders Shared Threads card only when result.length > 0.",
+      "tsc --noEmit clean. No regressions to feed/local/settings/index."
+    ],
+    "sourceReferences": [
+      "docs/dev-only/prototypes/UX-Implementation-Specification.md sections 4.1 4.4 4.5",
+      "packages/mobile-app/src/contexts/SolidContext.tsx",
+      "packages/solid-pod-sync/src/index.ts"
+    ],
+    "dependsOn": ["L1", "L2", "L3", "L4"]
+  },
+  {
+    "id": "L6",
+    "agent": "P2P_RELAY_AGENT",
+    "slug": "ux-compose-routing",
+    "title": "UX Phase 2 - compose audience routing via P2P/Pod/ZK",
+    "objective": "Implement handlePost in compose.tsx routing payload by audience selection (L1+L3 must be merged).",
+    "acceptanceCriteria": [
+      "local: P2PChannel.send() scoped to getSurroundingNodes() neighbours via DiscoveryContext.",
+      "foaf: encrypted write to Pod /outbox/ LDP; recipients from SocialGraph foaf:knows.",
+      "verified: same as foaf with WalletContext.verifyPoH(recipientWebId) guard per recipient.",
+      "ActivityIndicator during in-flight; error Toast on failure.",
+      "tsc --noEmit clean. Local post visible to second test client via relay within 5s."
+    ],
+    "sourceReferences": [
+      "docs/dev-only/prototypes/UX-Implementation-Specification.md section 4.2",
+      "packages/p2p-comms/src/",
+      "packages/geo-discovery/src/h3-grid.ts",
+      "packages/mobile-app/src/contexts/DiscoveryContext.tsx"
+    ],
+    "dependsOn": ["L1", "L3"]
+  },
+  {
+    "id": "L7",
     "agent": "QA_RELEASE_AGENT",
-    "title": "attestation staging validation",
-    "objective": "Execute attestation-focused smoke/UAT matrix and produce release evidence for onboarding and returning-sign-in pairing checks.",
+    "slug": "ux-qa-smoke",
+    "title": "UX Phase 3 - QA smoke suite for all UX features",
+    "objective": "Execute four acceptance journeys (J1-J4) and post pass/fail matrix. DONE only on 4/4 PASS.",
     "acceptanceCriteria": [
-      "UAT includes register_webid tx evidence and lockbox root-read verification.",
-      "Pass/fail matrix for attestation states is posted to inbox.",
-      "Release recommendation (GO/BLOCK) is updated with rationale."
+      "J1 PASS: Backpack toggle ON/OFF updates .acl public acl:Read on Pod container.",
+      "J2 PASS: Docustream RSS add creates ActivityStreams 2.0 item in /public/docustream/ LDP container.",
+      "J3 PASS: Compose post (audience=local) received by second test client via staging relay within 5s.",
+      "J4 PASS: Profile peer view renders Shared Threads card with shared interest; hides card with no overlap.",
+      "Pass/fail matrix with evidence posted to inbox.",
+      "FAIL: [NEEDS-INFO] message with root-cause sent to PROJECT_MANAGER."
     ],
-    "dependsOn": ["K4"]
-  },
-  {
-    "id": "K5D",
-    "agent": "DOCS_AGENT",
-    "title": "attestation evidence docs update",
-    "objective": "Publish attestation-focused release evidence and remove remaining PoH drift from docs/wiki after QA results.",
-    "acceptanceCriteria": [
-      "README/docs/wiki reflect final attestation evidence.",
-      "Future-scope PoH wording remains non-gating.",
-      "Linked evidence paths added for QA validation outcomes."
+    "sourceReferences": [
+      "docs/staging-uat-checklist.md",
+      "scripts/qa/staging-smoke.sh",
+      "docs/dev-only/prototypes/UX-Implementation-Specification.md section 5"
     ],
-    "dependsOn": ["K5"]
+    "dependsOn": ["L5", "L6"]
   }
 ]
