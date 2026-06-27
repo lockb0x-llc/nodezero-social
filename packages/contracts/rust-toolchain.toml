@@ -1,5 +1,6 @@
 [toolchain]
-# Pinned to a known-good stable release that is compatible with soroban-sdk 20.x.
+# Pinned to 1.85.0: the first stable release with Cargo edition 2024 support
+# (required by zeroize 1.9+, a transitive dep of soroban-sdk 20.x).
 # Update this in lockstep with any soroban-sdk version bump.
-channel = "1.81.0"
+channel = "1.85.0"
 components = ["rustfmt", "clippy"]

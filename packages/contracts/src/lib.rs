@@ -26,7 +26,7 @@
 
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short,
-    Address, Bytes, BytesN, Env, String,
+    Address, BytesN, Env, String,
 };
 
 // ─── Storage key types ────────────────────────────────────────────────────────
@@ -79,9 +79,13 @@ impl NodeZeroIdentity {
             "webid_url too short to be a valid HTTP URL"
         );
 
-        let prefix = webid_url.slice(0..4);
-        let http = String::from_str(&env, "http");
-        assert!(prefix == http, "webid_url must start with 'http'");
+        // String::slice() does not exist in soroban-sdk 20.x; copy into a
+        // stack buffer and compare the first 4 bytes directly.
+        let url_len = webid_url.len() as usize;
+        let mut buf = [0u8; 2048];
+        assert!(url_len <= buf.len(), "webid_url too long");
+        webid_url.copy_into_slice(&mut buf[..url_len]);
+        assert!(&buf[..4] == b"http", "webid_url must start with 'http'");
 
         env.storage()
             .persistent()
