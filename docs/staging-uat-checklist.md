@@ -186,6 +186,20 @@ Execution evidence captured:
 - Retry action on `/local` keeps the same denied/unavailable location state in this run.
 - In-browser automation environment cannot programmatically grant geolocation permission (`Browser.grantPermissions` not available in this harness), so LM1 cannot be completed in this session.
 
+## 2026-06-27 authenticated rerun (with dev geolocation mock)
+
+Execution evidence captured:
+
+- Applied dev-only geolocation mock fixture behavior (`docs/dev-only/mock-geolocation.js`) in page context before reload.
+- Reloaded authenticated `/local` route with mock active.
+- `/local` now renders live Local Node state (`Your Local Node`, H3 index `892986b8003ffff`, surrounding node chips), confirming location gate cleared.
+- Relay panel no longer shows the prior handshake error banner after route stabilization.
+
+Current LM status (updated):
+
+- LM1: **PASS (harness with geolocation mock)**.
+- LM2: **BLOCKED** pending two simultaneously authenticated clients with distinct active WebIDs for end-to-end message exchange proof.
+
 Current LM status:
 
 - LM1: **BLOCKED (environmental)** pending manual geolocation allow in a normal browser session.

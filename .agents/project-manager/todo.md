@@ -51,7 +51,7 @@
 - [DONE] J1: Fix wallet provisioning on web — Platform.OS === 'web' guard in WalletContext.tsx skips expo-secure-store on web. (commit 778c37f, testnet)
 - [DONE] J2: Fix auth error message specificity — client-side empty URL and non-HTTPS checks in index.tsx. (commit 778c37f, testnet)
 - [DONE] J3: Add favicon to Expo web export. Owner: MOBILE_APP_AGENT. (`web.favicon` configured in app.config.js + assets/favicon.png present)
-- [IN_PROGRESS] J4: Complete LM1/LM2/WR2/AU4 authenticated UAT. (Relay recovered and authenticated rerun reaches /feed; remaining blocker is manual geolocation allow on /local to complete LM1/LM2 two-client proof)
+- [IN_PROGRESS] J4: Complete LM1/LM2/WR2/AU4 authenticated UAT. (Relay recovered; LM1 passes with dev geolocation mock in harness; remaining blocker is LM2 two-client proof with distinct authenticated WebIDs)
 - [DONE] J5: DOCS_AGENT to document confirmed functionality and gaps. (merged to testnet)
 - [DONE] J6 (P1): Web navigation bar added to _layout.tsx — WebNavBar renders on Platform.OS==='web' when isLoggedIn. Feed/Local/Profile/Settings links with active state. (commit 9118ac7, merged to testnet)
 - [DONE] J7 (P1): index.tsx redirect now guards on pathname==='/' — prevents authenticated users at /settings, /local, /profile from being bounced to /feed. (commit 9118ac7, merged to testnet)

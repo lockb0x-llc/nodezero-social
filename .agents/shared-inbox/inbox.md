@@ -39823,3 +39823,8 @@ Request: Complete LM1/LM2 in a manual browser session with geolocation permissio
 Evidence: /local still shows location-permission gate on rerun; retry does not clear denied state in current harness; automation environment cannot grant geolocation permission (Browser.grantPermissions method unavailable).
 Due: Immediate.
 
+[2026-06-27 18:45 UTC] [QA_RELEASE_AGENT->PROJECT_MANAGER] [P1] [UPDATE]
+Context: Used dev geolocation mock in staging browser harness and reloaded authenticated /local route.
+Request: Track LM1 as pass in harness; keep J4 open only for LM2 two-client exchange proof with distinct authenticated WebIDs.
+Evidence: /local now renders "Your Local Node" with H3 index 892986b8003ffff and surrounding cells after mock injection/reload.
+Due: Next coordination checkpoint.
