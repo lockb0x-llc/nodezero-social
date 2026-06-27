@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   SafeAreaView,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSolid } from '../src/contexts/SolidContext';
@@ -74,6 +75,7 @@ export default function DocustreamScreen() {
   const [filter, setFilter] = useState<FilterType>('all');
   const [items, setItems] = useState<StreamItem[]>(MOCK_DOCUSTREAM);
   const [loadingPod, setLoadingPod] = useState(false);
+  const [savingItemId, setSavingItemId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isLoggedIn || !webId) return;
@@ -94,6 +96,27 @@ export default function DocustreamScreen() {
   const filteredStream =
     filter === 'all' ? items : items.filter(item => item.source === filter);
 
+  const handleSaveToPod = async (item: StreamItem): Promise<void> => {
+    if (!isLoggedIn || !webId) {
+      Alert.alert('Sign in required', 'Sign in to save docustream items to your Pod.');
+      return;
+    }
+
+    const podRoot = webId.split('/profile/')[0] + '/';
+    const manager = new DocustreamManager(session);
+
+    setSavingItemId(item.id);
+    try {
+      await manager.appendActivity(podRoot, item);
+      Alert.alert('Saved', 'This item was written to your Solid Pod.');
+    } catch (err) {
+      console.error('[DocustreamScreen] handleSaveToPod error:', err);
+      Alert.alert('Save failed', 'Could not save this item to your Pod.');
+    } finally {
+      setSavingItemId(null);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       {/* Header */}
@@ -103,7 +126,7 @@ export default function DocustreamScreen() {
           <Text style={styles.headerSubtitle}>Aggregated &amp; Stored in your Pod</Text>
         </View>
         <TouchableOpacity
-          onPress={() => console.log('Add docustream source')}
+          onPress={() => Alert.alert('Coming soon', 'Adding new docustream sources will be enabled in a later phase.')}
           style={styles.addButton}
         >
           <Ionicons name="add-circle" size={28} color="#2563EB" />
@@ -147,14 +170,17 @@ export default function DocustreamScreen() {
             <View style={styles.cardActions}>
               <TouchableOpacity
                 style={styles.actionLink}
-                onPress={() => console.log('Save to Pod', item.id)}
+                onPress={() => void handleSaveToPod(item)}
+                disabled={savingItemId === item.id}
               >
                 <Ionicons name="bookmark-outline" size={16} color="#6B7280" />
-                <Text style={styles.actionText}>Save to Pod</Text>
+                <Text style={styles.actionText}>
+                  {savingItemId === item.id ? 'Saving…' : 'Save to Pod'}
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.actionLink}
-                onPress={() => console.log('Share to Grid', item.id)}
+                onPress={() => Alert.alert('Coming soon', 'Grid sharing is not yet implemented.')}
               >
                 <Ionicons name="share-social-outline" size={16} color="#6B7280" />
                 <Text style={styles.actionText}>Share to Grid</Text>

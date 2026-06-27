@@ -232,3 +232,25 @@ Validation snapshot:
 
 - Static checks: `SolidContext.tsx`, `index.tsx`, and `app.config.js` compile with no file-level diagnostics.
 - Workspace package lint/type-check still includes unrelated pre-existing failures in `app/compose.tsx`; no new errors introduced by this JSS mode patch.
+
+## 2026-06-27 JSS rollout closeout evidence
+
+Execution evidence captured:
+
+- Staging landing route renders JSS-first onboarding copy and top-nav auth mode badge `JSS Local`.
+- Staging `/feed` renders persistent auth mode chip `JSS Local` in the feed header.
+- Feed auth-mode `?` control opens concise explainer text: `JSS Local: uses bootstrap WebID sign-in without provider redirect.`
+- Staging `/settings` renders `Auth Mode` row with badge `JSS Local` and tooltip explainer.
+- Relay health remains green (`/health` HTTP 200 JSON on `nodezero-social-staging-testnet-relay.azurewebsites.net`).
+- Core route availability check passed for `/`, `/feed`, `/local`, `/profile`, `/settings` (HTTP 200).
+
+Local header closeout note:
+
+- In this browser harness, runtime geolocation permission remained denied and blocked live rendering of the Local Node header during this pass.
+- Deployed artifact confirms Local screen JSS-mode header path is present (bundle contains Local screen auth-mode logic with `JSS Local` / `External CSS` label branch and `Auth mode explanation` control).
+- Prior run evidence in this checklist already confirms Local Node render after geolocation mock (`Your Local Node` + H3 state) for the same staging environment.
+
+Closeout status:
+
+- JSS auth-mode indicator rollout: **COMPLETE** for Landing, Feed, and Settings runtime verification.
+- Local runtime header chip: **CODE-PRESENT / ENV-BLOCKED IN HARNESS** (requires manual geolocation-allowed browser session for final visual confirmation).

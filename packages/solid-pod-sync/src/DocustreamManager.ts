@@ -113,14 +113,19 @@ export class DocustreamManager {
     const body = toJsonLd(item)
 
     try {
-      await this.session.fetch(resourceUrl, {
+      const response = await this.session.fetch(resourceUrl, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/ld+json' },
         body,
       })
+
+      if (!response.ok) {
+        throw new Error(`Failed to write docustream item ${item.id}: HTTP ${response.status}`)
+      }
     } catch (err) {
-      // Stub behaviour: swallow so callers are not blocked in Phase 1.
-      void err
+      throw new Error(
+        `Unable to append docustream item ${item.id} at ${resourceUrl}: ${err instanceof Error ? err.message : String(err)}`
+      )
     }
   }
 
@@ -168,7 +173,7 @@ export class DocustreamManager {
         })
       )
 
-      return items
+      return items.sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp))
     } catch {
       return []
     }

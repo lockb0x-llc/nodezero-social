@@ -24,9 +24,7 @@ import {
 import { useLocalSearchParams } from 'expo-router'
 import { useSolid } from '../src/contexts/SolidContext'
 import { ProfileManager, SocialGraph, type UserProfile } from '@nodezero/solid-pod-sync'
-
-// Stub — remove when @expo/vector-icons is installed (L3)
-const Ionicons = (_props: { name: string; size?: number; color?: string }) => null
+import { Ionicons } from '@expo/vector-icons'
 
 const EMPTY_PROFILE: UserProfile = {
   displayName: '',
