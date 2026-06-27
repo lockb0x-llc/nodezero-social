@@ -2,6 +2,12 @@ name: Delegate nodezero.social to Azure DNS
 
 on:
   workflow_dispatch: {}
+  push:
+    branches:
+      - testnet
+    paths:
+      - '.github/workflows/delegate-dns-to-azure.yml'
+      - 'scripts/dns/set-namecheap-nameservers.mjs'
 
 permissions:
   contents: read
