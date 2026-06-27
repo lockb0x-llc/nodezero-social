@@ -16,10 +16,16 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   RefreshControl,
+  Modal,
+  Switch,
 } from 'react-native'
 import { useSolid } from '../src/contexts/SolidContext'
 import { useRouter } from 'expo-router'
 import { SocialGraph, ProfileManager } from '@nodezero/solid-pod-sync'
+
+// Stub components — remove when @expo/vector-icons and @react-native-community/slider are installed (L3)
+const Ionicons = (_props: { name: string; size?: number; color?: string }) => null
+const Slider = (_props: any) => null
 
 interface FeedPost {
   id: string
@@ -35,6 +41,10 @@ export default function GlobalFeedScreen(): JSX.Element {
   const [posts, setPosts] = useState<FeedPost[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [isTunerOpen, setIsTunerOpen] = useState(false)
+  const [serendipity, setSerendipity] = useState(80)
+  const [deepTies, setDeepTies] = useState(50)
+  const [sfwMode, setSfwMode] = useState(true)
 
   const fetchFeed = useCallback(async () => {
     if (!isLoggedIn || !webId) return
@@ -115,6 +125,16 @@ export default function GlobalFeedScreen(): JSX.Element {
 
   return (
     <View style={styles.container}>
+      <View style={styles.feedHeader}>
+        <Text style={styles.feedHeaderTitle}>Feed</Text>
+        <TouchableOpacity
+          style={styles.tunerButton}
+          onPress={() => setIsTunerOpen(true)}
+          accessibilityLabel="Open algorithm tuner"
+        >
+          <Ionicons name="options" size={22} color="#FFF" />
+        </TouchableOpacity>
+      </View>
       <FlatList
         data={posts}
         keyExtractor={(item) => item.id}
@@ -129,6 +149,71 @@ export default function GlobalFeedScreen(): JSX.Element {
         }
         contentContainerStyle={styles.list}
       />
+      <Modal
+        animationType="slide"
+        transparent
+        visible={isTunerOpen}
+        onRequestClose={() => setIsTunerOpen(false)}
+      >
+        <TouchableOpacity
+          style={styles.tunerOverlay}
+          activeOpacity={1}
+          onPress={() => setIsTunerOpen(false)}
+        >
+          <View style={styles.tunerSheet} onStartShouldSetResponder={() => true}>
+            <View style={styles.tunerHandle} />
+            <Text style={styles.tunerTitle}>Your Personal Algorithm</Text>
+            <Text style={styles.tunerSubtitle}>You control what you see. Tune your grid.</Text>
+
+            <View style={styles.sliderGroup}>
+              <View style={styles.sliderHeader}>
+                <Text style={styles.sliderLabel}>Serendipity</Text>
+                <Text style={styles.sliderValue}>{serendipity > 75 ? 'High' : serendipity > 40 ? 'Med' : 'Low'}</Text>
+              </View>
+              <Slider
+                style={{ width: '100%', height: 40 }}
+                minimumValue={0}
+                maximumValue={100}
+                value={serendipity}
+                onValueChange={(v: number) => setSerendipity(v)}
+                minimumTrackTintColor="#6C63FF"
+                maximumTrackTintColor="#333"
+              />
+              <Text style={styles.sliderDescription}>Discover new nodes in your wider H3 area.</Text>
+            </View>
+
+            <View style={styles.sliderGroup}>
+              <View style={styles.sliderHeader}>
+                <Text style={styles.sliderLabel}>Deep Ties (FOAF)</Text>
+                <Text style={styles.sliderValue}>{deepTies > 75 ? 'High' : deepTies > 40 ? 'Med' : 'Low'}</Text>
+              </View>
+              <Slider
+                style={{ width: '100%', height: 40 }}
+                minimumValue={0}
+                maximumValue={100}
+                value={deepTies}
+                onValueChange={(v: number) => setDeepTies(v)}
+                minimumTrackTintColor="#6C63FF"
+                maximumTrackTintColor="#333"
+              />
+              <Text style={styles.sliderDescription}>Prioritize posts from your immediate Trust Circles.</Text>
+            </View>
+
+            <View style={styles.sfwRow}>
+              <View style={styles.sfwTextWrap}>
+                <Text style={styles.sfwTitle}>SFW Mode</Text>
+                <Text style={styles.sfwDescription}>Hide profiles tagged as NSFW.</Text>
+              </View>
+              <Switch
+                value={sfwMode}
+                onValueChange={setSfwMode}
+                trackColor={{ false: '#333', true: '#6C63FF' }}
+                thumbColor="#FFF"
+              />
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   )
 }
@@ -157,6 +242,23 @@ function PostCard({ post }: { post: FeedPost }): JSX.Element {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0D0D0D' },
+  feedHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#1E1E1E' },
+  feedHeaderTitle: { color: '#FFF', fontSize: 18, fontWeight: '700' },
+  tunerButton: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#1A1A1A', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#2A2A2A' },
+  tunerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
+  tunerSheet: { backgroundColor: '#1A1A1A', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, paddingBottom: 40, borderTopWidth: 1, borderTopColor: '#2A2A2A' },
+  tunerHandle: { width: 40, height: 4, backgroundColor: '#444', borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
+  tunerTitle: { color: '#FFF', fontSize: 18, fontWeight: '800', marginBottom: 4 },
+  tunerSubtitle: { color: '#888', fontSize: 13, marginBottom: 20 },
+  sliderGroup: { marginBottom: 20 },
+  sliderHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
+  sliderLabel: { color: '#DDD', fontSize: 14, fontWeight: '600' },
+  sliderValue: { color: '#6C63FF', fontSize: 13, fontWeight: '700' },
+  sliderDescription: { color: '#666', fontSize: 12, marginTop: 2 },
+  sfwRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 16, borderTopWidth: 1, borderTopColor: '#2A2A2A' },
+  sfwTextWrap: { flex: 1, marginRight: 12 },
+  sfwTitle: { color: '#DDD', fontSize: 14, fontWeight: '600' },
+  sfwDescription: { color: '#666', fontSize: 12, marginTop: 2 },
   list: { padding: 16, flexGrow: 1 },
   centred: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
   emptyText: { color: '#888', fontSize: 15, textAlign: 'center', marginBottom: 16 },
