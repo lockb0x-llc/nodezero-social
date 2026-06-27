@@ -17,6 +17,19 @@ param appName string = 'nodezero-social'
 @description('Static Web App deployment region.')
 param staticWebAppLocation string = 'eastus2'
 
+@description('Log Analytics retention period in days for staging observability data.')
+@minValue(30)
+@maxValue(90)
+param logAnalyticsRetentionDays int = 30
+
+@description('Daily ingestion cap (GB) for Log Analytics workspace cost control.')
+@minValue(1)
+@maxValue(10)
+param logAnalyticsDailyQuotaGb int = 1
+
+@description('Optional alert email for staging platform incidents (leave empty to disable action group wiring).')
+param alertEmailAddress string = ''
+
 @description('Contract ID for the NodeZeroIdentity contract.')
 @secure()
 param identityContractId string
@@ -45,10 +58,13 @@ var keyVaultName = take('${replace(appName, '-', '')}${replace(environmentName, 
 var staticWebAppName = '${appName}-${environmentName}-web'
 var appInsightsName = '${appName}-${environmentName}-appi'
 var logAnalyticsName = '${appName}-${environmentName}-law'
+var monitorActionGroupName = '${appName}-${environmentName}-ag'
 var commonTags = {
   application: appName
   environment: environmentName
   runtimeBoundary: environmentName == 'production-mainnet' ? 'production' : 'non-production'
+  costGuardrail: 'enabled'
+  monitoringBaseline: 'enabled'
 }
 
 resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2022-10-01' = {
@@ -56,9 +72,12 @@ resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2022-10-01' = {
   location: location
   tags: commonTags
   properties: {
-    retentionInDays: 30
+    retentionInDays: logAnalyticsRetentionDays
     sku: {
       name: 'PerGB2018'
+    }
+    workspaceCapping: {
+      dailyQuotaGb: logAnalyticsDailyQuotaGb
     }
   }
 }
@@ -150,6 +169,58 @@ resource staticWebApp 'Microsoft.Web/staticSites@2022-09-01' = {
   properties: {
     stagingEnvironmentPolicy: 'Enabled'
     provider: 'Other'
+  }
+}
+
+resource monitorActionGroup 'Microsoft.Insights/actionGroups@2023-01-01' = if (!empty(alertEmailAddress)) {
+  name: monitorActionGroupName
+  location: 'global'
+  tags: commonTags
+  properties: {
+    enabled: true
+    groupShortName: 'nzstageag'
+    emailReceivers: [
+      {
+        name: 'staging-oncall'
+        emailAddress: alertEmailAddress
+        useCommonAlertSchema: true
+      }
+    ]
+  }
+}
+
+resource stagingErrorAlert 'Microsoft.Insights/activityLogAlerts@2020-10-01' = if (!empty(alertEmailAddress)) {
+  name: '${appName}-${environmentName}-rg-admin-error'
+  location: 'global'
+  tags: commonTags
+  properties: {
+    enabled: true
+    scopes: [
+      subscription().id
+    ]
+    condition: {
+      allOf: [
+        {
+          field: 'category'
+          equals: 'Administrative'
+        }
+        {
+          field: 'level'
+          equals: 'Error'
+        }
+        {
+          field: 'resourceGroup'
+          equals: resourceGroup().name
+        }
+      ]
+    }
+    actions: {
+      actionGroups: [
+        {
+          actionGroupId: monitorActionGroup.id
+        }
+      ]
+    }
   }
 }
 
