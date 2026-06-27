@@ -26,8 +26,11 @@ function WebNavBar(): JSX.Element | null {
   if (Platform.OS !== 'web' || !isLoggedIn) return null
 
   const links = [
-    { href: '/feed', label: '📰 Feed' },
     { href: '/local', label: '📍 Local' },
+    { href: '/compose', label: '＋ Broadcast' },
+    { href: '/docustream', label: '📡 Stream' },
+    { href: '/feed', label: '📰 Feed' },
+    { href: '/backpack', label: '⚡ Backpack' },
     { href: '/profile', label: '👤 Profile' },
     { href: '/settings', label: '⚙️ Settings' },
   ] as const
@@ -94,6 +97,9 @@ export default function RootLayout(): JSX.Element {
             <Stack.Screen name="local" options={{ title: 'Local Node' }} />
             <Stack.Screen name="profile" options={{ title: 'Profile' }} />
             <Stack.Screen name="settings" options={{ title: 'Settings' }} />
+            <Stack.Screen name="backpack" />
+            <Stack.Screen name="compose" />
+            <Stack.Screen name="docustream" />
           </Stack>
           <WebNavBar />
         </WalletProvider>
