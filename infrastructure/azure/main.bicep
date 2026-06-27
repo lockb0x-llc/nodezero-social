@@ -170,6 +170,50 @@ resource stagingCname 'Microsoft.Network/dnsZones/CNAME@2018-05-01' = {
   }
 }
 
+// Apex alias A record — points nodezero.social to the SWA resource (same-subscription alias)
+resource apexAliasRecord 'Microsoft.Network/dnsZones/A@2018-05-01' = {
+  parent: dnsZone
+  name: '@'
+  properties: {
+    TTL: 300
+    targetResource: {
+      id: staticWebApp.id
+    }
+  }
+}
+
+// www CNAME — points www.nodezero.social to the SWA default hostname
+resource wwwCnameRecord 'Microsoft.Network/dnsZones/CNAME@2018-05-01' = {
+  parent: dnsZone
+  name: 'www'
+  properties: {
+    TTL: 300
+    CNAMERecord: {
+      cname: staticWebApp.properties.defaultHostname
+    }
+  }
+}
+
+// Apex custom domain — ARM validates via the same-subscription alias record above
+resource apexCustomDomain 'Microsoft.Web/staticSites/customDomains@2022-09-01' = {
+  parent: staticWebApp
+  name: dnsZoneName
+  properties: {
+    validationMethod: 'dns-txt-token'
+  }
+  dependsOn: [apexAliasRecord]
+}
+
+// www custom domain — validated via CNAME delegation
+resource wwwCustomDomain 'Microsoft.Web/staticSites/customDomains@2022-09-01' = {
+  parent: staticWebApp
+  name: 'www.${dnsZoneName}'
+  properties: {
+    validationMethod: 'cname-delegation'
+  }
+  dependsOn: [wwwCnameRecord]
+}
+
 output staticWebAppName string = staticWebApp.name
 output staticWebAppDefaultHostname string = staticWebApp.properties.defaultHostname
 output stagingCustomHostname string = '${stagingHostLabel}.${dnsZoneName}'
