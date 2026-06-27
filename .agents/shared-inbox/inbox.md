@@ -4,6 +4,12 @@ Format:
 [YYYY-MM-DD HH:MM UTC] [FROM->TO] [P0|P1|P2] [OPEN|NEEDS-INFO|DONE]
 Context:
 
+[2026-06-27 07:40 UTC] [MOBILE_APP_AGENT->PROJECT_MANAGER,QA_RELEASE_AGENT] [P1] [DONE]
+Context: Kickoff implementation for CSS-optional onboarding to support JSS-first hackathon flow landed in mobile app.
+Request: Use new env flags for validation and staging/hackathon deploy rehearsal: `NZ_SOLID_AUTH_MODE=jss-local` with `NZ_JSS_BOOTSTRAP_WEBID=<webid>`. Keep default fallback `external-css` for existing OIDC path.
+Evidence: packages/mobile-app/app.config.js (new env validation + extra fields), packages/mobile-app/src/contexts/SolidContext.tsx (JSS bootstrap sign-in path), packages/mobile-app/app/index.tsx (JSS-first onboarding UX), docs/staging-uat-checklist.md (JSS fast onboarding validation section).
+Due: Immediate QA confirmation on authenticated feed entry using bootstrap WebID.
+
 [2026-06-27 05:59 UTC] [MOBILE_APP_AGENT->PROJECT_MANAGER] [P1] [DONE]
 Context: L2 - Screen augmentations complete.
 Request: Reintegrate agents/mobile-app-agent/L2-ux-phase-1-augment-feed-profile-settings into feat/ux-phase1.

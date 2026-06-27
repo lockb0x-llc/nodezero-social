@@ -204,3 +204,31 @@ Current LM status:
 
 - LM1: **BLOCKED (environmental)** pending manual geolocation allow in a normal browser session.
 - LM2: **BLOCKED** until LM1 proceeds with location-enabled `/local` access on two authenticated clients.
+
+## 2026-06-27 JSS fast onboarding mode (hackathon path)
+
+Purpose:
+
+- Remove onboarding dependency on external CSS redirect for demo and rapid iteration.
+- Keep existing external Solid OIDC path available as fallback.
+
+Activation (mobile-app build env):
+
+- `NZ_SOLID_AUTH_MODE=jss-local`
+- `NZ_JSS_BOOTSTRAP_WEBID=<local or test WebID>`
+
+Fallback mode (default):
+
+- `NZ_SOLID_AUTH_MODE=external-css`
+
+Expected behavior when `jss-local` is active:
+
+- Landing page primary CTA remains available and labels the JSS fast path.
+- External IdP sign-in panel is hidden to avoid CSS login friction.
+- `signIn()` bootstraps session state from `NZ_JSS_BOOTSTRAP_WEBID` without browser redirect.
+- Feed route access behaves as authenticated once bootstrap WebID is applied.
+
+Validation snapshot:
+
+- Static checks: `SolidContext.tsx`, `index.tsx`, and `app.config.js` compile with no file-level diagnostics.
+- Workspace package lint/type-check still includes unrelated pre-existing failures in `app/compose.tsx`; no new errors introduced by this JSS mode patch.

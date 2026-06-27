@@ -55,6 +55,20 @@ const identityContractId = process.env.NZ_IDENTITY_CONTRACT_ID ?? ''
 const lockboxContractId = process.env.NZ_LOCKBOX_CONTRACT_ID ?? ''
 const zkArtifactsUrl = process.env.NZ_ZK_ARTIFACTS_URL ?? ''
 const zkManifestUrl = process.env.NZ_ZK_MANIFEST_URL ?? ''
+const solidAuthMode = process.env.NZ_SOLID_AUTH_MODE ?? 'external-css'
+const jssBootstrapWebId = process.env.NZ_JSS_BOOTSTRAP_WEBID ?? ''
+
+if (solidAuthMode !== 'external-css' && solidAuthMode !== 'jss-local') {
+  throw new Error(
+    `Invalid NZ_SOLID_AUTH_MODE '${solidAuthMode}'. Allowed values: external-css, jss-local.`
+  )
+}
+
+if (solidAuthMode === 'jss-local' && !jssBootstrapWebId.trim()) {
+  throw new Error(
+    'NZ_JSS_BOOTSTRAP_WEBID is required when NZ_SOLID_AUTH_MODE=jss-local.'
+  )
+}
 
 if (profile.enforceStrictVariables) {
   if (!relayUrl) {
@@ -131,6 +145,8 @@ module.exports = {
 
   extra: {
     envProfile,
+    solidAuthMode,
+    jssBootstrapWebId,
     primaryColor: process.env.NZ_PRIMARY_COLOR ?? '#6C63FF',
     backgroundColor: process.env.NZ_BACKGROUND_COLOR ?? '#0D0D0D',
     relayUrl,

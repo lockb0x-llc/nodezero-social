@@ -21,16 +21,24 @@ import {
 } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useRouter } from 'expo-router'
+import Constants from 'expo-constants'
 import { useSolid } from '../src/contexts/SolidContext'
 import { useWallet } from '../src/contexts/WalletContext'
 
 const SHOW_NSFW_KEY = 'settings.showNsfw'
+
+function getSolidAuthMode(): 'external-css' | 'jss-local' {
+  const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
+  return appExtra?.solidAuthMode === 'jss-local' ? 'jss-local' : 'external-css'
+}
 
 export default function SettingsScreen(): JSX.Element {
   const { signOut, webId } = useSolid()
   const router = useRouter()
   const { walletInfo, attestationStatus, attestationMessage, attestationDetails } = useWallet()
   const [showNsfw, setShowNsfw] = useState(false)
+  const [showAuthModeHint, setShowAuthModeHint] = useState(false)
+  const usesJssLocal = getSolidAuthMode() === 'jss-local'
 
   // Load persisted NSFW setting on mount.
   React.useEffect(() => {
@@ -74,6 +82,29 @@ export default function SettingsScreen(): JSX.Element {
       {/* ── Solid Pod ─────────────────────────────────────────────── */}
       <Text style={styles.sectionHeader}>Solid Pod</Text>
       <View style={styles.card}>
+        <View style={styles.row}>
+          <Text style={styles.rowLabel}>Auth Mode</Text>
+          <View style={styles.authModeWrap}>
+            <View style={styles.authModeBadge}>
+              <Text style={styles.authModeBadgeText}>{usesJssLocal ? 'JSS Local' : 'External CSS'}</Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => setShowAuthModeHint((v) => !v)}
+              accessibilityRole="button"
+              accessibilityLabel="Auth mode explanation"
+              style={styles.authModeInfoButton}
+            >
+              <Text style={styles.authModeInfoText}>?</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+        {showAuthModeHint ? (
+          <Text style={styles.rowSubDetail}>
+            {usesJssLocal
+              ? 'JSS Local: uses the configured bootstrap WebID to start quickly without external redirect.'
+              : 'External CSS: uses standard Solid OIDC redirect and provider-hosted sign-in.'}
+          </Text>
+        ) : null}
         <Row label="WebID" value={webId ?? 'Not signed in'} mono />
       </View>
 
@@ -203,6 +234,26 @@ const styles = StyleSheet.create({
   rowSubDetail: { color: '#777', fontSize: 12, marginHorizontal: 14, marginBottom: 12, marginTop: -4 },
   rowValue: { color: '#AAA', fontSize: 12, textAlign: 'right', flex: 1 },
   rowValueMono: { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 10, color: '#6C63FF' },
+  authModeWrap: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  authModeBadge: {
+    borderWidth: 1,
+    borderColor: '#2A2A2A',
+    borderRadius: 999,
+    backgroundColor: '#111',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  authModeBadgeText: { color: '#DDD', fontSize: 10, fontWeight: '700', textTransform: 'uppercase' },
+  authModeInfoButton: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#2A2A2A',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  authModeInfoText: { color: '#777', fontSize: 11, fontWeight: '700' },
   dangerButton: { padding: 14, alignItems: 'center' },
   dangerButtonText: { color: '#FF6B6B', fontSize: 14, fontWeight: '600' },
   signOutButton: { padding: 14, alignItems: 'center' },

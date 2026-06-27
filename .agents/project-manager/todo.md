@@ -74,3 +74,6 @@
 - [DONE] L5: Context binding - wire Backpack/Docustream/Profile overlap to live backend methods. Owner: MOBILE_APP_AGENT. (commit: f9d8385, merged to feat/ux-phase1)
 - [DONE] L6: Compose audience routing - local->P2PChannel, foaf->Pod encrypt, verified->ZK gate. Owner: P2P_RELAY_AGENT. (commit: dc8de39, merged to feat/ux-phase1)
 - [DONE] L7: Phase 3 QA smoke - J1(Backpack/WebACL) J2(Docustream/Pod) J3(Compose/P2P) J4(Semantic Overlap). Owner: QA_RELEASE_AGENT. Reintegrated to testnet via merge commit d6eb8b9.
+
+## Milestone M: JSS-first onboarding path (hackathon)
+- [IN_PROGRESS] M1: Add CSS-optional auth mode in mobile app with JSS bootstrap path (`external-css` fallback preserved).

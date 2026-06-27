@@ -58,6 +58,16 @@ function getEnvProfile(): string {
   return appExtra?.envProfile ?? 'local'
 }
 
+function getSolidAuthMode(): 'external-css' | 'jss-local' {
+  const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
+  return appExtra?.solidAuthMode === 'jss-local' ? 'jss-local' : 'external-css'
+}
+
+function getJssBootstrapWebId(): string {
+  const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
+  return appExtra?.jssBootstrapWebId?.trim() ?? ''
+}
+
 /**
  * Validates that the runtime auth environment is internally coherent before any
  * redirect is attempted. Throws an actionable error for staging/production
@@ -138,6 +148,7 @@ function hasOidcRedirectParams(): boolean {
 export function SolidProvider({ children }: { children: ReactNode }): JSX.Element {
   // Fail fast on a misconfigured staging/production auth environment.
   assertAuthEnvironmentCoherence()
+  const solidAuthMode = getSolidAuthMode()
 
   const session = getDefaultSession()
   const [isLoggedIn, setIsLoggedIn] = useState(session.info.isLoggedIn)
@@ -174,6 +185,7 @@ export function SolidProvider({ children }: { children: ReactNode }): JSX.Elemen
     void AsyncStorage.getItem(SOLID_WEBID_STORAGE_KEY)
       .then((cachedWebId) => {
         if (cachedWebId) applyWebId(cachedWebId)
+        if (solidAuthMode === 'jss-local') return undefined
         if (!hasOidcRedirectParams()) return undefined
         return handleIncomingRedirect({ restorePreviousSession: false })
       })
@@ -198,9 +210,17 @@ export function SolidProvider({ children }: { children: ReactNode }): JSX.Elemen
       session.events.off(EVENTS.LOGOUT, handleUnauthenticated)
       session.events.off(EVENTS.SESSION_EXPIRED, handleUnauthenticated)
     }
-  }, [applyWebId, session, syncSessionState])
+  }, [applyWebId, session, solidAuthMode, syncSessionState])
 
   const signIn = useCallback(async (idpUrl: string) => {
+    if (solidAuthMode === 'jss-local') {
+      const bootstrapWebId = getJssBootstrapWebId()
+      if (!bootstrapWebId) {
+        throw new Error('JSS local mode requires NZ_JSS_BOOTSTRAP_WEBID in app config.')
+      }
+      applyWebId(bootstrapWebId)
+      return
+    }
     const oidcIssuer = validateIdpUrl(idpUrl)
     const redirectUrl = resolveRedirectUrl()
     await login({
@@ -208,7 +228,7 @@ export function SolidProvider({ children }: { children: ReactNode }): JSX.Elemen
       redirectUrl,
       clientName: 'NodeZero.social',
     })
-  }, [])
+  }, [applyWebId, solidAuthMode])
 
   const signOut = useCallback(async () => {
     await logout()

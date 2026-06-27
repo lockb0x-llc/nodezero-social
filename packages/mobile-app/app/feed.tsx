@@ -19,6 +19,7 @@ import {
   Modal,
   Switch,
 } from 'react-native'
+import Constants from 'expo-constants'
 import { useSolid } from '../src/contexts/SolidContext'
 import { useRouter } from 'expo-router'
 import { SocialGraph, ProfileManager, DocustreamManager, type StreamItem } from '@nodezero/solid-pod-sync'
@@ -37,9 +38,16 @@ interface FeedPost {
   postUrl?: string
 }
 
+function getSolidAuthMode(): 'external-css' | 'jss-local' {
+  const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
+  return appExtra?.solidAuthMode === 'jss-local' ? 'jss-local' : 'external-css'
+}
+
 export default function GlobalFeedScreen(): JSX.Element {
   const { isLoggedIn, isRestoring, session, webId } = useSolid()
   const router = useRouter()
+  const usesJssLocal = getSolidAuthMode() === 'jss-local'
+  const authModeLabel = usesJssLocal ? 'JSS Local' : 'External CSS'
   const [posts, setPosts] = useState<FeedPost[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -47,6 +55,7 @@ export default function GlobalFeedScreen(): JSX.Element {
   const [serendipity, setSerendipity] = useState(80)
   const [deepTies, setDeepTies] = useState(50)
   const [sfwMode, setSfwMode] = useState(true)
+  const [showAuthModeHint, setShowAuthModeHint] = useState(false)
 
   const fetchFeed = useCallback(async () => {
     if (!isLoggedIn || !webId) return
@@ -149,14 +158,36 @@ export default function GlobalFeedScreen(): JSX.Element {
     <View style={styles.container}>
       <View style={styles.feedHeader}>
         <Text style={styles.feedHeaderTitle}>Feed</Text>
-        <TouchableOpacity
-          style={styles.tunerButton}
-          onPress={() => setIsTunerOpen(true)}
-          accessibilityLabel="Open algorithm tuner"
-        >
-          <Ionicons name="options" size={22} color="#FFF" />
-        </TouchableOpacity>
+        <View style={styles.feedHeaderRight}>
+          <View style={styles.authModeBadge}>
+            <Text style={styles.authModeBadgeText}>{authModeLabel}</Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => setShowAuthModeHint((v) => !v)}
+            accessibilityRole="button"
+            accessibilityLabel="Auth mode explanation"
+            style={styles.authModeInfoButton}
+          >
+            <Text style={styles.authModeInfoText}>?</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.tunerButton}
+            onPress={() => setIsTunerOpen(true)}
+            accessibilityLabel="Open algorithm tuner"
+          >
+            <Ionicons name="options" size={22} color="#FFF" />
+          </TouchableOpacity>
+        </View>
       </View>
+      {showAuthModeHint ? (
+        <View style={styles.authModeHintWrap}>
+          <Text style={styles.authModeHintText}>
+            {usesJssLocal
+              ? 'JSS Local: uses bootstrap WebID sign-in without provider redirect.'
+              : 'External CSS: uses standard Solid OIDC provider redirect.'}
+          </Text>
+        </View>
+      ) : null}
       <FlatList
         data={posts}
         keyExtractor={(item) => item.id}
@@ -278,6 +309,38 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0D0D0D' },
   feedHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#1E1E1E' },
   feedHeaderTitle: { color: '#FFF', fontSize: 18, fontWeight: '700' },
+  feedHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  authModeBadge: {
+    borderWidth: 1,
+    borderColor: '#2A2A2A',
+    borderRadius: 999,
+    backgroundColor: '#1A1A1A',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  authModeBadgeText: { color: '#DDD', fontSize: 10, fontWeight: '700', textTransform: 'uppercase' },
+  authModeInfoButton: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#2A2A2A',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  authModeInfoText: { color: '#777', fontSize: 11, fontWeight: '700' },
+  authModeHintWrap: {
+    marginHorizontal: 16,
+    marginTop: 8,
+    marginBottom: 2,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#2A2A2A',
+    backgroundColor: '#161616',
+    borderRadius: 10,
+  },
+  authModeHintText: { color: '#888', fontSize: 12, lineHeight: 17 },
   tunerButton: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#1A1A1A', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#2A2A2A' },
   tunerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
   tunerSheet: { backgroundColor: '#1A1A1A', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, paddingBottom: 40, borderTopWidth: 1, borderTopColor: '#2A2A2A' },

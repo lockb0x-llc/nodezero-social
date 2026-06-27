@@ -34,11 +34,18 @@ interface LocalMessage {
   timestamp: string
 }
 
+function getSolidAuthMode(): 'external-css' | 'jss-local' {
+  const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
+  return appExtra?.solidAuthMode === 'jss-local' ? 'jss-local' : 'external-css'
+}
+
 export default function LocalNodeScreen(): JSX.Element {
   const { currentNode, surroundingNodes, locationStatus, refresh } = useDiscovery()
   const { webId, isLoggedIn, isRestoring, session } = useSolid()
   const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
   const relayUrl = appExtra?.relayUrl ?? ''
+  const usesJssLocal = getSolidAuthMode() === 'jss-local'
+  const authModeLabel = usesJssLocal ? 'JSS Local' : 'External CSS'
 
   const [message, setMessage] = useState('')
   const [targetWebId, setTargetWebId] = useState('')
@@ -48,6 +55,7 @@ export default function LocalNodeScreen(): JSX.Element {
   const [relayError, setRelayError] = useState<string | null>(null)
   const [openPeers, setOpenPeers] = useState<Record<string, boolean>>({})
   const [knownPeers, setKnownPeers] = useState<string[]>([])
+  const [showAuthModeHint, setShowAuthModeHint] = useState(false)
 
   const relayRef = useRef<SignalRelay | null>(null)
   const channelsRef = useRef<Map<string, P2PChannel>>(new Map())
@@ -264,7 +272,29 @@ export default function LocalNodeScreen(): JSX.Element {
     >
       {/* Node info header */}
       <View style={styles.nodeHeader}>
-        <Text style={styles.nodeTitle}>📍 Your Local Node</Text>
+        <View style={styles.nodeHeaderTop}>
+          <Text style={styles.nodeTitle}>📍 Your Local Node</Text>
+          <View style={styles.nodeHeaderRight}>
+            <View style={styles.authModeBadge}>
+              <Text style={styles.authModeBadgeText}>{authModeLabel}</Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => setShowAuthModeHint((v) => !v)}
+              accessibilityRole="button"
+              accessibilityLabel="Auth mode explanation"
+              style={styles.authModeInfoButton}
+            >
+              <Text style={styles.authModeInfoText}>?</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+        {showAuthModeHint ? (
+          <Text style={styles.authModeHintText}>
+            {usesJssLocal
+              ? 'JSS Local: uses bootstrap WebID sign-in without provider redirect.'
+              : 'External CSS: uses standard Solid OIDC provider redirect.'}
+          </Text>
+        ) : null}
         {currentNode && (
           <>
             <Text style={styles.nodeIndex}>{currentNode.h3Index}</Text>
@@ -395,7 +425,29 @@ const styles = StyleSheet.create({
   refreshBtn: { marginTop: 16, backgroundColor: '#6C63FF', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 20 },
   refreshBtnText: { color: '#FFF', fontWeight: '700' },
   nodeHeader: { padding: 16, borderBottomWidth: 1, borderBottomColor: '#1E1E1E' },
+  nodeHeaderTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  nodeHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   nodeTitle: { color: '#FFF', fontWeight: '800', fontSize: 16 },
+  authModeBadge: {
+    borderWidth: 1,
+    borderColor: '#2A2A2A',
+    borderRadius: 999,
+    backgroundColor: '#1A1A1A',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  authModeBadgeText: { color: '#DDD', fontSize: 10, fontWeight: '700', textTransform: 'uppercase' },
+  authModeInfoButton: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#2A2A2A',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  authModeInfoText: { color: '#777', fontSize: 11, fontWeight: '700' },
+  authModeHintText: { color: '#888', fontSize: 12, lineHeight: 17, marginTop: 8 },
   nodeIndex: { color: '#6C63FF', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 13, marginTop: 4 },
   nodeSubtitle: { color: '#666', fontSize: 12, marginTop: 2 },
   cellStrip: { maxHeight: 44, borderBottomWidth: 1, borderBottomColor: '#1E1E1E' },

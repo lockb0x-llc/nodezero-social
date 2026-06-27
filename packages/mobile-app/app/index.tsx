@@ -21,17 +21,27 @@ import {
   Linking,
 } from 'react-native'
 import { useRouter, usePathname } from 'expo-router'
+import Constants from 'expo-constants'
 import { useSolid } from '../src/contexts/SolidContext'
 
 const DEFAULT_IDP = 'https://solidcommunity.net'
 const NEW_POD_URL = 'https://solidcommunity.net/register'
 
+function getSolidAuthMode(): 'external-css' | 'jss-local' {
+  const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
+  return appExtra?.solidAuthMode === 'jss-local' ? 'jss-local' : 'external-css'
+}
+
 export default function LandingScreen(): JSX.Element {
   const { signIn, isLoggedIn, isRestoring } = useSolid()
   const router = useRouter()
   const pathname = usePathname()
+  const solidAuthMode = getSolidAuthMode()
+  const usesJssLocal = solidAuthMode === 'jss-local'
+  const authModeLabel = usesJssLocal ? 'JSS Local' : 'External CSS'
 
   const [showSignIn, setShowSignIn] = useState(false)
+  const [showModeInfo, setShowModeInfo] = useState(false)
   const [idpUrl, setIdpUrl] = useState(DEFAULT_IDP)
   const [isSigningIn, setIsSigningIn] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -64,8 +74,8 @@ export default function LandingScreen(): JSX.Element {
   }
 
   const handleGetStarted = async (): Promise<void> => {
-    // Trigger the solidcommunity.net auth/register flow directly.
-    // New users will be shown a registration option by the IDP.
+    // In JSS local mode, this bootstraps to the configured local WebID.
+    // In external mode, this opens the standard Solid OIDC flow.
     setIsSigningIn(true)
     setError(null)
     try {
@@ -95,21 +105,47 @@ export default function LandingScreen(): JSX.Element {
         {/* ── Top nav ─────────────────────────────────── */}
         <View style={styles.nav}>
           <Text style={styles.navLogo}>⊙ NodeZero</Text>
-          <TouchableOpacity
-            onPress={() => setShowSignIn((v) => !v)}
-            accessibilityRole="button"
-            accessibilityLabel="Sign in"
-          >
-            <Text style={styles.navSignIn}>Sign In</Text>
-          </TouchableOpacity>
+          <View style={styles.navRight}>
+            <View style={styles.modeBadge}>
+              <Text style={styles.modeBadgeText}>{authModeLabel}</Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => setShowModeInfo((v) => !v)}
+              accessibilityRole="button"
+              accessibilityLabel="Auth mode information"
+              style={styles.modeInfoButton}
+            >
+              <Text style={styles.modeInfoButtonText}>?</Text>
+            </TouchableOpacity>
+            {!usesJssLocal && (
+              <TouchableOpacity
+                onPress={() => setShowSignIn((v) => !v)}
+                accessibilityRole="button"
+                accessibilityLabel="Sign in"
+              >
+                <Text style={styles.navSignIn}>Sign In</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
+        {showModeInfo && (
+          <View style={styles.modeTooltip}>
+            <Text style={styles.modeTooltipText}>
+              {usesJssLocal
+                ? 'JSS Local mode signs in immediately using the configured bootstrap WebID and avoids external provider redirects.'
+                : 'External CSS mode uses the standard Solid OIDC redirect to your Identity Provider.'}
+            </Text>
+          </View>
+        )}
 
         {/* ── Hero ────────────────────────────────────── */}
         <View style={styles.hero}>
           <Text style={styles.heroEyebrow}>Decentralized · Private · Yours</Text>
           <Text style={styles.heroHeadline}>The social network{'\n'}you actually own.</Text>
           <Text style={styles.heroBody}>
-            Your profile, posts, and connections live in a personal data vault — not our servers. NodeZero can't sell you, and you can leave any time with everything you built.
+            {usesJssLocal
+              ? 'Your profile, posts, and connections launch from a local Solid Pod mode for instant onboarding. NodeZero keeps your identity and data portable from day one.'
+              : 'Your profile, posts, and connections live in a personal data vault - not our servers. NodeZero cannot sell you, and you can leave any time with everything you built.'}
           </Text>
 
           <TouchableOpacity
@@ -122,22 +158,24 @@ export default function LandingScreen(): JSX.Element {
             {isSigningIn && !showSignIn ? (
               <ActivityIndicator color="#FFF" />
             ) : (
-              <Text style={styles.btnPrimaryText}>Create Your Node  →</Text>
+              <Text style={styles.btnPrimaryText}>{usesJssLocal ? 'Create Your Node (JSS Fast Path)  →' : 'Create Your Node  →'}</Text>
             )}
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.btnSecondary}
-            onPress={() => setShowSignIn((v) => !v)}
-            accessibilityRole="button"
-            accessibilityLabel="Sign in as returning user"
-          >
-            <Text style={styles.btnSecondaryText}>Already have a Pod? Sign In</Text>
-          </TouchableOpacity>
+          {!usesJssLocal && (
+            <TouchableOpacity
+              style={styles.btnSecondary}
+              onPress={() => setShowSignIn((v) => !v)}
+              accessibilityRole="button"
+              accessibilityLabel="Sign in as returning user"
+            >
+              <Text style={styles.btnSecondaryText}>Already have a Pod? Sign In</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* ── Sign-in panel (collapsible) ──────────────── */}
-        {showSignIn && (
+        {showSignIn && !usesJssLocal && (
           <View style={styles.signInPanel}>
             <Text style={styles.signInTitle}>Sign in with your Solid Pod</Text>
             <Text style={styles.signInHint}>Enter your Identity Provider URL</Text>
@@ -225,7 +263,8 @@ export default function LandingScreen(): JSX.Element {
             <Text style={styles.link} onPress={() => void Linking.openURL('https://solidproject.org')}>Solid</Text>
             {' '}·{' '}
             <Text style={styles.link} onPress={() => void Linking.openURL('https://stellar.org')}>Stellar</Text>
-            {' '}·{' '}Open source
+            {' '}·{' '}
+            {usesJssLocal ? 'JSS Fast Onboarding' : 'Open source'}
           </Text>
         </View>
 
@@ -239,7 +278,7 @@ export default function LandingScreen(): JSX.Element {
 const STEPS = [
   {
     title: 'Get your Pod',
-    desc: 'Create a free Solid Pod at solidcommunity.net in under 60 seconds. Your Pod is a personal data vault on the open web.',
+    desc: 'Start with a fast local Solid Pod onboarding path. You can still use external Solid providers when needed.',
   },
   {
     title: 'Link your identity',
@@ -300,6 +339,39 @@ const styles = StyleSheet.create({
   },
   navLogo: { fontSize: 18, fontWeight: '800', color: PURPLE, letterSpacing: -0.5 },
   navSignIn: { fontSize: 14, color: MUTED, fontWeight: '600' },
+  navRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  modeBadge: {
+    borderWidth: 1,
+    borderColor: BORDER,
+    backgroundColor: SURFACE,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  modeBadgeText: { color: TEXT, fontSize: 11, fontWeight: '700', textTransform: 'uppercase' },
+  modeInfoButton: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: BORDER,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#111',
+  },
+  modeInfoButtonText: { color: MUTED, fontSize: 12, fontWeight: '800' },
+  modeTooltip: {
+    marginHorizontal: 24,
+    marginTop: 2,
+    marginBottom: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: BORDER,
+    backgroundColor: SURFACE,
+    borderRadius: 10,
+  },
+  modeTooltipText: { color: MUTED, fontSize: 12, lineHeight: 18 },
 
   // Hero
   hero: {
