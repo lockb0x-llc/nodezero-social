@@ -55,6 +55,7 @@ Optional but guarded:
 - staging pipelines must never target production domain.
 - production-mainnet deploy is not permitted from staging scripts.
 - Example parameter files must never be used for real deployments.
+- `staging-testnet` must not use `NZ_RELAY_URL=wss://staging.nodezero.social/relay` (or `https://.../relay`), because that path is served by the Static Web App shell and cannot terminate WebSocket signaling.
 
 ## CI/CD policy checkpoints
 

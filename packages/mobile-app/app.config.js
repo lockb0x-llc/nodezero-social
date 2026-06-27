@@ -68,6 +68,19 @@ if (profile.enforceStrictVariables) {
   }
 }
 
+if (envProfile === 'staging-testnet' && relayUrl) {
+  const normalizedRelayUrl = relayUrl.toLowerCase().trim()
+  const pointsToSwaShell =
+    (normalizedRelayUrl === 'wss://staging.nodezero.social/relay' ||
+      normalizedRelayUrl === 'https://staging.nodezero.social/relay')
+
+  if (pointsToSwaShell) {
+    throw new Error(
+      'NZ_RELAY_URL for staging-testnet points to the Static Web App shell path (/relay), which does not terminate WebSocket signaling. Set NZ_RELAY_URL to a live relay host endpoint.'
+    )
+  }
+}
+
 if (envProfile === 'staging-testnet' && profile.passphrase !== 'Test SDF Network ; September 2015') {
   throw new Error('Staging profile must use the Stellar TestNet passphrase.')
 }

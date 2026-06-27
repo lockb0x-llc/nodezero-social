@@ -148,6 +148,12 @@ Result updates:
 | LM1 | FAIL | `/local` shows location-permission gate and relay handshake failure (`WebSocket ... /relay ... 503`).
 | LM2 | BLOCKED | Cannot complete two-client message exchange while LM1 relay/location prerequisites are failing.
 
+Relay root-cause note:
+
+- Current staging bundle embeds `relayUrl = wss://staging.nodezero.social/relay`.
+- `GET /relay` on staging returns the SPA HTML shell (`200 text/html`) rather than a WebSocket relay backend.
+- Remediation: deploy/route a live relay endpoint and set `NZ_RELAY_URL` to that host before rerunning LM1/LM2.
+
 J4 status: **NEEDS-INFO**
 
 - Required follow-up before final APPROVE sign-off:
