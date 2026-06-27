@@ -194,16 +194,6 @@ resource wwwCnameRecord 'Microsoft.Network/dnsZones/CNAME@2018-05-01' = {
   }
 }
 
-// Apex custom domain — ARM validates via the same-subscription alias record above
-resource apexCustomDomain 'Microsoft.Web/staticSites/customDomains@2022-09-01' = {
-  parent: staticWebApp
-  name: dnsZoneName
-  properties: {
-    validationMethod: 'dns-txt-token'
-  }
-  dependsOn: [apexAliasRecord]
-}
-
 // www custom domain — validated via CNAME delegation
 resource wwwCustomDomain 'Microsoft.Web/staticSites/customDomains@2022-09-01' = {
   parent: staticWebApp
@@ -213,6 +203,10 @@ resource wwwCustomDomain 'Microsoft.Web/staticSites/customDomains@2022-09-01' = 
   }
   dependsOn: [wwwCnameRecord]
 }
+
+// NOTE: nodezero.social apex custom domain is NOT managed here.
+// The apex domain is registered via manual ARM operation and monitored separately.
+// The apexAliasRecord above provides the DNS A alias required for validation.
 
 output staticWebAppName string = staticWebApp.name
 output staticWebAppDefaultHostname string = staticWebApp.properties.defaultHostname
