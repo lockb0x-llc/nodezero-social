@@ -219,7 +219,7 @@ function Invoke-StatusPass {
         $branchMessages = @($messages | Where-Object { $_.To -eq $item.Agent -and $_.From -eq 'PROJECT_MANAGER' })
         $latestMessage = $branchMessages | Select-Object -Last 1
         $worktreeState = Get-BranchStatus -WorktreePath $item.WorktreePath
-        $isMerged = Test-IsBranchMerged -Branch $item.Branch -BaseBranch $BaseBranch
+        $isMerged = (Test-IsBranchMerged -Branch $item.Branch -BaseBranch $BaseBranch) -and $worktreeState -eq 'missing-worktree'
         if ($isMerged) {
             $worktreeState = "merged"
         }
