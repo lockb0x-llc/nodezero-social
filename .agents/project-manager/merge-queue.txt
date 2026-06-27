@@ -1,9 +1,9 @@
-# UX Phase 1 — feat/ux-phase1 merge order (2026-06-27)
-# Dependency-safe: L4 (no mobile conflicts) first, then new files, then nav/deps, then augments, then binding, then QA
-agents/solid-data-agent/L4-ux-phase-1-solid-pod-sync-backend-methods
-agents/mobile-app-agent/L1-ux-phase-1-new-screens-scaffold-backpack-compose-docustream
-agents/mobile-app-agent/L3-ux-phase-1-navigation-restructure-and-dependency-additions
-agents/mobile-app-agent/L2-ux-phase-1-augment-feed-profile-settings
-agents/mobile-app-agent/L5-ux-phase-2-context-binding-backpack-docustream-profile-overlap
-agents/p2p-relay-agent/L6-ux-phase-2-compose-audience-routing-via-p2p-pod-zk
-agents/qa-release-agent/L7-ux-phase-3-qa-smoke-suite-for-all-ux-features
+# Backlog reintegration order (testnet-first)
+# Keep feature dependencies intact: B1/B2 before J4 validation.
+agents/mobile-app-agent/B1-b1-replace-feed-placeholder-with-solid-based-aggregation
+agents/p2p-relay-agent/B2-b2-replace-local-chat-placeholder-with-live-p2p-relay-flow
+agents/stellar-contract-agent/C2-c2-publish-artifact-manifest-validation-and-checksum-process
+agents/azure-platform-agent/D3-d3-add-monitoring-alerting-and-cost-guardrails
+agents/mobile-app-agent/J3-j3-add-favicon-to-expo-web-export
+agents/docs-agent/J5-j5-document-confirmed-functionality-and-known-gaps
+agents/qa-release-agent/J4-j4-complete-authenticated-uat-for-lm1-lm2-wr2-au4

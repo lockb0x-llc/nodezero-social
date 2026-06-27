@@ -2,6 +2,7 @@
 param(
     [string]$ConfigPath = ".agents/project-manager/parallel-work-items.json",
     [string]$InboxPath = ".agents/shared-inbox/inbox.md",
+    [string]$BaseBranch = "testnet",
     [int]$StaleHours = 6,
     [switch]$Loop,
     [int]$LoopIntervalMinutes = 30,
@@ -115,6 +116,21 @@ function Get-BranchStatus {
     return "working"
 }
 
+function Test-IsBranchMerged {
+    param(
+        [string]$Branch,
+        [string]$BaseBranch
+    )
+
+    & git show-ref --verify --quiet "refs/heads/$Branch"
+    if ($LASTEXITCODE -ne 0) {
+        return $false
+    }
+
+    & git merge-base --is-ancestor $Branch $BaseBranch
+    return ($LASTEXITCODE -eq 0)
+}
+
 function Get-WorkItemMap {
     param(
         [string]$Path,
@@ -181,6 +197,7 @@ function Invoke-StatusPass {
         [string]$RepoRoot,
         [string]$ConfigAbsolute,
         [string]$InboxAbsolute,
+        [string]$BaseBranch,
         [int]$StaleHours,
         [switch]$FollowUp,
         [switch]$DryRun
@@ -194,6 +211,10 @@ function Invoke-StatusPass {
         $branchMessages = @($messages | Where-Object { $_.To -eq $item.Agent -and $_.From -eq 'PROJECT_MANAGER' })
         $latestMessage = $branchMessages | Select-Object -Last 1
         $worktreeState = Get-BranchStatus -WorktreePath $item.WorktreePath
+        $isMerged = Test-IsBranchMerged -Branch $item.Branch -BaseBranch $BaseBranch
+        if ($isMerged) {
+            $worktreeState = "merged"
+        }
 
         [pscustomobject]@{
             Id = $item.Id
@@ -201,6 +222,7 @@ function Invoke-StatusPass {
             Title = $item.Title
             Branch = $item.Branch
             Worktree = $worktreeState
+            IsMerged = $isMerged
             LastPmMessage = if ($latestMessage) { $latestMessage.Timestamp } else { 'none' }
         }
     }
@@ -212,8 +234,13 @@ function Invoke-StatusPass {
     if ($FollowUp) {
         $threshold = (Get-Date).ToUniversalTime().AddHours(-[double]$StaleHours)
         foreach ($row in $rows) {
+            if ($row.IsMerged) {
+                continue
+            }
+
             $branchMessages = @($messages | Where-Object { $_.To -eq $row.Agent -and $_.From -eq 'PROJECT_MANAGER' })
-            $latestMessage = $branchMessages | Select-Object -Last 1
+            $itemMessages = @($branchMessages | Where-Object { (Get-MessageText $_.Context).StartsWith("PM follow-up on parallel work item $($row.Id)") })
+            $latestMessage = $itemMessages | Select-Object -Last 1
             $latestTime = $null
             if ($latestMessage) {
                 $latestTime = [datetime]::ParseExact(
@@ -251,7 +278,7 @@ try {
 
     do {
         $iteration += 1
-        Invoke-StatusPass -RepoRoot $repoRoot -ConfigAbsolute $configAbsolute -InboxAbsolute $inboxAbsolute -StaleHours $StaleHours -FollowUp:($FollowUp -or $Loop) -DryRun:$DryRun
+        Invoke-StatusPass -RepoRoot $repoRoot -ConfigAbsolute $configAbsolute -InboxAbsolute $inboxAbsolute -BaseBranch $BaseBranch -StaleHours $StaleHours -FollowUp:($FollowUp -or $Loop) -DryRun:$DryRun
 
         if (-not $Loop) {
             break

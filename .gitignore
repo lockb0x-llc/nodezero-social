@@ -22,3 +22,6 @@ docs/dev-only/prototypes/
 # Playwright MCP session artifacts (tool output, not project files)
 .playwright-mcp/
 docs/dev-only/namecheap-api-key.txt
+
+# Generated ARM JSON output (local build artifact)
+infrastructure/azure/main.json

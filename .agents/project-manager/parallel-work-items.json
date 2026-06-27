@@ -1,141 +1,127 @@
-[
+[ 
   {
-    "id": "L1",
+    "id": "B1",
     "agent": "MOBILE_APP_AGENT",
-    "slug": "ux-new-screens",
-    "title": "UX Phase 1 - new screens scaffold (backpack, compose, docustream)",
-    "objective": "Create packages/mobile-app/app/backpack.tsx, compose.tsx, and docustream.tsx with full UI from docs/dev-only/prototypes/. Use internal useState mock only - no live context calls. Port Lucide icons to Ionicons. Each file must compile under tsc --noEmit.",
+    "slug": "solid-feed-aggregation",
+    "title": "B1 - Replace feed placeholder with Solid-based aggregation",
+    "objective": "Implement feed aggregation from Solid Pod social graph/content sources in packages/mobile-app without breaking existing auth guards or environment isolation.",
     "acceptanceCriteria": [
-      "app/backpack.tsx: card-based list with Switch toggles for profile/interests/location; educational Web3 info box.",
-      "app/compose.tsx: Trust Circles orbital UI with three concentric dashed rings (local/verified/foaf), center user node, dynamic audience label.",
-      "app/docustream.tsx: infinite-scroll timeline with ALL/REDDIT/X/RSS filter tabs, Save to Pod and Share to Grid actions per item.",
-      "All three files compile clean under tsc --noEmit with no imports of SolidContext, WalletContext, or DocustreamManager.",
-      "No existing files modified."
+      "feed route renders real aggregated items when authenticated and preserves empty-state messaging when no data exists.",
+      "No regression to web navigation/auth redirect behavior introduced by J6/J7.",
+      "Type-check passes for packages/mobile-app."
     ],
     "sourceReferences": [
-      "docs/dev-only/prototypes/data_backpack.tsx",
-      "docs/dev-only/prototypes/compose.tsx",
-      "docs/dev-only/prototypes/docustream_screen_preview.tsx",
-      "docs/dev-only/prototypes/UX-Implementation-Specification.md sections 4.1 4.2 4.5"
-    ],
-    "dependsOn": []
-  },
-  {
-    "id": "L2",
-    "agent": "MOBILE_APP_AGENT",
-    "slug": "ux-augment-screens",
-    "title": "UX Phase 1 - augment feed, profile, settings",
-    "objective": "Augment three existing screens: (a) Add Algorithm Tuner bottom-sheet modal to feed.tsx (sliders + SFW switch, internal state). (b) Add Shared Threads gradient card + ZK badge tooltip to profile.tsx (mock state). (c) Remove WebACL toggles from settings.tsx.",
-    "acceptanceCriteria": [
-      "feed.tsx: Tuner icon opens bottom-sheet with Serendipity/Deep Ties sliders (0-100) and SFW Mode switch; existing fetchFeed logic untouched.",
-      "profile.tsx: non-empty sharedThreads mock renders gradient Shared Threads card; ZK shield opens educational tooltip.",
-      "settings.tsx: WebACL/Pod permission toggles removed; remaining settings intact.",
-      "tsc --noEmit clean. No new files created."
-    ],
-    "sourceReferences": [
-      "docs/dev-only/prototypes/feed.tsx",
-      "docs/dev-only/prototypes/UX-Implementation-Specification.md sections 4.3 4.4"
-    ],
-    "dependsOn": []
-  },
-  {
-    "id": "L3",
-    "agent": "MOBILE_APP_AGENT",
-    "slug": "ux-nav-deps",
-    "title": "UX Phase 1 - navigation restructure and dependency additions",
-    "objective": "Restructure _layout.tsx to match prototype bottom nav and register all new routes. Add npm deps.",
-    "acceptanceCriteria": [
-      "package.json: @react-native-community/slider and react-native-rss-parser added.",
-      "_layout.tsx: bottom nav primary bar = Local Grid | + Compose | Docustream; Backpack reachable from Profile header icon.",
-      "Routes registered: /, /feed, /local, /compose, /backpack, /docustream, /profile, /settings.",
-      "tsc --noEmit clean."
-    ],
-    "sourceReferences": [
-      "docs/dev-only/prototypes/UX-Implementation-Specification.md section 3.1"
-    ],
-    "dependsOn": []
-  },
-  {
-    "id": "L4",
-    "agent": "SOLID_DATA_AGENT",
-    "slug": "ux-solid-backend",
-    "title": "UX Phase 1 - solid-pod-sync backend methods",
-    "objective": "Add updateWebACL(), findSemanticOverlap(), and DocustreamManager.ts to packages/solid-pod-sync/src/.",
-    "acceptanceCriteria": [
-      "ProfileManager.ts: updateWebACL(containerPath, isPublic) patches .acl resource for public acl:Read.",
-      "SocialGraph.ts: findSemanticOverlap(peerWebId) intersects peer schema:interest triples with local interests[], returns string[].",
-      "DocustreamManager.ts: appendActivity(podRoot, item) and listActivities(podRoot) using W3C ActivityStreams 2.0 RDF in /public/docustream/.",
-      "index.ts re-exports all new types/classes.",
-      "Existing 12 tests pass. Unit test stubs added for each new method.",
-      "tsc --noEmit clean."
-    ],
-    "sourceReferences": [
-      "docs/dev-only/prototypes/UX-Implementation-Specification.md sections 4.1 4.4 4.5",
-      "packages/solid-pod-sync/src/ProfileManager.ts",
-      "packages/solid-pod-sync/src/SocialGraph.ts",
-      "packages/solid-pod-sync/src/index.ts"
-    ],
-    "dependsOn": []
-  },
-  {
-    "id": "L5",
-    "agent": "MOBILE_APP_AGENT",
-    "slug": "ux-context-binding",
-    "title": "UX Phase 2 - context binding (Backpack, Docustream, Profile overlap)",
-    "objective": "Replace mock state in Phase 1 screens with live context calls (L1-L4 must be merged first).",
-    "acceptanceCriteria": [
-      "backpack.tsx togglePermission calls updateWebACL() via SolidContext.",
-      "docustream.tsx fetches RSS via react-native-rss-parser, writes to DocustreamManager.appendActivity(), reads via listActivities().",
-      "profile.tsx calls findSemanticOverlap(peerWebId); renders Shared Threads card only when result.length > 0.",
-      "tsc --noEmit clean. No regressions to feed/local/settings/index."
-    ],
-    "sourceReferences": [
-      "docs/dev-only/prototypes/UX-Implementation-Specification.md sections 4.1 4.4 4.5",
+      "packages/mobile-app/app/feed.tsx",
       "packages/mobile-app/src/contexts/SolidContext.tsx",
-      "packages/solid-pod-sync/src/index.ts"
+      "packages/solid-pod-sync/src/"
     ],
-    "dependsOn": ["L1", "L2", "L3", "L4"]
+    "dependsOn": []
   },
   {
-    "id": "L6",
+    "id": "B2",
     "agent": "P2P_RELAY_AGENT",
-    "slug": "ux-compose-routing",
-    "title": "UX Phase 2 - compose audience routing via P2P/Pod/ZK",
-    "objective": "Implement handlePost in compose.tsx routing payload by audience selection (L1+L3 must be merged).",
+    "slug": "live-p2p-chat-flow",
+    "title": "B2 - Replace local chat placeholder with live P2P relay flow",
+    "objective": "Wire Local Grid/local chat flow to relay-backed live messaging path using existing p2p-comms and relay-service interfaces.",
     "acceptanceCriteria": [
-      "local: P2PChannel.send() scoped to getSurroundingNodes() neighbours via DiscoveryContext.",
-      "foaf: encrypted write to Pod /outbox/ LDP; recipients from SocialGraph foaf:knows.",
-      "verified: same as foaf with WalletContext.verifyPoH(recipientWebId) guard per recipient.",
-      "ActivityIndicator during in-flight; error Toast on failure.",
-      "tsc --noEmit clean. Local post visible to second test client via relay within 5s."
+      "local route sends and receives live relay-backed messages for authenticated users.",
+      "Graceful offline or relay-unavailable error handling is visible to user.",
+      "Type-check passes for packages/mobile-app and packages/p2p-comms."
     ],
     "sourceReferences": [
-      "docs/dev-only/prototypes/UX-Implementation-Specification.md section 4.2",
+      "packages/mobile-app/app/local.tsx",
       "packages/p2p-comms/src/",
-      "packages/geo-discovery/src/h3-grid.ts",
-      "packages/mobile-app/src/contexts/DiscoveryContext.tsx"
+      "packages/relay-service/src/"
     ],
-    "dependsOn": ["L1", "L3"]
+    "dependsOn": []
   },
   {
-    "id": "L7",
-    "agent": "QA_RELEASE_AGENT",
-    "slug": "ux-qa-smoke",
-    "title": "UX Phase 3 - QA smoke suite for all UX features",
-    "objective": "Execute four acceptance journeys (J1-J4) and post pass/fail matrix. DONE only on 4/4 PASS.",
+    "id": "C2",
+    "agent": "STELLAR_CONTRACT_AGENT",
+    "slug": "artifact-manifest-checksums",
+    "title": "C2 - Publish artifact manifest validation and checksum process",
+    "objective": "Define and implement reproducible checksum validation process for contract/zk artifacts and publish runbook-level documentation.",
     "acceptanceCriteria": [
-      "J1 PASS: Backpack toggle ON/OFF updates .acl public acl:Read on Pod container.",
-      "J2 PASS: Docustream RSS add creates ActivityStreams 2.0 item in /public/docustream/ LDP container.",
-      "J3 PASS: Compose post (audience=local) received by second test client via staging relay within 5s.",
-      "J4 PASS: Profile peer view renders Shared Threads card with shared interest; hides card with no overlap.",
-      "Pass/fail matrix with evidence posted to inbox.",
-      "FAIL: [NEEDS-INFO] message with root-cause sent to PROJECT_MANAGER."
+      "Artifact manifest checksum generation and validation command path is documented and script-backed where feasible.",
+      "No weakening of testnet/mainnet environment invariants in deployment scripts.",
+      "Type-check/lint impact for touched files is clean."
+    ],
+    "sourceReferences": [
+      "deployments/stellar-testnet.contracts.json",
+      "scripts/stellar/",
+      "docs/testnet-azure-release-requirements.md"
+    ],
+    "dependsOn": []
+  },
+  {
+    "id": "D3",
+    "agent": "AZURE_PLATFORM_AGENT",
+    "slug": "staging-monitoring-alerting-cost-guardrails",
+    "title": "D3 - Add monitoring/alerting and cost guardrails",
+    "objective": "Implement baseline staging observability and cost guardrails in Azure IaC/workflows without impacting production protections.",
+    "acceptanceCriteria": [
+      "Alerting and monitoring baseline is defined and committed under infrastructure/azure and/or deployment workflows.",
+      "Cost guardrail defaults are documented and aligned to staging-testnet only.",
+      "policy:validate-env invariants remain intact."
+    ],
+    "sourceReferences": [
+      "infrastructure/azure/main.bicep",
+      "infrastructure/azure/README.md",
+      "scripts/azure/deploy.sh"
+    ],
+    "dependsOn": []
+  },
+  {
+    "id": "J3",
+    "agent": "MOBILE_APP_AGENT",
+    "slug": "expo-web-favicon",
+    "title": "J3 - Add favicon to Expo web export",
+    "objective": "Add favicon asset/config so staging web export no longer returns 404 for favicon.ico.",
+    "acceptanceCriteria": [
+      "Expo web build includes favicon and route no longer 404s.",
+      "No regression to app.config.js profile guards.",
+      "Type-check for mobile-app remains clean."
+    ],
+    "sourceReferences": [
+      "packages/mobile-app/app.config.js",
+      "packages/mobile-app/assets/"
+    ],
+    "dependsOn": []
+  },
+  {
+    "id": "J5",
+    "agent": "DOCS_AGENT",
+    "slug": "document-confirmed-functionality-and-gaps",
+    "title": "J5 - Document confirmed functionality and known gaps",
+    "objective": "Update wiki/docs with currently confirmed functionality, unresolved gaps, and remediation status from latest QA matrix.",
+    "acceptanceCriteria": [
+      "Updated docs summarize working user journeys, known gaps, and release impact.",
+      "References point to current testnet evidence artifacts.",
+      "Handoff note in shared inbox includes changed file list."
+    ],
+    "sourceReferences": [
+      "docs/staging-uat-checklist.md",
+      "wiki/Mobile-App.md",
+      "wiki/Embedded-Wallet.md"
+    ],
+    "dependsOn": []
+  },
+  {
+    "id": "J4",
+    "agent": "QA_RELEASE_AGENT",
+    "slug": "authenticated-uat-completion",
+    "title": "J4 - Complete authenticated UAT for LM1/LM2/WR2/AU4",
+    "objective": "Re-run authenticated staging UAT journeys and publish pass/fail matrix with blockers after latest testnet fixes and feature merges.",
+    "acceptanceCriteria": [
+      "AU4, LM1, LM2, WR2 status captured with evidence and timestamps.",
+      "Release recommendation updated (BLOCK or APPROVE) with rationale.",
+      "Any blocker is posted as NEEDS-INFO in shared inbox."
     ],
     "sourceReferences": [
       "docs/staging-uat-checklist.md",
       "scripts/qa/staging-smoke.sh",
-      "docs/dev-only/prototypes/UX-Implementation-Specification.md section 5"
+      "packages/mobile-app/qa-L7-evidence.md"
     ],
-    "dependsOn": ["L5", "L6"]
+    "dependsOn": ["B1", "B2"]
   }
 ]
