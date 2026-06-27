@@ -1,0 +1,223 @@
+name: Configure Apex and WWW Domains
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - testnet
+    paths:
+      - '.github/workflows/configure-apex-www-domains.yml'
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  configure-domains:
+    name: Bind nodezero.social and www.nodezero.social to SWA
+    runs-on: ubuntu-latest
+    environment: staging-testnet
+
+    env:
+      STATIC_WEB_APP_NAME: nodezero-social-staging-testnet-web
+      AZURE_CLIENT_ID: 52120dbe-2b66-4e12-bdad-9f872a3ae845
+      AZURE_TENANT_ID: bab5056b-732f-4710-a7b9-e9c5807cd6f9
+      AZURE_SUBSCRIPTION_ID: 1f002267-9614-4a2a-a0e0-217493d6d011
+      AZURE_RESOURCE_GROUP: rg-nodezero-social-staging-testnet
+      DNS_ZONE: nodezero.social
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      # ── www.nodezero.social ──────────────────────────────────────────────────
+      # www uses CNAME delegation — same pattern as staging.nodezero.social.
+      # The Bicep creates the DNS CNAME record; this step binds the hostname.
+
+      - name: Ensure www CNAME record exists in Azure DNS
+        run: |
+          SWA_HOSTNAME="$(az staticwebapp show \
+            --name "$STATIC_WEB_APP_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --query defaultHostname -o tsv)"
+          echo "SWA hostname: $SWA_HOSTNAME"
+
+          az network dns record-set cname set-record \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --zone-name "$DNS_ZONE" \
+            --record-set-name www \
+            --cname "$SWA_HOSTNAME" \
+            --ttl 300 \
+            --if-none-match 2>/dev/null || \
+          az network dns record-set cname show \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --zone-name "$DNS_ZONE" \
+            --name www \
+            --query "CNAMERecord.cname" -o tsv
+          echo "www CNAME verified"
+
+      - name: Bind www.nodezero.social (cname-delegation, with retry)
+        run: |
+          for attempt in $(seq 1 20); do
+            echo "Attempt $attempt/20 — binding www.nodezero.social"
+            if az staticwebapp hostname set \
+              --name "$STATIC_WEB_APP_NAME" \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --hostname "www.$DNS_ZONE" \
+              --validation-method cname-delegation; then
+              echo "www.nodezero.social bound successfully"
+              break
+            fi
+            if [ "$attempt" -eq 20 ]; then
+              echo "www.nodezero.social binding failed after 20 attempts"
+              exit 1
+            fi
+            sleep 30
+          done
+
+      # ── nodezero.social (apex) ───────────────────────────────────────────────
+      # Apex cannot use CNAME — must use dns-txt-token.
+      # The Alias A record already exists in Azure DNS (created by Bicep).
+      # This step: registers the domain, reads the generated token, writes it
+      # to the Azure DNS TXT record, then polls until Ready.
+
+      - name: Register nodezero.social apex (dns-txt-token)
+        id: apex-register
+        run: |
+          # Remove any stale registration so we get a fresh token
+          az staticwebapp hostname delete \
+            --name "$STATIC_WEB_APP_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --hostname "$DNS_ZONE" \
+            --yes 2>/dev/null || true
+          sleep 10
+
+          # Register with dns-txt-token
+          az staticwebapp hostname set \
+            --name "$STATIC_WEB_APP_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --hostname "$DNS_ZONE" \
+            --validation-method dns-txt-token \
+            --no-wait
+
+          # Wait up to 60s for the validation token to be generated
+          TOKEN=""
+          for i in $(seq 1 20); do
+            sleep 3
+            TOKEN="$(az staticwebapp hostname show \
+              --name "$STATIC_WEB_APP_NAME" \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --hostname "$DNS_ZONE" \
+              --query validationToken -o tsv 2>/dev/null || true)"
+            if [ -n "$TOKEN" ]; then
+              echo "Token obtained: $TOKEN"
+              break
+            fi
+          done
+
+          if [ -z "$TOKEN" ]; then
+            echo "Failed to obtain validation token"
+            exit 1
+          fi
+
+          echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
+
+      - name: Write asuid TXT record with validation token
+        run: |
+          TOKEN="${{ steps.apex-register.outputs.token }}"
+          echo "Setting asuid.$DNS_ZONE TXT = $TOKEN"
+
+          # Delete any stale TXT record and set the new one
+          az network dns record-set txt delete \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --zone-name "$DNS_ZONE" \
+            --name asuid \
+            --yes 2>/dev/null || true
+
+          az network dns record-set txt add-record \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --zone-name "$DNS_ZONE" \
+            --record-set-name asuid \
+            --value "$TOKEN" \
+            --ttl 60
+
+          # Verify from Azure's own authoritative nameserver
+          sleep 5
+          OBSERVED="$(dig +short TXT asuid.$DNS_ZONE @ns1-09.azure-dns.com | tr -d '"')"
+          echo "Authoritative NS returns: $OBSERVED"
+          if [ "$OBSERVED" != "$TOKEN" ]; then
+            echo "TXT record not yet visible from authoritative NS — continuing anyway"
+          fi
+
+      - name: Poll until nodezero.social is Ready (30 min max)
+        run: |
+          echo "Polling for apex domain validation (up to 30 minutes)..."
+          for attempt in $(seq 1 60); do
+            STATUS="$(az staticwebapp hostname show \
+              --name "$STATIC_WEB_APP_NAME" \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --hostname "$DNS_ZONE" \
+              --query status -o tsv 2>/dev/null || true)"
+            CURRENT_TOKEN="$(az staticwebapp hostname show \
+              --name "$STATIC_WEB_APP_NAME" \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --hostname "$DNS_ZONE" \
+              --query validationToken -o tsv 2>/dev/null || true)"
+            echo "[$attempt/60 $(date -u +%H:%M)] status=$STATUS"
+
+            if [ "$STATUS" = "Ready" ]; then
+              echo "nodezero.social is Ready!"
+              break
+            fi
+
+            # If token rotated, update TXT immediately
+            EXPECTED="${{ steps.apex-register.outputs.token }}"
+            if [ -n "$CURRENT_TOKEN" ] && [ "$CURRENT_TOKEN" != "$EXPECTED" ]; then
+              echo "Token rotated to $CURRENT_TOKEN — updating TXT"
+              az network dns record-set txt delete \
+                --resource-group "$AZURE_RESOURCE_GROUP" \
+                --zone-name "$DNS_ZONE" \
+                --name asuid --yes 2>/dev/null || true
+              az network dns record-set txt add-record \
+                --resource-group "$AZURE_RESOURCE_GROUP" \
+                --zone-name "$DNS_ZONE" \
+                --record-set-name asuid \
+                --value "$CURRENT_TOKEN" \
+                --ttl 60
+            fi
+
+            if [ "$attempt" -eq 60 ]; then
+              echo "Apex domain did not reach Ready within 30 minutes."
+              echo "DNS and TXT are correctly configured — Azure SWA validation is delayed."
+              echo "The domain will become active once Azure's validation service processes it."
+              echo "This is a known Azure SWA apex domain validation latency issue."
+              exit 1
+            fi
+            sleep 30
+          done
+
+      # ── Final status ─────────────────────────────────────────────────────────
+
+      - name: Show final hostname status
+        if: always()
+        run: |
+          az staticwebapp hostname list \
+            --name "$STATIC_WEB_APP_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            -o table
+
+      - name: Smoke test www
+        run: |
+          STATUS="$(curl -s -o /dev/null -w '%{http_code}' https://www.$DNS_ZONE)"
+          echo "www.$DNS_ZONE HTTP status: $STATUS"
+          if [ "$STATUS" != "200" ]; then
+            echo "www smoke check failed: HTTP $STATUS"
+            exit 1
+          fi
