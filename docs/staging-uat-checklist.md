@@ -130,3 +130,26 @@ code.
 - Browser OAuth (web sign-in): requires web password — reset email sent to `admin@nodezero.social` 2026-06-25
 - When reset link received: set password to value in `docs/dev-only/nodezero pod solidcommunity-net.txt`
 - After password reset + staging redeploy: re-run QA starting at AU1 to complete all authenticated journeys
+
+## 2026-06-27 J4 authenticated rerun evidence
+
+Execution context:
+
+- Automated smoke: PASS (`scripts/qa/staging-smoke.sh` against `https://staging.nodezero.social`).
+- Browser run: successful Solid login, consent, and authenticated route access.
+
+Result updates:
+
+| Check | Result | Evidence |
+|---|---|---|
+| AU1 | PASS | Solid login + consent returned to `/feed`.
+| AU4 | PASS | `/settings` Sign Out returned session to landing route `/`.
+| WR2 | PASS | Settings shows registered WebID + registration tx `0ebeff3612e301c5dc8fdeee5c4b5b9c9ca5b4e0808e4f24c6ccd31f7c17e81d`.
+| LM1 | FAIL | `/local` shows location-permission gate and relay handshake failure (`WebSocket ... /relay ... 503`).
+| LM2 | BLOCKED | Cannot complete two-client message exchange while LM1 relay/location prerequisites are failing.
+
+J4 status: **NEEDS-INFO**
+
+- Required follow-up before final APPROVE sign-off:
+   1. Restore relay endpoint availability for authenticated `/local` sessions (resolve 503 on `/relay` WebSocket handshake).
+   2. Re-run LM1/LM2 with two authenticated clients after relay recovery.
