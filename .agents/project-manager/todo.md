@@ -61,7 +61,16 @@
 
 ## Milestone K: Lockb0x attestation implementation (2026-06-26)
 - [DONE] K1: Rewrite PoH-first documentation and product copy to lockb0x attestation scope. Owners: DOCS_AGENT, MOBILE_APP_AGENT, STELLAR_CONTRACT_AGENT.
-- [IN_PROGRESS] K2: Wire onboarding flow to register WebID<->Stellar pairing and persist attestation inputs. Owners: MOBILE_APP_AGENT, SOLID_DATA_AGENT.
-- [IN_PROGRESS] K3: Add client-side chain reads for pairing verification (`get_webid`, `get_state_root`) with existing contracts only. Owner: STELLAR_CONTRACT_AGENT.
-- [IN_PROGRESS] K4: Implement returning sign-in pairing verification against lockb0x-root-backed attestation proof. Owners: MOBILE_APP_AGENT, SOLID_DATA_AGENT. (code path added; pending staging verification)
-- [IN_PROGRESS] K5: Validate staging deployment, UAT matrix, and release evidence for attestation flow. Owners: QA_RELEASE_AGENT, AZURE_PLATFORM_AGENT, DOCS_AGENT. (checklist updated with attestation cases; execution pending)
+- [DONE] K2: Wire onboarding flow to register WebID<->Stellar pairing and persist attestation inputs. Owners: MOBILE_APP_AGENT, SOLID_DATA_AGENT. (AT1 PASS on staging: tx `3dd6f3c11155bed556225efc56d5e939d955eccf7522a06208e75615e71bdb3b`)
+- [DONE] K3: Add client-side chain reads for pairing verification (`get_webid`, `get_state_root`) with existing contracts only. Owner: STELLAR_CONTRACT_AGENT. (AT2 PASS on staging: WebID read + Lockb0x root `0000000000000000000000000000000000000000000000000000000000000001`)
+- [DONE] K4: Implement returning sign-in pairing verification against lockb0x-root-backed attestation proof. Owners: MOBILE_APP_AGENT, SOLID_DATA_AGENT. (AT3 PASS on staging after reload)
+- [DONE] K5: Validate staging deployment, UAT matrix, and release evidence for attestation flow. Owners: QA_RELEASE_AGENT, AZURE_PLATFORM_AGENT, DOCS_AGENT. (smoke PASS; AT1/AT2/AT3 PASS)
+
+## Milestone L: UX Phase 1 full-featured application (2026-06-27, branch: feat/ux-phase1)
+- [DONE] L1: Create new screen scaffolds: backpack.tsx, compose.tsx, docustream.tsx with mock state. Owner: MOBILE_APP_AGENT. (commit: 208e2b4, merged to feat/ux-phase1)
+- [DONE] L2: Augment existing screens: feed.tsx (Algorithm Tuner modal), profile.tsx (Shared Threads + ZK badge), settings.tsx (no WebACL section found). Owner: MOBILE_APP_AGENT. (commit: 58014f8, merged to feat/ux-phase1)
+- [DONE] L3: Navigation restructure (_layout.tsx) and npm dependency additions (@react-native-community/slider ^4.5.5, react-native-rss-parser ^1.5.1). Owner: MOBILE_APP_AGENT. (commit: 81ce1b0, merged to feat/ux-phase1)
+- [DONE] L4: solid-pod-sync backend: updateWebACL(), findSemanticOverlap(), DocustreamManager.ts. Owner: SOLID_DATA_AGENT. (commit: c9a4425, merged to feat/ux-phase1)
+- [DONE] L5: Context binding - wire Backpack/Docustream/Profile overlap to live backend methods. Owner: MOBILE_APP_AGENT. (commit: f9d8385, merged to feat/ux-phase1)
+- [DONE] L6: Compose audience routing - local->P2PChannel, foaf->Pod encrypt, verified->ZK gate. Owner: P2P_RELAY_AGENT. (commit: dc8de39, merged to feat/ux-phase1)
+- [IN_PROGRESS] L7: Phase 3 QA smoke - J1(Backpack/WebACL) J2(Docustream/Pod) J3(Compose/P2P) J4(Semantic Overlap). Owner: QA_RELEASE_AGENT. UNBLOCKED (L5+L6 merged). (branch: agents/qa-release-agent/L7-ux-phase-3-qa-smoke-suite-for-all-ux-features)

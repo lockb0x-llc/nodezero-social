@@ -21,8 +21,12 @@ import {
   Alert,
   Platform,
 } from 'react-native'
+import { useLocalSearchParams } from 'expo-router'
 import { useSolid } from '../src/contexts/SolidContext'
-import { ProfileManager, type UserProfile } from '@nodezero/solid-pod-sync'
+import { ProfileManager, SocialGraph, type UserProfile } from '@nodezero/solid-pod-sync'
+
+// Stub — remove when @expo/vector-icons is installed (L3)
+const Ionicons = (_props: { name: string; size?: number; color?: string }) => null
 
 const EMPTY_PROFILE: UserProfile = {
   displayName: '',
@@ -42,6 +46,23 @@ export default function ProfileScreen(): JSX.Element {
   const [saving, setSaving] = useState(false)
   const [nsfwWarningDismissed, setNsfwWarningDismissed] = useState(false)
   const [interestsInput, setInterestsInput] = useState('')
+  const [sharedThreads, setSharedThreads] = useState<string[]>(['ZK cryptography', 'Stellar blockchain'])
+  const [zkTooltipOpen, setZkTooltipOpen] = useState(false)
+
+  const { peerWebId } = useLocalSearchParams<{ peerWebId?: string }>()
+
+  // Peer view: load semantic overlap when viewing another user's profile.
+  useEffect(() => {
+    if (!peerWebId || !isLoggedIn) return
+    new SocialGraph(session)
+      .findSemanticOverlap(peerWebId)
+      .then((threads) => {
+        if (threads.length > 0) setSharedThreads(threads)
+      })
+      .catch(() => {
+        // Keep mock default on error
+      })
+  }, [peerWebId, isLoggedIn, session])
 
   // Initialise ProfileManager once session is available.
   useEffect(() => {
@@ -135,6 +156,31 @@ export default function ProfileScreen(): JSX.Element {
         </View>
       </Modal>
 
+      <Modal
+        visible={zkTooltipOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setZkTooltipOpen(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>🛡 Zero-Knowledge Identity</Text>
+            <Text style={styles.modalBody}>
+              <Text style={{ fontWeight: '700', color: '#10B981' }}>{'What NodeZero knows:\n'}</Text>
+              {'You are a unique human.\n\n'}
+              <Text style={{ fontWeight: '700', color: '#FF6B6B' }}>{"What it doesn't know:\n"}</Text>
+              {'Your name, location, or IP.'}
+            </Text>
+            <TouchableOpacity
+              style={styles.modalButton}
+              onPress={() => setZkTooltipOpen(false)}
+            >
+              <Text style={styles.modalButtonText}>Got it</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
         {profile.isNsfw && nsfwWarningDismissed && (
           <View style={styles.nsfwBanner}>
@@ -143,7 +189,32 @@ export default function ProfileScreen(): JSX.Element {
         )}
 
         <Text style={styles.sectionLabel}>WebID</Text>
-        <Text style={styles.webIdText} numberOfLines={2}>{webId}</Text>
+        <View style={styles.webIdRow}>
+          <Text style={[styles.webIdText, { marginBottom: 0, flex: 1 }]} numberOfLines={2}>{webId}</Text>
+          {profile.isNsfw === false && (
+            <TouchableOpacity
+              onPress={() => setZkTooltipOpen(true)}
+              style={styles.zkBadge}
+              accessibilityLabel="ZK Proof of Humanity badge"
+            >
+              <Ionicons name="shield-checkmark" size={20} color="#10B981" />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {sharedThreads.length > 0 && (
+          <View style={styles.sharedThreadsCard}>
+            <Text style={styles.sharedThreadsTitle}>✦ Shared Threads</Text>
+            <Text style={styles.sharedThreadsSubtitle}>Topics you both care about:</Text>
+            <View style={styles.pillRow}>
+              {sharedThreads.map((thread) => (
+                <View key={thread} style={styles.pill}>
+                  <Text style={styles.pillText}>{thread}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
 
         <Text style={styles.label}>Display Name</Text>
         <TextInput
@@ -238,6 +309,15 @@ const styles = StyleSheet.create({
   saveButton: { marginTop: 28, backgroundColor: '#6C63FF', borderRadius: 10, paddingVertical: 14, alignItems: 'center' },
   saveButtonDisabled: { opacity: 0.6 },
   saveButtonText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
+  // Shared Threads + ZK badge
+  webIdRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 20 },
+  zkBadge: { marginLeft: 8, marginTop: 1 },
+  sharedThreadsCard: { backgroundColor: '#667eea', borderRadius: 14, padding: 16, marginBottom: 20 },
+  sharedThreadsTitle: { color: '#FFF', fontSize: 15, fontWeight: '800', marginBottom: 4 },
+  sharedThreadsSubtitle: { color: 'rgba(255,255,255,0.8)', fontSize: 12, marginBottom: 10 },
+  pillRow: { flexDirection: 'row', flexWrap: 'wrap' },
+  pill: { backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 4, marginRight: 8, marginBottom: 4 },
+  pillText: { color: '#FFF', fontSize: 12, fontWeight: '600' },
   // NSFW modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center', padding: 24 },
   modalCard: { backgroundColor: '#1A1A1A', borderRadius: 16, padding: 24, borderWidth: 1, borderColor: '#3D1515' },

@@ -15,6 +15,8 @@
 export { ProfileManager } from './ProfileManager.js'
 export { SocialGraph } from './SocialGraph.js'
 export { NsfwScanner, NSFW_DOMAINS } from './NsfwScanner.js'
+export { DocustreamManager } from './DocustreamManager.js'
 export type { UserProfile, ProfileWriteOptions } from './ProfileManager.js'
 export type { Connection } from './SocialGraph.js'
 export type { NsfwScanResult } from './NsfwScanner.js'
+export type { StreamItem } from './DocustreamManager.js'
