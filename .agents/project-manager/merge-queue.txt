@@ -1,9 +1,9 @@
-# UX Phase 1 — feat/ux-phase1 merge order
-# Dependency-safe: L4 (no mobile conflicts) first, then new files, then augments, then binding, then QA
-agents/SOLID_DATA_AGENT/L4-ux-solid-backend
-agents/MOBILE_APP_AGENT/L1-ux-new-screens
-agents/MOBILE_APP_AGENT/L3-ux-nav-deps
-agents/MOBILE_APP_AGENT/L2-ux-augment-screens
-agents/MOBILE_APP_AGENT/L5-ux-context-binding
-agents/P2P_RELAY_AGENT/L6-ux-compose-routing
-agents/QA_RELEASE_AGENT/L7-ux-qa-smoke
+# UX Phase 1 — feat/ux-phase1 merge order (2026-06-27)
+# Dependency-safe: L4 (no mobile conflicts) first, then new files, then nav/deps, then augments, then binding, then QA
+agents/solid-data-agent/L4-ux-phase-1-solid-pod-sync-backend-methods
+agents/mobile-app-agent/L1-ux-phase-1-new-screens-scaffold-backpack-compose-docustream
+agents/mobile-app-agent/L3-ux-phase-1-navigation-restructure-and-dependency-additions
+agents/mobile-app-agent/L2-ux-phase-1-augment-feed-profile-settings
+agents/mobile-app-agent/L5-ux-phase-2-context-binding-backpack-docustream-profile-overlap
+agents/p2p-relay-agent/L6-ux-phase-2-compose-audience-routing-via-p2p-pod-zk
+agents/qa-release-agent/L7-ux-phase-3-qa-smoke-suite-for-all-ux-features

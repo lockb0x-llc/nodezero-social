@@ -6205,3 +6205,175 @@ Request: Proceed with release evidence review and normal reintegration/commit wo
 Evidence: Smoke PASS; custom domain Ready; Identity CCHFYOKLGVTXEYYHWEFPI22FR26VRGG2CBBUTP6XPW3ZSIWIKEVQQ44K; Lockb0x CB36LY5WZLJNMY4DHRXQER6LU3L4E5MGFYT2XSJG7ZJZV5SIIOKODT2H; Lockb0x root 0000000000000000000000000000000000000000000000000000000000000001; operator GBMXG2UIWFBHPKRBDQCEFNIDR3WHJAPVVGBCIOD5SGKZYZQISENZKD5O; Settings tx 3dd6f3c11155bed556225efc56d5e939d955eccf7522a06208e75615e71bdb3b; AT1/AT2/AT3 PASS in docs/staging-uat-checklist.md.
 Due: Complete.
 
+[2026-06-27 05:17 UTC] [PROJECT_MANAGER->MOBILE_APP_AGENT] [P1] [OPEN]
+Context: Parallel dispatch for work item L1.
+Request: Deliver "UX Phase 1 - new screens scaffold (backpack, compose, docustream)" on branch agents/mobile-app-agent/L1-ux-phase-1-new-screens-scaffold-backpack-compose-docustream using worktree C:\Users\standarduser\Code\nodezero-social\.agent-worktrees\L1-mobile-app-agent.
+Evidence: Commit history + tests + handoff note in this inbox.
+Due: Next coordination checkpoint.
+
+[2026-06-27 05:17 UTC] [PROJECT_MANAGER->MOBILE_APP_AGENT] [P1] [OPEN]
+Context: Parallel dispatch for work item L2.
+Request: Deliver "UX Phase 1 - augment feed, profile, settings" on branch agents/mobile-app-agent/L2-ux-phase-1-augment-feed-profile-settings using worktree C:\Users\standarduser\Code\nodezero-social\.agent-worktrees\L2-mobile-app-agent.
+Evidence: Commit history + tests + handoff note in this inbox.
+Due: Next coordination checkpoint.
+
+[2026-06-27 05:17 UTC] [PROJECT_MANAGER->MOBILE_APP_AGENT] [P1] [OPEN]
+Context: Parallel dispatch for work item L3.
+Request: Deliver "UX Phase 1 - navigation restructure and dependency additions" on branch agents/mobile-app-agent/L3-ux-phase-1-navigation-restructure-and-dependency-additions using worktree C:\Users\standarduser\Code\nodezero-social\.agent-worktrees\L3-mobile-app-agent.
+Evidence: Commit history + tests + handoff note in this inbox.
+Due: Next coordination checkpoint.
+
+[2026-06-27 05:17 UTC] [PROJECT_MANAGER->SOLID_DATA_AGENT] [P1] [OPEN]
+Context: Parallel dispatch for work item L4.
+Request: Deliver "UX Phase 1 - solid-pod-sync backend methods" on branch agents/solid-data-agent/L4-ux-phase-1-solid-pod-sync-backend-methods using worktree C:\Users\standarduser\Code\nodezero-social\.agent-worktrees\L4-solid-data-agent.
+Evidence: Commit history + tests + handoff note in this inbox.
+Due: Next coordination checkpoint.
+
+[2026-06-27 05:17 UTC] [PROJECT_MANAGER->MOBILE_APP_AGENT] [P1] [OPEN]
+Context: Parallel dispatch for work item L5.
+Request: Deliver "UX Phase 2 - context binding (Backpack, Docustream, Profile overlap)" on branch agents/mobile-app-agent/L5-ux-phase-2-context-binding-backpack-docustream-profile-overlap using worktree C:\Users\standarduser\Code\nodezero-social\.agent-worktrees\L5-mobile-app-agent.
+Evidence: Commit history + tests + handoff note in this inbox.
+Due: Next coordination checkpoint.
+
+[2026-06-27 05:17 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: Parallel dispatch for work item L6.
+Request: Deliver "UX Phase 2 - compose audience routing via P2P/Pod/ZK" on branch agents/p2p-relay-agent/L6-ux-phase-2-compose-audience-routing-via-p2p-pod-zk using worktree C:\Users\standarduser\Code\nodezero-social\.agent-worktrees\L6-p2p-relay-agent.
+Evidence: Commit history + tests + handoff note in this inbox.
+Due: Next coordination checkpoint.
+
+[2026-06-27 05:17 UTC] [PROJECT_MANAGER->QA_RELEASE_AGENT] [P1] [OPEN]
+Context: Parallel dispatch for work item L7.
+Request: Deliver "UX Phase 3 - QA smoke suite for all UX features" on branch agents/qa-release-agent/L7-ux-phase-3-qa-smoke-suite-for-all-ux-features using worktree C:\Users\standarduser\Code\nodezero-social\.agent-worktrees\L7-qa-release-agent.
+Evidence: Commit history + tests + handoff note in this inbox.
+Due: Next coordination checkpoint.
+
+
+
+[2026-06-27 05:19 UTC] [PROJECT_MANAGER->ALL] [P1] [OPEN]
+Context: Milestone L dispatched. Branch feat/ux-phase1 is now the integration base. Seven worktrees created under .agent-worktrees/. Each agent has an active-task.md brief in their worktree. Merge queue set in dependency order: L4->L1->L3->L2->L5->L6->L7. PM loop will check inbox every 20 seconds, mark todo states, unblock dependents, and reintegrate completed branches into feat/ux-phase1.
+Request: All agents: read your active-task.md brief, begin work immediately, post [DONE] to inbox with commit SHA when acceptance criteria are met.
+Evidence: .agents/project-manager/parallel-work-items.json (L1-L7); .agents/project-manager/merge-queue.txt; .agents/project-manager/todo.md (Milestone L block); .agent-worktrees/ (7 worktrees created)
+Due: Immediate
+
+---
+
+[2026-06-27 05:19 UTC] [PROJECT_MANAGER->MOBILE_APP_AGENT] [P1] [OPEN]
+Context: L1 - New screen scaffolds. Worktree: .agent-worktrees/L1-mobile-app-agent. Branch: agents/mobile-app-agent/L1-ux-phase-1-new-screens-scaffold-backpack-compose-docustream off feat/ux-phase1.
+Request: Create packages/mobile-app/app/backpack.tsx, compose.tsx, docustream.tsx. Source references in active-task.md. Key constraints: (1) internal useState mock only - no SolidContext/WalletContext/DocustreamManager imports; (2) port Lucide icons to Ionicons; (3) tsc --noEmit clean; (4) no existing files modified.
+Evidence: active-task.md in .agent-worktrees/L1-mobile-app-agent/. Source: docs/dev-only/prototypes/data_backpack.tsx, compose.tsx, docustream_screen_preview.tsx
+Due: Immediate
+
+---
+
+[2026-06-27 05:19 UTC] [PROJECT_MANAGER->MOBILE_APP_AGENT] [P1] [OPEN]
+Context: L2 - Augment existing screens. Worktree: .agent-worktrees/L2-mobile-app-agent. Branch: agents/mobile-app-agent/L2-ux-phase-1-augment-feed-profile-settings off feat/ux-phase1.
+Request: (a) feed.tsx: add Algorithm Tuner bottom-sheet modal (Serendipity slider 0-100, Deep Ties slider 0-100, SFW Mode switch) - stub Slider as any, internal state only, existing fetchFeed MUST remain untouched. (b) profile.tsx: add Shared Threads gradient card (mock sharedThreads: string[]) + ZK badge educational tooltip. (c) settings.tsx: remove WebACL/Pod permission toggle section only; all other settings intact. tsc --noEmit clean, no new files.
+Evidence: active-task.md in .agent-worktrees/L2-mobile-app-agent/. Source: docs/dev-only/prototypes/feed.tsx, UX-Implementation-Specification.md sections 4.3 4.4
+Due: Immediate
+
+---
+
+[2026-06-27 05:19 UTC] [PROJECT_MANAGER->MOBILE_APP_AGENT] [P1] [OPEN]
+Context: L3 - Navigation restructure and deps. Worktree: .agent-worktrees/L3-mobile-app-agent. Branch: agents/mobile-app-agent/L3-ux-phase-1-navigation-restructure-and-dependency-additions off feat/ux-phase1.
+Request: (a) package.json: add @react-native-community/slider and react-native-rss-parser to dependencies. (b) _layout.tsx: bottom nav primary = Local Grid | + Compose | Docustream; Backpack reachable from Profile header icon button. Register routes: /, /feed, /local, /compose, /backpack, /docustream, /profile, /settings. tsc --noEmit clean.
+Evidence: active-task.md in .agent-worktrees/L3-mobile-app-agent/. Source: UX-Implementation-Specification.md section 3.1
+Due: Immediate
+
+---
+
+[2026-06-27 05:19 UTC] [PROJECT_MANAGER->SOLID_DATA_AGENT] [P1] [OPEN]
+Context: L4 - solid-pod-sync backend. Worktree: .agent-worktrees/L4-solid-data-agent. Branch: agents/solid-data-agent/L4-ux-phase-1-solid-pod-sync-backend-methods off feat/ux-phase1.
+Request: In packages/solid-pod-sync/src/: (a) ProfileManager.ts: add async updateWebACL(containerPath: string, isPublic: boolean): Promise<void> - writes/patches .acl resource for public acl:Read. (b) SocialGraph.ts: add async findSemanticOverlap(peerWebId: string): Promise<string[]> - intersects peer schema:interest triples with local interests[]. (c) New DocustreamManager.ts: appendActivity(podRoot, item) + listActivities(podRoot) using ActivityStreams 2.0 RDF in /public/docustream/. (d) index.ts: re-export all new types/classes. Existing 12 tests must pass. Add unit test stubs. tsc --noEmit clean.
+Evidence: active-task.md in .agent-worktrees/L4-solid-data-agent/. Source: UX-Implementation-Specification.md 4.1 4.4 4.5; packages/solid-pod-sync/src/
+Due: Immediate
+
+---
+
+[2026-06-27 05:19 UTC] [PROJECT_MANAGER->MOBILE_APP_AGENT] [P2] [OPEN]
+Context: L5 - Context binding. BLOCKED until L1+L2+L3+L4 all [DONE] and merged into feat/ux-phase1. Worktree pre-created at .agent-worktrees/L5-mobile-app-agent.
+Request: Stand by. PM will post unblock message when dependencies are merged. Brief in active-task.md.
+Evidence: active-task.md in .agent-worktrees/L5-mobile-app-agent/.
+Due: After L1+L2+L3+L4 merge
+
+---
+
+[2026-06-27 05:19 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P2] [OPEN]
+Context: L6 - Compose audience routing. BLOCKED until L1+L3 [DONE] and merged into feat/ux-phase1. Worktree pre-created at .agent-worktrees/L6-p2p-relay-agent.
+Request: Stand by. PM will post unblock message when L1+L3 are merged. Brief in active-task.md. When unblocked: implement handlePost in app/compose.tsx routing payload by audience (local->P2PChannel via getSurroundingNodes, foaf->Pod /outbox/ encrypt, verified->PoH-gated Pod write).
+Evidence: active-task.md in .agent-worktrees/L6-p2p-relay-agent/.
+Due: After L1+L3 merge
+
+---
+
+[2026-06-27 05:19 UTC] [PROJECT_MANAGER->QA_RELEASE_AGENT] [P2] [OPEN]
+Context: L7 - Phase 3 QA smoke. BLOCKED until L5+L6 [DONE] and merged into feat/ux-phase1. Worktree pre-created at .agent-worktrees/L7-qa-release-agent.
+Request: Stand by. PM will post unblock message when L5+L6 are merged. Brief in active-task.md. When unblocked: execute J1(Backpack/WebACL) J2(Docustream/Pod) J3(Compose/P2P relay) J4(Semantic Overlap card). Post pass/fail matrix with evidence. DONE only on 4/4 PASS; NEEDS-INFO on any FAIL.
+Evidence: active-task.md in .agent-worktrees/L7-qa-release-agent/.
+Due: After L5+L6 merge
+
+---
+
+
+[2026-06-27 05:19 UTC] [PROJECT_MANAGER->ALL] [P1] [OPEN]
+Context: Milestone L dispatched. Branch feat/ux-phase1 is now the integration base. Seven worktrees created under .agent-worktrees/. Each agent has an active-task.md brief in their worktree. Merge queue set in dependency order: L4->L1->L3->L2->L5->L6->L7. PM loop will check inbox every 20 seconds, mark todo states, unblock dependents, and reintegrate completed branches into feat/ux-phase1.
+Request: All agents: read your active-task.md brief, begin work immediately, post [DONE] to inbox with commit SHA when acceptance criteria are met.
+Evidence: .agents/project-manager/parallel-work-items.json (L1-L7); .agents/project-manager/merge-queue.txt; .agents/project-manager/todo.md (Milestone L block); .agent-worktrees/ (7 worktrees created)
+Due: Immediate
+
+---
+
+[2026-06-27 05:19 UTC] [PROJECT_MANAGER->MOBILE_APP_AGENT] [P1] [OPEN]
+Context: L1 - New screen scaffolds. Worktree: .agent-worktrees/L1-mobile-app-agent. Branch: agents/mobile-app-agent/L1-ux-phase-1-new-screens-scaffold-backpack-compose-docustream off feat/ux-phase1.
+Request: Create packages/mobile-app/app/backpack.tsx, compose.tsx, docustream.tsx. Source references in active-task.md. Key constraints: (1) internal useState mock only - no SolidContext/WalletContext/DocustreamManager imports; (2) port Lucide icons to Ionicons; (3) tsc --noEmit clean; (4) no existing files modified.
+Evidence: active-task.md in .agent-worktrees/L1-mobile-app-agent/. Source: docs/dev-only/prototypes/data_backpack.tsx, compose.tsx, docustream_screen_preview.tsx
+Due: Immediate
+
+---
+
+[2026-06-27 05:19 UTC] [PROJECT_MANAGER->MOBILE_APP_AGENT] [P1] [OPEN]
+Context: L2 - Augment existing screens. Worktree: .agent-worktrees/L2-mobile-app-agent. Branch: agents/mobile-app-agent/L2-ux-phase-1-augment-feed-profile-settings off feat/ux-phase1.
+Request: (a) feed.tsx: add Algorithm Tuner bottom-sheet modal (Serendipity slider 0-100, Deep Ties slider 0-100, SFW Mode switch) - stub Slider as any, internal state only, existing fetchFeed MUST remain untouched. (b) profile.tsx: add Shared Threads gradient card (mock sharedThreads: string[]) + ZK badge educational tooltip. (c) settings.tsx: remove WebACL/Pod permission toggle section only; all other settings intact. tsc --noEmit clean, no new files.
+Evidence: active-task.md in .agent-worktrees/L2-mobile-app-agent/. Source: docs/dev-only/prototypes/feed.tsx, UX-Implementation-Specification.md sections 4.3 4.4
+Due: Immediate
+
+---
+
+[2026-06-27 05:19 UTC] [PROJECT_MANAGER->MOBILE_APP_AGENT] [P1] [OPEN]
+Context: L3 - Navigation restructure and deps. Worktree: .agent-worktrees/L3-mobile-app-agent. Branch: agents/mobile-app-agent/L3-ux-phase-1-navigation-restructure-and-dependency-additions off feat/ux-phase1.
+Request: (a) package.json: add @react-native-community/slider and react-native-rss-parser to dependencies. (b) _layout.tsx: bottom nav primary = Local Grid | + Compose | Docustream; Backpack reachable from Profile header icon button. Register routes: /, /feed, /local, /compose, /backpack, /docustream, /profile, /settings. tsc --noEmit clean.
+Evidence: active-task.md in .agent-worktrees/L3-mobile-app-agent/. Source: UX-Implementation-Specification.md section 3.1
+Due: Immediate
+
+---
+
+[2026-06-27 05:19 UTC] [PROJECT_MANAGER->SOLID_DATA_AGENT] [P1] [OPEN]
+Context: L4 - solid-pod-sync backend. Worktree: .agent-worktrees/L4-solid-data-agent. Branch: agents/solid-data-agent/L4-ux-phase-1-solid-pod-sync-backend-methods off feat/ux-phase1.
+Request: In packages/solid-pod-sync/src/: (a) ProfileManager.ts: add async updateWebACL(containerPath: string, isPublic: boolean): Promise<void> - writes/patches .acl resource for public acl:Read. (b) SocialGraph.ts: add async findSemanticOverlap(peerWebId: string): Promise<string[]> - intersects peer schema:interest triples with local interests[]. (c) New DocustreamManager.ts: appendActivity(podRoot, item) + listActivities(podRoot) using ActivityStreams 2.0 RDF in /public/docustream/. (d) index.ts: re-export all new types/classes. Existing 12 tests must pass. Add unit test stubs. tsc --noEmit clean.
+Evidence: active-task.md in .agent-worktrees/L4-solid-data-agent/. Source: UX-Implementation-Specification.md 4.1 4.4 4.5; packages/solid-pod-sync/src/
+Due: Immediate
+
+---
+
+[2026-06-27 05:19 UTC] [PROJECT_MANAGER->MOBILE_APP_AGENT] [P2] [OPEN]
+Context: L5 - Context binding. BLOCKED until L1+L2+L3+L4 all [DONE] and merged into feat/ux-phase1. Worktree pre-created at .agent-worktrees/L5-mobile-app-agent.
+Request: Stand by. PM will post unblock message when dependencies are merged. Brief in active-task.md.
+Evidence: active-task.md in .agent-worktrees/L5-mobile-app-agent/.
+Due: After L1+L2+L3+L4 merge
+
+---
+
+[2026-06-27 05:19 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P2] [OPEN]
+Context: L6 - Compose audience routing. BLOCKED until L1+L3 [DONE] and merged into feat/ux-phase1. Worktree pre-created at .agent-worktrees/L6-p2p-relay-agent.
+Request: Stand by. PM will post unblock message when L1+L3 are merged. Brief in active-task.md. When unblocked: implement handlePost in app/compose.tsx routing payload by audience (local->P2PChannel via getSurroundingNodes, foaf->Pod /outbox/ encrypt, verified->PoH-gated Pod write).
+Evidence: active-task.md in .agent-worktrees/L6-p2p-relay-agent/.
+Due: After L1+L3 merge
+
+---
+
+[2026-06-27 05:19 UTC] [PROJECT_MANAGER->QA_RELEASE_AGENT] [P2] [OPEN]
+Context: L7 - Phase 3 QA smoke. BLOCKED until L5+L6 [DONE] and merged into feat/ux-phase1. Worktree pre-created at .agent-worktrees/L7-qa-release-agent.
+Request: Stand by. PM will post unblock message when L5+L6 are merged. Brief in active-task.md. When unblocked: execute J1(Backpack/WebACL) J2(Docustream/Pod) J3(Compose/P2P relay) J4(Semantic Overlap card). Post pass/fail matrix with evidence. DONE only on 4/4 PASS; NEEDS-INFO on any FAIL.
+Evidence: active-task.md in .agent-worktrees/L7-qa-release-agent/.
+Due: After L5+L6 merge
+
+---
