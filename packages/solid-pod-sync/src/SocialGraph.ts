@@ -37,6 +37,11 @@ const FOAF_KNOWS = 'http://xmlns.com/foaf/0.1/knows'
 const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type'
 const FOAF_PERSON = 'http://xmlns.com/foaf/0.1/Person'
 
+export function intersectInterests(localInterests: string[], peerInterests: Iterable<string>): string[] {
+  const peerSet = new Set(peerInterests)
+  return localInterests.filter((interest) => peerSet.has(interest))
+}
+
 /** Represents a connection (follow relationship) in the social graph. */
 export interface Connection {
   /** The WebID of the connected user. */
@@ -199,12 +204,9 @@ export class SocialGraph {
    * @param peerWebId - The peer's WebID URL.
    * @returns String array of overlapping interest values, or `[]` on any error.
    */
-  async findSemanticOverlap(peerWebId: string): Promise<string[]> {
+  async findSemanticOverlap(peerWebId: string, localInterests: string[] = []): Promise<string[]> {
     const SCHEMA_INTEREST = 'https://schema.org/interest'
     const FOAF_TOPIC_INTEREST = 'http://xmlns.com/foaf/0.1/topic_interest'
-
-    // Local interests — hardcoded to [] until profile context is available.
-    const localInterests: string[] = []
 
     let dataset: SolidDataset & WithServerResourceInfo
 
@@ -226,7 +228,7 @@ export class SocialGraph {
 
       if (localInterests.length === 0 || peerInterests.size === 0) return []
 
-      return localInterests.filter((i) => peerInterests.has(i))
+      return intersectInterests(localInterests, peerInterests)
     } catch {
       return []
     }
