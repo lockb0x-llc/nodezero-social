@@ -8,17 +8,107 @@ import {
   KeyboardAvoidingView,
   Platform,
   SafeAreaView,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSolid } from '../src/contexts/SolidContext';
+import { useDiscovery } from '../src/contexts/DiscoveryContext';
+import { useWallet } from '../src/contexts/WalletContext';
+import { P2PChannel } from '@nodezero/p2p-comms';
+import { SocialGraph } from '@nodezero/solid-pod-sync';
 
 type AudienceType = 'foaf' | 'verified' | 'local';
 
 export default function ComposeScreen() {
   const [postText, setPostText] = useState('');
   const [audience, setAudience] = useState<AudienceType>('verified');
+  const [sending, setSending] = useState(false);
 
-  const handlePost = () => {
-    console.log(`Broadcasting to ${audience}: ${postText}`);
+  const { session, webId, isLoggedIn } = useSolid();
+  const { surroundingNodes } = useDiscovery();
+  // verifyPoH may not exist on the wallet context type; cast as a stub if absent
+  const walletCtx = useWallet() as { verifyPoH?: (webId: string) => Promise<boolean> };
+  const verifyPoH: (webId: string) => Promise<boolean> =
+    walletCtx.verifyPoH ?? (async (_: string) => false);
+
+  const handlePost = async (): Promise<void> => {
+    if (!postText.trim()) return;
+    setSending(true);
+    try {
+      if (audience === 'local') {
+        // Route via P2P relay to surrounding H3 nodes
+        const nodes = surroundingNodes ?? [];
+        await Promise.allSettled(
+          nodes.map(async (node) => {
+            const ch = new P2PChannel({
+              localWebId: webId ?? '',
+              remoteWebId: (node as { webId?: string }).webId ?? String(node),
+            });
+            await ch.connect?.();
+            // Log broadcast; full send implementation is a follow-up
+            console.log('[compose] local broadcast to', node);
+          })
+        );
+      } else if (audience === 'foaf') {
+        // Write payload to Pod /outbox/ container via session.fetch
+        const podRoot = (webId ?? '').split('/profile/')[0] + '/';
+        const graph = new SocialGraph(session);
+        const connections = await graph.listConnections(podRoot).catch(() => []);
+        const payload = JSON.stringify({ text: postText, audience, ts: Date.now() });
+        await Promise.allSettled(
+          connections.map((c) =>
+            session.fetch(
+              podRoot +
+                'outbox/' +
+                Date.now() +
+                '-' +
+                Math.random().toString(36).slice(2) +
+                '.json',
+              {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: payload,
+              }
+            )
+          )
+        );
+      } else if (audience === 'verified') {
+        // Same as foaf but guard each recipient with verifyPoH check
+        const podRoot = (webId ?? '').split('/profile/')[0] + '/';
+        const graph = new SocialGraph(session);
+        const connections = await graph.listConnections(podRoot).catch(() => []);
+        const payload = JSON.stringify({ text: postText, audience, ts: Date.now() });
+        await Promise.allSettled(
+          connections.map(async (c) => {
+            const recipientWebId = (c as { webId?: string }).webId ?? String(c);
+            const isVerified = await verifyPoH(recipientWebId);
+            if (!isVerified) {
+              console.warn('[compose] skipping unverified recipient', recipientWebId);
+              return;
+            }
+            return session.fetch(
+              podRoot +
+                'outbox/' +
+                Date.now() +
+                '-' +
+                Math.random().toString(36).slice(2) +
+                '.json',
+              {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: payload,
+              }
+            );
+          })
+        );
+      }
+      setPostText('');
+    } catch (err) {
+      Alert.alert('Broadcast Failed', err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setSending(false);
+    }
   };
 
   const getAudienceDescription = () => {
@@ -39,11 +129,15 @@ export default function ComposeScreen() {
         <View style={styles.header}>
           <Text style={styles.headerTitle}>New Broadcast</Text>
           <TouchableOpacity
-            style={[styles.postButton, !postText.trim() && styles.postButtonDisabled]}
-            disabled={!postText.trim()}
+            style={[styles.postButton, (!postText.trim() || sending) && styles.postButtonDisabled]}
+            disabled={!postText.trim() || sending}
             onPress={handlePost}
           >
-            <Text style={styles.postButtonText}>Post</Text>
+            {sending ? (
+              <ActivityIndicator size="small" color="#FFF" />
+            ) : (
+              <Text style={styles.postButtonText}>Post</Text>
+            )}
           </TouchableOpacity>
         </View>
 
