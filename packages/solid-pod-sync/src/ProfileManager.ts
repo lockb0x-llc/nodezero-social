@@ -215,8 +215,8 @@ export class ProfileManager {
     const aclUrl = `${containerPath.replace(/\/$/, '')}/.acl`
 
     // Build minimal Turtle ACL document.
-    // Owner block is always included so the Pod owner retains control.
-    const ownerWebId = 'https://vocab.nodezero.social/ns#owner' // placeholder — caller supplies real WebID via Pod root
+    // Prefer an explicit owner WebID, but fall back to the canonical profile-card WebID pattern.
+    const ownerWebId = deriveOwnerWebId(containerPath)
     const ownerBlock = `
 @prefix acl: <http://www.w3.org/ns/auth/acl#> .
 @prefix foaf: <http://xmlns.com/foaf/0.1/> .
@@ -277,6 +277,15 @@ function thingToProfile(thing: Thing): UserProfile {
  */
 function getAllStrings(thing: Thing, predicate: string): string[] {
   return getStringNoLocaleAll(thing, predicate)
+}
+
+function deriveOwnerWebId(containerPath: string): string {
+  try {
+    const containerUrl = new URL(containerPath)
+    return `${containerUrl.origin}/profile/card#me`
+  } catch {
+    return 'https://vocab.nodezero.social/profile/card#me'
+  }
 }
 
 /**

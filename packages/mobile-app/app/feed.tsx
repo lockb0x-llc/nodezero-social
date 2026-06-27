@@ -20,13 +20,11 @@ import {
   Switch,
 } from 'react-native'
 import Constants from 'expo-constants'
+import { Ionicons } from '@expo/vector-icons'
+import Slider from '@react-native-community/slider'
 import { useSolid } from '../src/contexts/SolidContext'
 import { useRouter } from 'expo-router'
 import { SocialGraph, ProfileManager, DocustreamManager, type StreamItem } from '@nodezero/solid-pod-sync'
-
-// Stub components — remove when @expo/vector-icons and @react-native-community/slider are installed (L3)
-const Ionicons = (_props: { name: string; size?: number; color?: string }) => null
-const Slider = (_props: any) => null
 
 interface FeedPost {
   id: string

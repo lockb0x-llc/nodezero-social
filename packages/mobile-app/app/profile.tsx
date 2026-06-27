@@ -24,9 +24,7 @@ import {
 import { useLocalSearchParams } from 'expo-router'
 import { useSolid } from '../src/contexts/SolidContext'
 import { ProfileManager, SocialGraph, type UserProfile } from '@nodezero/solid-pod-sync'
-
-// Stub — remove when @expo/vector-icons is installed (L3)
-const Ionicons = (_props: { name: string; size?: number; color?: string }) => null
+import { Ionicons } from '@expo/vector-icons'
 
 const EMPTY_PROFILE: UserProfile = {
   displayName: '',
@@ -46,7 +44,7 @@ export default function ProfileScreen(): JSX.Element {
   const [saving, setSaving] = useState(false)
   const [nsfwWarningDismissed, setNsfwWarningDismissed] = useState(false)
   const [interestsInput, setInterestsInput] = useState('')
-  const [sharedThreads, setSharedThreads] = useState<string[]>(['ZK cryptography', 'Stellar blockchain'])
+  const [sharedThreads, setSharedThreads] = useState<string[]>([])
   const [zkTooltipOpen, setZkTooltipOpen] = useState(false)
 
   const { peerWebId } = useLocalSearchParams<{ peerWebId?: string }>()
@@ -55,14 +53,14 @@ export default function ProfileScreen(): JSX.Element {
   useEffect(() => {
     if (!peerWebId || !isLoggedIn) return
     new SocialGraph(session)
-      .findSemanticOverlap(peerWebId)
+      .findSemanticOverlap(peerWebId, profile.interests)
       .then((threads) => {
-        if (threads.length > 0) setSharedThreads(threads)
+        setSharedThreads(threads)
       })
       .catch(() => {
-        // Keep mock default on error
+        setSharedThreads([])
       })
-  }, [peerWebId, isLoggedIn, session])
+  }, [peerWebId, isLoggedIn, profile.interests, session])
 
   // Initialise ProfileManager once session is available.
   useEffect(() => {
