@@ -39745,3 +39745,45 @@ Request: Post a progress update or blocker before the next coordination checkpoi
 Evidence: worktree=brief-only; lastPmMessage=none
 Due: Next coordination checkpoint.
 
+[2026-06-27 08:14 UTC] [PROJECT_MANAGER->MOBILE_APP_AGENT] [P1] [OPEN]
+Context: Parallel dispatch for work item B1.
+Request: Deliver "B1 - Replace feed placeholder with Solid-based aggregation" on branch agents/mobile-app-agent/B1-b1-replace-feed-placeholder-with-solid-based-aggregation using worktree C:\Users\standarduser\Code\nodezero-social\.agent-worktrees\B1-mobile-app-agent.
+Evidence: Commit history + tests + handoff note in this inbox.
+Due: Next coordination checkpoint.
+
+[2026-06-27 08:14 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: Parallel dispatch for work item B2.
+Request: Deliver "B2 - Replace local chat placeholder with live P2P relay flow" on branch agents/p2p-relay-agent/B2-b2-replace-local-chat-placeholder-with-live-p2p-relay-flow using worktree C:\Users\standarduser\Code\nodezero-social\.agent-worktrees\B2-p2p-relay-agent.
+Evidence: Commit history + tests + handoff note in this inbox.
+Due: Next coordination checkpoint.
+
+[2026-06-27 08:14 UTC] [PROJECT_MANAGER->STELLAR_CONTRACT_AGENT] [P1] [OPEN]
+Context: Parallel dispatch for work item C2.
+Request: Deliver "C2 - Publish artifact manifest validation and checksum process" on branch agents/stellar-contract-agent/C2-c2-publish-artifact-manifest-validation-and-checksum-process using worktree C:\Users\standarduser\Code\nodezero-social\.agent-worktrees\C2-stellar-contract-agent.
+Evidence: Commit history + tests + handoff note in this inbox.
+Due: Next coordination checkpoint.
+
+[2026-06-27 08:14 UTC] [PROJECT_MANAGER->AZURE_PLATFORM_AGENT] [P1] [OPEN]
+Context: Parallel dispatch for work item D3.
+Request: Deliver "D3 - Add monitoring/alerting and cost guardrails" on branch agents/azure-platform-agent/D3-d3-add-monitoring-alerting-and-cost-guardrails using worktree C:\Users\standarduser\Code\nodezero-social\.agent-worktrees\D3-azure-platform-agent.
+Evidence: Commit history + tests + handoff note in this inbox.
+Due: Next coordination checkpoint.
+
+[2026-06-27 08:14 UTC] [PROJECT_MANAGER->MOBILE_APP_AGENT] [P1] [OPEN]
+Context: Parallel dispatch for work item J3.
+Request: Deliver "J3 - Add favicon to Expo web export" on branch agents/mobile-app-agent/J3-j3-add-favicon-to-expo-web-export using worktree C:\Users\standarduser\Code\nodezero-social\.agent-worktrees\J3-mobile-app-agent.
+Evidence: Commit history + tests + handoff note in this inbox.
+Due: Next coordination checkpoint.
+
+[2026-06-27 08:14 UTC] [PROJECT_MANAGER->DOCS_AGENT] [P1] [OPEN]
+Context: Parallel dispatch for work item J5.
+Request: Deliver "J5 - Document confirmed functionality and known gaps" on branch agents/docs-agent/J5-j5-document-confirmed-functionality-and-known-gaps using worktree C:\Users\standarduser\Code\nodezero-social\.agent-worktrees\J5-docs-agent.
+Evidence: Commit history + tests + handoff note in this inbox.
+Due: Next coordination checkpoint.
+
+[2026-06-27 08:14 UTC] [PROJECT_MANAGER->QA_RELEASE_AGENT] [P1] [OPEN]
+Context: Parallel dispatch for work item J4.
+Request: Deliver "J4 - Complete authenticated UAT for LM1/LM2/WR2/AU4" on branch agents/qa-release-agent/J4-j4-complete-authenticated-uat-for-lm1-lm2-wr2-au4 using worktree C:\Users\standarduser\Code\nodezero-social\.agent-worktrees\J4-qa-release-agent.
+Evidence: Commit history + tests + handoff note in this inbox.
+Due: Next coordination checkpoint.
+

@@ -128,7 +128,15 @@ function Test-IsBranchMerged {
     }
 
     & git merge-base --is-ancestor $Branch $BaseBranch
-    return ($LASTEXITCODE -eq 0)
+    if ($LASTEXITCODE -ne 0) {
+        return $false
+    }
+
+    # A freshly dispatched branch points at the same commit as base; treat it as active, not merged.
+    $branchTip = (& git rev-parse $Branch).Trim()
+    $baseTip = (& git rev-parse $BaseBranch).Trim()
+
+    return ($branchTip -ne $baseTip)
 }
 
 function Get-WorkItemMap {
