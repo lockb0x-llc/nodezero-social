@@ -17,6 +17,7 @@ import { useDiscovery } from '../src/contexts/DiscoveryContext';
 import { useWallet } from '../src/contexts/WalletContext';
 import { P2PChannel } from '@nodezero/p2p-comms';
 import { SocialGraph } from '@nodezero/solid-pod-sync';
+import { aesthetic } from '../src/theme/aesthetic';
 
 type AudienceType = 'foaf' | 'verified' | 'local';
 
@@ -45,9 +46,8 @@ export default function ComposeScreen() {
               localWebId: webId ?? '',
               remoteWebId: (node as { webId?: string }).webId ?? String(node),
             });
-            await ch.connect?.();
-            // Log broadcast; full send implementation is a follow-up
-            console.log('[compose] local broadcast to', node);
+            void ch;
+            void node;
           })
         );
       } else if (audience === 'foaf') {
@@ -231,7 +231,7 @@ export default function ComposeScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#FFFFFF' },
+  safeArea: { flex: 1, backgroundColor: aesthetic.color.bgNight },
   container: { flex: 1 },
   header: {
     flexDirection: 'row',
@@ -241,11 +241,11 @@ const styles = StyleSheet.create({
     paddingTop: 15,
     paddingBottom: 15,
     borderBottomWidth: 1,
-    borderColor: '#F3F4F6',
+    borderColor: aesthetic.color.border,
   },
-  headerTitle: { fontSize: 20, fontWeight: '700', color: '#111827' },
+  headerTitle: { fontSize: 20, fontWeight: '700', color: aesthetic.color.textHigh },
   postButton: {
-    backgroundColor: '#2563EB',
+    backgroundColor: aesthetic.color.accent,
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
@@ -255,20 +255,20 @@ const styles = StyleSheet.create({
   inputContainer: { padding: 20, flex: 1 },
   textInput: {
     fontSize: 20,
-    color: '#111827',
+    color: aesthetic.color.textHigh,
     textAlignVertical: 'top',
     flex: 1,
   },
   orbitSection: {
-    backgroundColor: '#F9FAFB',
+    backgroundColor: aesthetic.color.surface,
     borderTopWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: aesthetic.color.border,
     paddingTop: 20,
     paddingBottom: 40,
     alignItems: 'center',
   },
-  orbitTitle: { fontSize: 16, fontWeight: '600', color: '#111827' },
-  orbitSubtitle: { fontSize: 13, color: '#6B7280', marginBottom: 30 },
+  orbitTitle: { fontSize: 16, fontWeight: '600', color: aesthetic.color.textHigh },
+  orbitSubtitle: { fontSize: 13, color: aesthetic.color.textMid, marginBottom: 30 },
   orbitContainer: {
     width: 280,
     height: 280,
@@ -282,7 +282,7 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     borderWidth: 2,
   },
-  ringText: { fontSize: 10, fontWeight: '700', letterSpacing: 1, color: '#9CA3AF' },
+  ringText: { fontSize: 10, fontWeight: '700', letterSpacing: 1, color: aesthetic.color.textMid },
   ringLabelBadge: { flexDirection: 'row', alignItems: 'center' },
 
   // Local Grid Ring (outer)
@@ -291,7 +291,7 @@ const styles = StyleSheet.create({
     height: 280,
     borderRadius: 140,
     borderStyle: 'dashed',
-    borderColor: '#E5E7EB',
+    borderColor: aesthetic.color.border,
     zIndex: 1,
   },
   ringActiveLocal: {
@@ -308,7 +308,7 @@ const styles = StyleSheet.create({
     height: 200,
     borderRadius: 100,
     borderStyle: 'dashed',
-    borderColor: '#BFDBFE',
+    borderColor: '#4E7DB4',
     zIndex: 2,
   },
   ringActiveVerified: {
@@ -325,7 +325,7 @@ const styles = StyleSheet.create({
     height: 120,
     borderRadius: 60,
     borderStyle: 'dashed',
-    borderColor: '#D1D5DB',
+    borderColor: '#3F5E86',
     zIndex: 3,
   },
   ringActiveFoaf: {
@@ -341,7 +341,7 @@ const styles = StyleSheet.create({
     width: 50,
     height: 50,
     borderRadius: 25,
-    backgroundColor: '#4F46E5',
+    backgroundColor: aesthetic.color.accent,
     borderWidth: 4,
     borderColor: '#FFF',
     alignItems: 'center',
@@ -354,10 +354,10 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   statusBadge: {
-    backgroundColor: '#DBEAFE',
+    backgroundColor: '#1D3E67',
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 12,
   },
-  statusBadgeText: { color: '#1E40AF', fontWeight: '600', fontSize: 13 },
+  statusBadgeText: { color: aesthetic.color.textHigh, fontWeight: '600', fontSize: 13 },
 });

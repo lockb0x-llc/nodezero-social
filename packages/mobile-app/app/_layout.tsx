@@ -16,6 +16,7 @@ import { Stack, Link, usePathname } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { View, Text, StyleSheet, Platform } from 'react-native'
 import React from 'react'
+import { aesthetic } from '../src/theme/aesthetic'
 
 /** Navigation bar rendered at the bottom of the screen on web only. */
 function WebNavBar(): JSX.Element | null {
@@ -26,13 +27,13 @@ function WebNavBar(): JSX.Element | null {
   if (Platform.OS !== 'web' || !isLoggedIn) return null
 
   const links = [
-    { href: '/local', label: '📍 Local' },
-    { href: '/compose', label: '＋ Broadcast' },
-    { href: '/docustream', label: '📡 Stream' },
-    { href: '/feed', label: '📰 Feed' },
-    { href: '/backpack', label: '⚡ Backpack' },
-    { href: '/profile', label: '👤 Profile' },
-    { href: '/settings', label: '⚙️ Settings' },
+    { href: '/local', label: 'Local' },
+    { href: '/compose', label: 'Broadcast' },
+    { href: '/docustream', label: 'Stream' },
+    { href: '/feed', label: 'Feed' },
+    { href: '/backpack', label: 'Backpack' },
+    { href: '/profile', label: 'Profile' },
+    { href: '/settings', label: 'Settings' },
   ] as const
 
   return (
@@ -53,9 +54,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'center',
-    backgroundColor: '#1A1A1A',
+    backgroundColor: aesthetic.color.surface,
     borderTopWidth: 1,
-    borderTopColor: '#333',
+    borderTopColor: aesthetic.color.border,
     paddingVertical: 8,
     paddingHorizontal: 16,
   },
@@ -65,15 +66,15 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   navLinkActive: {
-    backgroundColor: '#6C63FF22',
+    backgroundColor: '#2F84D933',
   },
   navLinkText: {
-    color: '#888888',
+    color: aesthetic.color.textMid,
     fontSize: 13,
     fontWeight: '500',
   },
   navLinkTextActive: {
-    color: '#6C63FF',
+    color: aesthetic.color.accentSoft,
     fontWeight: '700',
   },
 })
@@ -86,10 +87,10 @@ export default function RootLayout(): JSX.Element {
           <StatusBar style="light" />
           <Stack
             screenOptions={{
-              headerStyle: { backgroundColor: '#0D0D0D' },
-              headerTintColor: '#FFFFFF',
+              headerStyle: { backgroundColor: aesthetic.color.bgNight },
+              headerTintColor: aesthetic.color.textHigh,
               headerTitleStyle: { fontWeight: 'bold' },
-              contentStyle: { backgroundColor: '#0D0D0D' },
+              contentStyle: { backgroundColor: aesthetic.color.bgNight },
             }}
           >
             <Stack.Screen name="index" options={{ title: 'NodeZero' }} />

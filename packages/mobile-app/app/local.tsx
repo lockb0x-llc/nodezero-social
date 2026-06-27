@@ -26,6 +26,8 @@ import { useSolid } from '../src/contexts/SolidContext'
 import Constants from 'expo-constants'
 import { P2PChannel, SignalRelay, type SignalMessage } from '@nodezero/p2p-comms'
 import { SocialGraph } from '@nodezero/solid-pod-sync'
+import { aesthetic } from '../src/theme/aesthetic'
+import { Ionicons } from '@expo/vector-icons'
 
 interface LocalMessage {
   id: string
@@ -255,10 +257,14 @@ export default function LocalNodeScreen(): JSX.Element {
     return (
       <View style={styles.centred}>
         <Text style={styles.infoText}>
-          📍 Location access is required to join a Local Node.{'\n'}
+          Location access is required to join a Local Node.{"\n"}
           Please grant permission in your device settings.
         </Text>
-        <TouchableOpacity style={styles.refreshBtn} onPress={() => void refresh()}>
+        <TouchableOpacity
+          style={styles.refreshBtn}
+          onPress={() => void refresh()}
+          activeOpacity={aesthetic.motion.pressOpacity}
+        >
           <Text style={styles.refreshBtnText}>Retry</Text>
         </TouchableOpacity>
       </View>
@@ -273,7 +279,10 @@ export default function LocalNodeScreen(): JSX.Element {
       {/* Node info header */}
       <View style={styles.nodeHeader}>
         <View style={styles.nodeHeaderTop}>
-          <Text style={styles.nodeTitle}>📍 Your Local Node</Text>
+          <View style={styles.nodeTitleRow}>
+            <Ionicons name="location" size={16} color={aesthetic.color.accentSoft} />
+            <Text style={styles.nodeTitle}>Your Local Node</Text>
+          </View>
           <View style={styles.nodeHeaderRight}>
             <View style={styles.authModeBadge}>
               <Text style={styles.authModeBadgeText}>{authModeLabel}</Text>
@@ -283,6 +292,7 @@ export default function LocalNodeScreen(): JSX.Element {
               accessibilityRole="button"
               accessibilityLabel="Auth mode explanation"
               style={styles.authModeInfoButton}
+              activeOpacity={aesthetic.motion.pressOpacity}
             >
               <Text style={styles.authModeInfoText}>?</Text>
             </TouchableOpacity>
@@ -315,7 +325,7 @@ export default function LocalNodeScreen(): JSX.Element {
         renderItem={({ item }) => (
           <View style={[styles.cellChip, item.isOrigin && styles.cellChipOrigin]}>
             <Text style={styles.cellChipText} numberOfLines={1}>
-              {item.isOrigin ? '📍 ' : ''}{item.h3Index.slice(-6)}
+              {item.isOrigin ? 'Here ' : ''}{item.h3Index.slice(-6)}
             </Text>
           </View>
         )}
@@ -331,7 +341,7 @@ export default function LocalNodeScreen(): JSX.Element {
         ListEmptyComponent={
           <View style={styles.emptyMessages}>
             <Text style={styles.infoText}>
-              No messages yet. Be the first to say hello to your neighbourhood! 👋
+              No messages yet. Start the first local check-in.
             </Text>
           </View>
         }
@@ -358,6 +368,7 @@ export default function LocalNodeScreen(): JSX.Element {
                 <TouchableOpacity
                   onPress={() => setTargetWebId(item)}
                   style={[styles.peerChip, selected && styles.peerChipSelected]}
+                  activeOpacity={aesthetic.motion.pressOpacity}
                 >
                   <Text
                     style={[styles.peerChipText, selected && styles.peerChipTextSelected]}
@@ -408,6 +419,7 @@ export default function LocalNodeScreen(): JSX.Element {
           style={[styles.sendBtn, (!message.trim() || sending) && styles.sendBtnDisabled]}
           onPress={() => void sendMessage()}
           disabled={!message.trim() || sending || !targetWebId.trim()}
+          activeOpacity={aesthetic.motion.pressOpacity}
           accessibilityRole="button"
           accessibilityLabel="Send message"
         >
@@ -419,55 +431,56 @@ export default function LocalNodeScreen(): JSX.Element {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0D0D0D' },
-  centred: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, backgroundColor: '#0D0D0D' },
-  infoText: { color: '#888', fontSize: 14, textAlign: 'center', lineHeight: 22, marginTop: 12 },
-  refreshBtn: { marginTop: 16, backgroundColor: '#6C63FF', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 20 },
+  container: { flex: 1, backgroundColor: aesthetic.color.bgNight },
+  centred: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, backgroundColor: aesthetic.color.bgNight },
+  infoText: { color: aesthetic.color.textMid, fontSize: 14, textAlign: 'center', lineHeight: 22, marginTop: 12 },
+  refreshBtn: { marginTop: 16, backgroundColor: aesthetic.color.accent, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 20 },
   refreshBtnText: { color: '#FFF', fontWeight: '700' },
-  nodeHeader: { padding: 16, borderBottomWidth: 1, borderBottomColor: '#1E1E1E' },
+  nodeHeader: { padding: 16, borderBottomWidth: 1, borderBottomColor: aesthetic.color.border },
   nodeHeaderTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  nodeTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   nodeHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  nodeTitle: { color: '#FFF', fontWeight: '800', fontSize: 16 },
+  nodeTitle: { color: aesthetic.color.textHigh, fontWeight: '800', fontSize: 16 },
   authModeBadge: {
     borderWidth: 1,
-    borderColor: '#2A2A2A',
+    borderColor: aesthetic.color.border,
     borderRadius: 999,
-    backgroundColor: '#1A1A1A',
+    backgroundColor: aesthetic.color.surface,
     paddingHorizontal: 10,
     paddingVertical: 5,
   },
-  authModeBadgeText: { color: '#DDD', fontSize: 10, fontWeight: '700', textTransform: 'uppercase' },
+  authModeBadgeText: { color: aesthetic.color.textHigh, fontSize: 10, fontWeight: '700', textTransform: 'uppercase' },
   authModeInfoButton: {
     width: 20,
     height: 20,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#2A2A2A',
+    borderColor: aesthetic.color.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  authModeInfoText: { color: '#777', fontSize: 11, fontWeight: '700' },
-  authModeHintText: { color: '#888', fontSize: 12, lineHeight: 17, marginTop: 8 },
-  nodeIndex: { color: '#6C63FF', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 13, marginTop: 4 },
-  nodeSubtitle: { color: '#666', fontSize: 12, marginTop: 2 },
-  cellStrip: { maxHeight: 44, borderBottomWidth: 1, borderBottomColor: '#1E1E1E' },
+  authModeInfoText: { color: aesthetic.color.textLow, fontSize: 11, fontWeight: '700' },
+  authModeHintText: { color: aesthetic.color.textMid, fontSize: 12, lineHeight: 17, marginTop: 8 },
+  nodeIndex: { color: aesthetic.color.accentSoft, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 13, marginTop: 4 },
+  nodeSubtitle: { color: aesthetic.color.textLow, fontSize: 12, marginTop: 2 },
+  cellStrip: { maxHeight: 44, borderBottomWidth: 1, borderBottomColor: aesthetic.color.border },
   cellStripContent: { paddingHorizontal: 12, alignItems: 'center' },
-  cellChip: { backgroundColor: '#1E1E1E', borderRadius: 16, paddingHorizontal: 10, paddingVertical: 6, marginRight: 6 },
+  cellChip: { backgroundColor: aesthetic.color.surface, borderRadius: 16, paddingHorizontal: 10, paddingVertical: 6, marginRight: 6 },
   cellChipOrigin: { backgroundColor: '#2E2060' },
-  cellChipText: { color: '#AAA', fontSize: 11, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  cellChipText: { color: aesthetic.color.textMid, fontSize: 11, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
   messageList: { flex: 1 },
   messageListContent: { padding: 12, flexGrow: 1, justifyContent: 'flex-end' },
   emptyMessages: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 48 },
-  messageBubble: { backgroundColor: '#1A1A1A', borderRadius: 10, padding: 12, marginBottom: 8 },
-  messageSender: { color: '#6C63FF', fontSize: 11, marginBottom: 4 },
-  messageBody: { color: '#DDD', fontSize: 14, lineHeight: 20 },
-  messageTime: { color: '#555', fontSize: 10, marginTop: 4, textAlign: 'right' },
+  messageBubble: { backgroundColor: aesthetic.color.surface, borderRadius: 10, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: aesthetic.color.border },
+  messageSender: { color: aesthetic.color.accentSoft, fontSize: 11, marginBottom: 4 },
+  messageBody: { color: aesthetic.color.textMid, fontSize: 14, lineHeight: 20 },
+  messageTime: { color: aesthetic.color.textLow, fontSize: 10, marginTop: 4, textAlign: 'right' },
   peerRow: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 2 },
   peerRowLabel: { color: '#666', fontSize: 11, marginBottom: 6 },
   peerChip: {
-    backgroundColor: '#1A1A1A',
+    backgroundColor: aesthetic.color.surface,
     borderWidth: 1,
-    borderColor: '#2A2A2A',
+    borderColor: aesthetic.color.border,
     borderRadius: 14,
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -475,44 +488,44 @@ const styles = StyleSheet.create({
     maxWidth: 240,
   },
   peerChipSelected: { borderColor: '#6C63FF' },
-  peerChipText: { color: '#AAA', fontSize: 11 },
-  peerChipTextSelected: { color: '#DDD' },
+  peerChipText: { color: aesthetic.color.textMid, fontSize: 11 },
+  peerChipTextSelected: { color: aesthetic.color.textHigh },
   targetInput: {
     width: '100%',
-    backgroundColor: '#1A1A1A',
+    backgroundColor: aesthetic.color.surface,
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    color: '#FFF',
+    color: aesthetic.color.textHigh,
     fontSize: 13,
     borderWidth: 1,
-    borderColor: '#2A2A2A',
+    borderColor: aesthetic.color.border,
   },
-  systemText: { color: '#8C80B3', fontSize: 12, paddingHorizontal: 12, paddingBottom: 6 },
+  systemText: { color: aesthetic.color.textMid, fontSize: 12, paddingHorizontal: 12, paddingBottom: 6 },
   errorText: { color: '#FF7A7A', fontSize: 12, paddingHorizontal: 12, paddingBottom: 6 },
   composeRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     padding: 10,
     borderTopWidth: 1,
-    borderTopColor: '#1E1E1E',
-    backgroundColor: '#0D0D0D',
+    borderTopColor: aesthetic.color.border,
+    backgroundColor: aesthetic.color.bgNight,
   },
   composeInput: {
     flex: 1,
-    backgroundColor: '#1A1A1A',
+    backgroundColor: aesthetic.color.surface,
     borderRadius: 20,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    color: '#FFF',
+    color: aesthetic.color.textHigh,
     fontSize: 14,
     maxHeight: 100,
     borderWidth: 1,
-    borderColor: '#2A2A2A',
+    borderColor: aesthetic.color.border,
   },
   sendBtn: {
     marginLeft: 8,
-    backgroundColor: '#6C63FF',
+    backgroundColor: aesthetic.color.accent,
     width: 40,
     height: 40,
     borderRadius: 20,

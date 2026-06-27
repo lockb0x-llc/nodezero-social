@@ -12,6 +12,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useSolid } from '../src/contexts/SolidContext';
 import { ProfileManager } from '@nodezero/solid-pod-sync';
+import { aesthetic } from '../src/theme/aesthetic';
 
 const CONTAINER_PATHS: Record<string, string> = {
   profile: '/profile/',
@@ -142,15 +143,15 @@ export default function BackpackScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: aesthetic.color.bgNight,
   },
   header: {
     paddingHorizontal: 20,
     paddingTop: 20,
     paddingBottom: 20,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: aesthetic.color.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: aesthetic.color.border,
   },
   headerTitleContainer: {
     flexDirection: 'row',
@@ -161,11 +162,11 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#111827',
+    color: aesthetic.color.textHigh,
   },
   headerSubtitle: {
     fontSize: 14,
-    color: '#6B7280',
+    color: aesthetic.color.textMid,
     marginLeft: 36,
   },
   container: {
@@ -178,13 +179,13 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 12,
     fontWeight: 'bold',
-    color: '#9CA3AF',
+    color: aesthetic.color.textLow,
     letterSpacing: 1.5,
     marginBottom: 12,
     marginLeft: 4,
   },
   card: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: aesthetic.color.surface,
     borderRadius: 20,
     padding: 16,
     marginBottom: 16,
@@ -197,7 +198,7 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 2,
     borderWidth: 1,
-    borderColor: '#F3F4F6',
+    borderColor: aesthetic.color.border,
   },
   cardDisabled: {
     opacity: 0.6,
@@ -221,24 +222,24 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#111827',
+    color: aesthetic.color.textHigh,
     marginBottom: 2,
   },
   cardDescription: {
     fontSize: 13,
-    color: '#6B7280',
+    color: aesthetic.color.textMid,
   },
   infoBox: {
     marginTop: 10,
-    backgroundColor: '#EFF6FF',
+    backgroundColor: aesthetic.color.surfaceAlt,
     borderRadius: 16,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#BFDBFE',
+    borderColor: aesthetic.color.border,
   },
   infoText: {
     fontSize: 13,
-    color: '#1E40AF',
+    color: aesthetic.color.textMid,
     lineHeight: 20,
   },
 });

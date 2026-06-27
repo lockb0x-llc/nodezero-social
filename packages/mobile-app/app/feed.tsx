@@ -25,6 +25,7 @@ import Slider from '@react-native-community/slider'
 import { useSolid } from '../src/contexts/SolidContext'
 import { useRouter } from 'expo-router'
 import { SocialGraph, ProfileManager, DocustreamManager, type StreamItem } from '@nodezero/solid-pod-sync'
+import { aesthetic } from '../src/theme/aesthetic'
 
 interface FeedPost {
   id: string
@@ -165,6 +166,7 @@ export default function GlobalFeedScreen(): JSX.Element {
             accessibilityRole="button"
             accessibilityLabel="Auth mode explanation"
             style={styles.authModeInfoButton}
+            activeOpacity={aesthetic.motion.pressOpacity}
           >
             <Text style={styles.authModeInfoText}>?</Text>
           </TouchableOpacity>
@@ -172,6 +174,7 @@ export default function GlobalFeedScreen(): JSX.Element {
             style={styles.tunerButton}
             onPress={() => setIsTunerOpen(true)}
             accessibilityLabel="Open algorithm tuner"
+            activeOpacity={aesthetic.motion.pressOpacity}
           >
             <Ionicons name="options" size={22} color="#FFF" />
           </TouchableOpacity>
@@ -194,7 +197,7 @@ export default function GlobalFeedScreen(): JSX.Element {
         ListEmptyComponent={
           <View style={styles.centred}>
             <Text style={styles.emptyText}>
-              Your feed is empty. Follow people via the Profile screen.
+              Your feed is quiet. Follow people from Profile to start your timeline.
             </Text>
           </View>
         }
@@ -214,7 +217,7 @@ export default function GlobalFeedScreen(): JSX.Element {
           <View style={styles.tunerSheet} onStartShouldSetResponder={() => true}>
             <View style={styles.tunerHandle} />
             <Text style={styles.tunerTitle}>Your Personal Algorithm</Text>
-            <Text style={styles.tunerSubtitle}>You control what you see. Tune your grid.</Text>
+            <Text style={styles.tunerSubtitle}>You control what you see. Tune your signal.</Text>
 
             <View style={styles.sliderGroup}>
               <View style={styles.sliderHeader}>
@@ -304,29 +307,29 @@ function PostCard({ post }: { post: FeedPost }): JSX.Element {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0D0D0D' },
+  container: { flex: 1, backgroundColor: aesthetic.color.bgNight },
   feedHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#1E1E1E' },
-  feedHeaderTitle: { color: '#FFF', fontSize: 18, fontWeight: '700' },
+  feedHeaderTitle: { color: aesthetic.color.textHigh, fontSize: 18, fontWeight: '700' },
   feedHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   authModeBadge: {
     borderWidth: 1,
-    borderColor: '#2A2A2A',
+    borderColor: aesthetic.color.border,
     borderRadius: 999,
-    backgroundColor: '#1A1A1A',
+    backgroundColor: aesthetic.color.surface,
     paddingHorizontal: 10,
     paddingVertical: 5,
   },
-  authModeBadgeText: { color: '#DDD', fontSize: 10, fontWeight: '700', textTransform: 'uppercase' },
+  authModeBadgeText: { color: aesthetic.color.textHigh, fontSize: 10, fontWeight: '700', textTransform: 'uppercase' },
   authModeInfoButton: {
     width: 20,
     height: 20,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#2A2A2A',
+    borderColor: aesthetic.color.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  authModeInfoText: { color: '#777', fontSize: 11, fontWeight: '700' },
+  authModeInfoText: { color: aesthetic.color.textLow, fontSize: 11, fontWeight: '700' },
   authModeHintWrap: {
     marginHorizontal: 16,
     marginTop: 8,
@@ -334,41 +337,41 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderWidth: 1,
-    borderColor: '#2A2A2A',
-    backgroundColor: '#161616',
+    borderColor: aesthetic.color.border,
+    backgroundColor: aesthetic.color.surface,
     borderRadius: 10,
   },
-  authModeHintText: { color: '#888', fontSize: 12, lineHeight: 17 },
-  tunerButton: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#1A1A1A', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#2A2A2A' },
+  authModeHintText: { color: aesthetic.color.textMid, fontSize: 12, lineHeight: 17 },
+  tunerButton: { width: 36, height: 36, borderRadius: 18, backgroundColor: aesthetic.color.surface, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: aesthetic.color.border },
   tunerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
-  tunerSheet: { backgroundColor: '#1A1A1A', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, paddingBottom: 40, borderTopWidth: 1, borderTopColor: '#2A2A2A' },
+  tunerSheet: { backgroundColor: aesthetic.color.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, paddingBottom: 40, borderTopWidth: 1, borderTopColor: aesthetic.color.border },
   tunerHandle: { width: 40, height: 4, backgroundColor: '#444', borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
-  tunerTitle: { color: '#FFF', fontSize: 18, fontWeight: '800', marginBottom: 4 },
-  tunerSubtitle: { color: '#888', fontSize: 13, marginBottom: 20 },
+  tunerTitle: { color: aesthetic.color.textHigh, fontSize: 18, fontWeight: '800', marginBottom: 4 },
+  tunerSubtitle: { color: aesthetic.color.textMid, fontSize: 13, marginBottom: 20 },
   sliderGroup: { marginBottom: 20 },
   sliderHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
-  sliderLabel: { color: '#DDD', fontSize: 14, fontWeight: '600' },
-  sliderValue: { color: '#6C63FF', fontSize: 13, fontWeight: '700' },
-  sliderDescription: { color: '#666', fontSize: 12, marginTop: 2 },
+  sliderLabel: { color: aesthetic.color.textHigh, fontSize: 14, fontWeight: '600' },
+  sliderValue: { color: aesthetic.color.accentSoft, fontSize: 13, fontWeight: '700' },
+  sliderDescription: { color: aesthetic.color.textLow, fontSize: 12, marginTop: 2 },
   sfwRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 16, borderTopWidth: 1, borderTopColor: '#2A2A2A' },
   sfwTextWrap: { flex: 1, marginRight: 12 },
-  sfwTitle: { color: '#DDD', fontSize: 14, fontWeight: '600' },
-  sfwDescription: { color: '#666', fontSize: 12, marginTop: 2 },
+  sfwTitle: { color: aesthetic.color.textHigh, fontSize: 14, fontWeight: '600' },
+  sfwDescription: { color: aesthetic.color.textLow, fontSize: 12, marginTop: 2 },
   list: { padding: 16, flexGrow: 1 },
-  centred: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
-  emptyText: { color: '#888', fontSize: 15, textAlign: 'center', marginBottom: 16 },
-  button: { backgroundColor: '#6C63FF', borderRadius: 10, paddingVertical: 12, paddingHorizontal: 24 },
+  centred: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, backgroundColor: aesthetic.color.bgNight },
+  emptyText: { color: aesthetic.color.textMid, fontSize: 15, textAlign: 'center', marginBottom: 16 },
+  button: { backgroundColor: aesthetic.color.accent, borderRadius: 10, paddingVertical: 12, paddingHorizontal: 24 },
   buttonText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
   card: {
-    backgroundColor: '#1A1A1A',
+    backgroundColor: aesthetic.color.surface,
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#2A2A2A',
+    borderColor: aesthetic.color.border,
   },
-  authorName: { color: '#FFF', fontWeight: '700', fontSize: 15, marginBottom: 2 },
-  authorWebId: { color: '#6C63FF', fontSize: 11, marginBottom: 8 },
-  postBody: { color: '#DDD', fontSize: 14, lineHeight: 20, marginBottom: 10 },
-  timestamp: { color: '#555', fontSize: 11 },
+  authorName: { color: aesthetic.color.textHigh, fontWeight: '700', fontSize: 15, marginBottom: 2 },
+  authorWebId: { color: aesthetic.color.accentSoft, fontSize: 11, marginBottom: 8 },
+  postBody: { color: aesthetic.color.textMid, fontSize: 14, lineHeight: 20, marginBottom: 10 },
+  timestamp: { color: aesthetic.color.textLow, fontSize: 11 },
 })

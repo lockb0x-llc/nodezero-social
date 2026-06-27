@@ -23,9 +23,11 @@ import {
 import { useRouter, usePathname } from 'expo-router'
 import Constants from 'expo-constants'
 import { useSolid } from '../src/contexts/SolidContext'
+import { aesthetic } from '../src/theme/aesthetic'
 
 const DEFAULT_IDP = 'https://solidcommunity.net'
 const NEW_POD_URL = 'https://solidcommunity.net/register'
+const PRESS_OPACITY = 0.82
 
 function getSolidAuthMode(): 'external-css' | 'jss-local' {
   const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
@@ -144,14 +146,15 @@ export default function LandingScreen(): JSX.Element {
           <Text style={styles.heroHeadline}>The social network{'\n'}you actually own.</Text>
           <Text style={styles.heroBody}>
             {usesJssLocal
-              ? 'Your profile, posts, and connections launch from a local Solid Pod mode for instant onboarding. NodeZero keeps your identity and data portable from day one.'
-              : 'Your profile, posts, and connections live in a personal data vault - not our servers. NodeZero cannot sell you, and you can leave any time with everything you built.'}
+              ? 'Launch with local Solid onboarding in seconds. Your identity and data stay portable from day one.'
+              : 'Your profile, posts, and connections live in your own data vault, not ours. Leave anytime with everything you built.'}
           </Text>
 
           <TouchableOpacity
             style={[styles.btnPrimary, isSigningIn && styles.btnDisabled]}
             onPress={() => void handleGetStarted()}
             disabled={isSigningIn}
+            activeOpacity={PRESS_OPACITY}
             accessibilityRole="button"
             accessibilityLabel="Create your Node"
           >
@@ -166,6 +169,7 @@ export default function LandingScreen(): JSX.Element {
             <TouchableOpacity
               style={styles.btnSecondary}
               onPress={() => setShowSignIn((v) => !v)}
+              activeOpacity={PRESS_OPACITY}
               accessibilityRole="button"
               accessibilityLabel="Sign in as returning user"
             >
@@ -195,6 +199,7 @@ export default function LandingScreen(): JSX.Element {
               style={[styles.btnPrimary, isSigningIn && styles.btnDisabled]}
               onPress={() => void handleSignIn()}
               disabled={isSigningIn}
+              activeOpacity={PRESS_OPACITY}
             >
               {isSigningIn ? (
                 <ActivityIndicator color="#FFF" />
@@ -202,7 +207,11 @@ export default function LandingScreen(): JSX.Element {
                 <Text style={styles.btnPrimaryText}>Sign In</Text>
               )}
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => void Linking.openURL(NEW_POD_URL)} style={styles.createPodLink}>
+            <TouchableOpacity
+              onPress={() => void Linking.openURL(NEW_POD_URL)}
+              style={styles.createPodLink}
+              activeOpacity={PRESS_OPACITY}
+            >
               <Text style={styles.createPodText}>Need a Pod? Create one free →</Text>
             </TouchableOpacity>
           </View>
@@ -243,7 +252,7 @@ export default function LandingScreen(): JSX.Element {
         {/* ── Trust statement ─────────────────────────── */}
         <View style={styles.trustBlock}>
           <Text style={styles.trustStatement}>
-            "NodeZero cannot read your data, sell your profile, or shut down your identity."
+            "NodeZero cannot read your data, sell your profile, or take your identity away."
           </Text>
           <Text style={styles.trustSub}>Your Pod. Your keys. Your network.</Text>
         </View>
@@ -255,8 +264,9 @@ export default function LandingScreen(): JSX.Element {
             style={[styles.btnPrimary, isSigningIn && styles.btnDisabled]}
             onPress={() => void handleGetStarted()}
             disabled={isSigningIn}
+            activeOpacity={PRESS_OPACITY}
           >
-            <Text style={styles.btnPrimaryText}>Create Your Node — It's Free</Text>
+            <Text style={styles.btnPrimaryText}>Create Your Node - Free</Text>
           </TouchableOpacity>
           <Text style={styles.finalCtaSub}>
             Powered by{' '}
@@ -315,13 +325,13 @@ const FEATURES = [
 
 // ── Styles ───────────────────────────────────────────────────────────────────
 
-const PURPLE = '#6C63FF'
-const BG = '#0D0D0D'
-const SURFACE = '#161616'
-const BORDER = '#2A2A2A'
-const TEXT = '#F0F0F0'
-const MUTED = '#888'
-const DIM = '#555'
+const PURPLE = aesthetic.color.accent
+const BG = aesthetic.color.bgNight
+const SURFACE = aesthetic.color.surface
+const BORDER = aesthetic.color.border
+const TEXT = aesthetic.color.textHigh
+const MUTED = aesthetic.color.textMid
+const DIM = aesthetic.color.textLow
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: BG },

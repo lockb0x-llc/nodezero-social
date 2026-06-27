@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSolid } from '../src/contexts/SolidContext';
 import { DocustreamManager } from '@nodezero/solid-pod-sync';
 import type { StreamItem } from '@nodezero/solid-pod-sync';
+import { aesthetic } from '../src/theme/aesthetic';
 
 type StreamSource = 'reddit' | 'x' | 'nodezero' | 'rss';
 type FilterType = 'all' | 'reddit' | 'x' | 'rss';
@@ -196,7 +197,7 @@ export default function DocustreamScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: aesthetic.color.bgNight,
   },
   header: {
     flexDirection: 'row',
@@ -205,27 +206,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 20,
     paddingBottom: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: aesthetic.color.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: aesthetic.color.border,
   },
   headerTitle: {
     fontSize: 24,
     fontWeight: '800',
-    color: '#111827',
+    color: aesthetic.color.textHigh,
   },
   headerSubtitle: {
     fontSize: 13,
-    color: '#6B7280',
+    color: aesthetic.color.textMid,
     marginTop: 2,
   },
   addButton: {
     padding: 4,
   },
   filterRow: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: aesthetic.color.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: aesthetic.color.border,
   },
   filterContent: {
     paddingHorizontal: 16,
@@ -237,16 +238,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 6,
     borderRadius: 20,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: aesthetic.color.chip,
     marginRight: 8,
   },
   filterChipActive: {
-    backgroundColor: '#2563EB',
+    backgroundColor: aesthetic.color.accent,
   },
   filterChipText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#4B5563',
+    color: aesthetic.color.textMid,
   },
   filterChipTextActive: {
     color: '#FFFFFF',
@@ -259,12 +260,12 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   card: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: aesthetic.color.surface,
     borderRadius: 16,
     padding: 20,
     marginBottom: 16,
     borderLeftWidth: 4,
-    borderLeftColor: '#2563EB',
+    borderLeftColor: aesthetic.color.accent,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
@@ -285,23 +286,23 @@ const styles = StyleSheet.create({
   cardAuthor: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#374151',
+    color: aesthetic.color.textHigh,
     marginLeft: 8,
   },
   cardTimestamp: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: aesthetic.color.textLow,
     fontWeight: '500',
   },
   cardTitle: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#111827',
+    color: aesthetic.color.textHigh,
     marginBottom: 6,
   },
   cardContent: {
     fontSize: 14,
-    color: '#4B5563',
+    color: aesthetic.color.textMid,
     lineHeight: 20,
     marginBottom: 16,
   },
@@ -310,7 +311,7 @@ const styles = StyleSheet.create({
     gap: 16,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
+    borderTopColor: aesthetic.color.border,
   },
   actionLink: {
     flexDirection: 'row',
@@ -320,7 +321,7 @@ const styles = StyleSheet.create({
   actionText: {
     fontSize: 12,
     fontWeight: '500',
-    color: '#6B7280',
+    color: aesthetic.color.textLow,
     marginLeft: 4,
   },
 });

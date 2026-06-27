@@ -24,6 +24,7 @@ import { useRouter } from 'expo-router'
 import Constants from 'expo-constants'
 import { useSolid } from '../src/contexts/SolidContext'
 import { useWallet } from '../src/contexts/WalletContext'
+import { aesthetic } from '../src/theme/aesthetic'
 
 const SHOW_NSFW_KEY = 'settings.showNsfw'
 
@@ -223,40 +224,40 @@ function Row({
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0D0D0D' },
+  container: { flex: 1, backgroundColor: aesthetic.color.bgNight },
   content: { padding: 16, paddingBottom: 48 },
-  sectionHeader: { color: '#666', fontSize: 11, fontWeight: '700', textTransform: 'uppercase', marginTop: 24, marginBottom: 8, marginLeft: 4 },
-  card: { backgroundColor: '#1A1A1A', borderRadius: 12, borderWidth: 1, borderColor: '#2A2A2A', overflow: 'hidden' },
-  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14, borderBottomWidth: 1, borderBottomColor: '#222' },
+  sectionHeader: { color: aesthetic.color.textLow, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', marginTop: 24, marginBottom: 8, marginLeft: 4 },
+  card: { backgroundColor: aesthetic.color.surface, borderRadius: 12, borderWidth: 1, borderColor: aesthetic.color.border, overflow: 'hidden' },
+  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14, borderBottomWidth: 1, borderBottomColor: aesthetic.color.border },
   rowTextWrap: { flex: 1, marginRight: 12 },
-  rowLabel: { color: '#DDD', fontSize: 14, fontWeight: '600' },
-  rowSub: { color: '#777', fontSize: 12, marginTop: 2 },
-  rowSubDetail: { color: '#777', fontSize: 12, marginHorizontal: 14, marginBottom: 12, marginTop: -4 },
-  rowValue: { color: '#AAA', fontSize: 12, textAlign: 'right', flex: 1 },
-  rowValueMono: { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 10, color: '#6C63FF' },
+  rowLabel: { color: aesthetic.color.textHigh, fontSize: 14, fontWeight: '600' },
+  rowSub: { color: aesthetic.color.textMid, fontSize: 12, marginTop: 2 },
+  rowSubDetail: { color: aesthetic.color.textMid, fontSize: 12, marginHorizontal: 14, marginBottom: 12, marginTop: -4 },
+  rowValue: { color: aesthetic.color.textMid, fontSize: 12, textAlign: 'right', flex: 1 },
+  rowValueMono: { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 10, color: aesthetic.color.accentSoft },
   authModeWrap: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   authModeBadge: {
     borderWidth: 1,
-    borderColor: '#2A2A2A',
+    borderColor: aesthetic.color.border,
     borderRadius: 999,
-    backgroundColor: '#111',
+    backgroundColor: aesthetic.color.bgInk,
     paddingHorizontal: 10,
     paddingVertical: 4,
   },
-  authModeBadgeText: { color: '#DDD', fontSize: 10, fontWeight: '700', textTransform: 'uppercase' },
+  authModeBadgeText: { color: aesthetic.color.textHigh, fontSize: 10, fontWeight: '700', textTransform: 'uppercase' },
   authModeInfoButton: {
     width: 20,
     height: 20,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#2A2A2A',
+    borderColor: aesthetic.color.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  authModeInfoText: { color: '#777', fontSize: 11, fontWeight: '700' },
+  authModeInfoText: { color: aesthetic.color.textLow, fontSize: 11, fontWeight: '700' },
   dangerButton: { padding: 14, alignItems: 'center' },
-  dangerButtonText: { color: '#FF6B6B', fontSize: 14, fontWeight: '600' },
+  dangerButtonText: { color: aesthetic.color.danger, fontSize: 14, fontWeight: '600' },
   signOutButton: { padding: 14, alignItems: 'center' },
-  signOutButtonText: { color: '#FF6B6B', fontSize: 15, fontWeight: '700' },
-  version: { color: '#444', fontSize: 12, textAlign: 'center', marginTop: 32 },
+  signOutButtonText: { color: aesthetic.color.danger, fontSize: 15, fontWeight: '700' },
+  version: { color: aesthetic.color.textLow, fontSize: 12, textAlign: 'center', marginTop: 32 },
 })

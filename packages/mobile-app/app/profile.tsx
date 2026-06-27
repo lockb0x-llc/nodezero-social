@@ -25,6 +25,7 @@ import { useLocalSearchParams } from 'expo-router'
 import { useSolid } from '../src/contexts/SolidContext'
 import { ProfileManager, SocialGraph, type UserProfile } from '@nodezero/solid-pod-sync'
 import { Ionicons } from '@expo/vector-icons'
+import { aesthetic } from '../src/theme/aesthetic'
 
 const EMPTY_PROFILE: UserProfile = {
   displayName: '',
@@ -141,14 +142,15 @@ export default function ProfileScreen(): JSX.Element {
             <Text style={styles.modalTitle}>🔞 Adult Content Notice</Text>
             <Text style={styles.modalBody}>
               This profile contains links to adult-oriented content and has been
-              tagged as NSFW. NodeZero does not penalise users for legal content –
+              tagged as NSFW. NodeZero does not penalize users for legal content -
               this notice is shown so you can make an informed choice.
             </Text>
             <TouchableOpacity
               style={styles.modalButton}
               onPress={() => setNsfwWarningDismissed(true)}
+              activeOpacity={aesthetic.motion.pressOpacity}
             >
-              <Text style={styles.modalButtonText}>I understand – show profile</Text>
+              <Text style={styles.modalButtonText}>Continue to profile</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -162,7 +164,7 @@ export default function ProfileScreen(): JSX.Element {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>🛡 Zero-Knowledge Identity</Text>
+            <Text style={[styles.modalTitle, styles.zkModalTitle]}>Zero-Knowledge Identity</Text>
             <Text style={styles.modalBody}>
               <Text style={{ fontWeight: '700', color: '#10B981' }}>{'What NodeZero knows:\n'}</Text>
               {'You are a unique human.\n\n'}
@@ -172,6 +174,7 @@ export default function ProfileScreen(): JSX.Element {
             <TouchableOpacity
               style={styles.modalButton}
               onPress={() => setZkTooltipOpen(false)}
+              activeOpacity={aesthetic.motion.pressOpacity}
             >
               <Text style={styles.modalButtonText}>Got it</Text>
             </TouchableOpacity>
@@ -182,7 +185,7 @@ export default function ProfileScreen(): JSX.Element {
       <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
         {profile.isNsfw && nsfwWarningDismissed && (
           <View style={styles.nsfwBanner}>
-            <Text style={styles.nsfwBannerText}>🔞 NSFW content detected in this profile</Text>
+            <Text style={styles.nsfwBannerText}>NSFW content detected in this profile</Text>
           </View>
         )}
 
@@ -194,6 +197,7 @@ export default function ProfileScreen(): JSX.Element {
               onPress={() => setZkTooltipOpen(true)}
               style={styles.zkBadge}
               accessibilityLabel="ZK Proof of Humanity badge"
+              activeOpacity={aesthetic.motion.pressOpacity}
             >
               <Ionicons name="shield-checkmark" size={20} color="#10B981" />
             </TouchableOpacity>
@@ -202,7 +206,7 @@ export default function ProfileScreen(): JSX.Element {
 
         {sharedThreads.length > 0 && (
           <View style={styles.sharedThreadsCard}>
-            <Text style={styles.sharedThreadsTitle}>✦ Shared Threads</Text>
+            <Text style={styles.sharedThreadsTitle}>Shared Threads</Text>
             <Text style={styles.sharedThreadsSubtitle}>Topics you both care about:</Text>
             <View style={styles.pillRow}>
               {sharedThreads.map((thread) => (
@@ -269,6 +273,7 @@ export default function ProfileScreen(): JSX.Element {
           style={[styles.saveButton, saving && styles.saveButtonDisabled]}
           onPress={() => void saveProfile()}
           disabled={saving}
+          activeOpacity={aesthetic.motion.pressOpacity}
           accessibilityRole="button"
           accessibilityLabel="Save profile"
         >
@@ -284,43 +289,44 @@ export default function ProfileScreen(): JSX.Element {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0D0D0D' },
+  container: { flex: 1, backgroundColor: aesthetic.color.bgNight },
   scrollContent: { padding: 20, paddingBottom: 48 },
-  centred: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0D0D0D' },
-  infoText: { color: '#888', fontSize: 14 },
+  centred: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: aesthetic.color.bgNight },
+  infoText: { color: aesthetic.color.textMid, fontSize: 14 },
   nsfwBanner: { backgroundColor: '#3D1515', borderRadius: 8, padding: 10, marginBottom: 16 },
   nsfwBannerText: { color: '#FF6B6B', fontSize: 13, fontWeight: '600' },
-  sectionLabel: { color: '#555', fontSize: 11, fontWeight: '700', textTransform: 'uppercase', marginBottom: 4 },
-  webIdText: { color: '#6C63FF', fontSize: 12, marginBottom: 20, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
-  label: { color: '#AAA', fontSize: 13, fontWeight: '600', marginBottom: 6, marginTop: 16 },
+  sectionLabel: { color: aesthetic.color.textLow, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', marginBottom: 4 },
+  webIdText: { color: aesthetic.color.accentSoft, fontSize: 12, marginBottom: 20, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  label: { color: aesthetic.color.textMid, fontSize: 13, fontWeight: '600', marginBottom: 6, marginTop: 16 },
   input: {
-    backgroundColor: '#1A1A1A',
+    backgroundColor: aesthetic.color.surface,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#2A2A2A',
+    borderColor: aesthetic.color.border,
     paddingHorizontal: 14,
     paddingVertical: 11,
-    color: '#FFF',
+    color: aesthetic.color.textHigh,
     fontSize: 14,
   },
   textArea: { minHeight: 100, textAlignVertical: 'top', paddingTop: 11 },
-  saveButton: { marginTop: 28, backgroundColor: '#6C63FF', borderRadius: 10, paddingVertical: 14, alignItems: 'center' },
+  saveButton: { marginTop: 28, backgroundColor: aesthetic.color.accent, borderRadius: 10, paddingVertical: 14, alignItems: 'center' },
   saveButtonDisabled: { opacity: 0.6 },
   saveButtonText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
   // Shared Threads + ZK badge
   webIdRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 20 },
   zkBadge: { marginLeft: 8, marginTop: 1 },
-  sharedThreadsCard: { backgroundColor: '#667eea', borderRadius: 14, padding: 16, marginBottom: 20 },
+  sharedThreadsCard: { backgroundColor: aesthetic.color.surfaceAlt, borderRadius: 14, padding: 16, marginBottom: 20, borderWidth: 1, borderColor: aesthetic.color.border },
   sharedThreadsTitle: { color: '#FFF', fontSize: 15, fontWeight: '800', marginBottom: 4 },
-  sharedThreadsSubtitle: { color: 'rgba(255,255,255,0.8)', fontSize: 12, marginBottom: 10 },
+  sharedThreadsSubtitle: { color: aesthetic.color.textMid, fontSize: 12, marginBottom: 10 },
   pillRow: { flexDirection: 'row', flexWrap: 'wrap' },
   pill: { backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 4, marginRight: 8, marginBottom: 4 },
   pillText: { color: '#FFF', fontSize: 12, fontWeight: '600' },
   // NSFW modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center', padding: 24 },
-  modalCard: { backgroundColor: '#1A1A1A', borderRadius: 16, padding: 24, borderWidth: 1, borderColor: '#3D1515' },
+  modalCard: { backgroundColor: aesthetic.color.surface, borderRadius: 16, padding: 24, borderWidth: 1, borderColor: '#3D1515' },
   modalTitle: { color: '#FF6B6B', fontSize: 18, fontWeight: '800', marginBottom: 12 },
-  modalBody: { color: '#CCC', fontSize: 14, lineHeight: 22, marginBottom: 20 },
-  modalButton: { backgroundColor: '#6C63FF', borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
+  zkModalTitle: { color: aesthetic.color.textHigh },
+  modalBody: { color: aesthetic.color.textMid, fontSize: 14, lineHeight: 22, marginBottom: 20 },
+  modalButton: { backgroundColor: aesthetic.color.accent, borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
   modalButtonText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
 })
