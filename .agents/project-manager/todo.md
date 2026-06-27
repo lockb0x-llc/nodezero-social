@@ -50,7 +50,7 @@
 ## Milestone J: QA-identified bug fixes and gap closures (2026-06-25)
 - [DONE] J1: Fix wallet provisioning on web — Platform.OS === 'web' guard in WalletContext.tsx skips expo-secure-store on web. (commit 778c37f, testnet)
 - [DONE] J2: Fix auth error message specificity — client-side empty URL and non-HTTPS checks in index.tsx. (commit 778c37f, testnet)
-- [TODO] J3: Add favicon to Expo web export. Owner: MOBILE_APP_AGENT. Low priority.
+- [DONE] J3: Add favicon to Expo web export. Owner: MOBILE_APP_AGENT. (`web.favicon` configured in app.config.js + assets/favicon.png present)
 - [BLOCKED] J4: Complete LM1/LM2/WR2/AU4 authenticated UAT. (AU1/AU4/WR2 PASS; LM1 FAIL due to relay WebSocket 503 + location gate, LM2 blocked pending relay recovery)
 - [DONE] J5: DOCS_AGENT to document confirmed functionality and gaps. (merged to testnet)
 - [DONE] J6 (P1): Web navigation bar added to _layout.tsx — WebNavBar renders on Platform.OS==='web' when isLoggedIn. Feed/Local/Profile/Settings links with active state. (commit 9118ac7, merged to testnet)

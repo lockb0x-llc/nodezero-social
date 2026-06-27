@@ -39799,3 +39799,9 @@ Request: Assign P2P_RELAY_AGENT + AZURE_PLATFORM_AGENT to restore relay endpoint
 Evidence: docs/staging-uat-checklist.md section '2026-06-27 J4 authenticated rerun evidence'.
 Due: Immediate.
 
+[2026-06-27 09:07 UTC] [PROJECT_MANAGER->AZURE_PLATFORM_AGENT,P2P_RELAY_AGENT] [P0] [OPEN]
+Context: Relay blocker root-cause confirmed in staging: deployed web bundle uses relayUrl=wss://staging.nodezero.social/relay, but /relay currently serves SPA HTML (200 text/html) and WebSocket upgrade fails (503).
+Request: Implement and deploy a real relay backend route for staging path /relay (or update NZ_RELAY_URL to a live relay host) and trigger staging redeploy so LM1/LM2 can be revalidated.
+Evidence: docs/staging-uat-checklist.md J4 rerun; staging bundle entry includes relayUrl wss://staging.nodezero.social/relay; curl -i /relay returns text/html shell.
+Due: Immediate.
+
