@@ -4,41 +4,30 @@
  * # Contracts
  *
  * ## `NodeZeroIdentity`
- * Maps a Stellar/Soroban `Address` to a Solid Pod WebID URL.
+ * Maps a Stellar/Soroban `Address` (user's embedded wallet public key) to
+ * their decentralised Solid Pod `WebID` URL.  This bridges the user's
+ * self-sovereign Web3 identity to their off-chain data Pod.
  *
  * ## `Lockb0x`
- * Maintains a ZK Merkle state root for Stellar<->Solid pairing attestations.
- * The oracle updates this root after verifying off-chain ZK inclusion proofs.
- *
- * ## `PoHVerifier`
- * Future-scope verifier contract for Proof-of-Humanity workflows.
- * Not required for the current attestation release gate.
- *
- * # ZK Stack
- *   - Current scope: pairing attestation artifacts and lockb0x root anchoring.
- *   - Future scope: PoH-specific circuits and verifier integration.
+ * Maintains a Zero-Knowledge state root for Proof of Humanity (PoH).
+ * An authorised operator (the NodeZero PoH oracle) can update the Merkle
+ * root that ZK proofs are verified against, without revealing the underlying
+ * identity set.  This ensures one human = one account without a public
+ * identity list.
  *
  * # Security notes
- * - All state-mutating functions require an authenticated `Address` invocation.
- * - `Lockb0x` separates the oracle operator from regular users.
- * - Pairing verification is expected to fail closed when attestation checks fail.
+ * - All state-mutating functions require an authenticated `Address` invocation
+ *   (enforced by `require_auth()`).
+ * - The `Lockb0x` contract separates the oracle operator from regular users.
+ * - `WebID` URLs are validated to be non-empty strings starting with `http`.
  */
 
 #![no_std]
 
-extern crate alloc;
-
-#[global_allocator]
-static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
-
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short,
-    Address, Bytes, BytesN, Env, String,
+    contract, contractimpl, contracttype, symbol_short,
+    Address, BytesN, Env, String,
 };
-
-// ─── PoHVerifier module ───────────────────────────────────────────────────────
-mod poh_verifier;
-pub use poh_verifier::{PoHVerifier, PoHVerifierClient};
 
 // ─── Storage key types ────────────────────────────────────────────────────────
 
@@ -55,34 +44,6 @@ pub enum LockboxKey {
     StateRoot,
     /// The authorised oracle operator `Address`.
     Operator,
-    /// The ZK identity anchor for this lockbox: `Poseidon(identitySecret)` (32 bytes).
-    /// Login proofs (`pod_ownership` circuit) are checked against this value.
-    AccountCommitment,
-    /// The Stellar-encrypted attestation claim (recovery-only ciphertext).
-    AttestationCiphertext,
-}
-
-/// Storage key used within the Lockb0xFactory contract.
-#[contracttype]
-pub enum LockboxFactoryKey {
-    /// The authorised factory operator that can provision user lockboxes.
-    Operator,
-    /// Uploaded WASM hash used when deploying per-user Lockb0x contracts.
-    LockboxWasmHash,
-    /// Mapping from a user `Address` to their lockbox contract `Address`.
-    UserLockbox(Address),
-}
-
-/// Typed errors for the `Lockb0x` contract. Using `panic_with_error!` (rather
-/// than raw `assert!`) lets the host catch failures so `try_*` invocations
-/// return `Err` instead of an unrecoverable, non-unwinding abort.
-#[contracterror]
-#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
-#[repr(u32)]
-pub enum Lockb0xError {
-    NotInitialised = 1,
-    NotOperator = 2,
-    CiphertextTooLarge = 3,
 }
 
 // ─── NodeZeroIdentity Contract ────────────────────────────────────────────────
@@ -118,8 +79,13 @@ impl NodeZeroIdentity {
             "webid_url too short to be a valid HTTP URL"
         );
 
-        // Soroban String API is intentionally minimal; enforce only length here.
-        // URL scheme validation is handled in the client before submission.
+        // String::slice() does not exist in soroban-sdk 20.x; copy into a
+        // stack buffer and compare the first 4 bytes directly.
+        let url_len = webid_url.len() as usize;
+        let mut buf = [0u8; 2048];
+        assert!(url_len <= buf.len(), "webid_url too long");
+        webid_url.copy_into_slice(&mut buf[..url_len]);
+        assert!(&buf[..4] == b"http", "webid_url must start with 'http'");
 
         env.storage()
             .persistent()
@@ -152,15 +118,10 @@ impl NodeZeroIdentity {
 
 // ─── Lockb0x Contract ────────────────────────────────────────────────────────
 
-/// Maximum size (bytes) of the on-chain attestation ciphertext. The encrypted
-/// claim is small (a few hundred bytes); this cap bounds Soroban storage cost
-/// and rejects oversized blobs.
-const MAX_ATTESTATION_CIPHERTEXT: u32 = 4096;
-
-/// Maintains a Zero-Knowledge Merkle state root for pairing attestations.
+/// Maintains a Zero-Knowledge Merkle state root for Proof of Humanity (PoH).
 ///
-/// The `Lockb0x` contract is operated by a trusted attestation oracle that updates
-/// the on-chain Merkle root after verifying ZK inclusion proofs off-chain.
+/// The `Lockb0x` contract is operated by a trusted PoH oracle that updates the
+/// on-chain Merkle root after verifying ZK inclusion proofs off-chain.
 /// Smart contract consumers (e.g. dApps) can query the latest root and verify
 /// user proofs locally without the contract revealing any identity information.
 #[contract]
@@ -236,166 +197,6 @@ impl Lockb0x {
     pub fn get_operator(env: Env) -> Option<Address> {
         env.storage().persistent().get(&LockboxKey::Operator)
     }
-
-    /// Records the ZK identity anchor and the Stellar-encrypted attestation
-    /// ciphertext for this lockbox.
-    ///
-    /// * `account_commitment` = `Poseidon(identitySecret)` — the public anchor a
-    ///   `pod_ownership` login proof is verified against (off-chain).
-    /// * `ciphertext` = the attestation claim encrypted with a key derived from
-    ///   the member's Stellar keypair (recovery-only; the contract never sees the
-    ///   plaintext). Capped at [`MAX_ATTESTATION_CIPHERTEXT`] bytes.
-    ///
-    /// Only the registered operator may call this. Idempotent set (overwrites).
-    ///
-    /// # Panics
-    /// Panics if the caller is not the operator, or the ciphertext exceeds the cap.
-    pub fn set_attestation(
-        env: Env,
-        caller: Address,
-        account_commitment: BytesN<32>,
-        ciphertext: Bytes,
-    ) {
-        caller.require_auth();
-
-        let operator: Address = match env.storage().persistent().get(&LockboxKey::Operator) {
-            Some(op) => op,
-            None => panic_with_error!(&env, Lockb0xError::NotInitialised),
-        };
-
-        if caller != operator {
-            panic_with_error!(&env, Lockb0xError::NotOperator);
-        }
-        if ciphertext.len() > MAX_ATTESTATION_CIPHERTEXT {
-            panic_with_error!(&env, Lockb0xError::CiphertextTooLarge);
-        }
-
-        env.storage()
-            .persistent()
-            .set(&LockboxKey::AccountCommitment, &account_commitment);
-        env.storage()
-            .persistent()
-            .set(&LockboxKey::AttestationCiphertext, &ciphertext);
-
-        env.events()
-            .publish((symbol_short!("attest"),), account_commitment);
-    }
-
-    /// Returns the ZK identity anchor (`Poseidon(identitySecret)`), or `None`.
-    pub fn get_account_commitment(env: Env) -> Option<BytesN<32>> {
-        env.storage()
-            .persistent()
-            .get(&LockboxKey::AccountCommitment)
-    }
-
-    /// Returns the Stellar-encrypted attestation ciphertext, or `None`.
-    pub fn get_attestation_ciphertext(env: Env) -> Option<Bytes> {
-        env.storage()
-            .persistent()
-            .get(&LockboxKey::AttestationCiphertext)
-    }
-}
-
-// ─── Lockb0xFactory Contract ────────────────────────────────────────────────
-
-/// Deploys and tracks per-user `Lockb0x` contracts.
-///
-/// The factory supports idempotent provisioning: if a user already has a
-/// lockbox mapping, that existing contract address is returned.
-#[contract]
-pub struct Lockb0xFactory;
-
-#[contractimpl]
-impl Lockb0xFactory {
-    /// Initialises the factory with an operator and lockbox wasm hash.
-    ///
-    /// Can only be called once.
-    pub fn initialize_factory(env: Env, operator: Address, lockbox_wasm_hash: BytesN<32>) {
-        assert!(
-            !env.storage().persistent().has(&LockboxFactoryKey::Operator),
-            "Lockb0xFactory: already initialised"
-        );
-
-        operator.require_auth();
-
-        env.storage()
-            .persistent()
-            .set(&LockboxFactoryKey::Operator, &operator);
-        env.storage()
-            .persistent()
-            .set(&LockboxFactoryKey::LockboxWasmHash, &lockbox_wasm_hash);
-    }
-
-    /// Returns the configured operator.
-    pub fn get_factory_operator(env: Env) -> Option<Address> {
-        env.storage().persistent().get(&LockboxFactoryKey::Operator)
-    }
-
-    /// Returns the configured lockbox wasm hash.
-    pub fn get_lockbox_wasm_hash(env: Env) -> Option<BytesN<32>> {
-        env.storage()
-            .persistent()
-            .get(&LockboxFactoryKey::LockboxWasmHash)
-    }
-
-    /// Returns the lockbox contract address mapped to `user`, if present.
-    pub fn get_user_lockbox(env: Env, user: Address) -> Option<Address> {
-        env.storage()
-            .persistent()
-            .get(&LockboxFactoryKey::UserLockbox(user))
-    }
-
-    /// Deploys (or reuses) a lockbox for `user` and initialises it.
-    ///
-    /// The operator controls provisioning. The created lockbox's operator is set
-    /// to `user` so users retain control of their own lockbox state updates.
-    pub fn get_or_create_user_lockbox(
-        env: Env,
-        caller: Address,
-        user: Address,
-        salt: BytesN<32>,
-        initial_root: BytesN<32>,
-    ) -> Address {
-        caller.require_auth();
-
-        let operator: Address = env
-            .storage()
-            .persistent()
-            .get(&LockboxFactoryKey::Operator)
-            .expect("Lockb0xFactory: not initialised");
-
-        assert!(caller == operator, "Lockb0xFactory: caller is not the operator");
-
-        if let Some(existing) = env
-            .storage()
-            .persistent()
-            .get::<LockboxFactoryKey, Address>(&LockboxFactoryKey::UserLockbox(user.clone()))
-        {
-            return existing;
-        }
-
-        let wasm_hash: BytesN<32> = env
-            .storage()
-            .persistent()
-            .get(&LockboxFactoryKey::LockboxWasmHash)
-            .expect("Lockb0xFactory: missing lockbox wasm hash");
-
-        let lockbox_addr = env
-            .deployer()
-            .with_current_contract(salt)
-            .deploy(wasm_hash);
-
-        let lockbox_client = Lockb0xClient::new(&env, &lockbox_addr);
-        lockbox_client.initialize(&user, &initial_root);
-
-        env.storage()
-            .persistent()
-            .set(&LockboxFactoryKey::UserLockbox(user.clone()), &lockbox_addr);
-
-        env.events().publish((symbol_short!("lbx_crt"),), (user, lockbox_addr.clone()));
-
-        lockbox_addr
-    }
 }
 
 // ─── Unit tests ───────────────────────────────────────────────────────────────
@@ -459,12 +260,6 @@ mod tests {
         BytesN::from_array(env, &arr)
     }
 
-    fn make_hash(env: &Env, byte: u8) -> BytesN<32> {
-        let mut arr = [0u8; 32];
-        arr[31] = byte;
-        BytesN::from_array(env, &arr)
-    }
-
     #[test]
     fn test_lockbox_initialize_and_get_root() {
         let env = Env::default();
@@ -498,75 +293,4 @@ mod tests {
 
         assert_eq!(client.get_state_root().unwrap(), new_root);
     }
-
-    #[test]
-    fn test_lockbox_set_and_get_attestation() {
-        let env = Env::default();
-        env.mock_all_auths();
-
-        let contract_id = env.register_contract(None, Lockb0x);
-        let client = Lockb0xClient::new(&env, &contract_id);
-
-        let operator = Address::generate(&env);
-        client.initialize(&operator, &make_root(&env, 1));
-
-        // Anchor + getters start empty.
-        assert!(client.get_account_commitment().is_none());
-        assert!(client.get_attestation_ciphertext().is_none());
-
-        let commitment = make_hash(&env, 9);
-        let ciphertext = Bytes::from_array(&env, &[1u8, 2, 3, 4, 5, 6, 7, 8]);
-        client.set_attestation(&operator, &commitment, &ciphertext);
-
-        assert_eq!(client.get_account_commitment().unwrap(), commitment);
-        assert_eq!(client.get_attestation_ciphertext().unwrap(), ciphertext);
-
-        // Idempotent overwrite.
-        let commitment2 = make_hash(&env, 10);
-        let ciphertext2 = Bytes::from_array(&env, &[9u8, 9, 9]);
-        client.set_attestation(&operator, &commitment2, &ciphertext2);
-        assert_eq!(client.get_account_commitment().unwrap(), commitment2);
-        assert_eq!(client.get_attestation_ciphertext().unwrap(), ciphertext2);
-    }
-
-    #[test]
-    #[ignore = "Soroban contract panics (panic_with_error!/assert!) abort the native host test binary across the contract extern \"C\" trampoline, so negative paths cannot be asserted via `cargo test`. On-chain, `try_set_attestation` returns Err(NotOperator) correctly; the auth is also enforced by require_auth."]
-    fn test_lockbox_set_attestation_rejects_non_operator() {
-        let env = Env::default();
-        env.mock_all_auths();
-
-        let contract_id = env.register_contract(None, Lockb0x);
-        let client = Lockb0xClient::new(&env, &contract_id);
-
-        let operator = Address::generate(&env);
-        client.initialize(&operator, &make_root(&env, 1));
-
-        let intruder = Address::generate(&env);
-        let commitment = make_hash(&env, 9);
-        let ciphertext = Bytes::from_array(&env, &[1u8, 2, 3]);
-        // Soroban contract panics are non-unwinding; use the generated `try_`
-        // invocation which returns `Err` instead of aborting the test process.
-        let result = client.try_set_attestation(&intruder, &commitment, &ciphertext);
-        assert!(result.is_err(), "Expected non-operator set_attestation to be rejected");
-    }
-
-    // ── Lockb0xFactory tests ───────────────────────────────────────────────
-
-    #[test]
-    fn test_factory_initialize_and_getters() {
-        let env = Env::default();
-        env.mock_all_auths();
-
-        let contract_id = env.register_contract(None, Lockb0xFactory);
-        let client = Lockb0xFactoryClient::new(&env, &contract_id);
-
-        let operator = Address::generate(&env);
-        let wasm_hash = make_hash(&env, 7);
-
-        client.initialize_factory(&operator, &wasm_hash);
-
-        assert_eq!(client.get_factory_operator().unwrap(), operator);
-        assert_eq!(client.get_lockbox_wasm_hash().unwrap(), wasm_hash);
-    }
-
 }
