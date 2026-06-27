@@ -21,7 +21,7 @@ import {
 } from 'react-native'
 import { useSolid } from '../src/contexts/SolidContext'
 import { useRouter } from 'expo-router'
-import { SocialGraph, ProfileManager } from '@nodezero/solid-pod-sync'
+import { SocialGraph, ProfileManager, DocustreamManager, type StreamItem } from '@nodezero/solid-pod-sync'
 
 // Stub components — remove when @expo/vector-icons and @react-native-community/slider are installed (L3)
 const Ionicons = (_props: { name: string; size?: number; color?: string }) => null
@@ -33,6 +33,8 @@ interface FeedPost {
   authorName: string
   body: string
   createdAt: string
+  source: 'nodezero' | 'rss' | 'reddit' | 'x'
+  postUrl?: string
 }
 
 export default function GlobalFeedScreen(): JSX.Element {
@@ -53,34 +55,54 @@ export default function GlobalFeedScreen(): JSX.Element {
       const podRoot = webId.split('/profile/')[0] + '/'
       const socialGraph = new SocialGraph(session)
       const profileManager = new ProfileManager(session)
+      const docustreamManager = new DocustreamManager(session)
       const connections = await socialGraph.listConnections(podRoot)
 
       const connectionPosts = await Promise.all(
         connections.map(async (connection, index) => {
           try {
+            const peerPodRoot = connection.webId.split('/profile/')[0] + '/'
             const profile = await profileManager.readProfile(connection.webId)
             const displayName = profile?.displayName?.trim() || deriveNameFromWebId(connection.webId)
+            const streamItems = await docustreamManager.listActivities(peerPodRoot)
+
+            if (streamItems.length > 0) {
+              return streamItems.map((item) =>
+                streamItemToFeedPost(item, connection.webId, displayName)
+              )
+            }
+
             const bio = profile?.bio?.trim() || 'Shared a profile update.'
-            return {
-              id: `${connection.webId}-${index}`,
-              authorWebId: connection.webId,
-              authorName: displayName,
-              body: bio,
-              createdAt: new Date(Date.now() - index * 60_000).toISOString(),
-            } as FeedPost
+            return [
+              {
+                id: `${connection.webId}-${index}`,
+                authorWebId: connection.webId,
+                authorName: displayName,
+                body: bio,
+                createdAt: new Date(Date.now() - index * 60_000).toISOString(),
+                source: 'nodezero',
+              } as FeedPost,
+            ]
           } catch {
-            return {
-              id: `${connection.webId}-${index}`,
-              authorWebId: connection.webId,
-              authorName: deriveNameFromWebId(connection.webId),
-              body: 'Connection is currently unavailable.',
-              createdAt: new Date(Date.now() - index * 60_000).toISOString(),
-            } as FeedPost
+            return [
+              {
+                id: `${connection.webId}-${index}`,
+                authorWebId: connection.webId,
+                authorName: deriveNameFromWebId(connection.webId),
+                body: 'Connection is currently unavailable.',
+                createdAt: new Date(Date.now() - index * 60_000).toISOString(),
+                source: 'nodezero',
+              } as FeedPost,
+            ]
           }
         })
       )
 
-      setPosts(connectionPosts.sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)))
+      setPosts(
+        connectionPosts
+          .flat()
+          .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+      )
     } catch (err) {
       console.error('[GlobalFeedScreen] fetchFeed error:', err)
     }
@@ -226,6 +248,18 @@ function deriveNameFromWebId(inputWebId: string): string {
     return name.charAt(0).toUpperCase() + name.slice(1)
   } catch {
     return inputWebId
+  }
+}
+
+function streamItemToFeedPost(item: StreamItem, authorWebId: string, authorName: string): FeedPost {
+  return {
+    id: `${authorWebId}-${item.id}`,
+    authorWebId,
+    authorName,
+    body: item.content,
+    createdAt: item.timestamp,
+    source: item.source,
+    postUrl: item.url,
   }
 }
 
