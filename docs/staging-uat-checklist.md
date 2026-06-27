@@ -176,3 +176,17 @@ Updated J4 status: **IN_PROGRESS**
 - Remaining work to close J4:
    1. Re-run LM1 with authenticated `/local` flow and location permission allowed.
    2. Re-run LM2 with two authenticated clients to verify end-to-end encrypted message exchange.
+
+## 2026-06-27 authenticated rerun (post-relay-cutover)
+
+Execution evidence captured:
+
+- Solid login + OIDC consent succeeded; app returned to authenticated `/feed`.
+- Navigation to `/local` succeeds, but UI remains blocked on location permission gate.
+- Retry action on `/local` keeps the same denied/unavailable location state in this run.
+- In-browser automation environment cannot programmatically grant geolocation permission (`Browser.grantPermissions` not available in this harness), so LM1 cannot be completed in this session.
+
+Current LM status:
+
+- LM1: **BLOCKED (environmental)** pending manual geolocation allow in a normal browser session.
+- LM2: **BLOCKED** until LM1 proceeds with location-enabled `/local` access on two authenticated clients.

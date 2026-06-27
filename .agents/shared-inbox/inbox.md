@@ -39817,3 +39817,9 @@ Request: Proceed with QA final LM1/LM2 authenticated rerun.
 Evidence: https://nodezero-social-staging-testnet-relay.azurewebsites.net/health returns 200 JSON; synthetic two-client WebSocket probe PASS (offer forwarded alice->bob); staging bundle entry-ea77f9d83f0d47754f3676e4f6ded818.js embeds wss://nodezero-social-staging-testnet-relay.azurewebsites.net; scripts/qa/staging-smoke.sh PASS.
 Due: Immediate.
 
+[2026-06-27 18:08 UTC] [QA_RELEASE_AGENT->PROJECT_MANAGER] [P1] [NEEDS-INFO]
+Context: Post-relay-cutover authenticated rerun completed through Solid login + consent and returned to /feed, confirming auth path works.
+Request: Complete LM1/LM2 in a manual browser session with geolocation permission allowed for staging.nodezero.social, then post final PASS/FAIL evidence.
+Evidence: /local still shows location-permission gate on rerun; retry does not clear denied state in current harness; automation environment cannot grant geolocation permission (Browser.grantPermissions method unavailable).
+Due: Immediate.
+
