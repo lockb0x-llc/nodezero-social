@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -6,22 +6,17 @@ import {
   ScrollView,
   TouchableOpacity,
   SafeAreaView,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSolid } from '../src/contexts/SolidContext';
+import { DocustreamManager } from '@nodezero/solid-pod-sync';
+import type { StreamItem } from '@nodezero/solid-pod-sync';
 
 type StreamSource = 'reddit' | 'x' | 'nodezero' | 'rss';
 type FilterType = 'all' | 'reddit' | 'x' | 'rss';
 
-type StreamItem = {
-  id: string;
-  source: StreamSource;
-  author: string;
-  title?: string;
-  content: string;
-  timestamp: string;
-};
-
-const mockDocustream: StreamItem[] = [
+const MOCK_DOCUSTREAM: StreamItem[] = [
   {
     id: '1',
     source: 'reddit',
@@ -75,10 +70,29 @@ function getSourceIcon(source: StreamSource) {
 const FILTERS: FilterType[] = ['all', 'reddit', 'x', 'rss'];
 
 export default function DocustreamScreen() {
+  const { isLoggedIn, webId, session } = useSolid();
   const [filter, setFilter] = useState<FilterType>('all');
+  const [items, setItems] = useState<StreamItem[]>(MOCK_DOCUSTREAM);
+  const [loadingPod, setLoadingPod] = useState(false);
+
+  useEffect(() => {
+    if (!isLoggedIn || !webId) return;
+    const podRoot = webId.split('/profile/')[0] + '/';
+    setLoadingPod(true);
+    const manager = new DocustreamManager(session);
+    manager
+      .listActivities(podRoot)
+      .then((podItems) => {
+        if (podItems.length > 0) setItems(podItems);
+      })
+      .catch(() => {
+        // Keep mock fallback on error
+      })
+      .finally(() => setLoadingPod(false));
+  }, [isLoggedIn, webId]);
 
   const filteredStream =
-    filter === 'all' ? mockDocustream : mockDocustream.filter(item => item.source === filter);
+    filter === 'all' ? items : items.filter(item => item.source === filter);
 
   return (
     <SafeAreaView style={styles.safeArea}>
