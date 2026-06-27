@@ -27,6 +27,8 @@
     "pm:reintegrate": "pwsh -NoProfile -File ./scripts/agents/reintegrate-parallel.ps1",
     "pm:reintegrate:dry": "pwsh -NoProfile -File ./scripts/agents/reintegrate-parallel.ps1 -DryRun",
     "prepare:zk:testnet": "bash ./scripts/zk/prepare-testnet.sh",
+    "prepare:checksums:testnet": "bash ./scripts/stellar/artifact-checksums.sh generate",
+    "verify:checksums:testnet": "bash ./scripts/stellar/artifact-checksums.sh verify",
     "relay:dev": "pnpm --filter @nodezero/relay-service dev",
     "relay:build": "pnpm --filter @nodezero/relay-service build",
     "deploy:stellar:testnet": "bash ./scripts/stellar/deploy-testnet.sh",
