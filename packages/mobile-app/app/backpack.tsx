@@ -6,18 +6,41 @@ import {
   ScrollView,
   Switch,
   SafeAreaView,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSolid } from '../src/contexts/SolidContext';
+import { ProfileManager } from '@nodezero/solid-pod-sync';
+
+const CONTAINER_PATHS: Record<string, string> = {
+  profile: '/profile/',
+  interests: '/interests/',
+  location: '/location/',
+};
 
 export default function BackpackScreen() {
+  const { session } = useSolid();
   const [permissions, setPermissions] = useState({
     profile: true,
     interests: true,
     location: false,
   });
+  const [updating, setUpdating] = useState<string | null>(null);
 
   const togglePermission = (key: keyof typeof permissions) => {
-    setPermissions(prev => ({ ...prev, [key]: !prev[key] }));
+    const newValue = !permissions[key];
+    setPermissions(prev => ({ ...prev, [key]: newValue }));
+    setUpdating(key);
+    const manager = new ProfileManager(session);
+    manager
+      .updateWebACL(CONTAINER_PATHS[key], newValue)
+      .catch(() => {
+        // Revert on error
+        setPermissions(prev => ({ ...prev, [key]: !newValue }));
+        Alert.alert('Error', 'Failed to update permissions');
+      })
+      .finally(() => setUpdating(null));
   };
 
   return (
@@ -46,12 +69,16 @@ export default function BackpackScreen() {
               <Text style={styles.cardDescription}>Avatar, Name, Bio</Text>
             </View>
           </View>
-          <Switch
-            value={permissions.profile}
-            onValueChange={() => togglePermission('profile')}
-            trackColor={{ false: '#E5E7EB', true: '#3B82F6' }}
-            thumbColor={'#FFFFFF'}
-          />
+          {updating === 'profile' ? (
+            <ActivityIndicator size="small" color="#3B82F6" />
+          ) : (
+            <Switch
+              value={permissions.profile}
+              onValueChange={() => togglePermission('profile')}
+              trackColor={{ false: '#E5E7EB', true: '#3B82F6' }}
+              thumbColor={'#FFFFFF'}
+            />
+          )}
         </View>
 
         {/* Interest Graph Card */}
@@ -65,12 +92,16 @@ export default function BackpackScreen() {
               <Text style={styles.cardDescription}>Shared FOAF tags</Text>
             </View>
           </View>
-          <Switch
-            value={permissions.interests}
-            onValueChange={() => togglePermission('interests')}
-            trackColor={{ false: '#E5E7EB', true: '#3B82F6' }}
-            thumbColor={'#FFFFFF'}
-          />
+          {updating === 'interests' ? (
+            <ActivityIndicator size="small" color="#3B82F6" />
+          ) : (
+            <Switch
+              value={permissions.interests}
+              onValueChange={() => togglePermission('interests')}
+              trackColor={{ false: '#E5E7EB', true: '#3B82F6' }}
+              thumbColor={'#FFFFFF'}
+            />
+          )}
         </View>
 
         {/* Location Card */}
@@ -84,12 +115,16 @@ export default function BackpackScreen() {
               <Text style={styles.cardDescription}>H3 Index Precision</Text>
             </View>
           </View>
-          <Switch
-            value={permissions.location}
-            onValueChange={() => togglePermission('location')}
-            trackColor={{ false: '#E5E7EB', true: '#3B82F6' }}
-            thumbColor={'#FFFFFF'}
-          />
+          {updating === 'location' ? (
+            <ActivityIndicator size="small" color="#3B82F6" />
+          ) : (
+            <Switch
+              value={permissions.location}
+              onValueChange={() => togglePermission('location')}
+              trackColor={{ false: '#E5E7EB', true: '#3B82F6' }}
+              thumbColor={'#FFFFFF'}
+            />
+          )}
         </View>
 
         {/* Educational Info Box */}
