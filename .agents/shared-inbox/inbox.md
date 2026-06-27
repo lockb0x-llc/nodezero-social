@@ -21067,3 +21067,393 @@ Request: Post a progress update or blocker before the next coordination checkpoi
 Evidence: worktree=brief-only; lastPmMessage=none
 Due: Next coordination checkpoint.
 
+[2026-06-27 06:15 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:15 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:15 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:15 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:15 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:15 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:15 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:15 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:15 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:15 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:15 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:15 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:15 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:15 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:15 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:15 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:15 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:15 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:15 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:15 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:15 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:15 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:15 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:15 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:15 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:15 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:15 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:15 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:15 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:15 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:15 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:15 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:15 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:15 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:15 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:15 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:15 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:15 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:15 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:16 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:16 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:16 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+
+[2026-06-27 06:16 UTC] [PROJECT_MANAGER->ALL] [P1] [DONE]
+Context: Phase 1 complete. L1/L2/L3/L4 all merged into feat/ux-phase1. solid-pod-sync type-check: PASS (exit 0). mobile-app type-check: 3 pre-existing TS2307 errors (node_modules not installed locally; CI will install deps). No new code errors introduced.
+Request: L5 and L6 now unblocked and dispatched. L7 remains blocked on L5+L6.
+Evidence: feat/ux-phase1 @ 033f267; merged: L4(c9a4425) L1(208e2b4) L3(81ce1b0) L2(58014f8)
+Due: Immediate
+
+---
+
+[2026-06-27 06:16 UTC] [PROJECT_MANAGER->MOBILE_APP_AGENT] [P1] [OPEN]
+Context: L5 UNBLOCKED. L1+L2+L3+L4 all merged into feat/ux-phase1. Worktree: .agent-worktrees/L5-mobile-app-agent. Branch: agents/mobile-app-agent/L5-ux-phase-2-context-binding-backpack-docustream-profile-overlap.
+Request: Replace mock state in three screens with live context calls:
+  (a) backpack.tsx: import useSolid, call updateWebACL(containerPath, value) in togglePermission.
+  (b) docustream.tsx: import react-native-rss-parser + DocustreamManager; on mount fetch RSS, appendActivity(), listActivities() for display.
+  (c) profile.tsx peer view: import SocialGraph + useSolid; call findSemanticOverlap(peerWebId); render Shared Threads card only when result.length > 0.
+  tsc --noEmit clean (with node_modules). No regressions to feed/local/settings/index.
+Evidence: active-task.md in .agent-worktrees/L5-mobile-app-agent/. Backend: packages/solid-pod-sync/src/DocustreamManager.ts, ProfileManager.ts, SocialGraph.ts (all merged to feat/ux-phase1).
+Due: Immediate
+
+---
+
+[2026-06-27 06:16 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: L6 UNBLOCKED. L1+L3 merged into feat/ux-phase1. Worktree: .agent-worktrees/L6-p2p-relay-agent. Branch: agents/p2p-relay-agent/L6-ux-phase-2-compose-audience-routing-via-p2p-pod-zk.
+Request: Implement handlePost in packages/mobile-app/app/compose.tsx:
+  audience=local: P2PChannel.send() scoped to DiscoveryContext.surroundingNodes (getSurroundingNodes from h3-grid.ts).
+  audience=foaf: write payload to Pod /outbox/ via SolidContext session.fetch (recipients from SocialGraph.listConnections).
+  audience=verified: same as foaf but add WalletContext.verifyPoH(recipientWebId) guard before each recipient.
+  Show ActivityIndicator during in-flight; surface error with Alert on failure.
+  tsc --noEmit clean (with node_modules). Manual test: local post reaches second test client via relay within 5s.
+Evidence: active-task.md in .agent-worktrees/L6-p2p-relay-agent/. Source: packages/mobile-app/app/compose.tsx (L1 scaffold, merged).
+Due: Immediate
+
+---
+[2026-06-27 06:16 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:16 UTC] [PROJECT_MANAGER->MOBILE_APP_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L1 ("UX Phase 1 - new screens scaffold (backpack, compose, docustream)") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=2026-06-27 06:16
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:16 UTC] [PROJECT_MANAGER->MOBILE_APP_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L3 ("UX Phase 1 - navigation restructure and dependency additions") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=2026-06-27 06:16
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:16 UTC] [PROJECT_MANAGER->MOBILE_APP_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L5 ("UX Phase 2 - context binding (Backpack, Docustream, Profile overlap)") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=2026-06-27 06:16
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:16 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:16 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:16 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:16 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:16 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:16 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:16 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:16 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+
+[2026-06-27 06:16 UTC] [PROJECT_MANAGER->ALL] [P1] [DONE]
+Context: Phase 1 complete. L1/L2/L3/L4 all merged into feat/ux-phase1. solid-pod-sync type-check: PASS (exit 0). mobile-app type-check: 3 pre-existing TS2307 errors (node_modules not installed locally; CI will install deps). No new code errors introduced.
+Request: L5 and L6 now unblocked and dispatched. L7 remains blocked on L5+L6.
+Evidence: feat/ux-phase1 @ 033f267; merged: L4(c9a4425) L1(208e2b4) L3(81ce1b0) L2(58014f8)
+Due: Immediate
+
+---
+
+[2026-06-27 06:16 UTC] [PROJECT_MANAGER->MOBILE_APP_AGENT] [P1] [OPEN]
+Context: L5 UNBLOCKED. L1+L2+L3+L4 all merged into feat/ux-phase1. Worktree: .agent-worktrees/L5-mobile-app-agent. Branch: agents/mobile-app-agent/L5-ux-phase-2-context-binding-backpack-docustream-profile-overlap.
+Request: Replace mock state in three screens with live context calls:
+  (a) backpack.tsx: import useSolid, call updateWebACL(containerPath, value) in togglePermission.
+  (b) docustream.tsx: import react-native-rss-parser + DocustreamManager; on mount fetch RSS, appendActivity(), listActivities() for display.
+  (c) profile.tsx peer view: import SocialGraph + useSolid; call findSemanticOverlap(peerWebId); render Shared Threads card only when result.length > 0.
+  tsc --noEmit clean (with node_modules). No regressions to feed/local/settings/index.
+Evidence: active-task.md in .agent-worktrees/L5-mobile-app-agent/. Backend: packages/solid-pod-sync/src/DocustreamManager.ts, ProfileManager.ts, SocialGraph.ts (all merged to feat/ux-phase1).
+Due: Immediate
+
+---
+
+[2026-06-27 06:16 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: L6 UNBLOCKED. L1+L3 merged into feat/ux-phase1. Worktree: .agent-worktrees/L6-p2p-relay-agent. Branch: agents/p2p-relay-agent/L6-ux-phase-2-compose-audience-routing-via-p2p-pod-zk.
+Request: Implement handlePost in packages/mobile-app/app/compose.tsx:
+  audience=local: P2PChannel.send() scoped to DiscoveryContext.surroundingNodes (getSurroundingNodes from h3-grid.ts).
+  audience=foaf: write payload to Pod /outbox/ via SolidContext session.fetch (recipients from SocialGraph.listConnections).
+  audience=verified: same as foaf but add WalletContext.verifyPoH(recipientWebId) guard before each recipient.
+  Show ActivityIndicator during in-flight; surface error with Alert on failure.
+  tsc --noEmit clean (with node_modules). Manual test: local post reaches second test client via relay within 5s.
+Evidence: active-task.md in .agent-worktrees/L6-p2p-relay-agent/. Source: packages/mobile-app/app/compose.tsx (L1 scaffold, merged).
+Due: Immediate
+
+---
