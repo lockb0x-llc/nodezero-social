@@ -25,6 +25,7 @@ import { useDiscovery } from '../src/contexts/DiscoveryContext'
 import { useSolid } from '../src/contexts/SolidContext'
 import Constants from 'expo-constants'
 import { P2PChannel, SignalRelay, type SignalMessage } from '@nodezero/p2p-comms'
+import { SocialGraph } from '@nodezero/solid-pod-sync'
 
 interface LocalMessage {
   id: string
@@ -35,7 +36,7 @@ interface LocalMessage {
 
 export default function LocalNodeScreen(): JSX.Element {
   const { currentNode, surroundingNodes, locationStatus, refresh } = useDiscovery()
-  const { webId, isLoggedIn, isRestoring } = useSolid()
+  const { webId, isLoggedIn, isRestoring, session } = useSolid()
   const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
   const relayUrl = appExtra?.relayUrl ?? ''
 
@@ -46,6 +47,7 @@ export default function LocalNodeScreen(): JSX.Element {
   const [relayState, setRelayState] = useState<'idle' | 'connecting' | 'connected' | 'error'>('idle')
   const [relayError, setRelayError] = useState<string | null>(null)
   const [openPeers, setOpenPeers] = useState<Record<string, boolean>>({})
+  const [knownPeers, setKnownPeers] = useState<string[]>([])
 
   const relayRef = useRef<SignalRelay | null>(null)
   const channelsRef = useRef<Map<string, P2PChannel>>(new Map())
@@ -156,6 +158,25 @@ export default function LocalNodeScreen(): JSX.Element {
       setOpenPeers({})
     }
   }, [isLoggedIn, relayUrl, upsertChannel, webId])
+
+  useEffect(() => {
+    if (!isLoggedIn || !webId) {
+      setKnownPeers([])
+      return
+    }
+
+    const socialGraph = new SocialGraph(session)
+    const podRoot = webId.split('/profile/')[0] + '/'
+
+    void socialGraph
+      .listConnections(podRoot)
+      .then((connections) => {
+        setKnownPeers(connections.map((connection) => connection.webId).filter((peer) => peer !== webId))
+      })
+      .catch(() => {
+        setKnownPeers([])
+      })
+  }, [isLoggedIn, session, webId])
 
   const sendMessage = useCallback(async () => {
     if (!message.trim() || !webId || !targetWebId.trim()) return
@@ -293,6 +314,34 @@ export default function LocalNodeScreen(): JSX.Element {
         )}
       />
 
+      {knownPeers.length > 0 && (
+        <View style={styles.peerRow}>
+          <Text style={styles.peerRowLabel}>Known peers</Text>
+          <FlatList
+            horizontal
+            data={knownPeers}
+            keyExtractor={(item) => item}
+            showsHorizontalScrollIndicator={false}
+            renderItem={({ item }) => {
+              const selected = targetWebId.trim() === item
+              return (
+                <TouchableOpacity
+                  onPress={() => setTargetWebId(item)}
+                  style={[styles.peerChip, selected && styles.peerChipSelected]}
+                >
+                  <Text
+                    style={[styles.peerChipText, selected && styles.peerChipTextSelected]}
+                    numberOfLines={1}
+                  >
+                    {item}
+                  </Text>
+                </TouchableOpacity>
+              )
+            }}
+          />
+        </View>
+      )}
+
       {/* Compose row */}
       <View style={styles.composeRow}>
         <TextInput
@@ -361,6 +410,21 @@ const styles = StyleSheet.create({
   messageSender: { color: '#6C63FF', fontSize: 11, marginBottom: 4 },
   messageBody: { color: '#DDD', fontSize: 14, lineHeight: 20 },
   messageTime: { color: '#555', fontSize: 10, marginTop: 4, textAlign: 'right' },
+  peerRow: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 2 },
+  peerRowLabel: { color: '#666', fontSize: 11, marginBottom: 6 },
+  peerChip: {
+    backgroundColor: '#1A1A1A',
+    borderWidth: 1,
+    borderColor: '#2A2A2A',
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginRight: 6,
+    maxWidth: 240,
+  },
+  peerChipSelected: { borderColor: '#6C63FF' },
+  peerChipText: { color: '#AAA', fontSize: 11 },
+  peerChipTextSelected: { color: '#DDD' },
   targetInput: {
     width: '100%',
     backgroundColor: '#1A1A1A',
