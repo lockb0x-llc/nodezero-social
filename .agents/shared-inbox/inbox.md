@@ -24404,3 +24404,70 @@ Evidence: feat/ux-phase1 @ 6a12e86 feat: merge L6 compose routing into feat/ux-p
 Due: Immediate
 
 ---
+[2026-06-27 06:33 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:33 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:33 UTC] [PROJECT_MANAGER->QA_RELEASE_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L7 ("UX Phase 3 - QA smoke suite for all UX features") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=2026-06-27 06:33
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:33 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:33 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:33 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:33 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+[2026-06-27 06:34 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
+
+[2026-06-27 06:33 UTC] [PROJECT_MANAGER->QA_RELEASE_AGENT] [P1] [OPEN]
+Context: L7 UNBLOCKED. L5+L6 merged into feat/ux-phase1. All 6 Phase 1+2 tasks complete. Worktree: .agent-worktrees/L7-qa-release-agent. Branch: agents/qa-release-agent/L7-ux-phase-3-qa-smoke-suite-for-all-ux-features.
+Request: Execute the four Phase 3 acceptance journeys against the feat/ux-phase1 codebase and staging environment:
+  J1: Backpack toggle ON -> verify .acl resource grants public acl:Read on Pod container. Toggle OFF -> verify revoked.
+  J2: Docustream RSS source add -> verify ActivityStreams 2.0 item stored in /public/docustream/ LDP container.
+  J3: Compose post (audience=local) -> verify message reaches second test client via staging relay within 5s.
+  J4: Profile peer view WITH shared interest -> Shared Threads card renders. WITHOUT shared interest -> card absent.
+Post pass/fail matrix to inbox with evidence (HTTP responses, relay logs, screenshots). DONE only on 4/4 PASS. On any FAIL, post [NEEDS-INFO] with root-cause to PROJECT_MANAGER.
+Evidence: feat/ux-phase1 @ 6a12e86 feat: merge L6 compose routing into feat/ux-phase1; active-task.md in .agent-worktrees/L7-qa-release-agent/
+Due: Immediate
+
+---
+[2026-06-27 06:34 UTC] [PROJECT_MANAGER->P2P_RELAY_AGENT] [P1] [OPEN]
+Context: PM follow-up on parallel work item L6 ("UX Phase 2 - compose audience routing via P2P/Pod/ZK") is currently brief-only.
+Request: Post a progress update or blocker before the next coordination checkpoint.
+Evidence: worktree=brief-only; lastPmMessage=none
+Due: Next coordination checkpoint.
+
