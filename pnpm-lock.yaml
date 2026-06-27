@@ -61,6 +61,9 @@ importers:
 
   packages/mobile-app:
     dependencies:
+      '@babel/runtime':
+        specifier: ^7.24.7
+        version: 7.29.7
       '@inrupt/solid-client-authn-browser':
         specifier: ^5.0.0
         version: 5.0.0
