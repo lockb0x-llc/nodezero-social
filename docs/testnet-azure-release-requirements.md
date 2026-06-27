@@ -44,7 +44,12 @@ The following are non-optional guardrails for every deployment:
    - `STELLAR_SOURCE_ACCOUNT=<alias> pnpm deploy:stellar:testnet`
    - Output: `/home/runner/work/nodezero-social/nodezero-social/deployments/stellar-testnet.contracts.json`
    - Manifest now includes per-contract `deploymentMode` (`created` or `reused`) to support idempotency auditing.
-3. Update app deployment variables with new values:
+3. Generate and verify deployment artifact checksums:
+   - `pnpm prepare:checksums:testnet`
+   - Output: `/home/runner/work/nodezero-social/nodezero-social/deployments/testnet-artifact-checksums.sha256`
+   - Verification: `pnpm verify:checksums:testnet`
+   - Required before publishing values to app configuration or Azure parameters.
+4. Update app deployment variables with new values:
    - `NZ_IDENTITY_CONTRACT_ID`
    - `NZ_LOCKBOX_CONTRACT_ID`
    - `NZ_ZK_ARTIFACTS_URL`
@@ -52,11 +57,11 @@ The following are non-optional guardrails for every deployment:
    - Optional network overrides:
      - `NZ_STELLAR_RPC_URL`
      - `NZ_STELLAR_NETWORK_PASSPHRASE`
-4. Provision Azure infrastructure:
+5. Provision Azure infrastructure:
    - Copy `infrastructure/azure/main.parameters.example.json` to a secure parameters file.
    - Inject contract IDs and ZK URLs from deployment outputs.
    - Run `AZURE_RESOURCE_GROUP=<rg-name> AZURE_BICEP_PARAMETERS_FILE=<secure-file> AZURE_ENVIRONMENT_NAME=staging-testnet pnpm deploy:azure`
-5. Publish the app (Expo web build) to Azure Static Web App using the provisioned hostname.
+6. Publish the app (Expo web build) to Azure Static Web App using the provisioned hostname.
 
 ## Contract and artifact handoff to application
 
