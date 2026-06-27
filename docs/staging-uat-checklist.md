@@ -59,22 +59,22 @@ code.
 
 | # | Step | Expected | Result | Notes |
 |---|------|----------|--------|-------|
-| WR1 | First launch provisions the embedded wallet silently | Wallet address available in Settings | **FAIL — P1 BUG** | `TypeError: n.default.getValueWithKeyAsync is not a function` on every page load. `expo-secure-store` native module method not available in web/SPA context. Settings shows "Provisioning…" forever. **Root cause: expo-secure-store web shim not wired correctly in Metro/Expo web export.** |
-| WR2 | Register WebID on-chain | `NodeZeroIdentity` registration transaction succeeds on TestNet | **BLOCKED** | Blocked by WR1 failure. |
+| WR1 | First launch provisions the embedded wallet silently | Wallet address available in Settings | **PASS (fixed: web localStorage fallback)** | `expo-secure-store` incompatibility fixed; web now uses `WebLocalStorageSecureStore` so the wallet persists across page loads. Settings shows Stellar Public Key and ✅ Active on Testnet. |
+| WR2 | Register WebID on-chain | `NodeZeroIdentity` registration transaction succeeds on TestNet | **PASS (covered by AT1)** | Registration tx confirmed in AT1 re-test: `3dd6f3c11155bed556225efc56d5e939d955eccf7522a06208e75615e71bdb3b`. |
 
 ### Pairing attestation (Lockb0x)
 
 | # | Step | Expected | Result | Notes |
 |---|------|----------|--------|-------|
-| AT1 | First authenticated onboarding with wallet+WebID | `register_webid` tx submitted when mapping is absent | **PENDING RE-TEST** | Runtime now attempts registration only on onboarding path. |
-| AT2 | Read chain mapping + root | `get_webid` and `get_state_root` return non-empty values | **PENDING RE-TEST** | Added client reads via embedded wallet service. |
-| AT3 | Returning sign-in with existing local proof record | Fails closed if stored proof inputs do not match current lockbox root | **PENDING RE-TEST** | New strict verification path compares stored proof record to current chain root and mapping. |
+| AT1 | First authenticated onboarding with wallet+WebID | `register_webid` tx submitted when mapping is absent | **PASS (2026-06-26 RE-TEST)** | Settings shows authenticated WebID `https://nodezero-qa.solidcommunity.net/profile/card#me`, TestNet wallet `GA2SRBOXVC5GWL2Q7ZWC2UZACNSXKJ6KYC6BNZUPOTPFAY7OWQHMFROV`, and registration tx `3dd6f3c11155bed556225efc56d5e939d955eccf7522a06208e75615e71bdb3b`. |
+| AT2 | Read chain mapping + root | `get_webid` and `get_state_root` return non-empty values | **PASS (2026-06-26 RE-TEST)** | Settings shows registered WebID `https://nodezero-qa.solidcommunity.net/profile/card#me` and Lockb0x root `0000000000000000000000000000000000000000000000000000000000000001`. |
+| AT3 | Returning sign-in with existing local proof record | Fails closed if stored proof inputs do not match current lockbox root | **PASS (2026-06-26 RE-TEST)** | Browser reload retained the web wallet and proof record; Settings shows `Returning sign-in proof verified against current lockbox root.` |
 
 ### Environment & observability
 
 | # | Step | Expected | Result | Notes |
 |---|------|----------|--------|-------|
-| EO1 | Confirm TestNet passphrase in runtime config | `Test SDF Network ; September 2015` | **NOT TESTED** | WalletContext.tsx has correct passphrase in code; runtime verification blocked by WR1. |
+| EO1 | Confirm TestNet passphrase in runtime config | `Test SDF Network ; September 2015` | **PASS** | Embedded in staging bundle (NZ_STELLAR_NETWORK_PASSPHRASE=Test SDF Network ; September 2015). WalletContext checks this at startup. |
 | EO2 | Confirm telemetry/logs flowing in App Insights | Requests and traces visible | **NOT TESTED** | Requires Azure portal access. |
 
 ### Additional findings (not in original checklist)
@@ -83,7 +83,7 @@ code.
 |---|---|---|---|
 | X1 | favicon.ico returns 404 | Minor | Missing favicon in Expo web export. No functional impact. |
 | X2 | Settings page accessible without auth | By design | Shows WebID=Not signed in, NSFW toggle, wallet section. Correct behavior. |
-| X3 | WalletContext error fires on EVERY page | P1 | Same `expo-secure-store` error on /, /feed, /local, /profile, /settings because WalletContext is in the root layout. |
+| X3 | WalletContext expo-secure-store error | FIXED | Fixed by web localStorage fallback in EnclaveAdapter; no longer fires on web. |
 | X4 | App version shown as `v0.0.1` | Info | Correct pre-release version. |
 
 ## Summary matrix
@@ -98,16 +98,25 @@ code.
 | Post-auth authenticated flow | ⏸ NOT TESTED |
 | Empty IdP error specificity | ⚠️ PARTIAL FAIL |
 | HTTP IdP client-side rejection | ❌ FAIL |
-| Wallet provisioning on web | ❌ FAIL (P1) |
-| Wallet on-chain registration | ⏸ BLOCKED |
-| Attestation proof verification (returning sign-in) | ⏸ PENDING RE-TEST |
+| Wallet provisioning on web | ✅ PASS (web localStorage fallback) |
+| Wallet on-chain registration | ✅ PASS (AT1 evidence) |
+| Attestation proof verification (returning sign-in) | ✅ PASS |
 
 ## Sign-off
 
-- Release decision: **BLOCK**
-- Rationale: P1 bug WR1 (wallet provisioning fails on web due to `expo-secure-store` incompatibility) — FIXED in testnet branch commit 778c37f, pending staging redeploy. Auth error messages AU2/AU3 — FIXED in same commit. Authenticated journeys (FE1, LM1, LM2, WR2, AU4) not yet executed — pending password reset for admin@nodezero.social and staging redeploy.
-- Reviewer: QA_RELEASE_AGENT (automated browser session, 2026-06-25)
-- Date: 2026-06-25
+- Release decision: **CONDITIONAL GO** for Milestone K attestation scope
+- Rationale: All Milestone K objectives (K1–K5) are DONE. WR1/WR2 wallet provisiong fixed and confirmed on staging. AT1/AT2/AT3 attestation flow PASS. Known open items: B1 (feed), B2 (local messaging), D1 (custom DNS), J3 (favicon), D3 (alerting) — all explicitly post-hackathon scope.
+- Reviewer: QA_RELEASE_AGENT + PM direct evidence (automated browser session, 2026-06-26)
+- Date: 2026-06-26
+
+### 2026-06-26 re-test evidence (post infra + web publish)
+
+- `pnpm qa:smoke` result: **PASS** for landing markers and route reachability on `https://staging.nodezero.social`.
+- Solid OIDC consent flow returned to `/feed` successfully.
+- Blocking behavior remains for attestation validation: `/settings` rendered `WebID: Not signed in` after consent and did not expose attestation verification outputs.
+- Follow-up deploy/retest: Bicep deploy succeeded, SWA production publish succeeded, custom domain status is Ready, and smoke passes. Key Vault now holds Identity `CCHFYOKLGVTXEYYHWEFPI22FR26VRGG2CBBUTP6XPW3ZSIWIKEVQQ44K` and Lockb0x `CB36LY5WZLJNMY4DHRXQER6LU3L4E5MGFYT2XSJG7ZJZV5SIIOKODT2H`.
+- Follow-up browser evidence: Settings shows authenticated WebID and active TestNet wallet, but AT1/AT2 remain blocked by the client-side Soroban return decode error above.
+- Final follow-up evidence: Lockb0x root initialized on TestNet with operator `GBMXG2UIWFBHPKRBDQCEFNIDR3WHJAPVVGBCIOD5SGKZYZQISENZKD5O`; direct `get_state_root` returns `0000000000000000000000000000000000000000000000000000000000000001`; Settings verifies onboarding and returning sign-in against that root.
 
 ## Authentication status for re-test
 

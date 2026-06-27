@@ -106,11 +106,12 @@ Run the app and complete onboarding to register WebID on-chain:
 
 ## Submission Checklist
 
-1. Public repo link: this repository.
+1. Public repo link: https://github.com/lockb0x-llc/nodezero-social
 2. Demo video link: add link before submission.
 3. Stellar network used: TestNet.
-4. ZK is load-bearing: lockb0x-root-backed pairing attestation verification.
-5. Known limitations documented: yes (work in progress accepted by hackathon rules).
+4. Live staging demo: https://staging.nodezero.social
+5. ZK is load-bearing: lockb0x-root-backed pairing attestation verification.
+6. Known limitations documented: yes (B1/B2/D1/D3/J3 are post-hackathon scope, all documented in `docs/staging-uat-checklist.md`).
 
 ## Future Scope
 

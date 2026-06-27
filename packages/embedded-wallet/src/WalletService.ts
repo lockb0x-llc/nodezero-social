@@ -34,6 +34,57 @@ export const ServerEndpoint = {
   MAINNET: 'https://soroban.stellar.org',
 } as const
 
+const TESTNET_FRIENDBOT_URL = 'https://friendbot.stellar.org'
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function bytesLikeToHex(value: unknown): string | null {
+  if (typeof value === 'string') return value
+
+  if (value instanceof ArrayBuffer) {
+    return Array.from(new Uint8Array(value)).map((byte) => byte.toString(16).padStart(2, '0')).join('')
+  }
+
+  if (value instanceof Uint8Array) {
+    return Array.from(value).map((byte) => byte.toString(16).padStart(2, '0')).join('')
+  }
+
+  if (Array.isArray(value) && value.every((item) => typeof item === 'number')) {
+    return value.map((byte) => byte.toString(16).padStart(2, '0')).join('')
+  }
+
+  if (value && typeof value === 'object') {
+    const bytesObject = value as {
+      data?: unknown
+      value?: unknown
+      _value?: unknown
+      toString?: (encoding?: string) => string
+    }
+
+    try {
+      const encoded = bytesObject.toString?.('hex')
+      if (encoded && /^[0-9a-f]+$/i.test(encoded)) return encoded
+    } catch {
+      // Fall through to known object shapes below.
+    }
+
+    return bytesLikeToHex(bytesObject.data) ?? bytesLikeToHex(bytesObject.value) ?? bytesLikeToHex(bytesObject._value)
+  }
+
+  return null
+}
+
+function isScVal(value: unknown): value is xdr.ScVal {
+  return Boolean(
+    value &&
+      typeof value === 'object' &&
+      typeof (value as { switch?: unknown }).switch === 'function' &&
+      typeof (value as { value?: unknown }).value === 'function'
+  )
+}
+
 /**
  * Provides Stellar wallet operations backed by an {@link EnclaveAdapter}.
  *
@@ -53,6 +104,7 @@ export class WalletService {
   private readonly adapter: EnclaveAdapter
   private readonly server: rpc.Server
   private readonly network: string
+  private readonly fundedAccounts = new Set<string>()
 
   /**
    * @param adapter - An initialised {@link EnclaveAdapter}.
@@ -78,13 +130,7 @@ export class WalletService {
     const keypair = Keypair.fromSecret(secret)
     const publicKey = keypair.publicKey()
 
-    let isFunded = false
-    try {
-      await this.server.getAccount(publicKey)
-      isFunded = true
-    } catch {
-      // Account does not exist on the network yet.
-    }
+    const isFunded = await this.ensureAccountExists(publicKey)
 
     return { publicKey, isFunded }
   }
@@ -109,7 +155,7 @@ export class WalletService {
     const keypair = Keypair.fromSecret(secret)
     const publicKey = keypair.publicKey()
 
-    const account = await this.server.getAccount(publicKey)
+    const account = await this.getSourceAccount(publicKey)
     const contract = new Contract(contractId)
 
     const callerScVal = new Address(publicKey).toScVal()
@@ -133,6 +179,15 @@ export class WalletService {
 
     if (result.status === 'ERROR') {
       throw new Error(`Transaction failed: ${result.errorResult?.toXDR('base64') ?? 'unknown error'}`)
+    }
+
+    if (result.status === 'TRY_AGAIN_LATER') {
+      throw new Error('Transaction submission was throttled. Retry WebID registration shortly.')
+    }
+
+    const finalResult = await this.server.pollTransaction(result.hash, { attempts: 20 })
+    if (String(finalResult.status) !== 'SUCCESS') {
+      throw new Error(`Transaction did not complete successfully: ${finalResult.status}`)
     }
 
     return {
@@ -166,12 +221,9 @@ export class WalletService {
     if (value == null) return null
     if (Array.isArray(value) && value.length > 0) {
       const inner = (value as unknown[])[0]
-      if (inner instanceof Uint8Array) return Buffer.from(inner).toString('hex')
-      if (typeof inner === 'string') return inner
+      return bytesLikeToHex(inner)
     }
-    if (value instanceof Uint8Array) return Buffer.from(value).toString('hex')
-    if (typeof value === 'string') return value
-    return null
+    return bytesLikeToHex(value)
   }
 
   private async simulateContractCall(
@@ -182,13 +234,7 @@ export class WalletService {
     const secret = await this.adapter.loadOrCreate()
     const keypair = Keypair.fromSecret(secret)
 
-    let account: Awaited<ReturnType<rpc.Server['getAccount']>>
-    try {
-      account = await this.server.getAccount(keypair.publicKey())
-    } catch {
-      // Cannot simulate against an unfunded source account.
-      return null
-    }
+    const account = await this.getSourceAccount(keypair.publicKey())
 
     const contract = new Contract(contractId)
     const tx = new TransactionBuilder(account, {
@@ -202,8 +248,8 @@ export class WalletService {
     const simulation = await this.server.simulateTransaction(tx)
     const simulationAny = simulation as unknown as {
       error?: string
-      result?: { retval?: string }
-      retval?: string
+      result?: { retval?: string | xdr.ScVal }
+      retval?: string | xdr.ScVal
     }
 
     if (simulationAny.error) {
@@ -213,8 +259,66 @@ export class WalletService {
     const retval = simulationAny.result?.retval ?? simulationAny.retval
     if (!retval) return null
 
-    const scVal = xdr.ScVal.fromXDR(retval, 'base64')
-    const decoded: unknown = scValToNative(scVal)
-    return decoded
+    const scVal = isScVal(retval) ? retval : xdr.ScVal.fromXDR(retval, 'base64')
+    try {
+      const decoded: unknown = scValToNative(scVal)
+      return decoded
+    } catch {
+      return scVal.value()
+    }
+  }
+
+  private async getSourceAccount(publicKey: string): Promise<Awaited<ReturnType<rpc.Server['getAccount']>>> {
+    const isFunded = await this.ensureAccountExists(publicKey)
+    if (!isFunded && !this.fundedAccounts.has(publicKey)) {
+      throw new Error('Stellar account is not funded. Fund the embedded wallet before contract operations.')
+    }
+
+    return this.getAccountWithRetry(publicKey)
+  }
+
+  private async getAccountWithRetry(publicKey: string): Promise<Awaited<ReturnType<rpc.Server['getAccount']>>> {
+    let lastError: unknown
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      try {
+        const account = await this.server.getAccount(publicKey)
+        this.fundedAccounts.add(publicKey)
+        return account
+      } catch (err) {
+        lastError = err
+        await delay(1_500)
+      }
+    }
+
+    throw lastError instanceof Error ? lastError : new Error('Unable to load Stellar source account.')
+  }
+
+  private async ensureAccountExists(publicKey: string): Promise<boolean> {
+    try {
+      await this.server.getAccount(publicKey)
+      this.fundedAccounts.add(publicKey)
+      return true
+    } catch {
+      // Testnet staging can safely fund throwaway embedded wallets. Mainnet must never auto-fund.
+      if (this.network !== String(Networks.TESTNET)) return false
+    }
+
+    try {
+      const response = await fetch(`${TESTNET_FRIENDBOT_URL}?addr=${encodeURIComponent(publicKey)}`)
+      if (!response.ok) return false
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        await delay(1_500)
+        try {
+          await this.server.getAccount(publicKey)
+          this.fundedAccounts.add(publicKey)
+          return true
+        } catch {
+          // Friendbot succeeded, but Soroban RPC may lag Horizon by a few seconds.
+        }
+      }
+      return false
+    } catch {
+      return false
+    }
   }
 }

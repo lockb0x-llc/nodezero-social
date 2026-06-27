@@ -15,16 +15,16 @@
       "value": "eastus2"
     },
     "identityContractId": {
-      "value": "REPLACE_WITH_STAGING_TESTNET_IDENTITY_CONTRACT_ID"
+      "value": "CCHFYOKLGVTXEYYHWEFPI22FR26VRGG2CBBUTP6XPW3ZSIWIKEVQQ44K"
     },
     "lockboxContractId": {
-      "value": "REPLACE_WITH_STAGING_TESTNET_LOCKBOX_CONTRACT_ID"
+      "value": "CB36LY5WZLJNMY4DHRXQER6LU3L4E5MGFYT2XSJG7ZJZV5SIIOKODT2H"
     },
     "zkArtifactsUrl": {
-      "value": "https://REPLACE_WITH_STAGING_STORAGE.blob.core.windows.net/zk-artifacts/"
+      "value": "https://stki7yquyjmnskg.blob.core.windows.net/zk-artifacts/"
     },
     "zkManifestUrl": {
-      "value": "https://REPLACE_WITH_STAGING_STORAGE.blob.core.windows.net/zk-artifacts/zk-testnet-artifacts.json"
+      "value": "https://stki7yquyjmnskg.blob.core.windows.net/zk-artifacts/zk-testnet-artifacts.json"
     }
   }
 }

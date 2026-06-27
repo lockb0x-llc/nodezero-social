@@ -37,6 +37,35 @@ class MemorySecureStore implements ISecureStore {
   }
 }
 
+interface BrowserStorage {
+  getItem(key: string): string | null
+  setItem(key: string, value: string): void
+  removeItem(key: string): void
+}
+
+function getBrowserLocalStorage(): BrowserStorage | undefined {
+  const candidate = (globalThis as { localStorage?: BrowserStorage }).localStorage
+  return candidate
+}
+
+class WebLocalStorageSecureStore implements ISecureStore {
+  private readonly prefix = 'nodezero.embedded-wallet.'
+
+  getItemAsync(key: string): Promise<string | null> {
+    return Promise.resolve(getBrowserLocalStorage()?.getItem(`${this.prefix}${key}`) ?? null)
+  }
+
+  setItemAsync(key: string, value: string): Promise<void> {
+    getBrowserLocalStorage()?.setItem(`${this.prefix}${key}`, value)
+    return Promise.resolve()
+  }
+
+  deleteItemAsync(key: string): Promise<void> {
+    getBrowserLocalStorage()?.removeItem(`${this.prefix}${key}`)
+    return Promise.resolve()
+  }
+}
+
 const STELLAR_SECRET_KEY = 'nodezero.stellar.secret'
 
 /**
@@ -59,6 +88,8 @@ export class EnclaveAdapter {
   constructor(store?: ISecureStore) {
     if (store) {
       this.store = store
+    } else if (getBrowserLocalStorage()) {
+      this.store = new WebLocalStorageSecureStore()
     } else {
       console.warn(
         '[EnclaveAdapter] No secure store provided – falling back to in-memory store. ' +

@@ -24,6 +24,13 @@ import { useSolid } from './SolidContext'
 
 type AttestationStatus = 'idle' | 'verifying' | 'verified' | 'unlinked' | 'error'
 
+interface AttestationDetails {
+  registeredWebId: string | null
+  lockboxStateRoot: string | null
+  registerTxHash: string | null
+  verifiedAt: string | null
+}
+
 interface PairingAttestationRecord {
   proofVersion: number
   webId: string
@@ -105,6 +112,8 @@ interface WalletContextValue {
   attestationStatus: AttestationStatus
   /** Human-readable status detail for pairing checks. */
   attestationMessage: string | null
+  /** Machine-verifiable attestation details for QA and diagnostics. */
+  attestationDetails: AttestationDetails
 }
 
 const WalletContext = createContext<WalletContextValue | null>(null)
@@ -171,6 +180,12 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
   const [isLoading, setIsLoading] = useState(true)
   const [attestationStatus, setAttestationStatus] = useState<AttestationStatus>('idle')
   const [attestationMessage, setAttestationMessage] = useState<string | null>(null)
+  const [attestationDetails, setAttestationDetails] = useState<AttestationDetails>({
+    registeredWebId: null,
+    lockboxStateRoot: null,
+    registerTxHash: null,
+    verifiedAt: null,
+  })
   const lastCheckedKeyRef = useRef<string | null>(null)
 
   useEffect(() => {
@@ -210,6 +225,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
     if (!isLoggedIn || !webId) {
       setAttestationStatus('idle')
       setAttestationMessage(null)
+      setAttestationDetails({ registeredWebId: null, lockboxStateRoot: null, registerTxHash: null, verifiedAt: null })
       lastCheckedKeyRef.current = null
       return
     }
@@ -224,6 +240,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
       if (!identityContractId || !lockboxContractId) {
         setAttestationStatus('error')
         setAttestationMessage('Missing identity or lockbox contract ID in app configuration.')
+        setAttestationDetails({ registeredWebId: null, lockboxStateRoot: null, registerTxHash: null, verifiedAt: null })
         return
       }
 
@@ -255,12 +272,24 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
         if (mappedWebId !== webId) {
           setAttestationStatus('unlinked')
           setAttestationMessage('Wallet/WebID on-chain mapping mismatch. Please relink your identity.')
+          setAttestationDetails({
+            registeredWebId: mappedWebId,
+            lockboxStateRoot: lockboxRoot,
+            registerTxHash: registerTxHash || null,
+            verifiedAt: null,
+          })
           return
         }
 
         if (!lockboxRoot) {
           setAttestationStatus('unlinked')
           setAttestationMessage('No attested lockbox root found yet for pairing verification.')
+          setAttestationDetails({
+            registeredWebId: mappedWebId,
+            lockboxStateRoot: null,
+            registerTxHash: registerTxHash || null,
+            verifiedAt: null,
+          })
           return
         }
 
@@ -275,8 +304,16 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
         if (isReturningSignIn && priorRecord && !hasMatchingProof(priorRecord, proofInputs)) {
           setAttestationStatus('unlinked')
           setAttestationMessage('Stored pairing proof no longer matches the current lockbox root. Relink required.')
+          setAttestationDetails({
+            registeredWebId: mappedWebId,
+            lockboxStateRoot: lockboxRoot,
+            registerTxHash: priorRecord.registerTxHash || null,
+            verifiedAt: priorRecord.verifiedAt,
+          })
           return
         }
+
+        const verifiedAt = new Date().toISOString()
 
         const record: PairingAttestationRecord = {
           proofVersion: 1,
@@ -286,11 +323,17 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
           lockboxContractId,
           lockboxStateRoot: lockboxRoot,
           registerTxHash,
-          verifiedAt: new Date().toISOString(),
+          verifiedAt,
         }
         await AsyncStorage.setItem(PAIRING_ATTESTATION_STORAGE_KEY, JSON.stringify(record))
 
         setAttestationStatus('verified')
+        setAttestationDetails({
+          registeredWebId: mappedWebId,
+          lockboxStateRoot: lockboxRoot,
+          registerTxHash: registerTxHash || priorRecord?.registerTxHash || null,
+          verifiedAt,
+        })
         setAttestationMessage(
           isReturningSignIn
             ? 'Returning sign-in proof verified against current lockbox root.'
@@ -299,6 +342,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
       } catch (err) {
         setAttestationStatus('error')
         setAttestationMessage(err instanceof Error ? err.message : 'Pairing verification failed.')
+        setAttestationDetails({ registeredWebId: null, lockboxStateRoot: null, registerTxHash: null, verifiedAt: null })
       }
     })()
   }, [isLoggedIn, isRestoring, registerIdentity, walletInfo, webId])
@@ -310,6 +354,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
       registerIdentity,
       attestationStatus,
       attestationMessage,
+      attestationDetails,
     }}>
       {children}
     </WalletContext.Provider>

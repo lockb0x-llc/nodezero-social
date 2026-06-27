@@ -15,8 +15,10 @@ import React, {
   type ReactNode,
 } from 'react'
 import { Platform } from 'react-native'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import Constants from 'expo-constants'
 import {
+  EVENTS,
   Session,
   handleIncomingRedirect,
   login,
@@ -41,6 +43,8 @@ interface SolidContextValue {
 }
 
 const SolidContext = createContext<SolidContextValue | null>(null)
+
+const SOLID_WEBID_STORAGE_KEY = 'solid.webId.v1'
 
 /** Environment profiles that the Solid auth flow supports. */
 const KNOWN_ENV_PROFILES = ['local', 'staging-testnet', 'production-mainnet'] as const
@@ -121,6 +125,12 @@ function resolveRedirectUrl(): string {
   return 'nodezero://auth/callback'
 }
 
+function hasOidcRedirectParams(): boolean {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return true
+  const params = new URLSearchParams(window.location.search)
+  return params.has('code') && params.has('state')
+}
+
 /**
  * Wrap your application root with `SolidProvider` to make Solid auth state
  * available throughout the component tree.
@@ -134,21 +144,61 @@ export function SolidProvider({ children }: { children: ReactNode }): JSX.Elemen
   const [webId, setWebId] = useState<string | null>(session.info.webId ?? null)
   const [isRestoring, setIsRestoring] = useState(true)
 
+  const applyWebId = useCallback((nextWebId: string | null): void => {
+    setIsLoggedIn(Boolean(nextWebId))
+    setWebId(nextWebId)
+    if (nextWebId) {
+      void AsyncStorage.setItem(SOLID_WEBID_STORAGE_KEY, nextWebId)
+    }
+  }, [])
+
+  const syncSessionState = useCallback((): void => {
+    if (session.info.isLoggedIn && session.info.webId) {
+      applyWebId(session.info.webId)
+    }
+  }, [applyWebId, session])
+
   useEffect(() => {
-    void handleIncomingRedirect({ restorePreviousSession: true })
+    const handleAuthenticated = (): void => syncSessionState()
+    const handleUnauthenticated = (): void => {
+      setIsLoggedIn(false)
+      setWebId(null)
+      void AsyncStorage.removeItem(SOLID_WEBID_STORAGE_KEY)
+    }
+
+    session.events.on(EVENTS.LOGIN, handleAuthenticated)
+    session.events.on(EVENTS.SESSION_RESTORED, handleAuthenticated)
+    session.events.on(EVENTS.LOGOUT, handleUnauthenticated)
+    session.events.on(EVENTS.SESSION_EXPIRED, handleUnauthenticated)
+
+    void AsyncStorage.getItem(SOLID_WEBID_STORAGE_KEY)
+      .then((cachedWebId) => {
+        if (cachedWebId) applyWebId(cachedWebId)
+        if (!hasOidcRedirectParams()) return undefined
+        return handleIncomingRedirect({ restorePreviousSession: false })
+      })
       .then((info) => {
-        if (info?.isLoggedIn) {
-          setIsLoggedIn(true)
-          setWebId(info.webId ?? null)
+        if (info?.isLoggedIn && info.webId) {
+          applyWebId(info.webId)
+        } else {
+          syncSessionState()
         }
       })
       .catch((err) => {
         console.warn('[SolidContext] Session restore failed:', err)
+        syncSessionState()
       })
       .finally(() => {
         setIsRestoring(false)
       })
-  }, [])
+
+    return (): void => {
+      session.events.off(EVENTS.LOGIN, handleAuthenticated)
+      session.events.off(EVENTS.SESSION_RESTORED, handleAuthenticated)
+      session.events.off(EVENTS.LOGOUT, handleUnauthenticated)
+      session.events.off(EVENTS.SESSION_EXPIRED, handleUnauthenticated)
+    }
+  }, [applyWebId, session, syncSessionState])
 
   const signIn = useCallback(async (idpUrl: string) => {
     const oidcIssuer = validateIdpUrl(idpUrl)
@@ -162,6 +212,7 @@ export function SolidProvider({ children }: { children: ReactNode }): JSX.Elemen
 
   const signOut = useCallback(async () => {
     await logout()
+    await AsyncStorage.removeItem(SOLID_WEBID_STORAGE_KEY)
     setIsLoggedIn(false)
     setWebId(null)
   }, [])

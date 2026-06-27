@@ -1,0 +1,47 @@
+name: Delegate nodezero.social to Azure DNS
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  delegate-nameservers:
+    name: Switch nodezero.social to Azure DNS
+    runs-on: ubuntu-latest
+    environment: staging-testnet
+
+    env:
+      NAMECHEAP_DOMAIN: nodezero.social
+      NAMECHEAP_API_KEY: ${{ secrets.NAMECHEAP_API_KEY }}
+      NAMECHEAP_API_USER: ${{ vars.NAMECHEAP_API_USER || secrets.NAMECHEAP_API_USER }}
+      NAMECHEAP_USERNAME: ${{ vars.NAMECHEAP_USERNAME || vars.NAMECHEAP_API_USER || secrets.NAMECHEAP_API_USER }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Validate credentials
+        run: |
+          if [ -z "$NAMECHEAP_API_KEY" ]; then
+            echo "NAMECHEAP_API_KEY GitHub secret is required."
+            exit 1
+          fi
+          if [ -z "$NAMECHEAP_API_USER" ]; then
+            echo "NAMECHEAP_API_USER GitHub secret or variable is required."
+            exit 1
+          fi
+
+      - name: Switch to Azure DNS nameservers
+        run: node scripts/dns/set-namecheap-nameservers.mjs
+
+      - name: Verify nameserver propagation
+        run: |
+          echo "Checking current NS records (may take a few minutes to propagate):"
+          dig NS nodezero.social +short || nslookup -type=NS nodezero.social 8.8.8.8 || true

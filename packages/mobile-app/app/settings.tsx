@@ -29,7 +29,7 @@ const SHOW_NSFW_KEY = 'settings.showNsfw'
 export default function SettingsScreen(): JSX.Element {
   const { signOut, webId } = useSolid()
   const router = useRouter()
-  const { walletInfo, attestationStatus, attestationMessage } = useWallet()
+  const { walletInfo, attestationStatus, attestationMessage, attestationDetails } = useWallet()
   const [showNsfw, setShowNsfw] = useState(false)
 
   // Load persisted NSFW setting on mount.
@@ -116,6 +116,25 @@ export default function SettingsScreen(): JSX.Element {
         {attestationMessage ? (
           <Text style={styles.rowSubDetail}>{attestationMessage}</Text>
         ) : null}
+        <Row
+          label="Registered WebID"
+          value={attestationDetails.registeredWebId ?? 'Not verified'}
+          mono
+        />
+        <Row
+          label="Lockb0x Root"
+          value={attestationDetails.lockboxStateRoot ?? 'Not verified'}
+          mono
+        />
+        <Row
+          label="Registration Tx"
+          value={attestationDetails.registerTxHash ?? 'Not submitted this session'}
+          mono
+        />
+        <Row
+          label="Verified At"
+          value={attestationDetails.verifiedAt ?? 'Not verified'}
+        />
       </View>
 
       {/* ── Data Management ──────────────────────────────────────── */}

@@ -11,12 +11,16 @@ xdr (68fa1ac55692f68ad2a2ca549d0a283273554439)",
   "contracts": {
     "identity": {
       "id": "CCHFYOKLGVTXEYYHWEFPI22FR26VRGG2CBBUTP6XPW3ZSIWIKEVQQ44K",
-      "deploymentMode": "unknown"
+      "deploymentMode": "testnet-live"
     },
     "lockbox": {
       "id": "CB36LY5WZLJNMY4DHRXQER6LU3L4E5MGFYT2XSJG7ZJZV5SIIOKODT2H",
-      "deploymentMode": "unknown",
-      "initializationProof": "demo-init"
+      "deploymentMode": "testnet-live",
+      "initializationProof": "demo-init",
+      "initialRoot": "0000000000000000000000000000000000000000000000000000000000000001",
+      "operator": "GBMXG2UIWFBHPKRBDQCEFNIDR3WHJAPVVGBCIOD5SGKZYZQISENZKD5O",
+      "initializedAt": "2026-06-26T23:50:00Z",
+      "initTx": "a4f1d0eabc91548547fd08c1e597c9c410acfe360e654201997666f4209ce02e"
     }
   },
   "generatedAt": "2026-06-26T11:25:49Z"
