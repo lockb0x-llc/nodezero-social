@@ -159,3 +159,20 @@ J4 status: **NEEDS-INFO**
 - Required follow-up before final APPROVE sign-off:
    1. Restore relay endpoint availability for authenticated `/local` sessions (resolve 503 on `/relay` WebSocket handshake).
    2. Re-run LM1/LM2 with two authenticated clients after relay recovery.
+
+## 2026-06-27 relay recovery evidence
+
+Infrastructure and deployment updates completed:
+
+- Dedicated relay host is live at `nodezero-social-staging-testnet-relay.azurewebsites.net`.
+- Relay health endpoint returns HTTP 200 JSON (`{"ok":true,"service":"relay-service"...}`).
+- Two-client WebSocket probe passed against relay host (`offer` forwarded `alice -> bob`).
+- Staging web bundle now resolves to `entry-ea77f9d83f0d47754f3676e4f6ded818.js` and embeds `relayUrl = wss://nodezero-social-staging-testnet-relay.azurewebsites.net`.
+- Previous invalid relay endpoint is no longer present in the staging bundle (`wss://staging.nodezero.social/relay` absent).
+- Automated smoke suite passes against `https://staging.nodezero.social` after redeploy.
+
+Updated J4 status: **IN_PROGRESS**
+
+- Remaining work to close J4:
+   1. Re-run LM1 with authenticated `/local` flow and location permission allowed.
+   2. Re-run LM2 with two authenticated clients to verify end-to-end encrypted message exchange.

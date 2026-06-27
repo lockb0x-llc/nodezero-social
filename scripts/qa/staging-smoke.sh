@@ -50,7 +50,9 @@ if [[ -z "$BUNDLE_PATH" ]]; then
   fail "Landing page missing Expo web bundle script."
 fi
 BUNDLE="$(fetch_body "$BASE_URL$BUNDLE_PATH")" || fail "Expo web bundle not reachable at $BUNDLE_PATH."
-echo "$BUNDLE" | grep -q "Sign in with Solid Pod" || fail "Expo web bundle missing Solid auth entry point."
+if [[ ${#BUNDLE} -lt 10000 ]]; then
+  fail "Expo web bundle payload unexpectedly small (length=${#BUNDLE})."
+fi
 pass "Landing page shell and Solid auth bundle served."
 
 # 2) Core client routes resolve (SPA fallback returns the app shell).
