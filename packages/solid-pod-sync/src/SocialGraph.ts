@@ -174,8 +174,6 @@ export class SocialGraph {
     return datasetUrl
   }
 
-  // ─── Private helpers ──────────────────────────────────────────────────────
-
   private connectionsUrl(podRootUrl: string): string {
     return `${podRootUrl.replace(/\/$/, '')}/social/connections`
   }
@@ -187,6 +185,50 @@ export class SocialGraph {
       return await getSolidDataset(datasetUrl, { fetch: this.session.fetch })
     } catch {
       return createSolidDataset()
+    }
+  }
+
+  /**
+   * Compares the peer's public interests to the local user's interests and
+   * returns the intersection.
+   *
+   * Looks for `schema:interest` and `foaf:topic_interest` predicate values on
+   * the peer's public profile. The local interests list defaults to an empty
+   * array until profile-loading is wired in a later phase.
+   *
+   * @param peerWebId - The peer's WebID URL.
+   * @returns String array of overlapping interest values, or `[]` on any error.
+   */
+  async findSemanticOverlap(peerWebId: string): Promise<string[]> {
+    const SCHEMA_INTEREST = 'https://schema.org/interest'
+    const FOAF_TOPIC_INTEREST = 'http://xmlns.com/foaf/0.1/topic_interest'
+
+    // Local interests — hardcoded to [] until profile context is available.
+    const localInterests: string[] = []
+
+    let dataset: SolidDataset & WithServerResourceInfo
+
+    try {
+      const profileUrl = peerWebId.split('#')[0]
+      dataset = await getSolidDataset(profileUrl, { fetch: this.session.fetch })
+    } catch {
+      return []
+    }
+
+    try {
+      const thing = getThing(dataset, peerWebId)
+      if (!thing) return []
+
+      const peerInterests = new Set([
+        ...getUrlAll(thing, SCHEMA_INTEREST),
+        ...getUrlAll(thing, FOAF_TOPIC_INTEREST),
+      ])
+
+      if (localInterests.length === 0 || peerInterests.size === 0) return []
+
+      return localInterests.filter((i) => peerInterests.has(i))
+    } catch {
+      return []
     }
   }
 }
