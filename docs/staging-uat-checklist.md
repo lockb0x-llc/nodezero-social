@@ -214,6 +214,8 @@ Purpose:
 
 Required mobile-app build env values:
 
+- Detailed build/deploy procedure: `docs/dev-only/oidc-refactoring/staging-oidc-deploy-verify.md`
+
 - `NZ_ENV_PROFILE=staging-testnet`
 - `NZ_SOLID_OIDC_ISSUER_URL=<staging-approved issuer url>`
 - `NZ_SOLID_SIGNUP_URL=<staging-approved pod signup url>`
