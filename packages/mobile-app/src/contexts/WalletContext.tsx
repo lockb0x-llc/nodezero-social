@@ -30,6 +30,9 @@ interface AttestationDetails {
   registerTxHash: string | null
   verifiedAt: string | null
   custodyClaimHash: string | null
+  lockboxFactoryContractId: string | null
+  userLockboxContractId: string | null
+  lockboxIdempotencyKey: string | null
 }
 
 interface CustodyReceipt {
@@ -49,6 +52,9 @@ interface PairingAttestationRecord {
   registerTxHash: string
   verifiedAt: string
   custodyReceipt?: CustodyReceipt
+  lockboxFactoryContractId?: string
+  userLockboxContractId?: string
+  lockboxIdempotencyKey?: string
 }
 
 const PAIRING_ATTESTATION_STORAGE_KEY = 'attestation.pairing.v1'
@@ -103,6 +109,12 @@ async function loadPairingRecord(): Promise<PairingAttestationRecord | null> {
       lockboxStateRoot: parsed.lockboxStateRoot,
       registerTxHash: typeof parsed.registerTxHash === 'string' ? parsed.registerTxHash : '',
       verifiedAt: parsed.verifiedAt,
+      lockboxFactoryContractId:
+        typeof parsed.lockboxFactoryContractId === 'string' ? parsed.lockboxFactoryContractId : undefined,
+      userLockboxContractId:
+        typeof parsed.userLockboxContractId === 'string' ? parsed.userLockboxContractId : undefined,
+      lockboxIdempotencyKey:
+        typeof parsed.lockboxIdempotencyKey === 'string' ? parsed.lockboxIdempotencyKey : undefined,
       custodyReceipt:
         parsed.custodyReceipt &&
         typeof parsed.custodyReceipt.jobId === 'string' &&
@@ -141,10 +153,28 @@ interface ProvisionerSubmitResponse {
 interface ProvisionerStatusReady {
   status: 'ready'
   jobId: string
+  lockbox?: {
+    status: 'ready' | 'skipped' | 'error'
+    mode: 'mock' | 'disabled' | 'soroban'
+    factoryContractId: string | null
+    userLockboxContractId: string | null
+    idempotencyKey: string
+    verifiedAt: string
+    error?: string
+  }
   custodyReceipt?: {
     challengeId: string
     verifiedAt: string
     claimHash: string
+  }
+}
+
+interface CustodyProvisioningResult {
+  custodyReceipt: CustodyReceipt
+  lockbox?: {
+    factoryContractId: string | null
+    userLockboxContractId: string | null
+    idempotencyKey: string
   }
 }
 
@@ -187,7 +217,7 @@ async function runCustodyProvisioning(params: {
   provisionerUrl: string
   webId: string
   wallet: WalletService
-}): Promise<CustodyReceipt> {
+}): Promise<CustodyProvisioningResult> {
   const { provisionerUrl, webId, wallet } = params
   const baseUrl = provisionerUrl.replace(/\/$/, '')
   const identity = extractPodIdentity(webId)
@@ -228,10 +258,19 @@ async function runCustodyProvisioning(params: {
   }
 
   return {
-    jobId: status.jobId,
-    challengeId: status.custodyReceipt.challengeId,
-    verifiedAt: status.custodyReceipt.verifiedAt,
-    claimHash: status.custodyReceipt.claimHash,
+    custodyReceipt: {
+      jobId: status.jobId,
+      challengeId: status.custodyReceipt.challengeId,
+      verifiedAt: status.custodyReceipt.verifiedAt,
+      claimHash: status.custodyReceipt.claimHash,
+    },
+    lockbox: status.lockbox
+      ? {
+          factoryContractId: status.lockbox.factoryContractId,
+          userLockboxContractId: status.lockbox.userLockboxContractId,
+          idempotencyKey: status.lockbox.idempotencyKey,
+        }
+      : undefined,
   }
 }
 
@@ -321,6 +360,9 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
     registerTxHash: null,
     verifiedAt: null,
     custodyClaimHash: null,
+    lockboxFactoryContractId: null,
+    userLockboxContractId: null,
+    lockboxIdempotencyKey: null,
   })
   const lastCheckedKeyRef = useRef<string | null>(null)
 
@@ -367,6 +409,9 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
         registerTxHash: null,
         verifiedAt: null,
         custodyClaimHash: null,
+        lockboxFactoryContractId: null,
+        userLockboxContractId: null,
+        lockboxIdempotencyKey: null,
       })
       lastCheckedKeyRef.current = null
       return
@@ -389,6 +434,9 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
           registerTxHash: null,
           verifiedAt: null,
           custodyClaimHash: null,
+          lockboxFactoryContractId: null,
+          userLockboxContractId: null,
+          lockboxIdempotencyKey: null,
         })
         return
       }
@@ -411,6 +459,9 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
 
         let registerTxHash = ''
         let custodyReceipt = priorRecord?.custodyReceipt
+        let lockboxFactoryContractId = priorRecord?.lockboxFactoryContractId
+        let userLockboxContractId = priorRecord?.userLockboxContractId
+        let lockboxIdempotencyKey = priorRecord?.lockboxIdempotencyKey
 
         if (!isReturningSignIn && mappedWebId !== webId) {
           registerTxHash = await registerIdentity(webId, identityContractId)
@@ -418,11 +469,15 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
         }
 
         if (!isReturningSignIn && provisionerUrl) {
-          custodyReceipt = await runCustodyProvisioning({
+          const provisioning = await runCustodyProvisioning({
             provisionerUrl,
             webId,
             wallet: service,
           })
+          custodyReceipt = provisioning.custodyReceipt
+          lockboxFactoryContractId = provisioning.lockbox?.factoryContractId ?? undefined
+          userLockboxContractId = provisioning.lockbox?.userLockboxContractId ?? undefined
+          lockboxIdempotencyKey = provisioning.lockbox?.idempotencyKey ?? undefined
         }
 
         const lockboxRoot = await service.getLockboxStateRoot(lockboxContractId)
@@ -436,6 +491,9 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
             registerTxHash: registerTxHash || null,
             verifiedAt: null,
             custodyClaimHash: custodyReceipt?.claimHash ?? null,
+            lockboxFactoryContractId: lockboxFactoryContractId ?? null,
+            userLockboxContractId: userLockboxContractId ?? null,
+            lockboxIdempotencyKey: lockboxIdempotencyKey ?? null,
           })
           return
         }
@@ -449,6 +507,9 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
             registerTxHash: registerTxHash || null,
             verifiedAt: null,
             custodyClaimHash: custodyReceipt?.claimHash ?? null,
+            lockboxFactoryContractId: lockboxFactoryContractId ?? null,
+            userLockboxContractId: userLockboxContractId ?? null,
+            lockboxIdempotencyKey: lockboxIdempotencyKey ?? null,
           })
           return
         }
@@ -470,6 +531,9 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
             registerTxHash: priorRecord.registerTxHash || null,
             verifiedAt: priorRecord.verifiedAt,
             custodyClaimHash: priorRecord.custodyReceipt?.claimHash ?? null,
+            lockboxFactoryContractId: priorRecord.lockboxFactoryContractId ?? null,
+            userLockboxContractId: priorRecord.userLockboxContractId ?? null,
+            lockboxIdempotencyKey: priorRecord.lockboxIdempotencyKey ?? null,
           })
           return
         }
@@ -487,6 +551,16 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
           verifiedAt,
           custodyReceipt,
         }
+
+        if (lockboxFactoryContractId) {
+          record.lockboxFactoryContractId = lockboxFactoryContractId
+        }
+        if (userLockboxContractId) {
+          record.userLockboxContractId = userLockboxContractId
+        }
+        if (lockboxIdempotencyKey) {
+          record.lockboxIdempotencyKey = lockboxIdempotencyKey
+        }
         await AsyncStorage.setItem(PAIRING_ATTESTATION_STORAGE_KEY, JSON.stringify(record))
 
         setAttestationStatus('verified')
@@ -496,6 +570,9 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
           registerTxHash: registerTxHash || priorRecord?.registerTxHash || null,
           verifiedAt,
           custodyClaimHash: custodyReceipt?.claimHash ?? null,
+          lockboxFactoryContractId: lockboxFactoryContractId ?? null,
+          userLockboxContractId: userLockboxContractId ?? null,
+          lockboxIdempotencyKey: lockboxIdempotencyKey ?? null,
         })
         setAttestationMessage(
           isReturningSignIn
@@ -511,6 +588,9 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
           registerTxHash: null,
           verifiedAt: null,
           custodyClaimHash: null,
+          lockboxFactoryContractId: null,
+          userLockboxContractId: null,
+          lockboxIdempotencyKey: null,
         })
       }
     })()

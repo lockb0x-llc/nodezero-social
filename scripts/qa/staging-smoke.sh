@@ -56,6 +56,9 @@ fi
 pass "Landing page shell and Solid auth bundle served."
 
 # 2) Core client routes resolve (SPA fallback returns the app shell).
+# Note: /settings is accessed via the Profile ⚙ gear icon in authenticated
+# flows — the tab was removed from the nav bar to fix mobile overflow. The
+# route itself is preserved for deep-links, bookmarks, and direct navigation.
 for route in feed local profile settings; do
   code="$(status_of "$BASE_URL/$route")"
   case "$code" in

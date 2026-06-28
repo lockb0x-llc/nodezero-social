@@ -57,6 +57,17 @@ pub enum LockboxKey {
     Operator,
 }
 
+/// Storage key used within the Lockb0xFactory contract.
+#[contracttype]
+pub enum LockboxFactoryKey {
+    /// The authorised factory operator that can provision user lockboxes.
+    Operator,
+    /// Uploaded WASM hash used when deploying per-user Lockb0x contracts.
+    LockboxWasmHash,
+    /// Mapping from a user `Address` to their lockbox contract `Address`.
+    UserLockbox(Address),
+}
+
 // ─── NodeZeroIdentity Contract ────────────────────────────────────────────────
 
 /// Maps Stellar/Soroban public keys to Solid Pod WebIDs.
@@ -205,6 +216,108 @@ impl Lockb0x {
     }
 }
 
+// ─── Lockb0xFactory Contract ────────────────────────────────────────────────
+
+/// Deploys and tracks per-user `Lockb0x` contracts.
+///
+/// The factory supports idempotent provisioning: if a user already has a
+/// lockbox mapping, that existing contract address is returned.
+#[contract]
+pub struct Lockb0xFactory;
+
+#[contractimpl]
+impl Lockb0xFactory {
+    /// Initialises the factory with an operator and lockbox wasm hash.
+    ///
+    /// Can only be called once.
+    pub fn initialize(env: Env, operator: Address, lockbox_wasm_hash: BytesN<32>) {
+        assert!(
+            !env.storage().persistent().has(&LockboxFactoryKey::Operator),
+            "Lockb0xFactory: already initialised"
+        );
+
+        operator.require_auth();
+
+        env.storage()
+            .persistent()
+            .set(&LockboxFactoryKey::Operator, &operator);
+        env.storage()
+            .persistent()
+            .set(&LockboxFactoryKey::LockboxWasmHash, &lockbox_wasm_hash);
+    }
+
+    /// Returns the configured operator.
+    pub fn get_operator(env: Env) -> Option<Address> {
+        env.storage().persistent().get(&LockboxFactoryKey::Operator)
+    }
+
+    /// Returns the configured lockbox wasm hash.
+    pub fn get_lockbox_wasm_hash(env: Env) -> Option<BytesN<32>> {
+        env.storage()
+            .persistent()
+            .get(&LockboxFactoryKey::LockboxWasmHash)
+    }
+
+    /// Returns the lockbox contract address mapped to `user`, if present.
+    pub fn get_user_lockbox(env: Env, user: Address) -> Option<Address> {
+        env.storage()
+            .persistent()
+            .get(&LockboxFactoryKey::UserLockbox(user))
+    }
+
+    /// Deploys (or reuses) a lockbox for `user` and initialises it.
+    ///
+    /// The operator controls provisioning. The created lockbox's operator is set
+    /// to `user` so users retain control of their own lockbox state updates.
+    pub fn get_or_create_user_lockbox(
+        env: Env,
+        caller: Address,
+        user: Address,
+        salt: BytesN<32>,
+        initial_root: BytesN<32>,
+    ) -> Address {
+        caller.require_auth();
+
+        let operator: Address = env
+            .storage()
+            .persistent()
+            .get(&LockboxFactoryKey::Operator)
+            .expect("Lockb0xFactory: not initialised");
+
+        assert!(caller == operator, "Lockb0xFactory: caller is not the operator");
+
+        if let Some(existing) = env
+            .storage()
+            .persistent()
+            .get::<LockboxFactoryKey, Address>(&LockboxFactoryKey::UserLockbox(user.clone()))
+        {
+            return existing;
+        }
+
+        let wasm_hash: BytesN<32> = env
+            .storage()
+            .persistent()
+            .get(&LockboxFactoryKey::LockboxWasmHash)
+            .expect("Lockb0xFactory: missing lockbox wasm hash");
+
+        let lockbox_addr = env
+            .deployer()
+            .with_current_contract(salt)
+            .deploy(wasm_hash);
+
+        let lockbox_client = Lockb0xClient::new(&env, &lockbox_addr);
+        lockbox_client.initialize(&user, &initial_root);
+
+        env.storage()
+            .persistent()
+            .set(&LockboxFactoryKey::UserLockbox(user.clone()), &lockbox_addr);
+
+        env.events().publish((symbol_short!("lbx_crt"),), (user, lockbox_addr.clone()));
+
+        lockbox_addr
+    }
+}
+
 // ─── Unit tests ───────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -266,6 +379,12 @@ mod tests {
         BytesN::from_array(env, &arr)
     }
 
+    fn make_hash(env: &Env, byte: u8) -> BytesN<32> {
+        let mut arr = [0u8; 32];
+        arr[31] = byte;
+        BytesN::from_array(env, &arr)
+    }
+
     #[test]
     fn test_lockbox_initialize_and_get_root() {
         let env = Env::default();
@@ -299,4 +418,24 @@ mod tests {
 
         assert_eq!(client.get_state_root().unwrap(), new_root);
     }
+
+    // ── Lockb0xFactory tests ───────────────────────────────────────────────
+
+    #[test]
+    fn test_factory_initialize_and_getters() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register_contract(None, Lockb0xFactory);
+        let client = Lockb0xFactoryClient::new(&env, &contract_id);
+
+        let operator = Address::generate(&env);
+        let wasm_hash = make_hash(&env, 7);
+
+        client.initialize(&operator, &wasm_hash);
+
+        assert_eq!(client.get_operator().unwrap(), operator);
+        assert_eq!(client.get_lockbox_wasm_hash().unwrap(), wasm_hash);
+    }
+
 }

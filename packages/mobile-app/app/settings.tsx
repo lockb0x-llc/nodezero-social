@@ -158,6 +158,21 @@ export default function SettingsScreen(): JSX.Element {
           label="Verified At"
           value={attestationDetails.verifiedAt ?? 'Not verified'}
         />
+        <Row
+          label="Lockb0x Factory"
+          value={attestationDetails.lockboxFactoryContractId ?? 'Not configured'}
+          mono
+        />
+        <Row
+          label="User Lockb0x"
+          value={attestationDetails.userLockboxContractId ?? 'Not provisioned'}
+          mono
+        />
+        <Row
+          label="Lockb0x Idempotency"
+          value={attestationDetails.lockboxIdempotencyKey ?? 'Not generated'}
+          mono
+        />
       </View>
 
       {/* ── Data Management ──────────────────────────────────────── */}

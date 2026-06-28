@@ -1,0 +1,23 @@
+{
+  "name": "@nodezero/jss-provisioner",
+  "version": "0.0.1",
+  "description": "JSS provisioning and custody attestation API",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc --project tsconfig.json",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "test": "echo \"No tests yet for @nodezero/jss-provisioner\"",
+    "lint": "eslint src --ext .ts",
+    "type-check": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.4.5"
+  }
+}

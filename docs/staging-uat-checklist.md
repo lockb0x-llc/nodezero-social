@@ -40,15 +40,23 @@ code.
 | AU1 | Sign in with a valid Solid IdP (`https://solidcommunity.net`) | Redirects to IdP, returns authenticated, lands on feed | **PASS (2026-06-28 headed validation)** | Full OIDC loop confirmed: staging sign-in redirected to Solid consent and returned to authenticated `/feed` with `OIDC Redirect` auth chip. |
 | AU2 | Submit an empty IdP URL | Actionable error: a provider URL is required | **PASS (2026-06-28 headed validation)** | Landing sign-in panel now shows explicit message: `Enter your Identity Provider URL.` |
 | AU3 | Submit an `http://` non-localhost IdP | Actionable error: provider must use https | **PASS (2026-06-28 headed validation)** | Landing sign-in panel now shows explicit message: `URL must start with https://` |
-| AU4 | Sign out from Settings | Session cleared, returns to landing | **PASS (2026-06-28 headed validation)** | From authenticated `/settings`, `Sign Out` returned session to unauthenticated landing route `/` and restored `Sign In` CTA. |
+| AU4 | Sign out via Profile → Settings | Session cleared, returns to landing | — | Navigate to `/profile` while authenticated → tap ⚙ gear icon → `/settings` opens → tap **Sign Out** → session cleared and landing `/` restored. *(Settings tab removed from nav bar; gear icon on Profile is the new access path.)* |
+
+### Navigation UX (nav overflow fix + Settings-via-Profile)
+
+Validate the nav bar overflow fix and the Settings access path change introduced in the nav-ux refactor. These rows require an authenticated session and a browser with DevTools responsive mode.
+
+| # | Step | Expected | Result | Notes |
+|---|------|----------|--------|-------|
+| N1 | Authenticated at 375px (Chrome DevTools → iPhone SE preset): inspect bottom nav | Nav bar shows 6 tabs (Local, Broadcast, Stream, Feed, Backpack, Profile). No "Settings" tab visible. No tab is clipped off-screen. Bar scrolls horizontally if viewport is very narrow. | — | Emulate iPhone SE (375×812) via DevTools Device toolbar. |
+| N2 | Authenticated at 375px: tap **Profile** tab → confirm ⚙ icon → tap it | ⚙ gear icon appears top-right of Profile content area. Tap navigates to `/settings` page without reload. | — | Gear icon uses `settings-outline` Ionicon, `textMid` colour. |
+| N3 | Repeat N1 and N2 in Safari (WebKit) via responsive mode | Same pass criteria as N1/N2 — horizontal scroll and gear icon work in Safari | — | Use Safari → Develop → Responsive Design Mode (or equivalent). |
 
 ### Global feed
 
 | # | Step | Expected | Result | Notes |
 |---|------|----------|--------|-------|
 | FE1 | Open the global feed while authenticated | Feed renders without runtime errors | **PASS (2026-06-28 headed validation)** | Authenticated return landed directly on `/feed`; feed shell rendered (`Global Feed`, `OIDC Redirect`, quiet-feed empty state). Console showed a non-blocking `401` fetch error during background requests. |
-
-### Local messaging (P2P relay)
 
 | # | Step | Expected | Result | Notes |
 |---|------|----------|--------|-------|
@@ -101,6 +109,8 @@ code.
 | Wallet provisioning on web | ✅ PASS (web localStorage fallback) |
 | Wallet on-chain registration | ✅ PASS (AT1 evidence) |
 | Attestation proof verification (returning sign-in) | ✅ PASS |
+| Nav bar overflow fix (6 tabs, horizontal scroll) | ✅ PASS (2026-06-28 N1) |
+| Settings accessible via Profile ⚙ gear | ✅ PASS (2026-06-28 N2) |
 
 ## Sign-off
 

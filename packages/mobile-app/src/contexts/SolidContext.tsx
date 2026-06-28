@@ -25,6 +25,7 @@ import {
   logout,
   getDefaultSession,
 } from '@inrupt/solid-client-authn-browser'
+import { clearSignupIntent, getSignupResumeState } from '../onboarding/signupBridge'
 
 /** Shape of the Solid authentication context. */
 interface SolidContextValue {
@@ -40,6 +41,10 @@ interface SolidContextValue {
   signOut: () => Promise<void>
   /** `true` while the initial session restore is in progress. */
   isRestoring: boolean
+  /** Whether a recent signup intent is still active. */
+  signupResumeActive: boolean
+  /** Whether signup flow appears to have returned into the app shell. */
+  signupReturnDetected: boolean
 }
 
 const SolidContext = createContext<SolidContextValue | null>(null)
@@ -143,12 +148,17 @@ export function SolidProvider({ children }: { children: ReactNode }): JSX.Elemen
   const [isLoggedIn, setIsLoggedIn] = useState(session.info.isLoggedIn)
   const [webId, setWebId] = useState<string | null>(session.info.webId ?? null)
   const [isRestoring, setIsRestoring] = useState(true)
+  const [signupResumeActive, setSignupResumeActive] = useState(false)
+  const [signupReturnDetected, setSignupReturnDetected] = useState(false)
 
   const applyWebId = useCallback((nextWebId: string | null): void => {
     setIsLoggedIn(Boolean(nextWebId))
     setWebId(nextWebId)
     if (nextWebId) {
       void AsyncStorage.setItem(SOLID_WEBID_STORAGE_KEY, nextWebId)
+      void clearSignupIntent()
+      setSignupResumeActive(false)
+      setSignupReturnDetected(false)
     }
   }, [])
 
@@ -171,8 +181,10 @@ export function SolidProvider({ children }: { children: ReactNode }): JSX.Elemen
     session.events.on(EVENTS.LOGOUT, handleUnauthenticated)
     session.events.on(EVENTS.SESSION_EXPIRED, handleUnauthenticated)
 
-    void AsyncStorage.getItem(SOLID_WEBID_STORAGE_KEY)
-      .then((cachedWebId) => {
+    void Promise.all([AsyncStorage.getItem(SOLID_WEBID_STORAGE_KEY), getSignupResumeState()])
+      .then(([cachedWebId, signupResume]) => {
+        setSignupResumeActive(signupResume.hasActiveIntent)
+        setSignupReturnDetected(signupResume.returnDetected)
         if (cachedWebId) applyWebId(cachedWebId)
         if (!hasOidcRedirectParams()) return undefined
         return handleIncomingRedirect({ restorePreviousSession: false })
@@ -218,7 +230,18 @@ export function SolidProvider({ children }: { children: ReactNode }): JSX.Elemen
   }, [])
 
   return (
-    <SolidContext.Provider value={{ session, isLoggedIn, webId, signIn, signOut, isRestoring }}>
+    <SolidContext.Provider
+      value={{
+        session,
+        isLoggedIn,
+        webId,
+        signIn,
+        signOut,
+        isRestoring,
+        signupResumeActive,
+        signupReturnDetected,
+      }}
+    >
       {children}
     </SolidContext.Provider>
   )

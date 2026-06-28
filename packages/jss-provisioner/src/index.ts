@@ -10,6 +10,9 @@ import type {
 
 const PORT = Number(process.env.PORT ?? process.env.JSS_PROVISIONER_PORT ?? 8181)
 const ISSUER = process.env.JSS_ISSUER_URL ?? 'https://staging.nodezero.social'
+const LOCKBOX_FACTORY_CONTRACT_ID =
+  process.env.JSS_LOCKBOX_FACTORY_CONTRACT_ID ?? process.env.NZ_LOCKBOX_FACTORY_CONTRACT_ID ?? ''
+const LOCKBOX_FACTORY_MODE = (process.env.JSS_LOCKBOX_FACTORY_MODE ?? 'mock').toLowerCase()
 const ALLOWED_ORIGINS = (process.env.JSS_ALLOWED_ORIGINS ?? 'https://staging.nodezero.social,http://localhost:19006,http://localhost:8081')
   .split(',')
   .map((origin) => origin.trim())
@@ -83,6 +86,10 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Pro
       service: 'jss-provisioner',
       envProfile: process.env.NZ_ENV_PROFILE ?? 'local',
       issuer: ISSUER,
+      lockboxFactory: {
+        mode: LOCKBOX_FACTORY_MODE,
+        contractId: LOCKBOX_FACTORY_CONTRACT_ID || null,
+      },
       uptimeMs: Math.round(process.uptime() * 1000),
     })
     return
@@ -106,10 +113,16 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Pro
       return
     }
 
-    const jobId = store.createPendingJob(body)
+    const jobId = store.createPendingJob()
 
     try {
       const receipt = verifyAttestation(body, challenge)
+      const lockbox = await store.provisionLockbox({
+        webId: body.webId,
+        stellarPublicKey: body.stellarPublicKey,
+        podBindingHash: receipt.podBindingHash,
+      })
+
       store.resolveJob(jobId, {
         handle: body.handle.trim(),
         webId: body.webId.trim(),
@@ -117,11 +130,13 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Pro
         issuer: ISSUER,
         stellarPublicKey: body.stellarPublicKey.trim(),
         challengeId: challenge.challengeId,
+        lockbox,
       })
 
       const result: ProvisionResult = {
         status: 'ready',
         jobId,
+        lockbox,
       }
 
       sendJson(req, res, 200, {

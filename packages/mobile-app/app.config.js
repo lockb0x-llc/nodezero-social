@@ -53,11 +53,16 @@ const profile = profiles[envProfile]
 const relayUrl = process.env.NZ_RELAY_URL ?? ''
 const identityContractId = process.env.NZ_IDENTITY_CONTRACT_ID ?? ''
 const lockboxContractId = process.env.NZ_LOCKBOX_CONTRACT_ID ?? ''
+const lockboxFactoryContractId = process.env.NZ_LOCKBOX_FACTORY_CONTRACT_ID ?? ''
 const zkArtifactsUrl = process.env.NZ_ZK_ARTIFACTS_URL ?? ''
 const zkManifestUrl = process.env.NZ_ZK_MANIFEST_URL ?? ''
 const solidOidcIssuerUrl = process.env.NZ_SOLID_OIDC_ISSUER_URL ?? ''
 const solidSignupUrl = process.env.NZ_SOLID_SIGNUP_URL ?? ''
 const solidAccountPortalUrl = process.env.NZ_SOLID_ACCOUNT_PORTAL_URL ?? ''
+const solidSignupReturnMode = process.env.NZ_SOLID_SIGNUP_RETURN_MODE ?? 'auto'
+const solidSignupReturnParam = process.env.NZ_SOLID_SIGNUP_RETURN_PARAM ?? 'returnTo'
+const solidSignupStateParam = process.env.NZ_SOLID_SIGNUP_STATE_PARAM ?? 'nzSignupState'
+const solidSignupSupportsReturn = process.env.NZ_SOLID_SIGNUP_SUPPORTS_RETURN ?? 'false'
 const jssProvisionerUrl = process.env.NZ_JSS_PROVISIONER_URL ?? ''
 const qaLocalOverridesEnabled = process.env.NZ_QA_LOCAL_OVERRIDES_ENABLED ?? 'false'
 
@@ -142,6 +147,10 @@ module.exports = {
     solidOidcIssuerUrl,
     solidSignupUrl,
     solidAccountPortalUrl,
+    solidSignupReturnMode,
+    solidSignupReturnParam,
+    solidSignupStateParam,
+    solidSignupSupportsReturn,
     jssProvisionerUrl,
     qaLocalOverridesEnabled,
     primaryColor: process.env.NZ_PRIMARY_COLOR ?? '#6C63FF',
@@ -151,6 +160,7 @@ module.exports = {
     stellarNetworkPassphrase: profile.passphrase,
     identityContractId,
     lockboxContractId,
+    lockboxFactoryContractId,
     zkArtifactsUrl,
     zkManifestUrl,
   },

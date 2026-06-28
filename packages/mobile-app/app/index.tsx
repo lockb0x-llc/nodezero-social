@@ -23,7 +23,9 @@ import {
 import { useRouter, usePathname } from 'expo-router'
 import Constants from 'expo-constants'
 import { useSolid } from '../src/contexts/SolidContext'
+import { useWallet } from '../src/contexts/WalletContext'
 import { aesthetic } from '../src/theme/aesthetic'
+import { beginSolidSignup } from '../src/onboarding/signupBridge'
 
 const PRESS_OPACITY = 0.82
 
@@ -32,28 +34,32 @@ function getSolidOidcIssuerUrl(): string {
   return appExtra?.solidOidcIssuerUrl?.trim() || 'https://solidcommunity.net'
 }
 
-function getSolidSignupUrl(): string {
-  const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
-  return appExtra?.solidSignupUrl?.trim() || 'https://solidcommunity.net/register'
-}
-
 export default function LandingScreen(): JSX.Element {
-  const { signIn, isLoggedIn, isRestoring } = useSolid()
+  const {
+    signIn,
+    isLoggedIn,
+    isRestoring,
+    signupResumeActive,
+    signupReturnDetected,
+  } = useSolid()
+  const { attestationStatus } = useWallet()
   const router = useRouter()
   const pathname = usePathname()
   const defaultIdp = getSolidOidcIssuerUrl()
-  const signupUrl = getSolidSignupUrl()
 
-  const [showSignIn, setShowSignIn] = useState(false)
   const [idpUrl, setIdpUrl] = useState(defaultIdp)
   const [isSigningIn, setIsSigningIn] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   React.useEffect(() => {
     if (!isRestoring && isLoggedIn && pathname === '/') {
-      router.replace('/feed')
+      if (attestationStatus === 'verified') {
+        router.replace('/feed')
+      } else {
+        router.replace('/onboarding')
+      }
     }
-  }, [isLoggedIn, isRestoring, pathname, router])
+  }, [attestationStatus, isLoggedIn, isRestoring, pathname, router])
 
   const handleSignIn = async (): Promise<void> => {
     setError(null)
@@ -76,10 +82,10 @@ export default function LandingScreen(): JSX.Element {
     }
   }
 
-  const handleGetStarted = async (): Promise<void> => {
+  const handleGetStarted = async (source: 'card' | 'footer'): Promise<void> => {
     setError(null)
     try {
-      await Linking.openURL(signupUrl)
+      await beginSolidSignup(source)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not open account creation. Try again.')
     }
@@ -103,15 +109,6 @@ export default function LandingScreen(): JSX.Element {
         {/* ── Top nav ─────────────────────────────────── */}
         <View style={styles.nav}>
           <Text style={styles.navLogo}>⊙ NodeZero</Text>
-          <View style={styles.navRight}>
-            <TouchableOpacity
-              onPress={() => setShowSignIn((v) => !v)}
-              accessibilityRole="button"
-              accessibilityLabel="Sign in"
-            >
-              <Text style={styles.navSignIn}>Sign In</Text>
-            </TouchableOpacity>
-          </View>
         </View>
 
         {/* ── Hero ────────────────────────────────────── */}
@@ -121,71 +118,51 @@ export default function LandingScreen(): JSX.Element {
           <Text style={styles.heroBody}>
             {'Create a real Solid account with your own Pod, then sign in through OIDC. Your profile, posts, and connections stay portable from day one.'}
           </Text>
-
-          <TouchableOpacity
-            style={[styles.btnPrimary, isSigningIn && styles.btnDisabled]}
-            onPress={() => void handleGetStarted()}
-            disabled={isSigningIn}
-            activeOpacity={PRESS_OPACITY}
-            accessibilityRole="button"
-            accessibilityLabel="Create your Node"
-          >
-            {isSigningIn && !showSignIn ? (
-              <ActivityIndicator color="#FFF" />
-            ) : (
-              <Text style={styles.btnPrimaryText}>Create Your Node  →</Text>
-            )}
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.btnSecondary}
-            onPress={() => setShowSignIn((v) => !v)}
-            activeOpacity={PRESS_OPACITY}
-            accessibilityRole="button"
-            accessibilityLabel="Sign in as returning user"
-          >
-            <Text style={styles.btnSecondaryText}>Already have a Pod? Sign In</Text>
-          </TouchableOpacity>
         </View>
 
-        {/* ── Sign-in panel (collapsible) ──────────────── */}
-        {showSignIn && (
-          <View style={styles.signInPanel}>
-            <Text style={styles.signInTitle}>Sign in with your Solid Pod</Text>
-            <Text style={styles.signInHint}>Enter your Identity Provider URL</Text>
-            <TextInput
-              style={styles.input}
-              value={idpUrl}
-              onChangeText={setIdpUrl}
-              placeholder="https://solidcommunity.net"
-              placeholderTextColor="#555"
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="url"
-              accessibilityLabel="Identity Provider URL"
-            />
-            {error && <Text style={styles.errorText}>{error}</Text>}
-            <TouchableOpacity
-              style={[styles.btnPrimary, isSigningIn && styles.btnDisabled]}
-              onPress={() => void handleSignIn()}
-              disabled={isSigningIn}
-              activeOpacity={PRESS_OPACITY}
-            >
-              {isSigningIn ? (
-                <ActivityIndicator color="#FFF" />
-              ) : (
-                <Text style={styles.btnPrimaryText}>Sign In</Text>
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => void Linking.openURL(signupUrl)}
-              style={styles.createPodLink}
-              activeOpacity={PRESS_OPACITY}
-            >
-              <Text style={styles.createPodText}>Need a Pod? Create one free →</Text>
-            </TouchableOpacity>
-          </View>
-        )}
+        {/* ── Sign-in panel (always visible) ───────────── */}
+        <View style={styles.signInPanel}>
+          <Text style={styles.signInTitle}>Sign in with your Solid Pod</Text>
+          <Text style={styles.signInHint}>Enter your Identity Provider URL</Text>
+          {signupResumeActive ? (
+            <Text style={styles.resumeHint}>
+              {signupReturnDetected
+                ? 'Signup return detected. Continue by signing in with your new Solid Pod identity.'
+                : 'Need a Pod first? Create one, then return here to continue onboarding.'}
+            </Text>
+          ) : null}
+          <TextInput
+            style={styles.input}
+            value={idpUrl}
+            onChangeText={setIdpUrl}
+            placeholder="https://solidcommunity.net"
+            placeholderTextColor="#555"
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+            accessibilityLabel="Identity Provider URL"
+          />
+          {error && <Text style={styles.errorText}>{error}</Text>}
+          <TouchableOpacity
+            style={[styles.btnPrimary, isSigningIn && styles.btnDisabled]}
+            onPress={() => void handleSignIn()}
+            disabled={isSigningIn}
+            activeOpacity={PRESS_OPACITY}
+          >
+            {isSigningIn ? (
+              <ActivityIndicator color="#FFF" />
+            ) : (
+              <Text style={styles.btnPrimaryText}>Sign In</Text>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => void handleGetStarted('card')}
+            style={styles.createPodLink}
+            activeOpacity={PRESS_OPACITY}
+          >
+            <Text style={styles.createPodText}>Need a Pod? Create one free →</Text>
+          </TouchableOpacity>
+        </View>
 
         {/* ── How it works ────────────────────────────── */}
         <View style={styles.section}>
@@ -232,7 +209,7 @@ export default function LandingScreen(): JSX.Element {
           <Text style={styles.finalCtaTitle}>Ready to own your network?</Text>
           <TouchableOpacity
             style={[styles.btnPrimary, isSigningIn && styles.btnDisabled]}
-            onPress={() => void handleGetStarted()}
+            onPress={() => void handleGetStarted('footer')}
             disabled={isSigningIn}
             activeOpacity={PRESS_OPACITY}
           >
@@ -415,6 +392,7 @@ const styles = StyleSheet.create({
   },
   signInTitle: { fontSize: 17, fontWeight: '700', color: TEXT, marginBottom: 4 },
   signInHint: { fontSize: 13, color: MUTED, marginBottom: 16 },
+  resumeHint: { fontSize: 12, color: DIM, marginBottom: 12, lineHeight: 18 },
   input: {
     borderWidth: 1,
     borderColor: BORDER,

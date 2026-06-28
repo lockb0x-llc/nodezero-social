@@ -17,6 +17,8 @@
     "clean": "pnpm -r clean && node -e \"require('fs').rmSync('node_modules',{recursive:true,force:true})\"",
     "policy:validate-env": "bash ./scripts/policy/validate-env-isolation.sh",
     "qa:smoke": "bash ./scripts/qa/staging-smoke.sh",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
     "pm:dispatch": "pwsh -NoProfile -File ./scripts/agents/dispatch-parallel.ps1",
     "pm:dispatch:dry": "pwsh -NoProfile -File ./scripts/agents/dispatch-parallel.ps1 -DryRun",
     "pm:status": "pwsh -NoProfile -File ./scripts/agents/status.ps1",
@@ -38,6 +40,7 @@
   },
   "devDependencies": {
     "typescript": "^5.4.5",
+    "@playwright/test": "^1.45.0",
     "@typescript-eslint/eslint-plugin": "^7.13.0",
     "@typescript-eslint/parser": "^7.13.0",
     "eslint": "^8.57.0",

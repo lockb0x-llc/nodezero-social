@@ -21,7 +21,7 @@ import {
   Alert,
   Platform,
 } from 'react-native'
-import { useLocalSearchParams } from 'expo-router'
+import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useSolid } from '../src/contexts/SolidContext'
 import { ProfileManager, SocialGraph, type UserProfile } from '@nodezero/solid-pod-sync'
 import { Ionicons } from '@expo/vector-icons'
@@ -49,6 +49,7 @@ export default function ProfileScreen(): JSX.Element {
   const [zkTooltipOpen, setZkTooltipOpen] = useState(false)
 
   const { peerWebId } = useLocalSearchParams<{ peerWebId?: string }>()
+  const router = useRouter()
 
   // Peer view: load semantic overlap when viewing another user's profile.
   useEffect(() => {
@@ -183,6 +184,20 @@ export default function ProfileScreen(): JSX.Element {
       </Modal>
 
       <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+        {/* Settings gear — floated to the top-right; Settings screen accessible
+            without occupying a permanent nav tab on narrow viewports. */}
+        <View style={styles.settingsRow}>
+          <TouchableOpacity
+            onPress={() => router.push('/settings')}
+            style={styles.settingsButton}
+            accessibilityRole="button"
+            accessibilityLabel="Open Settings"
+            activeOpacity={aesthetic.motion.pressOpacity}
+          >
+            <Ionicons name="settings-outline" size={22} color={aesthetic.color.textMid} />
+          </TouchableOpacity>
+        </View>
+
         {profile.isNsfw && nsfwWarningDismissed && (
           <View style={styles.nsfwBanner}>
             <Text style={styles.nsfwBannerText}>NSFW content detected in this profile</Text>
@@ -312,6 +327,9 @@ const styles = StyleSheet.create({
   saveButton: { marginTop: 28, backgroundColor: aesthetic.color.accent, borderRadius: 10, paddingVertical: 14, alignItems: 'center' },
   saveButtonDisabled: { opacity: 0.6 },
   saveButtonText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
+  // Settings access
+  settingsRow: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 4, marginTop: -4 },
+  settingsButton: { padding: 8, borderRadius: 8 },
   // Shared Threads + ZK badge
   webIdRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 20 },
   zkBadge: { marginLeft: 8, marginTop: 1 },

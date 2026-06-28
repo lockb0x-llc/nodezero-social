@@ -25,15 +25,27 @@ export interface ProvisionRequest {
   signatureBase64: string
 }
 
+export interface LockboxProvisioning {
+  status: 'ready' | 'skipped' | 'error'
+  mode: 'mock' | 'disabled' | 'soroban'
+  factoryContractId: string | null
+  userLockboxContractId: string | null
+  idempotencyKey: string
+  verifiedAt: string
+  error?: string
+}
+
 export interface ProvisionResult {
   status: 'ready' | 'pending'
   jobId: string
+  lockbox?: LockboxProvisioning
 }
 
 export interface ProvisionStatus {
   status: 'pending' | 'ready' | 'error'
   jobId: string
   error?: string
+  lockbox?: LockboxProvisioning
   user?: {
     handle: string
     webId: string

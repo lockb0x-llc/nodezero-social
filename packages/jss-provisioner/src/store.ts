@@ -1,8 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto'
+import { LockboxFactoryProvisioner } from './lockboxFactory.js'
 import type {
   BootstrapChallenge,
   BootstrapChallengeRequest,
-  ProvisionRequest,
+  LockboxProvisioning,
   ProvisionStatus,
 } from './types.js'
 
@@ -36,6 +37,7 @@ function canonical(input: string): string {
 export class ProvisionStore {
   private challenges = new Map<string, BootstrapChallenge>()
   private jobs = new Map<string, ProvisionStatus>()
+  private lockboxFactory = new LockboxFactoryProvisioner()
 
   issueChallenge(input: BootstrapChallengeRequest): BootstrapChallenge {
     const now = new Date()
@@ -66,7 +68,7 @@ export class ProvisionStore {
     return challenge
   }
 
-  createPendingJob(_input: ProvisionRequest): string {
+  createPendingJob(): string {
     const jobId = randomUUID()
     this.jobs.set(jobId, {
       status: 'pending',
@@ -82,6 +84,7 @@ export class ProvisionStore {
     issuer: string
     stellarPublicKey: string
     challengeId: string
+    lockbox?: LockboxProvisioning
   }): void {
     const verifiedAt = nowIso()
     const claimHash = hashClaim([
@@ -93,7 +96,7 @@ export class ProvisionStore {
       verifiedAt,
     ])
 
-    this.jobs.set(jobId, {
+    const status: ProvisionStatus = {
       status: 'ready',
       jobId,
       user: {
@@ -108,7 +111,21 @@ export class ProvisionStore {
         verifiedAt,
         claimHash,
       },
-    })
+    }
+
+    if (payload.lockbox) {
+      status.lockbox = payload.lockbox
+    }
+
+    this.jobs.set(jobId, status)
+  }
+
+  async provisionLockbox(input: {
+    webId: string
+    stellarPublicKey: string
+    podBindingHash: string
+  }): Promise<LockboxProvisioning> {
+    return this.lockboxFactory.provision(input)
   }
 
   failJob(jobId: string, error: string): void {

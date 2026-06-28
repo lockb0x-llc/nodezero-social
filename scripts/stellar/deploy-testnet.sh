@@ -10,6 +10,7 @@ NETWORK_RPC_URL="${STELLAR_RPC_URL:-https://soroban-testnet.stellar.org}"
 SOURCE_ACCOUNT="${STELLAR_SOURCE_ACCOUNT:-nodezero-testnet-deployer}"
 IDENTITY_ALIAS="${STELLAR_IDENTITY_ALIAS:-nodezero-identity-testnet}"
 LOCKBOX_ALIAS="${STELLAR_LOCKBOX_ALIAS:-nodezero-lockbox-testnet}"
+LOCKBOX_FACTORY_ALIAS="${STELLAR_LOCKBOX_FACTORY_ALIAS:-nodezero-lockbox-factory-testnet}"
 ALLOW_NON_TESTNET="${ALLOW_NON_TESTNET:-0}"
 AUTO_FUND_SOURCE_ACCOUNT="${AUTO_FUND_SOURCE_ACCOUNT:-0}"
 
@@ -136,6 +137,7 @@ fi
 
 IDENTITY_CONTRACT_ID="$(resolve_or_deploy_contract "$IDENTITY_ALIAS")"
 LOCKBOX_CONTRACT_ID="$(resolve_or_deploy_contract "$LOCKBOX_ALIAS")"
+LOCKBOX_FACTORY_CONTRACT_ID="$(resolve_or_deploy_contract "$LOCKBOX_FACTORY_ALIAS")"
 require_lockbox_initialization_proof "$LOCKBOX_CONTRACT_ID"
 
 STELLAR_CLI_VERSION="$(stellar --version 2>/dev/null || true)"
@@ -162,6 +164,10 @@ cat > "$OUTPUT_FILE" <<EOF
       "id": "$LOCKBOX_CONTRACT_ID",
       "deploymentMode": "${CONTRACT_MODES[$LOCKBOX_ALIAS]:-unknown}",
       "initializationProof": "${CONTRACT_INIT_PROOFS[$LOCKBOX_ALIAS]:-missing}"
+    },
+    "lockboxFactory": {
+      "id": "$LOCKBOX_FACTORY_CONTRACT_ID",
+      "deploymentMode": "${CONTRACT_MODES[$LOCKBOX_FACTORY_ALIAS]:-unknown}"
     }
   },
   "generatedAt": "$GENERATED_AT"
