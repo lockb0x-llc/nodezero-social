@@ -34,3 +34,13 @@ export interface IdentityHashPayload {
   /** The Stellar public key of the embedded wallet. */
   stellarPublicKey: string
 }
+
+/** Result returned after signing a custody attestation challenge payload. */
+export interface AttestationSignature {
+  /** Signer public key (G... address). */
+  stellarPublicKey: string
+  /** Original challenge payload bytes encoded as UTF-8 string. */
+  challengePayload: string
+  /** Ed25519 signature encoded as base64. */
+  signatureBase64: string
+}

@@ -29,6 +29,8 @@
     "prepare:zk:testnet": "bash ./scripts/zk/prepare-testnet.sh",
     "prepare:checksums:testnet": "bash ./scripts/stellar/artifact-checksums.sh generate",
     "verify:checksums:testnet": "bash ./scripts/stellar/artifact-checksums.sh verify",
+    "provisioner:dev": "pnpm --filter @nodezero/jss-provisioner dev",
+    "provisioner:type-check": "pnpm --filter @nodezero/jss-provisioner type-check",
     "relay:dev": "pnpm --filter @nodezero/relay-service dev",
     "relay:build": "pnpm --filter @nodezero/relay-service build",
     "deploy:stellar:testnet": "bash ./scripts/stellar/deploy-testnet.sh",

@@ -26,7 +26,12 @@ import {
   type Transaction,
 } from '@stellar/stellar-sdk'
 import type { EnclaveAdapter } from './EnclaveAdapter.js'
-import type { WalletInfo, TransactionResult, IdentityHashPayload } from './types.js'
+import type {
+  WalletInfo,
+  TransactionResult,
+  IdentityHashPayload,
+  AttestationSignature,
+} from './types.js'
 
 /** Horizon / Soroban RPC endpoint constants. */
 export const ServerEndpoint = {
@@ -133,6 +138,28 @@ export class WalletService {
     const isFunded = await this.ensureAccountExists(publicKey)
 
     return { publicKey, isFunded }
+  }
+
+  /**
+   * Signs a canonical custody-attestation challenge payload with the embedded
+   * Stellar keypair and returns the base64-encoded signature.
+   */
+  async signAttestationChallenge(challengePayload: string): Promise<AttestationSignature> {
+    const trimmedPayload = challengePayload.trim()
+    if (!trimmedPayload) {
+      throw new Error('Attestation challenge payload is required.')
+    }
+
+    const secret = await this.adapter.loadOrCreate()
+    const keypair = Keypair.fromSecret(secret)
+    const payloadBytes = Buffer.from(trimmedPayload, 'utf8')
+    const signatureBytes = keypair.sign(payloadBytes)
+
+    return {
+      stellarPublicKey: keypair.publicKey(),
+      challengePayload: trimmedPayload,
+      signatureBase64: Buffer.from(signatureBytes).toString('base64'),
+    }
   }
 
   /**

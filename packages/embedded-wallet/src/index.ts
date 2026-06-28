@@ -14,4 +14,9 @@
 
 export { EnclaveAdapter } from './EnclaveAdapter.js'
 export { WalletService } from './WalletService.js'
-export type { WalletInfo, TransactionResult, IdentityHashPayload } from './types.js'
+export type {
+	WalletInfo,
+	TransactionResult,
+	IdentityHashPayload,
+	AttestationSignature,
+} from './types.js'

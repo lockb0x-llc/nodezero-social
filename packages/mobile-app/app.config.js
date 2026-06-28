@@ -58,6 +58,7 @@ const zkManifestUrl = process.env.NZ_ZK_MANIFEST_URL ?? ''
 const solidOidcIssuerUrl = process.env.NZ_SOLID_OIDC_ISSUER_URL ?? ''
 const solidSignupUrl = process.env.NZ_SOLID_SIGNUP_URL ?? ''
 const solidAccountPortalUrl = process.env.NZ_SOLID_ACCOUNT_PORTAL_URL ?? ''
+const qaLocalOverridesEnabled = process.env.NZ_QA_LOCAL_OVERRIDES_ENABLED ?? 'false'
 
 if (profile.enforceStrictVariables) {
   if (!relayUrl) {
@@ -140,6 +141,7 @@ module.exports = {
     solidOidcIssuerUrl,
     solidSignupUrl,
     solidAccountPortalUrl,
+    qaLocalOverridesEnabled,
     primaryColor: process.env.NZ_PRIMARY_COLOR ?? '#6C63FF',
     backgroundColor: process.env.NZ_BACKGROUND_COLOR ?? '#0D0D0D',
     relayUrl,

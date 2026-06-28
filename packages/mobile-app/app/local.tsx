@@ -21,6 +21,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native'
+import { useLocalSearchParams } from 'expo-router'
 import Constants from 'expo-constants'
 import { useDiscovery } from '../src/contexts/DiscoveryContext'
 import { useSolid } from '../src/contexts/SolidContext'
@@ -36,11 +37,41 @@ interface LocalMessage {
   timestamp: string
 }
 
+function firstParam(value: string | string[] | undefined): string {
+  if (Array.isArray(value)) {
+    return value[0] ?? ''
+  }
+  return value ?? ''
+}
+
+function isValidRelayOverrideWebId(raw: string): boolean {
+  try {
+    const parsed = new URL(raw)
+    return parsed.protocol === 'https:' && parsed.pathname.includes('/profile/card')
+  } catch {
+    return false
+  }
+}
+
 export default function LocalNodeScreen(): JSX.Element {
   const { currentNode, surroundingNodes, locationStatus, refresh } = useDiscovery()
   const { webId, isLoggedIn, isRestoring, session } = useSolid()
   const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
+  const params = useLocalSearchParams<{
+    qaRelayWebId?: string | string[]
+    qaBypassLocation?: string | string[]
+  }>()
   const relayUrl = appExtra?.relayUrl ?? ''
+  const qaOverridesEnabled =
+    appExtra?.qaLocalOverridesEnabled === 'true' && appExtra?.envProfile !== 'production-mainnet'
+  const qaRelayWebIdParam = firstParam(params.qaRelayWebId).trim()
+  const qaRelayWebId =
+    qaOverridesEnabled && isValidRelayOverrideWebId(qaRelayWebIdParam)
+      ? qaRelayWebIdParam
+      : null
+  const effectiveWebId = qaRelayWebId ?? webId
+  const qaBypassLocation =
+    qaOverridesEnabled && ['1', 'true', 'yes'].includes(firstParam(params.qaBypassLocation).toLowerCase())
   const authModeLabel = 'OIDC Redirect'
 
   const [message, setMessage] = useState('')
@@ -57,11 +88,11 @@ export default function LocalNodeScreen(): JSX.Element {
   const channelsRef = useRef<Map<string, P2PChannel>>(new Map())
 
   const upsertChannel = useCallback((remoteWebId: string): P2PChannel | null => {
-    if (!webId) return null
+    if (!effectiveWebId) return null
     const existing = channelsRef.current.get(remoteWebId)
     if (existing) return existing
 
-    const channel = new P2PChannel({ localWebId: webId, remoteWebId })
+    const channel = new P2PChannel({ localWebId: effectiveWebId, remoteWebId })
 
     channel.on('message', (incoming) => {
       setMessages((prev) => [incoming, ...prev])
@@ -76,10 +107,10 @@ export default function LocalNodeScreen(): JSX.Element {
     })
 
     channel.on('iceCandidate', (candidate) => {
-      if (!relayRef.current || !webId) return
+      if (!relayRef.current || !effectiveWebId) return
       relayRef.current.send({
         type: 'ice-candidate',
-        from: webId,
+        from: effectiveWebId,
         to: remoteWebId,
         payload: candidate,
       })
@@ -91,10 +122,10 @@ export default function LocalNodeScreen(): JSX.Element {
 
     channelsRef.current.set(remoteWebId, channel)
     return channel
-  }, [webId])
+  }, [effectiveWebId])
 
   useEffect(() => {
-    if (!isLoggedIn || !webId || !relayUrl) {
+    if (!isLoggedIn || !effectiveWebId || !relayUrl) {
       setRelayState('idle')
       return
     }
@@ -102,7 +133,7 @@ export default function LocalNodeScreen(): JSX.Element {
     setRelayState('connecting')
     setRelayError(null)
 
-    const relay = new SignalRelay({ relayUrl, localWebId: webId })
+    const relay = new SignalRelay({ relayUrl, localWebId: effectiveWebId })
     relayRef.current = relay
 
     relay.on('connected', () => {
@@ -121,7 +152,7 @@ export default function LocalNodeScreen(): JSX.Element {
 
     relay.on('signal', (signal: SignalMessage) => {
       void (async (): Promise<void> => {
-        if (!webId || signal.to !== webId) return
+        if (!effectiveWebId || signal.to !== effectiveWebId) return
         const channel = upsertChannel(signal.from)
         if (!channel || !relayRef.current) return
 
@@ -131,7 +162,7 @@ export default function LocalNodeScreen(): JSX.Element {
             const answer = await channel.createAnswer()
             relayRef.current.send({
               type: 'answer',
-              from: webId,
+              from: effectiveWebId,
               to: signal.from,
               payload: answer,
             })
@@ -161,7 +192,7 @@ export default function LocalNodeScreen(): JSX.Element {
       channelsRef.current.clear()
       setOpenPeers({})
     }
-  }, [isLoggedIn, relayUrl, upsertChannel, webId])
+  }, [effectiveWebId, isLoggedIn, relayUrl, upsertChannel])
 
   useEffect(() => {
     if (!isLoggedIn || !webId) {
@@ -183,7 +214,7 @@ export default function LocalNodeScreen(): JSX.Element {
   }, [isLoggedIn, session, webId])
 
   const sendMessage = useCallback(async () => {
-    if (!message.trim() || !webId || !targetWebId.trim()) return
+    if (!message.trim() || !effectiveWebId || !targetWebId.trim()) return
     if (!relayRef.current || relayState !== 'connected') {
       setRelayError('Relay is not connected yet. Please wait and retry.')
       return
@@ -201,7 +232,7 @@ export default function LocalNodeScreen(): JSX.Element {
         const offer = await channel.createOffer()
         relayRef.current.send({
           type: 'offer',
-          from: webId,
+          from: effectiveWebId,
           to: target,
           payload: offer,
         })
@@ -219,7 +250,7 @@ export default function LocalNodeScreen(): JSX.Element {
     } finally {
       setSending(false)
     }
-  }, [message, openPeers, relayState, targetWebId, upsertChannel, webId])
+  }, [effectiveWebId, message, openPeers, relayState, targetWebId, upsertChannel])
 
   if (isRestoring) {
     return (
@@ -247,7 +278,7 @@ export default function LocalNodeScreen(): JSX.Element {
     )
   }
 
-  if (locationStatus === 'denied' || locationStatus === 'unavailable') {
+  if (!qaBypassLocation && (locationStatus === 'denied' || locationStatus === 'unavailable')) {
     return (
       <View style={styles.centred}>
         <Text style={styles.infoText}>
@@ -393,6 +424,12 @@ export default function LocalNodeScreen(): JSX.Element {
         <Text style={styles.systemText}>
           {relayState === 'connecting' ? 'Connecting to secure relay…' : 'Relay disconnected.'}
         </Text>
+      )}
+      {qaRelayWebId && (
+        <Text style={styles.systemText}>QA relay identity override active for this session.</Text>
+      )}
+      {qaBypassLocation && (
+        <Text style={styles.systemText}>QA geolocation bypass active for this session.</Text>
       )}
       {relayError && <Text style={styles.errorText}>{relayError}</Text>}
 

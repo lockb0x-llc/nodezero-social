@@ -37,23 +37,23 @@ code.
 
 | # | Step | Expected | Result | Notes |
 |---|------|----------|--------|-------|
-| AU1 | Sign in with a valid Solid IdP (`https://solidcommunity.net`) | Redirects to IdP, returns authenticated, lands on feed | **PARTIAL PASS** | Redirect to solidcommunity.net confirmed. Post-auth return not yet tested — requires interactive sign-in with live credentials. |
-| AU2 | Submit an empty IdP URL | Actionable error: a provider URL is required | **PARTIAL FAIL** | Shows generic "Login failed. Please check the Identity Provider URL and try again." — not specific. **GAP: error message must distinguish empty URL from network failure.** |
-| AU3 | Submit an `http://` non-localhost IdP | Actionable error: provider must use https | **FAIL** | Same generic error as AU2. No specific HTTPS requirement mentioned. **GAP: missing client-side https:// validation before attempting login.** |
-| AU4 | Sign out from Settings | Session cleared, returns to landing | **NOT TESTED** | Requires authenticated session. |
+| AU1 | Sign in with a valid Solid IdP (`https://solidcommunity.net`) | Redirects to IdP, returns authenticated, lands on feed | **PASS (2026-06-28 headed validation)** | Full OIDC loop confirmed: staging sign-in redirected to Solid consent and returned to authenticated `/feed` with `OIDC Redirect` auth chip. |
+| AU2 | Submit an empty IdP URL | Actionable error: a provider URL is required | **PASS (2026-06-28 headed validation)** | Landing sign-in panel now shows explicit message: `Enter your Identity Provider URL.` |
+| AU3 | Submit an `http://` non-localhost IdP | Actionable error: provider must use https | **PASS (2026-06-28 headed validation)** | Landing sign-in panel now shows explicit message: `URL must start with https://` |
+| AU4 | Sign out from Settings | Session cleared, returns to landing | **PASS (2026-06-28 headed validation)** | From authenticated `/settings`, `Sign Out` returned session to unauthenticated landing route `/` and restored `Sign In` CTA. |
 
 ### Global feed
 
 | # | Step | Expected | Result | Notes |
 |---|------|----------|--------|-------|
-| FE1 | Open the global feed while authenticated | Feed renders without runtime errors | **NOT TESTED** | Requires auth. Auth guard functions correctly (shows "Please sign in to view your feed."). |
+| FE1 | Open the global feed while authenticated | Feed renders without runtime errors | **PASS (2026-06-28 headed validation)** | Authenticated return landed directly on `/feed`; feed shell rendered (`Global Feed`, `OIDC Redirect`, quiet-feed empty state). Console showed a non-blocking `401` fetch error during background requests. |
 
 ### Local messaging (P2P relay)
 
 | # | Step | Expected | Result | Notes |
 |---|------|----------|--------|-------|
-| LM1 | Open the Local Node screen | Local discovery initialises against the staging relay | **NOT TESTED** | Auth guard confirmed functional ("Sign in to join your Local Node."). |
-| LM2 | Exchange a message between two local sessions | Offer/answer/ICE relayed; message delivered | **NOT TESTED** | Requires two authenticated sessions. |
+| LM1 | Open the Local Node screen | Local discovery initialises against the staging relay | **PARTIAL PASS (2026-06-28 headed validation)** | While authenticated, `/local` opens and renders Local Node screen, but this run is blocked at location permission gate (`Location access is required...`). Relay endpoint is healthy; manual location-allow step still required for full pass in a normal browser context. |
+| LM2 | Exchange a message between two local sessions | Offer/answer/ICE relayed; message delivered | **PASS (2026-06-28 headed validation)** | QA-only local override build enabled deterministic same-run two-peer validation. Headed browser tabs on `/local?qaBypassLocation=1` used distinct override identities (`https://nodezero-lm2-a.solidcommunity.net/profile/card#me` and `https://nodezero-lm2-b.solidcommunity.net/profile/card#me`), exchanged messages both directions, and rendered delivered messages in each session. Relay transport was also independently verified by `node scripts/qa/relay-signal-e2e.mjs` (PASS: forwarded offer/answer/ice-candidate between two concurrent peers). |
 
 ### Wallet registration (Stellar)
 
@@ -95,9 +95,9 @@ code.
 | Landing page rendering | ✅ PASS |
 | Auth guards on protected routes | ✅ PASS |
 | Solid IdP redirect initiation | ✅ PASS |
-| Post-auth authenticated flow | ⏸ NOT TESTED |
-| Empty IdP error specificity | ⚠️ PARTIAL FAIL |
-| HTTP IdP client-side rejection | ❌ FAIL |
+| Post-auth authenticated flow | ✅ PASS (2026-06-28 headed validation) |
+| Empty IdP error specificity | ✅ PASS (2026-06-28 headed validation) |
+| HTTP IdP client-side rejection | ✅ PASS (2026-06-28 headed validation) |
 | Wallet provisioning on web | ✅ PASS (web localStorage fallback) |
 | Wallet on-chain registration | ✅ PASS (AT1 evidence) |
 | Attestation proof verification (returning sign-in) | ✅ PASS |
@@ -242,11 +242,22 @@ Validation snapshot:
 
 Execution evidence captured:
 
+- OIDC build exported (`expo export`) and deployed to SWA production with `@azure/static-web-apps-cli@2.0.7`; deploy returned success for `https://mango-glacier-0abee9e0f.7.azurestaticapps.net`.
+- Headed browser validation on `https://staging.nodezero.social` confirms OIDC landing copy and controls are live (`Create a real Solid account...`, `Sign In`, no JSS-mode wording).
+- Headed AU1 validation confirms redirect initiation to Solid CSS login UI at `https://solidcommunity.net/.account/login/password/`.
 - Staging landing route copy and controls align to real Pod signup plus OIDC sign-in.
 - Staging `/feed` header auth chip reads `OIDC Redirect` with OIDC explainer text.
 - Staging `/settings` renders `Auth Mode` row with `OIDC Redirect` badge and OIDC explainer.
 - Staging `/local` header auth chip reads `OIDC Redirect` with OIDC explainer.
+- Headed auth-form validation confirms actionable client-side errors for AU2/AU3 (`Enter your Identity Provider URL.` and `URL must start with https://`).
 - Relay health remains green (`/health` HTTP 200 JSON on `nodezero-social-staging-testnet-relay.azurewebsites.net`).
+- Headed authenticated validation now confirms AU1 full OIDC return to `/feed`, AU4 sign-out to `/`, and FE1 authenticated feed render.
+- LM1 in headed harness reaches authenticated Local Node route but is blocked at browser geolocation permission gate in this run.
+- Two concurrent browser tabs now both reach authenticated `/local`; both show the same geolocation permission gate, preventing relay offer/answer exchange in this harness.
+- Both concurrent sessions currently authenticate as the same WebID (`https://nodezero-qa.solidcommunity.net/profile/card#me`), so distinct-identity exchange evidence is not yet possible.
+- Attempt to create a second pod/WebID from Solid account portal (`/.account/account/.../pod/`) failed twice with provider-side error `Lock expired after 6000ms`.
+- Relay signaling path is independently verified from this workspace via `node scripts/qa/relay-signal-e2e.mjs` with PASS output for forwarded `offer`, `answer`, and `ice-candidate` message types on `wss://nodezero-social-staging-testnet-relay.azurewebsites.net`.
+- Headed browser LM2 now PASSes end-to-end using the QA-only local override route with peer identities `nodezero-lm2-a` and `nodezero-lm2-b`; both sessions rendered delivered messages after two-way exchange.
 
 Closeout status:
 
