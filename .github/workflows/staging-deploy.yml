@@ -119,6 +119,19 @@ jobs:
           NZ_JSS_PROVISIONER_URL: https://nodezero-social-staging-testnet-provisioner.azurewebsites.net
         run: pnpm --filter @nodezero/mobile-app build:web
 
+      - name: Write staging deploy marker
+        run: |
+          cat > packages/mobile-app/dist/deploy-marker.json <<EOF
+          {
+            "environment": "staging-testnet",
+            "workflow": "staging-deploy",
+            "commit": "${GITHUB_SHA}",
+            "runId": "${GITHUB_RUN_ID}",
+            "runAttempt": "${GITHUB_RUN_ATTEMPT}",
+            "generatedAtUtc": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          }
+          EOF
+
       - name: Add Static Web Apps navigation fallback
         run: cp packages/mobile-app/staticwebapp.config.json packages/mobile-app/dist/staticwebapp.config.json
 
