@@ -18,6 +18,7 @@ jobs:
 
     env:
       STATIC_WEB_APP_NAME: nodezero-social-staging-testnet-web
+      JSS_PROVISIONER_APP_NAME: nodezero-social-staging-testnet-provisioner
       AZURE_CLIENT_ID: 52120dbe-2b66-4e12-bdad-9f872a3ae845
       AZURE_TENANT_ID: bab5056b-732f-4710-a7b9-e9c5807cd6f9
       AZURE_SUBSCRIPTION_ID: 1f002267-9614-4a2a-a0e0-217493d6d011
@@ -63,7 +64,59 @@ jobs:
           AZURE_ENVIRONMENT_NAME: staging-testnet
         run: pnpm deploy:azure
 
+      - name: Build JSS provisioner
+        run: pnpm --filter @nodezero/jss-provisioner build
+
+      - name: Package JSS provisioner artifact
+        working-directory: packages/jss-provisioner
+        run: zip -r deploy.zip dist package.json
+
+      - name: Configure JSS provisioner runtime
+        run: |
+          az webapp config set \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$JSS_PROVISIONER_APP_NAME" \
+            --linux-fx-version "NODE|22-lts" \
+            --startup-file "node dist/index.js"
+
+      - name: Deploy JSS provisioner to App Service
+        run: |
+          az webapp deploy \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$JSS_PROVISIONER_APP_NAME" \
+            --src-path packages/jss-provisioner/deploy.zip \
+            --type zip
+
+      - name: Restart JSS provisioner
+        run: |
+          az webapp restart \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$JSS_PROVISIONER_APP_NAME"
+
+      - name: Verify JSS provisioner health
+        run: |
+          set -euo pipefail
+          health_url="https://${JSS_PROVISIONER_APP_NAME}.azurewebsites.net/health"
+          echo "Waiting for provisioner health: ${health_url}"
+
+          for attempt in {1..30}; do
+            status_code="$(curl -sS -o /tmp/provisioner-health.json -w "%{http_code}" --max-time 10 "$health_url" || true)"
+            if [ "$status_code" = "200" ]; then
+              echo "Provisioner healthy on attempt ${attempt}."
+              cat /tmp/provisioner-health.json
+              exit 0
+            fi
+
+            echo "Attempt ${attempt}/30: health returned HTTP ${status_code}. Retrying in 10s..."
+            sleep 10
+          done
+
+          echo "Provisioner failed health check after 30 attempts."
+          exit 1
+
       - name: Build Expo web artifact
+        env:
+          NZ_JSS_PROVISIONER_URL: https://nodezero-social-staging-testnet-provisioner.azurewebsites.net
         run: pnpm --filter @nodezero/mobile-app build:web
 
       - name: Add Static Web Apps navigation fallback
