@@ -21,9 +21,9 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native'
+import Constants from 'expo-constants'
 import { useDiscovery } from '../src/contexts/DiscoveryContext'
 import { useSolid } from '../src/contexts/SolidContext'
-import Constants from 'expo-constants'
 import { P2PChannel, SignalRelay, type SignalMessage } from '@nodezero/p2p-comms'
 import { SocialGraph } from '@nodezero/solid-pod-sync'
 import { aesthetic } from '../src/theme/aesthetic'
@@ -36,18 +36,12 @@ interface LocalMessage {
   timestamp: string
 }
 
-function getSolidAuthMode(): 'external-css' | 'jss-local' {
-  const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
-  return appExtra?.solidAuthMode === 'jss-local' ? 'jss-local' : 'external-css'
-}
-
 export default function LocalNodeScreen(): JSX.Element {
   const { currentNode, surroundingNodes, locationStatus, refresh } = useDiscovery()
   const { webId, isLoggedIn, isRestoring, session } = useSolid()
   const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
   const relayUrl = appExtra?.relayUrl ?? ''
-  const usesJssLocal = getSolidAuthMode() === 'jss-local'
-  const authModeLabel = usesJssLocal ? 'JSS Local' : 'External CSS'
+  const authModeLabel = 'OIDC Redirect'
 
   const [message, setMessage] = useState('')
   const [targetWebId, setTargetWebId] = useState('')
@@ -300,9 +294,7 @@ export default function LocalNodeScreen(): JSX.Element {
         </View>
         {showAuthModeHint ? (
           <Text style={styles.authModeHintText}>
-            {usesJssLocal
-              ? 'JSS Local: uses bootstrap WebID sign-in without provider redirect.'
-              : 'External CSS: uses standard Solid OIDC provider redirect.'}
+            {'Sign-in uses the configured Solid OIDC provider redirect flow.'}
           </Text>
         ) : null}
         {currentNode && (

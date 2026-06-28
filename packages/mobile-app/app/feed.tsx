@@ -19,7 +19,6 @@ import {
   Modal,
   Switch,
 } from 'react-native'
-import Constants from 'expo-constants'
 import { Ionicons } from '@expo/vector-icons'
 import Slider from '@react-native-community/slider'
 import { useSolid } from '../src/contexts/SolidContext'
@@ -37,16 +36,10 @@ interface FeedPost {
   postUrl?: string
 }
 
-function getSolidAuthMode(): 'external-css' | 'jss-local' {
-  const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
-  return appExtra?.solidAuthMode === 'jss-local' ? 'jss-local' : 'external-css'
-}
-
 export default function GlobalFeedScreen(): JSX.Element {
   const { isLoggedIn, isRestoring, session, webId } = useSolid()
   const router = useRouter()
-  const usesJssLocal = getSolidAuthMode() === 'jss-local'
-  const authModeLabel = usesJssLocal ? 'JSS Local' : 'External CSS'
+  const authModeLabel = 'OIDC Redirect'
   const [posts, setPosts] = useState<FeedPost[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -183,9 +176,7 @@ export default function GlobalFeedScreen(): JSX.Element {
       {showAuthModeHint ? (
         <View style={styles.authModeHintWrap}>
           <Text style={styles.authModeHintText}>
-            {usesJssLocal
-              ? 'JSS Local: uses bootstrap WebID sign-in without provider redirect.'
-              : 'External CSS: uses standard Solid OIDC provider redirect.'}
+                {'Sign-in uses the configured Solid OIDC provider redirect flow.'}
           </Text>
         </View>
       ) : null}

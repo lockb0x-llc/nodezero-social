@@ -5,9 +5,9 @@ Format:
 Context:
 
 [2026-06-27 07:40 UTC] [MOBILE_APP_AGENT->PROJECT_MANAGER,QA_RELEASE_AGENT] [P1] [DONE]
-Context: Kickoff implementation for CSS-optional onboarding to support JSS-first hackathon flow landed in mobile app.
-Request: Use new env flags for validation and staging/hackathon deploy rehearsal: `NZ_SOLID_AUTH_MODE=jss-local` with `NZ_JSS_BOOTSTRAP_WEBID=<webid>`. Keep default fallback `external-css` for existing OIDC path.
-Evidence: packages/mobile-app/app.config.js (new env validation + extra fields), packages/mobile-app/src/contexts/SolidContext.tsx (JSS bootstrap sign-in path), packages/mobile-app/app/index.tsx (JSS-first onboarding UX), docs/staging-uat-checklist.md (JSS fast onboarding validation section).
+Context: Historical kickoff for CSS-optional onboarding landed in mobile app; superseded by OIDC-only staging baseline.
+Request: Superseded by 2026-06-28 OIDC-only staging baseline; legacy local-bootstrap auth rehearsal flags are deprecated and removed from active mobile-app flows.
+Evidence: packages/mobile-app/app.config.js (new env validation + extra fields), packages/mobile-app/src/contexts/SolidContext.tsx (legacy bootstrap path removed in current baseline), packages/mobile-app/app/index.tsx (OIDC-focused onboarding UX), docs/staging-uat-checklist.md (OIDC validation section).
 Due: Immediate QA confirmation on authenticated feed entry using bootstrap WebID.
 
 [2026-06-27 05:59 UTC] [MOBILE_APP_AGENT->PROJECT_MANAGER] [P1] [DONE]

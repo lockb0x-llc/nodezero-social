@@ -1,6 +1,6 @@
-# Staging Deploy Prep: JSS Local Auth Mode
+# Staging Deploy Prep: Solid OIDC Redirect Auth
 
-This runbook prepares and verifies a staging web artifact that uses the JSS-first auth path while keeping Stellar TestNet contracts and relay wiring intact.
+This runbook prepares and verifies a staging web artifact that uses real Solid OIDC redirect auth while keeping Stellar TestNet contracts and relay wiring intact.
 
 ## 1. Preflight
 
@@ -17,8 +17,9 @@ Set these before exporting the web build:
 
 - `EXPO_NO_DOTENV=1`
 - `NZ_ENV_PROFILE=staging-testnet`
-- `NZ_SOLID_AUTH_MODE=jss-local`
-- `NZ_JSS_BOOTSTRAP_WEBID=<staging/demo webid>`
+- `NZ_SOLID_OIDC_ISSUER_URL=<staging Solid OIDC issuer url>`
+- `NZ_SOLID_SIGNUP_URL=<staging Solid signup url>`
+- `NZ_SOLID_ACCOUNT_PORTAL_URL=<staging Solid account portal url>`
 - `NZ_RELAY_URL=wss://nodezero-social-staging-testnet-relay.azurewebsites.net`
 - `NZ_STELLAR_RPC_URL=https://soroban-testnet.stellar.org`
 - `NZ_STELLAR_NETWORK_PASSPHRASE=Test SDF Network ; September 2015`
@@ -34,8 +35,9 @@ From repo root:
 ```powershell
 $env:EXPO_NO_DOTENV='1'
 $env:NZ_ENV_PROFILE='staging-testnet'
-$env:NZ_SOLID_AUTH_MODE='jss-local'
-$env:NZ_JSS_BOOTSTRAP_WEBID='https://nodezero-qa.solidcommunity.net/profile/card#me'
+$env:NZ_SOLID_OIDC_ISSUER_URL='https://solidcommunity.net/'
+$env:NZ_SOLID_SIGNUP_URL='https://solidcommunity.net/register'
+$env:NZ_SOLID_ACCOUNT_PORTAL_URL='https://solidcommunity.net/'
 $env:NZ_RELAY_URL='wss://nodezero-social-staging-testnet-relay.azurewebsites.net'
 $env:NZ_STELLAR_RPC_URL='https://soroban-testnet.stellar.org'
 $env:NZ_STELLAR_NETWORK_PASSPHRASE='Test SDF Network ; September 2015'
@@ -49,22 +51,31 @@ corepack pnpm --filter @nodezero/mobile-app exec expo export --platform web --ou
 
 ## 4. Build artifact verification
 
-Verify the compiled bundle embeds expected staging/JSS values:
+Verify the compiled bundle embeds expected staging/OIDC values:
 
 ```powershell
 $landing = Get-Content packages/mobile-app/dist/index.html -Raw
 $bundlePath = [regex]::Match($landing,'src="([^"]*/_expo/static/js/web/[^"]+\.js)"').Groups[1].Value
 $bundleFile = Join-Path 'packages/mobile-app/dist' ($bundlePath.TrimStart('/').Replace('/','\'))
 
-Select-String -Path $bundleFile -Pattern '"solidAuthMode":"jss-local"|"envProfile":"staging-testnet"|nodezero-social-staging-testnet-relay.azurewebsites.net|Test SDF Network ; September 2015' -AllMatches
+Select-String -Path $bundleFile -Pattern '"envProfile":"staging-testnet"|"solidOidcIssuerUrl"|"solidSignupUrl"|nodezero-social-staging-testnet-relay.azurewebsites.net|Test SDF Network ; September 2015' -AllMatches
+
+# Ensure removed legacy bootstrap/auth-mode keys are absent
+Select-String -Path $bundleFile -Pattern '"bootstrapWebId"|"solidAuth"|"authMode"' -AllMatches
 ```
 
 Expected matches:
 
-- `"solidAuthMode":"jss-local"`
 - `"envProfile":"staging-testnet"`
+- `"solidOidcIssuerUrl":"<configured issuer>"`
+- `"solidSignupUrl":"<configured signup url>"`
 - `nodezero-social-staging-testnet-relay.azurewebsites.net`
 - `Test SDF Network ; September 2015`
+
+Expected absence:
+
+- No legacy bootstrap auth mode key.
+- No legacy bootstrap WebID key.
 
 ## 5. Staging publish (when approved)
 
@@ -85,10 +96,10 @@ npx -y @azure/static-web-apps-cli@2.0.7 deploy packages/mobile-app/dist --deploy
 3. Relay health:
    - `https://nodezero-social-staging-testnet-relay.azurewebsites.net/health` returns 200 JSON.
 
-## 7. Manual JSS mode acceptance checklist
+## 7. Manual OIDC mode acceptance checklist
 
-- Landing page badge shows `JSS Local`.
-- Landing `?` tooltip explains bootstrap sign-in without external redirect.
-- `Create Your Node` proceeds without external IdP redirect.
-- Authenticated routes show persistent auth-mode chip in Feed and Local.
+- Landing page reflects real Pod signup flow (no JSS wording).
+- `Create Your Node` opens the configured signup URL.
+- Sign in uses the configured OIDC issuer redirect.
+- Authenticated routes show persistent auth-mode chip `OIDC Redirect` in Feed and Local.
 - Wallet attestation section still references TestNet contract values in Settings.

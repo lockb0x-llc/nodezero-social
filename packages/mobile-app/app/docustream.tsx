@@ -99,7 +99,7 @@ export default function DocustreamScreen() {
 
   const handleSaveToPod = async (item: StreamItem): Promise<void> => {
     if (!isLoggedIn || !webId) {
-      Alert.alert('Sign in required', 'Sign in to save docustream items to your Pod.');
+      Alert.alert('Sign in required', 'Sign in to save Downstream items to your Pod.');
       return;
     }
 
@@ -123,11 +123,11 @@ export default function DocustreamScreen() {
       {/* Header */}
       <View style={styles.header}>
         <View>
-          <Text style={styles.headerTitle}>Docustream</Text>
-          <Text style={styles.headerSubtitle}>Aggregated &amp; Stored in your Pod</Text>
+          <Text style={styles.headerTitle}>Downstream</Text>
+          <Text style={styles.headerSubtitle}>Your Aggregated Streams &amp; Curated in your Pod</Text>
         </View>
         <TouchableOpacity
-          onPress={() => Alert.alert('Coming soon', 'Adding new docustream sources will be enabled in a later phase.')}
+          onPress={() => Alert.alert('Coming soon', 'Adding new Downstream sources will be enabled in a later phase.')}
           style={styles.addButton}
         >
           <Ionicons name="add-circle" size={28} color="#2563EB" />

@@ -21,17 +21,11 @@ import {
 } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useRouter } from 'expo-router'
-import Constants from 'expo-constants'
 import { useSolid } from '../src/contexts/SolidContext'
 import { useWallet } from '../src/contexts/WalletContext'
 import { aesthetic } from '../src/theme/aesthetic'
 
 const SHOW_NSFW_KEY = 'settings.showNsfw'
-
-function getSolidAuthMode(): 'external-css' | 'jss-local' {
-  const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
-  return appExtra?.solidAuthMode === 'jss-local' ? 'jss-local' : 'external-css'
-}
 
 export default function SettingsScreen(): JSX.Element {
   const { signOut, webId } = useSolid()
@@ -39,7 +33,6 @@ export default function SettingsScreen(): JSX.Element {
   const { walletInfo, attestationStatus, attestationMessage, attestationDetails } = useWallet()
   const [showNsfw, setShowNsfw] = useState(false)
   const [showAuthModeHint, setShowAuthModeHint] = useState(false)
-  const usesJssLocal = getSolidAuthMode() === 'jss-local'
 
   // Load persisted NSFW setting on mount.
   React.useEffect(() => {
@@ -87,7 +80,7 @@ export default function SettingsScreen(): JSX.Element {
           <Text style={styles.rowLabel}>Auth Mode</Text>
           <View style={styles.authModeWrap}>
             <View style={styles.authModeBadge}>
-              <Text style={styles.authModeBadgeText}>{usesJssLocal ? 'JSS Local' : 'External CSS'}</Text>
+              <Text style={styles.authModeBadgeText}>OIDC Redirect</Text>
             </View>
             <TouchableOpacity
               onPress={() => setShowAuthModeHint((v) => !v)}
@@ -101,9 +94,7 @@ export default function SettingsScreen(): JSX.Element {
         </View>
         {showAuthModeHint ? (
           <Text style={styles.rowSubDetail}>
-            {usesJssLocal
-              ? 'JSS Local: uses the configured bootstrap WebID to start quickly without external redirect.'
-              : 'External CSS: uses standard Solid OIDC redirect and provider-hosted sign-in.'}
+            {'Sign-in always uses the configured Solid OIDC Identity Provider redirect flow.'}
           </Text>
         ) : null}
         <Row label="WebID" value={webId ?? 'Not signed in'} mono />

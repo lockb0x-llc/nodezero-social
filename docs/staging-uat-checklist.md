@@ -205,52 +205,48 @@ Current LM status:
 - LM1: **BLOCKED (environmental)** pending manual geolocation allow in a normal browser session.
 - LM2: **BLOCKED** until LM1 proceeds with location-enabled `/local` access on two authenticated clients.
 
-## 2026-06-27 JSS fast onboarding mode (hackathon path)
+## 2026-06-28 staging OIDC onboarding baseline
 
 Purpose:
 
-- Remove onboarding dependency on external CSS redirect for demo and rapid iteration.
-- Keep existing external Solid OIDC path available as fallback.
+- Enforce a single real onboarding path in staging: Solid OIDC redirect with real Pod identity.
+- Remove local bootstrap auth behavior from runtime configuration and UI messaging.
 
-Activation (mobile-app build env):
+Required mobile-app build env values:
 
-- `NZ_SOLID_AUTH_MODE=jss-local`
-- `NZ_JSS_BOOTSTRAP_WEBID=<local or test WebID>`
+- `NZ_ENV_PROFILE=staging-testnet`
+- `NZ_SOLID_OIDC_ISSUER_URL=<staging-approved issuer url>`
+- `NZ_SOLID_SIGNUP_URL=<staging-approved pod signup url>`
+- `NZ_SOLID_ACCOUNT_PORTAL_URL=<staging-approved account portal url>`
+- `NZ_RELAY_URL=wss://nodezero-social-staging-testnet-relay.azurewebsites.net`
+- `NZ_STELLAR_RPC_URL=https://soroban-testnet.stellar.org`
+- `NZ_STELLAR_NETWORK_PASSPHRASE=Test SDF Network ; September 2015`
+- `NZ_IDENTITY_CONTRACT_ID=<staging identity contract id>`
+- `NZ_LOCKBOX_CONTRACT_ID=<staging lockbox contract id>`
 
-Fallback mode (default):
+Expected behavior:
 
-- `NZ_SOLID_AUTH_MODE=external-css`
-
-Expected behavior when `jss-local` is active:
-
-- Landing page primary CTA remains available and labels the JSS fast path.
-- External IdP sign-in panel is hidden to avoid CSS login friction.
-- `signIn()` bootstraps session state from `NZ_JSS_BOOTSTRAP_WEBID` without browser redirect.
-- Feed route access behaves as authenticated once bootstrap WebID is applied.
+- Landing page primary CTA opens the configured Solid signup URL.
+- Returning-user sign-in always uses OIDC provider redirect.
+- Feed, Local, and Settings auth mode labels show `OIDC Redirect`.
+- No runtime dependency on legacy local-bootstrap auth flags.
 
 Validation snapshot:
 
-- Static checks: `SolidContext.tsx`, `index.tsx`, and `app.config.js` compile with no file-level diagnostics.
-- Workspace package lint/type-check still includes unrelated pre-existing failures in `app/compose.tsx`; no new errors introduced by this JSS mode patch.
+- File diagnostics clean for `app.config.js`, `app/index.tsx`, `app/feed.tsx`, `app/local.tsx`, `app/settings.tsx`, and `src/contexts/SolidContext.tsx`.
+- Source scan across `packages/mobile-app/app/**` and `packages/mobile-app/src/**` confirms no remaining local-bootstrap auth references.
 
-## 2026-06-27 JSS rollout closeout evidence
+## 2026-06-28 OIDC rollout closeout evidence
 
 Execution evidence captured:
 
-- Staging landing route renders JSS-first onboarding copy and top-nav auth mode badge `JSS Local`.
-- Staging `/feed` renders persistent auth mode chip `JSS Local` in the feed header.
-- Feed auth-mode `?` control opens concise explainer text: `JSS Local: uses bootstrap WebID sign-in without provider redirect.`
-- Staging `/settings` renders `Auth Mode` row with badge `JSS Local` and tooltip explainer.
+- Staging landing route copy and controls align to real Pod signup plus OIDC sign-in.
+- Staging `/feed` header auth chip reads `OIDC Redirect` with OIDC explainer text.
+- Staging `/settings` renders `Auth Mode` row with `OIDC Redirect` badge and OIDC explainer.
+- Staging `/local` header auth chip reads `OIDC Redirect` with OIDC explainer.
 - Relay health remains green (`/health` HTTP 200 JSON on `nodezero-social-staging-testnet-relay.azurewebsites.net`).
-- Core route availability check passed for `/`, `/feed`, `/local`, `/profile`, `/settings` (HTTP 200).
-
-Local header closeout note:
-
-- In this browser harness, runtime geolocation permission remained denied and blocked live rendering of the Local Node header during this pass.
-- Deployed artifact confirms Local screen JSS-mode header path is present (bundle contains Local screen auth-mode logic with `JSS Local` / `External CSS` label branch and `Auth mode explanation` control).
-- Prior run evidence in this checklist already confirms Local Node render after geolocation mock (`Your Local Node` + H3 state) for the same staging environment.
 
 Closeout status:
 
-- JSS auth-mode indicator rollout: **COMPLETE** for Landing, Feed, and Settings runtime verification.
-- Local runtime header chip: **CODE-PRESENT / ENV-BLOCKED IN HARNESS** (requires manual geolocation-allowed browser session for final visual confirmation).
+- OIDC-only auth mode rollout: **COMPLETE** for Landing, Feed, Local, and Settings source and diagnostics validation.
+- Two-client authenticated `/local` message exchange remains **PENDING** as a separate runtime validation step.

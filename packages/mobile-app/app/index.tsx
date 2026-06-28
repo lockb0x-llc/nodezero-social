@@ -25,26 +25,27 @@ import Constants from 'expo-constants'
 import { useSolid } from '../src/contexts/SolidContext'
 import { aesthetic } from '../src/theme/aesthetic'
 
-const DEFAULT_IDP = 'https://solidcommunity.net'
-const NEW_POD_URL = 'https://solidcommunity.net/register'
 const PRESS_OPACITY = 0.82
 
-function getSolidAuthMode(): 'external-css' | 'jss-local' {
+function getSolidOidcIssuerUrl(): string {
   const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
-  return appExtra?.solidAuthMode === 'jss-local' ? 'jss-local' : 'external-css'
+  return appExtra?.solidOidcIssuerUrl?.trim() || 'https://solidcommunity.net'
+}
+
+function getSolidSignupUrl(): string {
+  const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
+  return appExtra?.solidSignupUrl?.trim() || 'https://solidcommunity.net/register'
 }
 
 export default function LandingScreen(): JSX.Element {
   const { signIn, isLoggedIn, isRestoring } = useSolid()
   const router = useRouter()
   const pathname = usePathname()
-  const solidAuthMode = getSolidAuthMode()
-  const usesJssLocal = solidAuthMode === 'jss-local'
-  const authModeLabel = usesJssLocal ? 'JSS Local' : 'External CSS'
+  const defaultIdp = getSolidOidcIssuerUrl()
+  const signupUrl = getSolidSignupUrl()
 
   const [showSignIn, setShowSignIn] = useState(false)
-  const [showModeInfo, setShowModeInfo] = useState(false)
-  const [idpUrl, setIdpUrl] = useState(DEFAULT_IDP)
+  const [idpUrl, setIdpUrl] = useState(defaultIdp)
   const [isSigningIn, setIsSigningIn] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -76,16 +77,11 @@ export default function LandingScreen(): JSX.Element {
   }
 
   const handleGetStarted = async (): Promise<void> => {
-    // In JSS local mode, this bootstraps to the configured local WebID.
-    // In external mode, this opens the standard Solid OIDC flow.
-    setIsSigningIn(true)
     setError(null)
     try {
-      await signIn(DEFAULT_IDP)
+      await Linking.openURL(signupUrl)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not connect. Try again.')
-    } finally {
-      setIsSigningIn(false)
+      setError(err instanceof Error ? err.message : 'Could not open account creation. Try again.')
     }
   }
 
@@ -108,46 +104,22 @@ export default function LandingScreen(): JSX.Element {
         <View style={styles.nav}>
           <Text style={styles.navLogo}>⊙ NodeZero</Text>
           <View style={styles.navRight}>
-            <View style={styles.modeBadge}>
-              <Text style={styles.modeBadgeText}>{authModeLabel}</Text>
-            </View>
             <TouchableOpacity
-              onPress={() => setShowModeInfo((v) => !v)}
+              onPress={() => setShowSignIn((v) => !v)}
               accessibilityRole="button"
-              accessibilityLabel="Auth mode information"
-              style={styles.modeInfoButton}
+              accessibilityLabel="Sign in"
             >
-              <Text style={styles.modeInfoButtonText}>?</Text>
+              <Text style={styles.navSignIn}>Sign In</Text>
             </TouchableOpacity>
-            {!usesJssLocal && (
-              <TouchableOpacity
-                onPress={() => setShowSignIn((v) => !v)}
-                accessibilityRole="button"
-                accessibilityLabel="Sign in"
-              >
-                <Text style={styles.navSignIn}>Sign In</Text>
-              </TouchableOpacity>
-            )}
           </View>
         </View>
-        {showModeInfo && (
-          <View style={styles.modeTooltip}>
-            <Text style={styles.modeTooltipText}>
-              {usesJssLocal
-                ? 'JSS Local mode signs in immediately using the configured bootstrap WebID and avoids external provider redirects.'
-                : 'External CSS mode uses the standard Solid OIDC redirect to your Identity Provider.'}
-            </Text>
-          </View>
-        )}
 
         {/* ── Hero ────────────────────────────────────── */}
         <View style={styles.hero}>
           <Text style={styles.heroEyebrow}>Decentralized · Private · Yours</Text>
           <Text style={styles.heroHeadline}>The social network{'\n'}you actually own.</Text>
           <Text style={styles.heroBody}>
-            {usesJssLocal
-              ? 'Launch with local Solid onboarding in seconds. Your identity and data stay portable from day one.'
-              : 'Your profile, posts, and connections live in your own data vault, not ours. Leave anytime with everything you built.'}
+            {'Create a real Solid account with your own Pod, then sign in through OIDC. Your profile, posts, and connections stay portable from day one.'}
           </Text>
 
           <TouchableOpacity
@@ -161,25 +133,23 @@ export default function LandingScreen(): JSX.Element {
             {isSigningIn && !showSignIn ? (
               <ActivityIndicator color="#FFF" />
             ) : (
-              <Text style={styles.btnPrimaryText}>{usesJssLocal ? 'Create Your Node (JSS Fast Path)  →' : 'Create Your Node  →'}</Text>
+              <Text style={styles.btnPrimaryText}>Create Your Node  →</Text>
             )}
           </TouchableOpacity>
 
-          {!usesJssLocal && (
-            <TouchableOpacity
-              style={styles.btnSecondary}
-              onPress={() => setShowSignIn((v) => !v)}
-              activeOpacity={PRESS_OPACITY}
-              accessibilityRole="button"
-              accessibilityLabel="Sign in as returning user"
-            >
-              <Text style={styles.btnSecondaryText}>Already have a Pod? Sign In</Text>
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity
+            style={styles.btnSecondary}
+            onPress={() => setShowSignIn((v) => !v)}
+            activeOpacity={PRESS_OPACITY}
+            accessibilityRole="button"
+            accessibilityLabel="Sign in as returning user"
+          >
+            <Text style={styles.btnSecondaryText}>Already have a Pod? Sign In</Text>
+          </TouchableOpacity>
         </View>
 
         {/* ── Sign-in panel (collapsible) ──────────────── */}
-        {showSignIn && !usesJssLocal && (
+        {showSignIn && (
           <View style={styles.signInPanel}>
             <Text style={styles.signInTitle}>Sign in with your Solid Pod</Text>
             <Text style={styles.signInHint}>Enter your Identity Provider URL</Text>
@@ -208,7 +178,7 @@ export default function LandingScreen(): JSX.Element {
               )}
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={() => void Linking.openURL(NEW_POD_URL)}
+              onPress={() => void Linking.openURL(signupUrl)}
               style={styles.createPodLink}
               activeOpacity={PRESS_OPACITY}
             >
@@ -274,7 +244,7 @@ export default function LandingScreen(): JSX.Element {
             {' '}·{' '}
             <Text style={styles.link} onPress={() => void Linking.openURL('https://stellar.org')}>Stellar</Text>
             {' '}·{' '}
-            {usesJssLocal ? 'JSS Fast Onboarding' : 'Open source'}
+            {'Open source'}
           </Text>
         </View>
 
@@ -288,7 +258,7 @@ export default function LandingScreen(): JSX.Element {
 const STEPS = [
   {
     title: 'Get your Pod',
-    desc: 'Start with a fast local Solid Pod onboarding path. You can still use external Solid providers when needed.',
+    desc: 'Create a Solid account with your Pod using the configured staging identity provider.',
   },
   {
     title: 'Link your identity',
