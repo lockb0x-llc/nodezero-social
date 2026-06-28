@@ -8,12 +8,31 @@ import type {
   ProvisionResult,
 } from './types.js'
 
-const PORT = Number(process.env.JSS_PROVISIONER_PORT ?? 8181)
+const PORT = Number(process.env.PORT ?? process.env.JSS_PROVISIONER_PORT ?? 8181)
 const ISSUER = process.env.JSS_ISSUER_URL ?? 'https://staging.nodezero.social'
+const ALLOWED_ORIGINS = (process.env.JSS_ALLOWED_ORIGINS ?? 'https://staging.nodezero.social,http://localhost:19006,http://localhost:8081')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter((origin) => origin.length > 0)
 const store = new ProvisionStore()
 
-function sendJson(res: ServerResponse, statusCode: number, payload: unknown): void {
-  res.writeHead(statusCode, { 'content-type': 'application/json; charset=utf-8' })
+function corsHeaders(req: IncomingMessage): Record<string, string> {
+  const origin = req.headers.origin
+  const allowOrigin = origin && ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0] ?? '*'
+
+  return {
+    'access-control-allow-origin': allowOrigin,
+    'access-control-allow-methods': 'GET,POST,OPTIONS',
+    'access-control-allow-headers': 'content-type,authorization',
+    vary: 'origin',
+  }
+}
+
+function sendJson(req: IncomingMessage, res: ServerResponse, statusCode: number, payload: unknown): void {
+  res.writeHead(statusCode, {
+    ...corsHeaders(req),
+    'content-type': 'application/json; charset=utf-8',
+  })
   res.end(JSON.stringify(payload))
 }
 
@@ -52,8 +71,14 @@ function validateProvisionRequest(body: ProvisionRequest): void {
 async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const url = new URL(req.url ?? '/', 'http://localhost')
 
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, corsHeaders(req))
+    res.end()
+    return
+  }
+
   if (req.method === 'GET' && url.pathname === '/health') {
-    sendJson(res, 200, {
+    sendJson(req, res, 200, {
       ok: true,
       service: 'jss-provisioner',
       envProfile: process.env.NZ_ENV_PROFILE ?? 'local',
@@ -67,7 +92,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Pro
     const body = await readJsonBody<BootstrapChallengeRequest>(req)
     validateChallengeRequest(body)
     const challenge = store.issueChallenge(body)
-    sendJson(res, 200, challenge)
+    sendJson(req, res, 200, challenge)
     return
   }
 
@@ -77,7 +102,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Pro
 
     const challenge = store.consumeChallenge(body.challengeId)
     if (!challenge) {
-      sendJson(res, 400, { error: 'Challenge is invalid or expired.' })
+      sendJson(req, res, 400, { error: 'Challenge is invalid or expired.' })
       return
     }
 
@@ -99,7 +124,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Pro
         jobId,
       }
 
-      sendJson(res, 200, {
+      sendJson(req, res, 200, {
         ...result,
         challengeMessage: receipt.challengeMessage,
         podBindingHash: receipt.podBindingHash,
@@ -108,7 +133,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Pro
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Provisioning verification failed.'
       store.failJob(jobId, message)
-      sendJson(res, 400, { error: message, jobId })
+      sendJson(req, res, 400, { error: message, jobId })
       return
     }
   }
@@ -116,27 +141,27 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Pro
   if (req.method === 'GET' && url.pathname.startsWith('/v1/provision/')) {
     const jobId = url.pathname.replace('/v1/provision/', '').trim()
     if (!jobId) {
-      sendJson(res, 400, { error: 'Missing jobId.' })
+      sendJson(req, res, 400, { error: 'Missing jobId.' })
       return
     }
 
     const status = store.getJob(jobId)
     if (!status) {
-      sendJson(res, 404, { error: 'Provision job not found.' })
+      sendJson(req, res, 404, { error: 'Provision job not found.' })
       return
     }
 
-    sendJson(res, 200, status)
+    sendJson(req, res, 200, status)
     return
   }
 
-  sendJson(res, 404, { error: 'Not found' })
+  sendJson(req, res, 404, { error: 'Not found' })
 }
 
 const server = createServer((req, res) => {
   handleHttpRequest(req, res).catch((err) => {
     const message = err instanceof Error ? err.message : 'Unhandled server error.'
-    sendJson(res, 500, { error: message })
+    sendJson(req, res, 500, { error: message })
   })
 })
 

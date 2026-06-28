@@ -14,9 +14,7 @@
     "type-check": "tsc --noEmit",
     "clean": "rm -rf dist"
   },
-  "dependencies": {
-    "@stellar/stellar-sdk": "^16.0.0"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@types/node": "^20.14.0",
     "tsx": "^4.19.2",

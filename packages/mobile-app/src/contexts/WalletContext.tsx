@@ -29,6 +29,14 @@ interface AttestationDetails {
   lockboxStateRoot: string | null
   registerTxHash: string | null
   verifiedAt: string | null
+  custodyClaimHash: string | null
+}
+
+interface CustodyReceipt {
+  jobId: string
+  challengeId: string
+  verifiedAt: string
+  claimHash: string
 }
 
 interface PairingAttestationRecord {
@@ -40,6 +48,7 @@ interface PairingAttestationRecord {
   lockboxStateRoot: string
   registerTxHash: string
   verifiedAt: string
+  custodyReceipt?: CustodyReceipt
 }
 
 const PAIRING_ATTESTATION_STORAGE_KEY = 'attestation.pairing.v1'
@@ -58,7 +67,7 @@ function normalizeRoot(root: string): string {
 
 function hasMatchingProof(record: PairingAttestationRecord, inputs: PairingProofInputs): boolean {
   return (
-    record.proofVersion === 1 &&
+    record.proofVersion >= 1 &&
     record.webId === inputs.webId &&
     record.stellarPublicKey === inputs.stellarPublicKey &&
     record.identityContractId === inputs.identityContractId &&
@@ -94,9 +103,135 @@ async function loadPairingRecord(): Promise<PairingAttestationRecord | null> {
       lockboxStateRoot: parsed.lockboxStateRoot,
       registerTxHash: typeof parsed.registerTxHash === 'string' ? parsed.registerTxHash : '',
       verifiedAt: parsed.verifiedAt,
+      custodyReceipt:
+        parsed.custodyReceipt &&
+        typeof parsed.custodyReceipt.jobId === 'string' &&
+        typeof parsed.custodyReceipt.challengeId === 'string' &&
+        typeof parsed.custodyReceipt.verifiedAt === 'string' &&
+        typeof parsed.custodyReceipt.claimHash === 'string'
+          ? {
+              jobId: parsed.custodyReceipt.jobId,
+              challengeId: parsed.custodyReceipt.challengeId,
+              verifiedAt: parsed.custodyReceipt.verifiedAt,
+              claimHash: parsed.custodyReceipt.claimHash,
+            }
+          : undefined,
     }
   } catch {
     return null
+  }
+}
+
+interface ProvisionerChallenge {
+  challengeId: string
+  nonce: string
+  domain: string
+  expiresAt: string
+  envProfile: string
+  handle: string
+  webId: string
+  podUrl: string
+}
+
+interface ProvisionerSubmitResponse {
+  status: 'ready' | 'pending'
+  jobId: string
+}
+
+interface ProvisionerStatusReady {
+  status: 'ready'
+  jobId: string
+  custodyReceipt?: {
+    challengeId: string
+    verifiedAt: string
+    claimHash: string
+  }
+}
+
+function extractPodIdentity(webId: string): { handle: string; podUrl: string; podSlug: string } {
+  const parsed = new URL(webId)
+  const hostname = parsed.hostname
+  const hostLabel = hostname.split('.')[0] ?? 'nodezero'
+  const cleaned = hostLabel.toLowerCase().replace(/[^a-z0-9-]/g, '-')
+  const handle = cleaned.length > 0 ? cleaned : 'nodezero'
+  return {
+    handle,
+    podSlug: handle,
+    podUrl: `${parsed.origin}/`,
+  }
+}
+
+function buildAttestationChallengePayload(challenge: ProvisionerChallenge): string {
+  return [
+    'NZ_ATTEST_V1',
+    challenge.domain,
+    challenge.envProfile,
+    challenge.nonce,
+    challenge.expiresAt,
+    challenge.handle,
+    challenge.webId,
+    challenge.podUrl,
+  ].join('|')
+}
+
+async function parseJsonResponse<T>(response: Response): Promise<T> {
+  const body = (await response.json()) as T
+  if (!response.ok) {
+    const maybeError = body as { error?: string }
+    throw new Error(maybeError.error ?? `Provisioner request failed (${response.status}).`)
+  }
+  return body
+}
+
+async function runCustodyProvisioning(params: {
+  provisionerUrl: string
+  webId: string
+  wallet: WalletService
+}): Promise<CustodyReceipt> {
+  const { provisionerUrl, webId, wallet } = params
+  const baseUrl = provisionerUrl.replace(/\/$/, '')
+  const identity = extractPodIdentity(webId)
+
+  const challengeResponse = await fetch(`${baseUrl}/v1/bootstrap-challenge`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      handle: identity.handle,
+      webId,
+      podUrl: identity.podUrl,
+    }),
+  })
+  const challenge = await parseJsonResponse<ProvisionerChallenge>(challengeResponse)
+  const challengePayload = buildAttestationChallengePayload(challenge)
+  const signature = await wallet.signAttestationChallenge(challengePayload)
+
+  const submitResponse = await fetch(`${baseUrl}/v1/provision`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      handle: identity.handle,
+      podSlug: identity.podSlug,
+      webId,
+      podUrl: identity.podUrl,
+      stellarPublicKey: signature.stellarPublicKey,
+      challengeId: challenge.challengeId,
+      signatureBase64: signature.signatureBase64,
+    }),
+  })
+  const submit = await parseJsonResponse<ProvisionerSubmitResponse>(submitResponse)
+
+  const statusResponse = await fetch(`${baseUrl}/v1/provision/${submit.jobId}`)
+  const status = await parseJsonResponse<ProvisionerStatusReady>(statusResponse)
+
+  if (status.status !== 'ready' || !status.custodyReceipt) {
+    throw new Error('Provisioner did not return a ready custody receipt.')
+  }
+
+  return {
+    jobId: status.jobId,
+    challengeId: status.custodyReceipt.challengeId,
+    verifiedAt: status.custodyReceipt.verifiedAt,
+    claimHash: status.custodyReceipt.claimHash,
   }
 }
 
@@ -185,6 +320,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
     lockboxStateRoot: null,
     registerTxHash: null,
     verifiedAt: null,
+    custodyClaimHash: null,
   })
   const lastCheckedKeyRef = useRef<string | null>(null)
 
@@ -225,7 +361,13 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
     if (!isLoggedIn || !webId) {
       setAttestationStatus('idle')
       setAttestationMessage(null)
-      setAttestationDetails({ registeredWebId: null, lockboxStateRoot: null, registerTxHash: null, verifiedAt: null })
+      setAttestationDetails({
+        registeredWebId: null,
+        lockboxStateRoot: null,
+        registerTxHash: null,
+        verifiedAt: null,
+        custodyClaimHash: null,
+      })
       lastCheckedKeyRef.current = null
       return
     }
@@ -236,11 +378,18 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
       const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
       const identityContractId = appExtra?.identityContractId ?? ''
       const lockboxContractId = appExtra?.lockboxContractId ?? ''
+      const provisionerUrl = appExtra?.jssProvisionerUrl ?? ''
 
       if (!identityContractId || !lockboxContractId) {
         setAttestationStatus('error')
         setAttestationMessage('Missing identity or lockbox contract ID in app configuration.')
-        setAttestationDetails({ registeredWebId: null, lockboxStateRoot: null, registerTxHash: null, verifiedAt: null })
+        setAttestationDetails({
+          registeredWebId: null,
+          lockboxStateRoot: null,
+          registerTxHash: null,
+          verifiedAt: null,
+          custodyClaimHash: null,
+        })
         return
       }
 
@@ -261,10 +410,19 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
           priorRecord.lockboxContractId === lockboxContractId
 
         let registerTxHash = ''
+        let custodyReceipt = priorRecord?.custodyReceipt
 
         if (!isReturningSignIn && mappedWebId !== webId) {
           registerTxHash = await registerIdentity(webId, identityContractId)
           mappedWebId = await service.getRegisteredWebId(identityContractId)
+        }
+
+        if (!isReturningSignIn && provisionerUrl) {
+          custodyReceipt = await runCustodyProvisioning({
+            provisionerUrl,
+            webId,
+            wallet: service,
+          })
         }
 
         const lockboxRoot = await service.getLockboxStateRoot(lockboxContractId)
@@ -277,6 +435,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
             lockboxStateRoot: lockboxRoot,
             registerTxHash: registerTxHash || null,
             verifiedAt: null,
+            custodyClaimHash: custodyReceipt?.claimHash ?? null,
           })
           return
         }
@@ -289,6 +448,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
             lockboxStateRoot: null,
             registerTxHash: registerTxHash || null,
             verifiedAt: null,
+            custodyClaimHash: custodyReceipt?.claimHash ?? null,
           })
           return
         }
@@ -309,6 +469,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
             lockboxStateRoot: lockboxRoot,
             registerTxHash: priorRecord.registerTxHash || null,
             verifiedAt: priorRecord.verifiedAt,
+            custodyClaimHash: priorRecord.custodyReceipt?.claimHash ?? null,
           })
           return
         }
@@ -316,7 +477,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
         const verifiedAt = new Date().toISOString()
 
         const record: PairingAttestationRecord = {
-          proofVersion: 1,
+          proofVersion: 2,
           webId,
           stellarPublicKey: info.publicKey,
           identityContractId,
@@ -324,6 +485,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
           lockboxStateRoot: lockboxRoot,
           registerTxHash,
           verifiedAt,
+          custodyReceipt,
         }
         await AsyncStorage.setItem(PAIRING_ATTESTATION_STORAGE_KEY, JSON.stringify(record))
 
@@ -333,6 +495,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
           lockboxStateRoot: lockboxRoot,
           registerTxHash: registerTxHash || priorRecord?.registerTxHash || null,
           verifiedAt,
+          custodyClaimHash: custodyReceipt?.claimHash ?? null,
         })
         setAttestationMessage(
           isReturningSignIn
@@ -342,7 +505,13 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
       } catch (err) {
         setAttestationStatus('error')
         setAttestationMessage(err instanceof Error ? err.message : 'Pairing verification failed.')
-        setAttestationDetails({ registeredWebId: null, lockboxStateRoot: null, registerTxHash: null, verifiedAt: null })
+        setAttestationDetails({
+          registeredWebId: null,
+          lockboxStateRoot: null,
+          registerTxHash: null,
+          verifiedAt: null,
+          custodyClaimHash: null,
+        })
       }
     })()
   }, [isLoggedIn, isRestoring, registerIdentity, walletInfo, webId])
