@@ -26,6 +26,7 @@ import { useSolid } from '../src/contexts/SolidContext'
 import { useWallet } from '../src/contexts/WalletContext'
 import { aesthetic } from '../src/theme/aesthetic'
 import { beginSolidSignup } from '../src/onboarding/signupBridge'
+import { createSeamlessNode, getSeamlessSignupConfig } from '../src/onboarding/seamlessSignup'
 
 const PRESS_OPACITY = 0.82
 
@@ -42,14 +43,19 @@ export default function LandingScreen(): JSX.Element {
     signupResumeActive,
     signupReturnDetected,
   } = useSolid()
-  const { attestationStatus } = useWallet()
+  const { attestationStatus, walletInfo } = useWallet()
   const router = useRouter()
   const pathname = usePathname()
   const defaultIdp = getSolidOidcIssuerUrl()
+  const seamlessConfig = getSeamlessSignupConfig()
 
   const [idpUrl, setIdpUrl] = useState(defaultIdp)
   const [isSigningIn, setIsSigningIn] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [nodeHandle, setNodeHandle] = useState('')
+  const [notificationEmail, setNotificationEmail] = useState('')
+  const [isCreating, setIsCreating] = useState(false)
+  const [createNotice, setCreateNotice] = useState<string | null>(null)
 
   React.useEffect(() => {
     if (!isRestoring && isLoggedIn && pathname === '/') {
@@ -88,6 +94,31 @@ export default function LandingScreen(): JSX.Element {
       await beginSolidSignup(source)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not open account creation. Try again.')
+    }
+  }
+
+  const handleCreateNode = async (): Promise<void> => {
+    setError(null)
+    setCreateNotice(null)
+    setIsCreating(true)
+    try {
+      const result = await createSeamlessNode({
+        handle: nodeHandle,
+        notificationEmail,
+        stellarPublicKey: walletInfo?.publicKey,
+      })
+      const anchored = result.lockbox?.userLockboxContractId
+      const root = result.lockbox?.proofRootHex
+      setCreateNotice(
+        anchored
+          ? `Node created. WebID: ${result.webId}\nStellar key: ${result.stellarPublicKey}\nLockb0x (on-chain): ${anchored}${root ? `\nPairing root: ${root}` : ''}\nSign in with your Pod to continue.`
+          : `Node created. Sign in with ${result.webId} to continue.`,
+      )
+      setIdpUrl(new URL(result.webId).origin)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not create your node. Try again.')
+    } finally {
+      setIsCreating(false)
     }
   }
 
@@ -155,13 +186,53 @@ export default function LandingScreen(): JSX.Element {
               <Text style={styles.btnPrimaryText}>Sign In</Text>
             )}
           </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => void handleGetStarted('card')}
-            style={styles.createPodLink}
-            activeOpacity={PRESS_OPACITY}
-          >
-            <Text style={styles.createPodText}>Need a Pod? Create one free →</Text>
-          </TouchableOpacity>
+          {seamlessConfig.enabled ? (
+            <View style={styles.createNodeBlock}>
+              <Text style={styles.createNodeTitle}>Or create your node in seconds</Text>
+              {createNotice ? <Text style={styles.createNotice}>{createNotice}</Text> : null}
+              <TextInput
+                style={styles.input}
+                value={nodeHandle}
+                onChangeText={setNodeHandle}
+                placeholder="Choose a handle (e.g. alice)"
+                placeholderTextColor="#555"
+                autoCapitalize="none"
+                autoCorrect={false}
+                accessibilityLabel="Node handle"
+              />
+              <TextInput
+                style={styles.input}
+                value={notificationEmail}
+                onChangeText={setNotificationEmail}
+                placeholder="Notification email"
+                placeholderTextColor="#555"
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="email-address"
+                accessibilityLabel="Notification email"
+              />
+              <TouchableOpacity
+                style={[styles.btnPrimary, isCreating && styles.btnDisabled]}
+                onPress={() => void handleCreateNode()}
+                disabled={isCreating}
+                activeOpacity={PRESS_OPACITY}
+              >
+                {isCreating ? (
+                  <ActivityIndicator color="#FFF" />
+                ) : (
+                  <Text style={styles.btnPrimaryText}>Create Your Node</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity
+              onPress={() => void handleGetStarted('card')}
+              style={styles.createPodLink}
+              activeOpacity={PRESS_OPACITY}
+            >
+              <Text style={styles.createPodText}>Need a Pod? Create one free →</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* ── How it works ────────────────────────────── */}
@@ -407,7 +478,9 @@ const styles = StyleSheet.create({
   errorText: { color: '#FF4D4D', fontSize: 13, marginBottom: 10 },
   createPodLink: { marginTop: 8, alignItems: 'center' },
   createPodText: { color: PURPLE, fontSize: 13 },
-
+  createNodeBlock: { marginTop: 16, borderTopWidth: 1, borderTopColor: BORDER, paddingTop: 16 },
+  createNodeTitle: { color: MUTED, fontSize: 13, fontWeight: '600', marginBottom: 12 },
+  createNotice: { color: PURPLE, fontSize: 12, lineHeight: 18, marginBottom: 12 },
   // How it works
   section: {
     paddingHorizontal: 24,

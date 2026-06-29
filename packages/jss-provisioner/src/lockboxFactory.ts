@@ -270,10 +270,18 @@ async function initializeLockboxContract(params: {
     } catch (err) {
       lastError = err
       const message = err instanceof Error ? err.message : String(err)
+      const normalized = message.toLowerCase()
       const transientMissingValue = message.includes('Error(Storage, MissingValue)')
-      const transientTimeout = message.toLowerCase().includes('request timeout')
+      const transientTimeout = normalized.includes('request timeout')
+      // A freshly deployed contract can be briefly invisible to the RPC node
+      // simulating the initialize call (ledger state propagation lag), surfacing
+      // as "Contract not found". This is transient and resolves on retry.
+      const transientContractNotFound = normalized.includes('contract not found')
 
-      if ((transientMissingValue || transientTimeout) && attempt < maxAttempts) {
+      if (
+        (transientMissingValue || transientTimeout || transientContractNotFound) &&
+        attempt < maxAttempts
+      ) {
         await sleep(1200 * attempt)
         continue
       }
@@ -292,6 +300,9 @@ async function createDirectPerUserLockbox(params: {
 }): Promise<string> {
   const wasmHash = await readLockboxWasmHash(params.factoryContractId)
   const lockboxContractId = await deployLockboxContract(wasmHash)
+  // Give the RPC node a brief moment to propagate the newly deployed contract
+  // before initializing it, reducing the transient "Contract not found" window.
+  await sleep(2000)
   await initializeLockboxContract({
     lockboxContractId,
     operatorAddress: params.operatorAddress,
