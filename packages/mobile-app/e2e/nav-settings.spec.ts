@@ -112,3 +112,13 @@ test('T9: settings includes lockbox metadata rows', async ({ page }) => {
   await expect(page.getByText('User Lockb0x')).toBeVisible()
   await expect(page.getByText('Lockb0x Idempotency')).toBeVisible()
 })
+
+// ─── T10: Settings exposes Export and Delete data-management actions ─────────
+test('T10: settings includes export and delete node-data actions', async ({ page }) => {
+  await page.goto('/settings')
+  await page.waitForLoadState('networkidle')
+
+  await expect(page.getByText('Export Recovery Bundle')).toBeVisible()
+  await expect(page.getByText('Delete Node Data')).toBeVisible()
+  await expect(page.getByText('Clear Local Cache')).toBeVisible()
+})

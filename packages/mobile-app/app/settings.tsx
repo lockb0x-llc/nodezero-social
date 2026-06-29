@@ -18,6 +18,7 @@ import {
   TouchableOpacity,
   Alert,
   Platform,
+  Share,
 } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useRouter } from 'expo-router'
@@ -30,9 +31,19 @@ const SHOW_NSFW_KEY = 'settings.showNsfw'
 export default function SettingsScreen(): JSX.Element {
   const { signOut, webId } = useSolid()
   const router = useRouter()
-  const { walletInfo, attestationStatus, attestationMessage, attestationDetails } = useWallet()
+  const {
+    walletInfo,
+    attestationStatus,
+    attestationMessage,
+    attestationDetails,
+    exportRecoveryBundle,
+    deleteNodeData,
+  } = useWallet()
   const [showNsfw, setShowNsfw] = useState(false)
   const [showAuthModeHint, setShowAuthModeHint] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [dataActionStatus, setDataActionStatus] = useState<string | null>(null)
 
   // Load persisted NSFW setting on mount.
   React.useEffect(() => {
@@ -69,6 +80,76 @@ export default function SettingsScreen(): JSX.Element {
     await signOut()
     router.replace('/')
   }, [router, signOut])
+
+  const deliverBundle = useCallback((fileName: string, json: string): void => {
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      const blob = new Blob([json], { type: 'application/json' })
+      const href = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = href
+      anchor.download = fileName
+      document.body.appendChild(anchor)
+      anchor.click()
+      document.body.removeChild(anchor)
+      URL.revokeObjectURL(href)
+      return
+    }
+    void Share.share({ title: fileName, message: json })
+  }, [])
+
+  const exportData = useCallback(() => {
+    Alert.alert(
+      'Export Recovery Bundle',
+      'This bundle contains your private wallet key. Anyone with it controls your node. Store it securely and never share it.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Export',
+          onPress: (): void => {
+            setIsExporting(true)
+            setDataActionStatus(null)
+            void exportRecoveryBundle()
+              .then(({ fileName, json }) => {
+                deliverBundle(fileName, json)
+                setDataActionStatus('Recovery bundle exported.')
+              })
+              .catch((err: unknown) => {
+                setDataActionStatus(err instanceof Error ? `Export failed: ${err.message}` : 'Export failed.')
+              })
+              .finally(() => setIsExporting(false))
+          },
+        },
+      ]
+    )
+  }, [deliverBundle, exportRecoveryBundle])
+
+  const deleteData = useCallback(() => {
+    Alert.alert(
+      'Delete Node Data',
+      'This unlinks your identity on-chain, destroys your local wallet key, and clears local node state. A new wallet and lockb0x are provisioned on next sign-in. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: (): void => {
+            setIsDeleting(true)
+            setDataActionStatus(null)
+            void deleteNodeData({ unlinkIdentity: true, clearAllLocalCache: true })
+              .then(async ({ unlinkedIdentity }) => {
+                setDataActionStatus(unlinkedIdentity ? 'Node deleted and identity unlinked.' : 'Node deleted (local unlink only).')
+                await signOut()
+                router.replace('/')
+              })
+              .catch((err: unknown) => {
+                setDataActionStatus(err instanceof Error ? `Delete failed: ${err.message}` : 'Delete failed.')
+              })
+              .finally(() => setIsDeleting(false))
+          },
+        },
+      ]
+    )
+  }, [deleteNodeData, router, signOut])
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -179,13 +260,32 @@ export default function SettingsScreen(): JSX.Element {
       <Text style={styles.sectionHeader}>Data Management</Text>
       <View style={styles.card}>
         <TouchableOpacity
+          style={styles.actionButton}
+          onPress={exportData}
+          disabled={isExporting}
+          accessibilityRole="button"
+          accessibilityLabel="Export recovery bundle"
+        >
+          <Text style={styles.actionButtonText}>{isExporting ? 'Exporting…' : '⬇  Export Recovery Bundle'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
           style={styles.dangerButton}
+          onPress={deleteData}
+          disabled={isDeleting}
+          accessibilityRole="button"
+          accessibilityLabel="Delete node data"
+        >
+          <Text style={styles.dangerButtonText}>{isDeleting ? 'Deleting…' : '🗑  Delete Node Data'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.actionButton}
           onPress={clearCache}
           accessibilityRole="button"
-          accessibilityLabel="Export and erase local cache"
+          accessibilityLabel="Clear local cache"
         >
-          <Text style={styles.dangerButtonText}>🗑  Export & Erase Local Cache</Text>
+          <Text style={styles.actionButtonText}>Clear Local Cache</Text>
         </TouchableOpacity>
+        {dataActionStatus ? <Text style={styles.rowSubDetail}>{dataActionStatus}</Text> : null}
       </View>
 
       {/* ── Account ──────────────────────────────────────────────── */}
@@ -261,8 +361,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   authModeInfoText: { color: aesthetic.color.textLow, fontSize: 11, fontWeight: '700' },
-  dangerButton: { padding: 14, alignItems: 'center' },
+  dangerButton: { padding: 14, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: aesthetic.color.border },
   dangerButtonText: { color: aesthetic.color.danger, fontSize: 14, fontWeight: '600' },
+  actionButton: { padding: 14, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: aesthetic.color.border },
+  actionButtonText: { color: aesthetic.color.textHigh, fontSize: 14, fontWeight: '600' },
   signOutButton: { padding: 14, alignItems: 'center' },
   signOutButtonText: { color: aesthetic.color.danger, fontSize: 15, fontWeight: '700' },
   version: { color: aesthetic.color.textLow, fontSize: 12, textAlign: 'center', marginTop: 32 },

@@ -385,6 +385,13 @@ interface WalletContextValue {
   attestationMessage: string | null
   /** Machine-verifiable attestation details for QA and diagnostics. */
   attestationDetails: AttestationDetails
+  /** Builds a portable recovery bundle (includes the private key) for export. */
+  exportRecoveryBundle: () => Promise<{ fileName: string; json: string }>
+  /** Destroys local wallet + pairing state, optionally unlinking on-chain. */
+  deleteNodeData: (options?: {
+    unlinkIdentity?: boolean
+    clearAllLocalCache?: boolean
+  }) => Promise<{ unlinkedIdentity: boolean }>
 }
 
 const WalletContext = createContext<WalletContextValue | null>(null)
@@ -758,6 +765,81 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
     })()
   }, [isLoggedIn, isRestoring, registerIdentity, walletInfo, webId])
 
+  const exportRecoveryBundle = useCallback(async (): Promise<{ fileName: string; json: string }> => {
+    const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
+    const info = walletInfo ?? (await getWalletService().getWalletInfo())
+    const secret = await getWalletService().exportSecret()
+    const pairingRaw = await AsyncStorage.getItem(PAIRING_ATTESTATION_STORAGE_KEY)
+    const exportedAt = new Date().toISOString()
+
+    const bundle = {
+      bundleVersion: 1,
+      exportedAt,
+      envProfile: appExtra?.envProfile ?? 'local',
+      stellarNetworkPassphrase: appExtra?.stellarNetworkPassphrase ?? null,
+      webId: webId ?? null,
+      wallet: {
+        publicKey: info.publicKey,
+        secretKey: secret,
+      },
+      attestation: attestationDetails,
+      pairingRecord: pairingRaw ? (JSON.parse(pairingRaw) as unknown) : null,
+    }
+
+    const stamp = exportedAt.replace(/[:.]/g, '').replace(/-/g, '')
+    return {
+      fileName: `nodezero-recovery-${stamp}.json`,
+      json: JSON.stringify(bundle, null, 2),
+    }
+  }, [attestationDetails, walletInfo, webId])
+
+  const deleteNodeData = useCallback(
+    async (options?: { unlinkIdentity?: boolean; clearAllLocalCache?: boolean }): Promise<{ unlinkedIdentity: boolean }> => {
+      const unlinkIdentity = options?.unlinkIdentity ?? false
+      const clearAllLocalCache = options?.clearAllLocalCache ?? false
+      const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
+      const identityContractId = appExtra?.identityContractId ?? ''
+      let unlinkedIdentity = false
+
+      if (unlinkIdentity && identityContractId) {
+        try {
+          await getWalletService().removeIdentityOnChain(identityContractId)
+          unlinkedIdentity = true
+        } catch (err) {
+          console.warn('[WalletContext] On-chain identity unlink failed; continuing local delete:', err)
+        }
+      }
+
+      await getWalletService().destroyWallet()
+
+      if (clearAllLocalCache) {
+        await AsyncStorage.clear()
+      } else {
+        await AsyncStorage.removeItem(PAIRING_ATTESTATION_STORAGE_KEY)
+      }
+
+      lastCheckedKeyRef.current = null
+      setWalletInfo(null)
+      setAttestationStatus('idle')
+      setAttestationMessage(null)
+      setAttestationDetails({
+        registeredWebId: null,
+        lockboxStateRoot: null,
+        registerTxHash: null,
+        verifiedAt: null,
+        custodyClaimHash: null,
+        lockboxFactoryContractId: null,
+        userLockboxContractId: null,
+        lockboxIdempotencyKey: null,
+        proofHashHex: null,
+        proofRootHex: null,
+      })
+
+      return { unlinkedIdentity }
+    },
+    []
+  )
+
   return (
     <WalletContext.Provider value={{
       walletInfo,
@@ -766,6 +848,8 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
       attestationStatus,
       attestationMessage,
       attestationDetails,
+      exportRecoveryBundle,
+      deleteNodeData,
     }}>
       {children}
     </WalletContext.Provider>

@@ -163,6 +163,22 @@ export class WalletService {
   }
 
   /**
+   * Returns the stored secret key for export, or `null` if none provisioned.
+   * Callers must treat the returned value as highly sensitive.
+   */
+  async exportSecret(): Promise<string | null> {
+    return this.adapter.load()
+  }
+
+  /**
+   * Permanently destroys the embedded wallet secret. Irreversible: a fresh
+   * keypair is provisioned on next wallet access.
+   */
+  async destroyWallet(): Promise<void> {
+    await this.adapter.destroy()
+  }
+
+  /**
    * Submits an invocation of the `NodeZeroIdentity.register_webid()` Soroban
    * contract function to record the user's Solid WebID on-chain.
    *
@@ -210,6 +226,55 @@ export class WalletService {
 
     if (result.status === 'TRY_AGAIN_LATER') {
       throw new Error('Transaction submission was throttled. Retry WebID registration shortly.')
+    }
+
+    const finalResult = await this.server.pollTransaction(result.hash, { attempts: 20 })
+    if (String(finalResult.status) !== 'SUCCESS') {
+      throw new Error(`Transaction did not complete successfully: ${finalResult.status}`)
+    }
+
+    return {
+      hash: result.hash,
+      success: true,
+    }
+  }
+
+  /**
+   * Submits an invocation of `NodeZeroIdentity.remove_webid()` to unlink the
+   * caller's Solid WebID from their Stellar public key on-chain. Used by the
+   * Settings "Delete Node Data" flow before the local enclave key is destroyed.
+   *
+   * @param contractId - The deployed `NodeZeroIdentity` contract ID (C… address).
+   * @returns {@link TransactionResult}
+   */
+  async removeIdentityOnChain(contractId: string): Promise<TransactionResult> {
+    const secret = await this.adapter.loadOrCreate()
+    const keypair = Keypair.fromSecret(secret)
+    const publicKey = keypair.publicKey()
+
+    const account = await this.getSourceAccount(publicKey)
+    const contract = new Contract(contractId)
+    const callerScVal = new Address(publicKey).toScVal()
+
+    const tx: Transaction = new TransactionBuilder(account, {
+      fee: BASE_FEE,
+      networkPassphrase: this.network,
+    })
+      .addOperation(contract.call('remove_webid', callerScVal))
+      .setTimeout(30)
+      .build()
+
+    const prepared = await this.server.prepareTransaction(tx)
+    prepared.sign(keypair)
+
+    const result = await this.server.sendTransaction(prepared)
+
+    if (result.status === 'ERROR') {
+      throw new Error(`Transaction failed: ${result.errorResult?.toXDR('base64') ?? 'unknown error'}`)
+    }
+
+    if (result.status === 'TRY_AGAIN_LATER') {
+      throw new Error('Transaction submission was throttled. Retry WebID removal shortly.')
     }
 
     const finalResult = await this.server.pollTransaction(result.hash, { attempts: 20 })

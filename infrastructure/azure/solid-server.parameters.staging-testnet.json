@@ -1,0 +1,15 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": { "value": "eastus2" },
+    "environmentName": { "value": "staging-testnet" },
+    "appName": { "value": "nodezero-social" },
+    "cssImage": { "value": "docker.io/solidproject/community-server:7.1.9" },
+    "fileShareQuotaGb": { "value": 100 },
+    "containerCpu": { "value": "1.0" },
+    "containerMemory": { "value": "2Gi" },
+    "logAnalyticsRetentionDays": { "value": 30 },
+    "logAnalyticsDailyQuotaGb": { "value": 1 }
+  }
+}

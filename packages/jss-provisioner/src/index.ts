@@ -1,7 +1,9 @@
 import { createServer } from 'node:http'
+import { createHash } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { ProvisionStore } from './store.js'
 import { verifyAttestation } from './attestation.js'
+import { createSolidAccount } from './solidAccount.js'
 import type {
   BootstrapChallengeRequest,
   ProvisionRequest,
@@ -10,6 +12,7 @@ import type {
 
 const PORT = Number(process.env.PORT ?? process.env.JSS_PROVISIONER_PORT ?? 8181)
 const ISSUER = process.env.JSS_ISSUER_URL ?? 'https://staging.nodezero.social'
+const SOLID_CSS_BASE_URL = (process.env.JSS_SOLID_CSS_BASE_URL ?? '').trim().replace(/\/+$/, '')
 const LOCKBOX_FACTORY_CONTRACT_ID =
   process.env.JSS_LOCKBOX_FACTORY_CONTRACT_ID ?? process.env.NZ_LOCKBOX_FACTORY_CONTRACT_ID ?? ''
 const LOCKBOX_FACTORY_MODE = (process.env.JSS_LOCKBOX_FACTORY_MODE ?? 'mock').toLowerCase()
@@ -98,6 +101,10 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Pro
         mode: LOCKBOX_FACTORY_MODE,
         contractId: LOCKBOX_FACTORY_CONTRACT_ID || null,
       },
+      solidAccount: {
+        configured: Boolean(SOLID_CSS_BASE_URL),
+        cssBaseUrl: SOLID_CSS_BASE_URL || null,
+      },
       uptimeMs: Math.round(process.uptime() * 1000),
     })
     return
@@ -108,6 +115,90 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Pro
     validateChallengeRequest(body)
     const challenge = store.issueChallenge(body)
     sendJson(req, res, 200, challenge)
+    return
+  }
+
+  if (req.method === 'POST' && url.pathname === '/v1/solid-account') {
+    if (!SOLID_CSS_BASE_URL) {
+      sendJson(req, res, 503, { error: 'Solid account provisioning is not configured (JSS_SOLID_CSS_BASE_URL).' })
+      return
+    }
+
+    const body = await readJsonBody<{ name?: string; email?: string; password?: string; stellarPublicKey?: string }>(req)
+    if (!isNonEmpty(body.name)) {
+      sendJson(req, res, 400, { error: 'name is required.' })
+      return
+    }
+    if (!isNonEmpty(body.email)) {
+      sendJson(req, res, 400, { error: 'email is required.' })
+      return
+    }
+    if (!isNonEmpty(body.password)) {
+      sendJson(req, res, 400, { error: 'password is required.' })
+      return
+    }
+
+    const stellarPublicKey = isNonEmpty(body.stellarPublicKey) ? body.stellarPublicKey.trim() : ''
+    if (stellarPublicKey && !/^G[A-Z2-7]{55}$/.test(stellarPublicKey)) {
+      sendJson(req, res, 400, { error: 'stellarPublicKey must be a valid Stellar public key (G...).' })
+      return
+    }
+
+    const normalizedName = body.name.trim().toLowerCase().replace(/[^a-z0-9-]/g, '')
+    if (!normalizedName) {
+      sendJson(req, res, 400, { error: 'name must contain alphanumeric characters.' })
+      return
+    }
+
+    try {
+      const account = await createSolidAccount(SOLID_CSS_BASE_URL, {
+        name: normalizedName,
+        email: body.email.trim(),
+        password: body.password,
+      })
+
+      // Optionally anchor the WebID<->Stellar pairing in a per-user lockb0x.
+      // Requested by supplying stellarPublicKey; fail-closed when requested.
+      let lockbox: Awaited<ReturnType<typeof store.provisionLockbox>> | undefined
+      if (stellarPublicKey) {
+        const podBindingHash = createHash('sha256')
+          .update(`${account.webId}|${stellarPublicKey}`)
+          .digest('hex')
+        const proofRootHex = createHash('sha256')
+          .update(`NZ_POD_PAIR_V1|${account.webId}|${stellarPublicKey}|${account.podUrl}`)
+          .digest('hex')
+        lockbox = await store.provisionLockbox({
+          webId: account.webId,
+          stellarPublicKey,
+          podBindingHash,
+          proofRootHex,
+        })
+        if (lockbox.status !== 'ready' || !lockbox.userLockboxContractId) {
+          sendJson(req, res, 502, {
+            error: lockbox.error ?? 'Per-user lockb0x anchoring failed.',
+            webId: account.webId,
+            podUrl: account.podUrl,
+          })
+          return
+        }
+      }
+
+      sendJson(req, res, 200, {
+        status: 'ready',
+        webId: account.webId,
+        podUrl: account.podUrl,
+        stellarPublicKey: stellarPublicKey || null,
+        clientCredentials: {
+          id: account.clientCredentialsId,
+          secret: account.clientCredentialsSecret,
+          resource: account.clientCredentialsResource,
+        },
+        lockbox: lockbox ?? null,
+      })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Solid account provisioning failed.'
+      sendJson(req, res, 502, { error: message })
+    }
     return
   }
 
