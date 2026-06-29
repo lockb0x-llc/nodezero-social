@@ -348,6 +348,9 @@ async function runCustodyProvisioning(params: {
   if (status.status !== 'ready' || !status.custodyReceipt) {
     throw new Error('Provisioner did not return a ready custody receipt.')
   }
+  if (!status.lockbox || status.lockbox.mode !== 'soroban' || !status.lockbox.userLockboxContractId) {
+    throw new Error('Provisioner did not return a per-user lockbox contract.')
+  }
 
   return {
     custodyReceipt: {
@@ -586,7 +589,25 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
           proofRootHex = provisioning.custodyReceipt.proofRootHex
         }
 
-        const effectiveLockboxContractId = userLockboxContractId ?? lockboxContractId
+        if (!userLockboxContractId) {
+          setAttestationStatus('error')
+          setAttestationMessage('Per-user lockbox provisioning is required and no user lockbox contract was returned.')
+          setAttestationDetails({
+            registeredWebId: mappedWebId,
+            lockboxStateRoot: null,
+            registerTxHash: registerTxHash || null,
+            verifiedAt: null,
+            custodyClaimHash: custodyReceipt?.claimHash ?? null,
+            lockboxFactoryContractId: lockboxFactoryContractId ?? null,
+            userLockboxContractId: null,
+            lockboxIdempotencyKey: lockboxIdempotencyKey ?? null,
+            proofHashHex: proofHashHex ?? null,
+            proofRootHex: proofRootHex ?? null,
+          })
+          return
+        }
+
+        const effectiveLockboxContractId = userLockboxContractId
         const lockboxRoot = await service.getLockboxStateRoot(effectiveLockboxContractId)
 
         if (mappedWebId !== webId) {

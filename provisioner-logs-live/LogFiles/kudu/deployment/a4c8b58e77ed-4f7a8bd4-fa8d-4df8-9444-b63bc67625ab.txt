@@ -1,0 +1,39 @@
+2026-06-28T06:10:16  Fetching changes.
+2026-06-28T06:10:16    Starting  LocalZipHandler
+2026-06-28T06:10:16    Cleaning up temp folders from previous zip deployments and extracting pushed zip file /tmp/zipdeploy/8785fabb-e0dc-43a0-9fb2-584da2e411f9.zip (0.02 MB) to /tmp/zipdeploy/extracted
+2026-06-28T06:10:21  Updating submodules.
+2026-06-28T06:10:21  Preparing deployment for commit id 'cb3cd36c-3'.
+2026-06-28T06:10:22  PreDeployment: context.CleanOutputPath False
+2026-06-28T06:10:22  PreDeployment: context.OutputPath /home/site/wwwroot
+2026-06-28T06:10:23  Repository path is /tmp/zipdeploy/extracted
+2026-06-28T06:10:23  Running oryx build...
+2026-06-28T06:10:23    Command: oryx build /tmp/zipdeploy/extracted -o /home/site/wwwroot --platform nodejs --platform-version 22 -p virtualenv_name= --log-file /tmp/build-debug.log  -i /tmp/8ded4dbeff76c05 -p compress_node_modules=tar-gz | tee /tmp/oryx-build.log
+2026-06-28T06:10:33    Operation performed by Microsoft Oryx, https://github.com/Microsoft/Oryx
+2026-06-28T06:10:33    You can report issues at https://github.com/Microsoft/Oryx/issues
+2026-06-28T06:10:33    
+2026-06-28T06:10:33    Oryx Version: 0.2.20251022.1+bef98bc7139feefaa74be16de9d835e2c85385d4, Commit: bef98bc7139feefaa74be16de9d835e2c85385d4, ReleaseTagName: 20251022.1
+2026-06-28T06:10:33    
+2026-06-28T06:10:33    Build Operation ID: 7f43c391f9df5a98
+2026-06-28T06:10:33    Repository Commit : cb3cd36c-3c54-4580-ba01-2856d66bf17b
+2026-06-28T06:10:33    OS Type           : bookworm
+2026-06-28T06:10:34    Image Type        : githubactions
+2026-06-28T06:10:34    
+2026-06-28T06:10:34    Primary SDK Storage URL: https://oryx-cdn.microsoft.io
+2026-06-28T06:10:34    Backup SDK Storage URL: 
+2026-06-28T06:10:34    Detecting platforms...
+2026-06-28T06:10:42    Detected following platforms:
+2026-06-28T06:10:42      nodejs: 22.22.0
+2026-06-28T06:10:42    Version '22.22.0' of platform 'nodejs' is not installed. Generating script to install it...
+2026-06-28T06:10:44    
+/bin/bash -c "oryx build /tmp/zipdeploy/extracted -o /home/site/wwwroot --platform nodejs --platform-version 22 -p virtualenv_name= --log-file /tmp/build-debug.log  -i /tmp/8ded4dbeff76c05 -p compress_node_modules=tar-gz | tee /tmp/oryx-build.log ; exit $PIPESTATUS "
+2026-06-28T06:10:44  
+2026-06-28T06:10:44  
+2026-06-28T06:10:44  Generating summary of Oryx build
+2026-06-28T06:10:44  Parsing the build logs
+2026-06-28T06:10:44  Found 0 issue(s)
+2026-06-28T06:10:45  
+2026-06-28T06:10:45  Build Summary :
+2026-06-28T06:10:45  ===============
+2026-06-28T06:10:45  Errors (0)
+2026-06-28T06:10:45  Warnings (0)
+2026-06-28T06:10:45  

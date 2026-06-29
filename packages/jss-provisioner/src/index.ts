@@ -132,6 +132,14 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Pro
         proofRootHex: receipt.proofRootHex,
       })
 
+      if (
+        lockbox.status !== 'ready' ||
+        lockbox.mode !== 'soroban' ||
+        !lockbox.userLockboxContractId
+      ) {
+        throw new Error(lockbox.error ?? 'Per-user lockbox provisioning failed.')
+      }
+
       store.resolveJob(jobId, {
         handle: body.handle.trim(),
         webId: body.webId.trim(),

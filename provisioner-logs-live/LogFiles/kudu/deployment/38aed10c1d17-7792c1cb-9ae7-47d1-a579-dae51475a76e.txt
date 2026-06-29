@@ -1,0 +1,54 @@
+2026-06-28T05:54:46  Fetching changes.
+2026-06-28T05:54:46    Starting  LocalZipHandler
+2026-06-28T05:54:46    Cleaning up temp folders from previous zip deployments and extracting pushed zip file /tmp/zipdeploy/8abee117-a638-4777-90e8-225931f1c9df.zip (0.02 MB) to /tmp/zipdeploy/extracted
+2026-06-28T05:54:51  Updating submodules.
+2026-06-28T05:54:52  Preparing deployment for commit id '529f9112-0'.
+2026-06-28T05:54:52  PreDeployment: context.CleanOutputPath False
+2026-06-28T05:54:52  PreDeployment: context.OutputPath /home/site/wwwroot
+2026-06-28T05:54:53  Repository path is /tmp/zipdeploy/extracted
+2026-06-28T05:54:53  Running oryx build...
+2026-06-28T05:54:53    Command: oryx build /tmp/zipdeploy/extracted -o /home/site/wwwroot --platform nodejs --platform-version 22 -p virtualenv_name= --log-file /tmp/build-debug.log  -i /tmp/8ded4d9c5bfdbd1 -p compress_node_modules=tar-gz | tee /tmp/oryx-build.log
+2026-06-28T05:55:11    Operation performed by Microsoft Oryx, https://github.com/Microsoft/Oryx
+2026-06-28T05:55:11    You can report issues at https://github.com/Microsoft/Oryx/issues
+2026-06-28T05:55:12    
+2026-06-28T05:55:12    Oryx Version: 0.2.20260513.1+5c94136d0d5c06204a00d688dc7aea902452e52c, Commit: 5c94136d0d5c06204a00d688dc7aea902452e52c, ReleaseTagName: 20260513.1
+2026-06-28T05:55:12    
+2026-06-28T05:55:12    Build Operation ID: 28f3080ea6ec8804
+2026-06-28T05:55:12    Repository Commit : 529f9112-07c9-43d6-a48f-198c1248e43f
+2026-06-28T05:55:12    OS Type           : bookworm
+2026-06-28T05:55:13    Image Type        : githubactions
+2026-06-28T05:55:13    
+2026-06-28T05:55:13    Primary SDK Storage URL: https://oryx-cdn.microsoft.io
+2026-06-28T05:55:13    Backup SDK Storage URL: 
+2026-06-28T05:55:13    ACR SDK Registry URL: (not set)
+2026-06-28T05:55:13    SDK provider status:
+2026-06-28T05:55:13      External ACR SDK provider: Enabled
+2026-06-28T05:55:13      External SDK provider: Enabled
+2026-06-28T05:55:14      Direct ACR SDK provider: Disabled
+2026-06-28T05:55:14      Blob SDK provider: Enabled
+2026-06-28T05:55:14    External ACR SDK provider is enabled. Only using user-specified platform: nodejs
+2026-06-28T05:55:14    Detecting platforms...
+2026-06-28T05:55:16    External ACR provider resolved version '22.22.2' for nodejs.
+2026-06-28T05:55:17    Version resolved using external ACR SDK provider.
+2026-06-28T05:55:17    Detected following platforms:
+2026-06-28T05:55:17      nodejs: 22.22.2
+2026-06-28T05:55:17    Requesting SDK from ACR via external provider: nodejs 22.22.2 (bookworm)
+2026-06-28T05:55:31    Successfully pulled SDK from ACR via external provider: nodejs 22.22.2
+2026-06-28T05:55:31    SDK for 'nodejs' version '22.22.2' fetched via external ACR provider.
+2026-06-28T05:55:31    Version '22.22.2' of platform 'nodejs' is not installed. Generating script to install it...
+2026-06-28T05:55:33    Detected the following frameworks: Typescript
+2026-06-28T05:55:36    
+2026-06-28T05:55:37    Using intermediate directory '/tmp/8ded4d9c5bfdbd1'.
+2026-06-28T05:55:37    
+2026-06-28T05:55:37    Copying files to the intermediate directory...
+2026-06-28T05:55:39    Copying files to intermediate directory done in 2 sec(s).
+2026-06-28T05:55:40    
+2026-06-28T05:55:40    Source directory     : /tmp/8ded4d9c5bfdbd1
+2026-06-28T05:55:40    Destination directory: /home/site/wwwroot
+2026-06-28T05:55:41    
+2026-06-28T05:55:41    Installing platform...
+2026-06-28T05:55:41    
+2026-06-28T05:55:41    Downloading and extracting 'nodejs' version '22.22.2' to '/tmp/oryx/platforms/nodejs/22.22.2'...
+2026-06-28T05:55:41    Detected image debian flavor: bookworm.
+2026-06-28T05:55:41    SDK binary download was skipped. Looking for cached tarball...
+2026-06-28T05:55:41    Found tarball at /var/OryxAcrSdks/nodejs/nodejs-bookworm-22.22.2.tar.gz

@@ -6,7 +6,8 @@ log() {
 }
 
 APP_ROOT="${APP_ROOT:-/home/site/wwwroot}"
-STATE_DIR="${HOME:-/home}/.nodezero-provisioner"
+STATE_SCOPE="${JSS_LOCKBOX_FACTORY_BOOTSTRAP_ALIAS:-default}"
+STATE_DIR="${HOME:-/home}/.nodezero-provisioner-${STATE_SCOPE}"
 STATE_FILE="$STATE_DIR/soroban-bootstrap.env"
 TOOLS_DIR="$STATE_DIR/tools"
 STELLAR_ARCHIVE="$TOOLS_DIR/stellar-cli.tar.gz"
@@ -96,7 +97,7 @@ case "${BOOTSTRAP_ENABLED,,}" in
         -- \
         initialize_factory \
         --operator "$BOOTSTRAPPED_OPERATOR_ADDRESS" \
-        --lockbox_wasm_hash "$WASM_HASH" >/dev/null 2>&1 || true
+        --lockbox_wasm_hash "$WASM_HASH" >/dev/null
 
       cat > "$STATE_FILE" <<EOF
 BOOTSTRAPPED_FACTORY_ID=$BOOTSTRAPPED_FACTORY_ID
@@ -112,7 +113,14 @@ EOF
   *)
     # Default path: keep factory ID from env authoritative to prevent config drift.
     export JSS_STELLAR_SOURCE_ACCOUNT="${JSS_STELLAR_SOURCE_ACCOUNT:-$SOURCE_ALIAS}"
-    export JSS_LOCKBOX_FACTORY_OPERATOR_ADDRESS="${JSS_LOCKBOX_FACTORY_OPERATOR_ADDRESS:-$(stellar keys public-key "$SOURCE_ALIAS")}" 
+
+    EFFECTIVE_SOURCE_PUBKEY="$(stellar keys public-key "$JSS_STELLAR_SOURCE_ACCOUNT")"
+    CONFIGURED_OPERATOR_ADDRESS="${JSS_LOCKBOX_FACTORY_OPERATOR_ADDRESS:-}"
+    if [[ -n "$CONFIGURED_OPERATOR_ADDRESS" && "$CONFIGURED_OPERATOR_ADDRESS" != "$EFFECTIVE_SOURCE_PUBKEY" ]]; then
+      log "Configured operator address does not match source key; overriding to source public key"
+    fi
+
+    export JSS_LOCKBOX_FACTORY_OPERATOR_ADDRESS="$EFFECTIVE_SOURCE_PUBKEY"
     export JSS_LOCKBOX_FACTORY_CONTRACT_ID="$REFERENCE_FACTORY_ID"
     ;;
 esac

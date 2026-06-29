@@ -1,0 +1,10 @@
+2026-06-28T05:55:53  Fetching changes.
+2026-06-28T05:55:53    Starting  LocalZipHandler
+2026-06-28T05:55:53    Cleaning up temp folders from previous zip deployments and extracting pushed zip file /tmp/zipdeploy/7c7b1ba9-361d-48c8-8b86-95c72dbbdffc.zip (0.02 MB) to /tmp/zipdeploy/extracted
+2026-06-28T05:55:59  Updating submodules.
+2026-06-28T05:55:59  Preparing deployment for commit id '2b627ee6-c'.
+2026-06-28T05:56:02  PreDeployment: context.CleanOutputPath False
+2026-06-28T05:56:02  PreDeployment: context.OutputPath /home/site/wwwroot
+2026-06-28T05:56:03  Repository path is /tmp/zipdeploy/extracted
+2026-06-28T05:56:04  Running oryx build...
+2026-06-28T05:56:04    Command: oryx build /tmp/zipdeploy/extracted -o /home/site/wwwroot --platform nodejs --platform-version 22 -p virtualenv_name= --log-file /tmp/build-debug.log  -i /tmp/8ded4d9eef1ee7b -p compress_node_modules=tar-gz | tee /tmp/oryx-build.log

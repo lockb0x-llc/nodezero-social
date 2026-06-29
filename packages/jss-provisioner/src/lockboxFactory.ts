@@ -15,11 +15,6 @@ function toBytes32Hex(seed: string): string {
   return createHash('sha256').update(seed, 'utf8').digest('hex')
 }
 
-function deriveMockLockboxContractId(idempotencyKey: string): string {
-  const digest = createHash('sha256').update(idempotencyKey, 'utf8').digest('hex').slice(0, 32)
-  return `mock-lockbox-${digest}`
-}
-
 function parseFactoryMode(raw: string): FactoryMode {
   const normalized = raw.trim().toLowerCase()
   if (normalized === 'disabled') return 'disabled'
@@ -30,6 +25,11 @@ function parseFactoryMode(raw: string): FactoryMode {
 function firstContractId(value: string): string | null {
   const match = value.match(/C[A-Z0-9]{55}/)
   return match ? match[0] : null
+}
+
+function firstHex64(value: string): string | null {
+  const match = value.match(/\b[a-fA-F0-9]{64}\b/)
+  return match ? match[0].toLowerCase() : null
 }
 
 async function runStellarInvoke(args: string[]): Promise<string> {
@@ -67,14 +67,8 @@ async function runStellarInvoke(args: string[]): Promise<string> {
   })
 }
 
-function isMissingFactoryMethod(err: unknown): boolean {
-  if (!(err instanceof Error)) return false
-  const message = err.message
-  return (
-    message.includes("unrecognized subcommand 'get_or_create_user_lockbox'") ||
-    (message.includes('get_or_create_user_lockbox') &&
-      (message.includes('InvalidAction') || message.includes('UnreachableCodeReached')))
-  )
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 async function createViaSoroban(params: {
@@ -124,17 +118,45 @@ async function createViaSoroban(params: {
   return contractId
 }
 
-async function verifySharedLockbox(params: { contractId: string }): Promise<string> {
+async function readLockboxWasmHash(factoryContractId: string): Promise<string> {
   const sourceAccount = process.env.JSS_STELLAR_SOURCE_ACCOUNT
   if (!sourceAccount || sourceAccount.trim().length === 0) {
     throw new Error('JSS_STELLAR_SOURCE_ACCOUNT is required for soroban mode.')
   }
 
-  await runStellarInvoke([
+  const configuredWasmHash = process.env.JSS_LOCKBOX_WASM_HASH?.trim()
+  if (configuredWasmHash && /^[a-fA-F0-9]{64}$/.test(configuredWasmHash)) {
+    return configuredWasmHash.toLowerCase()
+  }
+
+  const referenceLockboxContractId = process.env.JSS_LOCKBOX_REFERENCE_CONTRACT_ID?.trim()
+  if (referenceLockboxContractId) {
+    const infoArgs = [
+      'contract',
+      'info',
+      'hash',
+      '--contract-id',
+      referenceLockboxContractId,
+      '--network',
+      DEFAULT_NETWORK,
+    ]
+
+    const infoOutput = await runStellarInvoke(infoArgs)
+    const infoHash = firstHex64(infoOutput)
+    if (!infoHash) {
+      throw new Error(
+        `Could not parse lockbox wasm hash from reference lockbox contract. Raw output: ${infoOutput}`,
+      )
+    }
+
+    return infoHash
+  }
+
+  const args = [
     'contract',
     'invoke',
     '--id',
-    params.contractId,
+    factoryContractId,
     '--rpc-url',
     process.env.JSS_STELLAR_RPC_URL ?? DEFAULT_RPC_URL,
     '--network-passphrase',
@@ -145,10 +167,138 @@ async function verifySharedLockbox(params: { contractId: string }): Promise<stri
     '--source-account',
     sourceAccount,
     '--',
-    'get_state_root',
-  ])
+    'get_lockbox_wasm_hash',
+  ]
 
-  return params.contractId
+  const output = await runStellarInvoke(args)
+  const wasmHash = firstHex64(output)
+  if (!wasmHash) {
+    throw new Error(`Could not parse lockbox wasm hash from factory response. Raw output: ${output}`)
+  }
+
+  return wasmHash
+}
+
+async function deployLockboxContract(wasmHash: string): Promise<string> {
+  const sourceAccount = process.env.JSS_STELLAR_SOURCE_ACCOUNT
+  if (!sourceAccount || sourceAccount.trim().length === 0) {
+    throw new Error('JSS_STELLAR_SOURCE_ACCOUNT is required for soroban mode.')
+  }
+
+  const args = [
+    'contract',
+    'deploy',
+    '--wasm-hash',
+    wasmHash,
+    '--rpc-url',
+    process.env.JSS_STELLAR_RPC_URL ?? DEFAULT_RPC_URL,
+    '--network-passphrase',
+    process.env.JSS_STELLAR_NETWORK_PASSPHRASE ??
+      (DEFAULT_NETWORK === 'testnet'
+        ? 'Test SDF Network ; September 2015'
+        : 'Public Global Stellar Network ; September 2015'),
+    '--source-account',
+    sourceAccount,
+  ]
+
+  const maxAttempts = 4
+  let lastError: unknown = null
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const output = await runStellarInvoke(args)
+      const contractId = firstContractId(output)
+      if (!contractId) {
+        throw new Error('Could not parse deployed lockbox contract ID from Soroban deploy response.')
+      }
+
+      return contractId
+    } catch (err) {
+      lastError = err
+      const message = err instanceof Error ? err.message : String(err)
+      const transientTimeout = message.toLowerCase().includes('request timeout')
+
+      if (transientTimeout && attempt < maxAttempts) {
+        await sleep(1200 * attempt)
+        continue
+      }
+
+      throw err
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error('Lockbox deploy failed.')
+}
+
+async function initializeLockboxContract(params: {
+  lockboxContractId: string
+  operatorAddress: string
+  initialRootHex: string
+}): Promise<void> {
+  const sourceAccount = process.env.JSS_STELLAR_SOURCE_ACCOUNT
+  if (!sourceAccount || sourceAccount.trim().length === 0) {
+    throw new Error('JSS_STELLAR_SOURCE_ACCOUNT is required for soroban mode.')
+  }
+
+  const args = [
+    'contract',
+    'invoke',
+    '--id',
+    params.lockboxContractId,
+    '--rpc-url',
+    process.env.JSS_STELLAR_RPC_URL ?? DEFAULT_RPC_URL,
+    '--network-passphrase',
+    process.env.JSS_STELLAR_NETWORK_PASSPHRASE ??
+      (DEFAULT_NETWORK === 'testnet'
+        ? 'Test SDF Network ; September 2015'
+        : 'Public Global Stellar Network ; September 2015'),
+    '--source-account',
+    sourceAccount,
+    '--',
+    'initialize',
+    '--operator',
+    params.operatorAddress,
+    '--initial_root',
+    params.initialRootHex,
+  ]
+
+  const maxAttempts = 8
+  let lastError: unknown = null
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      await runStellarInvoke(args)
+      return
+    } catch (err) {
+      lastError = err
+      const message = err instanceof Error ? err.message : String(err)
+      const transientMissingValue = message.includes('Error(Storage, MissingValue)')
+      const transientTimeout = message.toLowerCase().includes('request timeout')
+
+      if ((transientMissingValue || transientTimeout) && attempt < maxAttempts) {
+        await sleep(1200 * attempt)
+        continue
+      }
+
+      throw err
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error('Lockbox initialize failed.')
+}
+
+async function createDirectPerUserLockbox(params: {
+  factoryContractId: string
+  operatorAddress: string
+  initialRootHex: string
+}): Promise<string> {
+  const wasmHash = await readLockboxWasmHash(params.factoryContractId)
+  const lockboxContractId = await deployLockboxContract(wasmHash)
+  await initializeLockboxContract({
+    lockboxContractId,
+    operatorAddress: params.operatorAddress,
+    initialRootHex: params.initialRootHex,
+  })
+
+  return lockboxContractId
 }
 
 export class LockboxFactoryProvisioner {
@@ -175,15 +325,29 @@ export class LockboxFactoryProvisioner {
     const factoryContractId =
       process.env.JSS_LOCKBOX_FACTORY_CONTRACT_ID ?? process.env.NZ_LOCKBOX_FACTORY_CONTRACT_ID ?? ''
 
-    if (mode === 'disabled' || !factoryContractId.trim()) {
+    if (mode !== 'soroban') {
       return {
-        status: 'skipped',
-        mode: 'disabled',
+        status: 'error',
+        mode,
         factoryContractId: factoryContractId.trim() || null,
         userLockboxContractId: null,
         idempotencyKey,
         verifiedAt,
-          proofRootHex: canonical(input.proofRootHex),
+        proofRootHex: canonical(input.proofRootHex),
+        error: 'Per-user lockbox provisioning requires JSS_LOCKBOX_FACTORY_MODE=soroban.',
+      }
+    }
+
+    if (!factoryContractId.trim()) {
+      return {
+        status: 'error',
+        mode: 'soroban',
+        factoryContractId: null,
+        userLockboxContractId: null,
+        idempotencyKey,
+        verifiedAt,
+        proofRootHex: canonical(input.proofRootHex),
+        error: 'JSS_LOCKBOX_FACTORY_CONTRACT_ID is required for per-user lockbox provisioning.',
       }
     }
 
@@ -191,7 +355,7 @@ export class LockboxFactoryProvisioner {
     if (existing) {
       return {
         status: 'ready',
-        mode: mode === 'soroban' ? 'soroban' : 'mock',
+        mode: 'soroban',
         factoryContractId: factoryContractId.trim(),
         userLockboxContractId: existing,
         idempotencyKey,
@@ -200,60 +364,52 @@ export class LockboxFactoryProvisioner {
       }
     }
 
-    if (mode === 'soroban') {
-      try {
-        const operatorAddress = process.env.JSS_LOCKBOX_FACTORY_OPERATOR_ADDRESS
-        if (!operatorAddress || operatorAddress.trim().length === 0) {
-          throw new Error('JSS_LOCKBOX_FACTORY_OPERATOR_ADDRESS is required for soroban mode.')
-        }
+    try {
+      const operatorAddress = process.env.JSS_LOCKBOX_FACTORY_OPERATOR_ADDRESS
+      if (!operatorAddress || operatorAddress.trim().length === 0) {
+        throw new Error('JSS_LOCKBOX_FACTORY_OPERATOR_ADDRESS is required for soroban mode.')
+      }
 
-        const created = await createViaSoroban({
+      let created: string
+      try {
+        created = await createViaSoroban({
           factoryContractId: factoryContractId.trim(),
           operatorAddress: operatorAddress.trim(),
           userAddress: canonical(input.stellarPublicKey),
           saltHex: toBytes32Hex(`salt:${idempotencyKey}`),
           initialRootHex: canonical(input.proofRootHex),
-        }).catch((err: unknown) => {
-          if (isMissingFactoryMethod(err)) {
-            return verifySharedLockbox({ contractId: factoryContractId.trim() })
-          }
-          throw err
         })
-
-        this.userLockboxes.set(idempotencyKey, created)
-        return {
-          status: 'ready',
-          mode: 'soroban',
+      } catch {
+        // Factory deployments can drift across staged environments; direct per-user lockbox
+        // creation preserves fintech fail-closed semantics without shared-contract fallback.
+        created = await createDirectPerUserLockbox({
           factoryContractId: factoryContractId.trim(),
-          userLockboxContractId: created,
-          idempotencyKey,
-          verifiedAt,
-          proofRootHex: canonical(input.proofRootHex),
-        }
-      } catch (err) {
-        return {
-          status: 'error',
-          mode: 'soroban',
-          factoryContractId: factoryContractId.trim(),
-          userLockboxContractId: null,
-          idempotencyKey,
-          verifiedAt,
-          proofRootHex: canonical(input.proofRootHex),
-          error: err instanceof Error ? err.message : 'Soroban lockbox provisioning failed.',
-        }
+          operatorAddress: operatorAddress.trim(),
+          initialRootHex: canonical(input.proofRootHex),
+        })
       }
-    }
 
-    const created = deriveMockLockboxContractId(idempotencyKey)
-    this.userLockboxes.set(idempotencyKey, created)
-    return {
-      status: 'ready',
-      mode: 'mock',
-      factoryContractId: factoryContractId.trim(),
-      userLockboxContractId: created,
-      idempotencyKey,
-      verifiedAt,
-      proofRootHex: canonical(input.proofRootHex),
+      this.userLockboxes.set(idempotencyKey, created)
+      return {
+        status: 'ready',
+        mode: 'soroban',
+        factoryContractId: factoryContractId.trim(),
+        userLockboxContractId: created,
+        idempotencyKey,
+        verifiedAt,
+        proofRootHex: canonical(input.proofRootHex),
+      }
+    } catch (err) {
+      return {
+        status: 'error',
+        mode: 'soroban',
+        factoryContractId: factoryContractId.trim(),
+        userLockboxContractId: null,
+        idempotencyKey,
+        verifiedAt,
+        proofRootHex: canonical(input.proofRootHex),
+        error: err instanceof Error ? err.message : 'Soroban lockbox provisioning failed.',
+      }
     }
   }
 }

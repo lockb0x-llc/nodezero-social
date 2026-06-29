@@ -1,0 +1,18 @@
+<step title="Incoming Request" date="2026-06-28T05:57:41.523" instance="19ea2b" url="/api/zipdeploy?isAsync=true" method="POST" type="request" pid="835,1,5" Accept="*/*" Host="nodezero-social-staging-testnet-provisioner.scm.azurewebsites.net" User-Agent="AZURECLI/2.83.0 (MSI)" Accept-Encoding="gzip, deflate" Authorization="Bea..." Cache-Control="no-cache" Content-Type="application/octet-stream" Content-Length="22300" x-ms-client-request-id="41dbcba3-72b6-11f1-84d2-7c1e527bded8" x-ms-artifact-checksum="043fc2a37d02928f4963cdf63c2eb9e6cc27c1ad57ed0e4c2bf8e566dfc6b104" X-ARR-LOG-ID="41dbcba3-72b6-11f1-84d2-7c1e527bded8" CLIENT-IP="20.169.89.245:53389" X-SITE-DEPLOYMENT-ID="nodezero-social-staging-testnet-provisioner" WAS-DEFAULT-HOSTNAME="nodezero-social-staging-testnet-provisioner.scm.azurewebsites.net" X-Forwarded-Proto="https" X-AppService-Proto="https" X-Forwarded-TlsVersion="1.3" X-WAWS-Unencoded-URL="/api/zipdeploy?isAsync=true" X-Client-IP="20.169.89.245" X-Client-Port="53389" >
+  <step title="ZipPushDeploy" date="2026-06-28T05:57:48.576" >
+    <step title="ZipDeploy. Extract zip. Remote build." date="2026-06-28T05:57:48.714" /><!-- duration: 21ms -->
+    <step title="None repository commit" date="2026-06-28T05:57:48.806" >
+      <step title="Commit id: 6ba92de8-edec-46db-9ae6-0437ce31f792" date="2026-06-28T05:57:48.915" Message="N/A" AuthorName="N/A" AuthorEmail="N/A" /><!-- duration: 13ms -->
+    </step><!-- duration: 140ms -->
+    <step title="Starting PushDeployAsync" date="2026-06-28T05:57:49.066" /><!-- duration: 20ms -->
+    <step title="Writing artifact to /tmp/zipdeploy/06e30dac-3769-4617-83d9-be21596e0786.zip" date="2026-06-28T05:57:49.400" >
+      <step title="Writing multipart request body to /tmp/zipdeploy/06e30dac-3769-4617-83d9-be21596e0786.zip" date="2026-06-28T05:57:49.459" /><!-- duration: 22ms -->
+      <step title="Writing zip file to /tmp/zipdeploy/06e30dac-3769-4617-83d9-be21596e0786.zip" date="2026-06-28T05:57:49.528" /><!-- duration: 113ms -->
+    </step><!-- duration: 743ms -->
+    <step title="Start deployment in the background" date="2026-06-28T05:57:50.204" >
+      <step title="Acquiring Deployment Lock" date="2026-06-28T05:57:50.506" /><!-- duration: 91ms -->
+      <step title="Acquired Deployment Lock" date="2026-06-28T05:57:52.003" /><!-- duration: 61ms -->
+    </step><!-- duration: 2676ms -->
+  </step><!-- duration: 4494ms -->
+  <step title="Outgoing response" date="2026-06-28T05:57:53.351" type="response" statusCode="202" statusText="Accepted" /><!-- duration: 42ms -->
+</step><!-- duration: 11920ms -->
