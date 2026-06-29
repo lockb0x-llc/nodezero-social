@@ -29,7 +29,7 @@ async function main() {
   const files = await listFiles(buildDir)
   const artifacts = await Promise.all(
     files
-      .filter((file) => /\.(wasm|r1cs|sym)$/i.test(file))
+      .filter((file) => /\.(wasm|r1cs|sym|zkey|json)$/i.test(file))
       .map(async (file) => {
         const stat = await fs.stat(file)
         return {

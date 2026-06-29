@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "description": "NodeZero.social Expo / React Native mobile application",
   "license": "MIT",
-  "main": "expo-router/entry",
+  "main": "./index.js",
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
@@ -22,6 +22,7 @@
     "@nodezero/geo-discovery": "workspace:*",
     "@nodezero/p2p-comms": "workspace:*",
     "@nodezero/solid-pod-sync": "workspace:*",
+    "@nodezero/zk-crypto": "workspace:*",
     "@react-native-async-storage/async-storage": "^2.2.0",
     "expo": "~51.0.0",
     "expo-constants": "~16.0.2",

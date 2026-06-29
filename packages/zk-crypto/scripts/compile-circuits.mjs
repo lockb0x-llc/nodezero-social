@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * compile-circuits.mjs
- * Compiles poh.circom and nullifier.circom to R1CS + WASM using circom CLI.
+ * Compiles NodeZero circuits to R1CS + WASM using circom CLI.
  * Requires circom >= 2.1.6 to be installed: https://docs.circom.io/getting-started/installation/
  */
 
@@ -17,13 +17,13 @@ const buildDir = path.join(root, 'build')
 
 mkdirSync(buildDir, { recursive: true })
 
-const circuits = ['poh', 'nullifier']
+const circuits = ['poh', 'nullifier', 'pod_ownership']
 
 for (const circuit of circuits) {
   const src = path.join(circuitsDir, `${circuit}.circom`)
   console.log(`\n[zk-crypto] Compiling ${circuit}.circom…`)
   execSync(
-    `circom "${src}" --r1cs --wasm --sym -o "${buildDir}" --include "${root}/node_modules"`,
+    `circom "${src}" --r1cs --wasm --sym -o "${buildDir}" -l "${root}"`,
     { stdio: 'inherit', cwd: root }
   )
   console.log(`[zk-crypto] ✓ ${circuit}.circom → build/${circuit}.r1cs + build/${circuit}_js/`)

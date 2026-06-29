@@ -21,6 +21,13 @@ xdr (68fa1ac55692f68ad2a2ca549d0a283273554439)",
       "operator": "GBMXG2UIWFBHPKRBDQCEFNIDR3WHJAPVVGBCIOD5SGKZYZQISENZKD5O",
       "initializedAt": "2026-06-26T23:50:00Z",
       "initTx": "a4f1d0eabc91548547fd08c1e597c9c410acfe360e654201997666f4209ce02e"
+    },
+    "lockboxFactory": {
+      "id": "CBV5KWYWK4O44JX4JK57IDGPA2IZSKJR2SC2UNYV65RU4S7MSK66F2WA",
+      "deploymentMode": "testnet-live",
+      "wasmHash": "795157cc49e66f79d2ce06049687d5ad20d625d38c772035dbb4e9463360885f",
+      "deployTx": "2eb3e0cdde2889606b4a8fc1957533528d39a657a5037cdc6e6cbb6a3371eef9",
+      "deployedAt": "2026-06-29T02:11:00Z"
     }
   },
   "generatedAt": "2026-06-26T11:25:49Z"

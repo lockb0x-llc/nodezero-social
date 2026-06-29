@@ -4,8 +4,8 @@ This document defines the required order and prerequisites to release NodeZero.s
 
 Current scope for this milestone:
 
-- Stellar<->Solid pairing attestation using existing contracts (`NodeZeroIdentity`, `Lockb0x`).
-- No new contract requirement for release gating.
+- Proof of Pod Ownership using `NodeZeroIdentity`, browser Groth16/WASM proof artifacts, and factory-created user `Lockb0x` contracts.
+- User lockbox roots must be derived from validated browser proof roots.
 - PoH-specific verifier workflows are future scope.
 
 ## Foundational environment isolation policy
@@ -34,6 +34,7 @@ The following are non-optional guardrails for every deployment:
 - TestNet RPC endpoint (default in this repo): `https://soroban-testnet.stellar.org`
 - Azure CLI with Bicep support
 - `pnpm`, `jq`, and Node.js (for artifact manifests)
+- Circom 2 Rust compiler and `snarkjs` for circuit build/setup. The official Circom 2 install path builds `circom` from `https://github.com/iden3/circom` with Cargo; `snarkjs` is installed from npm.
 
 ## Release sequence
 
@@ -52,6 +53,7 @@ The following are non-optional guardrails for every deployment:
 4. Update app deployment variables with new values:
    - `NZ_IDENTITY_CONTRACT_ID`
    - `NZ_LOCKBOX_CONTRACT_ID`
+   - `NZ_LOCKBOX_FACTORY_CONTRACT_ID`
    - `NZ_ZK_ARTIFACTS_URL`
    - `NZ_ZK_MANIFEST_URL`
    - Optional network overrides:
@@ -69,6 +71,7 @@ The mobile app now reads TestNet deployment values from `packages/mobile-app/app
 
 - `extra.identityContractId`
 - `extra.lockboxContractId`
+- `extra.lockboxFactoryContractId`
 - `extra.zkArtifactsUrl`
 - `extra.zkManifestUrl`
 - `extra.stellarRpcUrl`
@@ -79,7 +82,9 @@ The mobile app now reads TestNet deployment values from `packages/mobile-app/app
 Attestation requirement for app runtime:
 
 - On onboarding, app must register the WebID<->Stellar key link via `NodeZeroIdentity`.
-- On returning sign-in, app must validate pairing against the attested root anchored in `Lockb0x`.
+- The browser must generate Proof of Pod Ownership artifacts for the canonical WebID/Pod + Stellar account claim and submit proof hash/root fields to the provisioner.
+- The provisioner must validate the signed challenge, canonical claim hash, proof hash, and proof root before calling the lockbox factory.
+- On returning sign-in, app must validate pairing against the per-user lockbox root when `userLockboxContractId` exists.
 - Pairing verification must fail closed (prompt relink/re-attest) when mapping or proof checks fail.
 
 ## Current deployed contract references (staging-testnet)

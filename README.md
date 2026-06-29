@@ -4,11 +4,14 @@ NodeZero Social is a decentralized social app that combines Solid Pods,
 Stellar Soroban contracts, and zero-knowledge proofs.
 
 For the Stellar Hacks: Real-World ZK hackathon, the current implementation
-targets a simple, high-value attestation flow on Stellar TestNet:
+targets Proof of Pod Ownership on Stellar TestNet:
 
 1. Link a Solid Pod WebID to a Stellar account using `NodeZeroIdentity`.
-2. Anchor an attested-set ZK root in `Lockb0x`.
-3. Verify the Stellar<->Solid pairing at sign-in against the current lockbox root.
+2. Generate a browser-side Groth16/WASM proof commitment for the canonical
+   WebID/Pod + Stellar account ownership claim.
+3. Create or reuse a factory-provisioned user `Lockb0x` contract whose initial
+   root is the validated proof root.
+4. Verify returning sign-ins against the per-user lockbox root.
 
 PoH-style human-uniqueness verification is planned for a future release and is
 explicitly out of scope for this milestone.
@@ -19,9 +22,9 @@ This submission satisfies the core requirement: meaningful ZK integrated with
 Stellar smart contracts.
 
 1. On-chain identity link contract: `packages/contracts/src/lib.rs` (`NodeZeroIdentity`).
-2. On-chain attestation-root anchor: `packages/contracts/src/lib.rs` (`Lockb0x`).
-3. ZK artifact pipeline: `scripts/zk/prepare-testnet.sh` and `scripts/zk/prepare-artifacts.mjs`.
-4. Wallet registration path: `packages/mobile-app/src/contexts/WalletContext.tsx`.
+2. Factory-created user lockbox anchor: `packages/contracts/src/lib.rs` (`Lockb0xFactory`, `Lockb0x`).
+3. Proof of Pod Ownership circuit and prover: `packages/zk-crypto/circuits/pod_ownership.circom`, `packages/zk-crypto/src/pod-ownership-prover.ts`.
+4. Proof-backed provisioning path: `packages/mobile-app/src/contexts/WalletContext.tsx`, `packages/jss-provisioner/src/attestation.ts`.
 
 ## Architecture
 
@@ -31,10 +34,10 @@ flowchart LR
    C[Embedded Wallet] --> D[Stellar Public Key]
    B --> E[NodeZeroIdentity register_webid]
    D --> E
-   E --> F[Linked Pair Attested Off-Chain]
-   F --> G[ZK Attestation Root]
-   G --> H[Lockb0x update_state_root]
-   H --> I[Sign-In Pairing Verification]
+   E --> F[Browser Proof of Pod Ownership]
+   F --> G[Proof Root]
+   G --> H[Lockb0xFactory creates User Lockb0x]
+   H --> I[Returning Sign-In Root Verification]
 ```
 
 ## Repository Map
@@ -100,9 +103,9 @@ Run the app and complete onboarding to register WebID on-chain:
 1. Problem: prove a Solid Pod is linked to the signing Stellar account.
 2. Show `NodeZeroIdentity` + `Lockb0x` in repo.
 3. Show onboarding path that registers WebID on-chain.
-4. Show lockbox root anchoring for attested identity set.
-5. Show returning sign-in pairing verification flow.
-6. Close with practical fit: low-friction identity attestation.
+4. Show browser proof fields sent to the provisioner.
+5. Show factory-created user lockbox root matching the proof root.
+6. Close with practical fit: non-fungible WebID/Pod + Stellar account ownership.
 
 ## Submission Checklist
 
@@ -110,7 +113,7 @@ Run the app and complete onboarding to register WebID on-chain:
 2. Demo video link: add link before submission.
 3. Stellar network used: TestNet.
 4. Live staging demo: https://staging.nodezero.social
-5. ZK is load-bearing: lockb0x-root-backed pairing attestation verification.
+5. ZK is load-bearing: browser-generated Proof of Pod Ownership root anchors the user lockbox.
 6. Known limitations documented: yes (B1/B2/D1/D3/J3 are post-hackathon scope, all documented in `docs/staging-uat-checklist.md`).
 
 ## Future Scope

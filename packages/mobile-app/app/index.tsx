@@ -31,7 +31,7 @@ const PRESS_OPACITY = 0.82
 
 function getSolidOidcIssuerUrl(): string {
   const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
-  return appExtra?.solidOidcIssuerUrl?.trim() || 'https://solidcommunity.net'
+  return appExtra?.solidOidcIssuerUrl?.trim() || 'https://solidcommunity.net/.account/login/password/register/'
 }
 
 export default function LandingScreen(): JSX.Element {

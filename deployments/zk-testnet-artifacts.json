@@ -1,0 +1,67 @@
+{
+  "network": "testnet",
+  "protocolMajor": 27,
+  "generatedAt": "2026-06-29T02:35:14.289Z",
+  "artifacts": [
+    {
+      "file": "packages/zk-crypto/build/nullifier.r1cs",
+      "bytes": 1510204,
+      "sha256": "716f9af0fcf450becc6064042aa0388ea69c55eb3f3660801e823ad5dd06b2db"
+    },
+    {
+      "file": "packages/zk-crypto/build/nullifier.sym",
+      "bytes": 1050233,
+      "sha256": "fb5d20311efbaacd5dc939da77d4ebeb226f13a2afffe4a4763097bb7f893698"
+    },
+    {
+      "file": "packages/zk-crypto/build/nullifier_js/nullifier.wasm",
+      "bytes": 2025838,
+      "sha256": "04eab7c48bee3fe8d4a0974d19ca73178b4245d8473940a111e6aed3652c02ea"
+    },
+    {
+      "file": "packages/zk-crypto/build/pod_ownership.r1cs",
+      "bytes": 122204,
+      "sha256": "c0bcb2769a1ca0461b6b51f4c0d2eb1b0aadd1e1cd6edac56301225254ac7906"
+    },
+    {
+      "file": "packages/zk-crypto/build/pod_ownership.sym",
+      "bytes": 65372,
+      "sha256": "3a48b0f31f82b28738130b5c5609441644690d2fc21a1a8015edb755895cecdf"
+    },
+    {
+      "file": "packages/zk-crypto/build/pod_ownership_0.zkey",
+      "bytes": 406172,
+      "sha256": "34d1bb6e20fc38834497f0baf33e490f38b3b92fe89b6eeeceb03fc45c540b14"
+    },
+    {
+      "file": "packages/zk-crypto/build/pod_ownership_final.zkey",
+      "bytes": 406574,
+      "sha256": "7fc79076bfe2459031369a04226e7613edd8b61cac460c4ef7304b6a053e59ec"
+    },
+    {
+      "file": "packages/zk-crypto/build/pod_ownership_js/pod_ownership.wasm",
+      "bytes": 1962959,
+      "sha256": "aecda2f894a132b114018867917a2be26ab6fe036f1cc2ac2c8f803f6351753f"
+    },
+    {
+      "file": "packages/zk-crypto/build/pod_ownership_vk.json",
+      "bytes": 3291,
+      "sha256": "8dae27b8db44d21020d3c4792e1314a8bd9ada1d2bd8d3c06d6550db29cdb68f"
+    },
+    {
+      "file": "packages/zk-crypto/build/poh.r1cs",
+      "bytes": 1510204,
+      "sha256": "ccafe8e59dd38eef9b21867d1937dbb33a489178e7d3af47c2d7886049da0045"
+    },
+    {
+      "file": "packages/zk-crypto/build/poh.sym",
+      "bytes": 1056587,
+      "sha256": "1bc01e87882d861a7587be2441e698cabde7afd72bbf8bb818910e10d4b4c085"
+    },
+    {
+      "file": "packages/zk-crypto/build/poh_js/poh.wasm",
+      "bytes": 2025762,
+      "sha256": "5956553f82c68e595688daa9b94a7352accd49df67a962a3b8967431afbc59b2"
+    }
+  ]
+}

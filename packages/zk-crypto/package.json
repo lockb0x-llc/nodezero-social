@@ -5,6 +5,16 @@
   "license": "MIT",
   "type": "module",
   "main": "./src/index.ts",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
+    },
+    "./pod-ownership": {
+      "import": "./src/pod-ownership-prover.ts",
+      "types": "./src/pod-ownership-prover.ts"
+    }
+  },
   "scripts": {
     "build:circuits": "node scripts/compile-circuits.mjs",
     "build:setup": "node scripts/trusted-setup.mjs",
@@ -13,6 +23,7 @@
     "clean": "rm -rf build/"
   },
   "dependencies": {
+    "circomlib": "2.0.5",
     "circomlibjs": "^0.1.7",
     "ffjavascript": "^0.3.0",
     "snarkjs": "^0.7.5"

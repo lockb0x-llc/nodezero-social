@@ -21,8 +21,16 @@ export interface ProvisionRequest {
   webId: string
   podUrl: string
   stellarPublicKey: string
+  identityContractId: string
+  lockboxFactoryContractId: string
   challengeId: string
   signatureBase64: string
+  proofVersion: number
+  claimHash: string
+  proofHex: string
+  proofHashHex: string
+  proofRootHex: string
+  publicSignals: string[]
 }
 
 export interface LockboxProvisioning {
@@ -32,6 +40,7 @@ export interface LockboxProvisioning {
   userLockboxContractId: string | null
   idempotencyKey: string
   verifiedAt: string
+  proofRootHex?: string
   error?: string
 }
 
@@ -57,5 +66,7 @@ export interface ProvisionStatus {
     challengeId: string
     verifiedAt: string
     claimHash: string
+    proofHashHex?: string
+    proofRootHex?: string
   }
 }

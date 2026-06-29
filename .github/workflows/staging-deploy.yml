@@ -69,7 +69,7 @@ jobs:
 
       - name: Package JSS provisioner artifact
         working-directory: packages/jss-provisioner
-        run: zip -r deploy.zip dist package.json
+        run: zip -r deploy.zip dist package.json startup.sh
 
       - name: Configure JSS provisioner runtime
         run: |
@@ -77,7 +77,7 @@ jobs:
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --name "$JSS_PROVISIONER_APP_NAME" \
             --linux-fx-version "NODE|22-lts" \
-            --startup-file "node dist/index.js"
+            --startup-file "bash startup.sh"
 
       - name: Deploy JSS provisioner to App Service
         run: |

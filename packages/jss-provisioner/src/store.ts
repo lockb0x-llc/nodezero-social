@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import { LockboxFactoryProvisioner } from './lockboxFactory.js'
 import type {
   BootstrapChallenge,
@@ -19,15 +19,6 @@ function nowIso(): string {
 
 function addMs(date: Date, ms: number): Date {
   return new Date(date.getTime() + ms)
-}
-
-function hashClaim(fields: Array<string>): string {
-  const hash = createHash('sha256')
-  for (const field of fields) {
-    hash.update(field, 'utf8')
-    hash.update('\n', 'utf8')
-  }
-  return hash.digest('hex')
 }
 
 function canonical(input: string): string {
@@ -84,17 +75,12 @@ export class ProvisionStore {
     issuer: string
     stellarPublicKey: string
     challengeId: string
+    claimHash: string
+    proofHashHex: string
+    proofRootHex: string
     lockbox?: LockboxProvisioning
   }): void {
     const verifiedAt = nowIso()
-    const claimHash = hashClaim([
-      payload.handle,
-      payload.webId,
-      payload.podUrl,
-      payload.stellarPublicKey,
-      payload.challengeId,
-      verifiedAt,
-    ])
 
     const status: ProvisionStatus = {
       status: 'ready',
@@ -109,7 +95,9 @@ export class ProvisionStore {
       custodyReceipt: {
         challengeId: payload.challengeId,
         verifiedAt,
-        claimHash,
+        claimHash: payload.claimHash,
+        proofHashHex: payload.proofHashHex,
+        proofRootHex: payload.proofRootHex,
       },
     }
 
@@ -124,6 +112,7 @@ export class ProvisionStore {
     webId: string
     stellarPublicKey: string
     podBindingHash: string
+    proofRootHex: string
   }): Promise<LockboxProvisioning> {
     return this.lockboxFactory.provision(input)
   }

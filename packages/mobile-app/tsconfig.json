@@ -11,7 +11,9 @@
       "@nodezero/solid-pod-sync": ["../solid-pod-sync/src/index.ts"],
       "@nodezero/geo-discovery": ["../geo-discovery/src/index.ts"],
       "@nodezero/embedded-wallet": ["../embedded-wallet/src/index.ts"],
-      "@nodezero/p2p-comms": ["../p2p-comms/src/index.ts"]
+      "@nodezero/p2p-comms": ["../p2p-comms/src/index.ts"],
+      "@nodezero/zk-crypto": ["../zk-crypto/src/index.ts"],
+      "@nodezero/zk-crypto/pod-ownership": ["../zk-crypto/src/pod-ownership-prover.ts"]
     }
   },
   "include": ["app/**/*", "src/**/*"],

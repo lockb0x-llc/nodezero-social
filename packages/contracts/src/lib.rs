@@ -230,7 +230,7 @@ impl Lockb0xFactory {
     /// Initialises the factory with an operator and lockbox wasm hash.
     ///
     /// Can only be called once.
-    pub fn initialize(env: Env, operator: Address, lockbox_wasm_hash: BytesN<32>) {
+    pub fn initialize_factory(env: Env, operator: Address, lockbox_wasm_hash: BytesN<32>) {
         assert!(
             !env.storage().persistent().has(&LockboxFactoryKey::Operator),
             "Lockb0xFactory: already initialised"
@@ -247,7 +247,7 @@ impl Lockb0xFactory {
     }
 
     /// Returns the configured operator.
-    pub fn get_operator(env: Env) -> Option<Address> {
+    pub fn get_factory_operator(env: Env) -> Option<Address> {
         env.storage().persistent().get(&LockboxFactoryKey::Operator)
     }
 
@@ -432,9 +432,9 @@ mod tests {
         let operator = Address::generate(&env);
         let wasm_hash = make_hash(&env, 7);
 
-        client.initialize(&operator, &wasm_hash);
+        client.initialize_factory(&operator, &wasm_hash);
 
-        assert_eq!(client.get_operator().unwrap(), operator);
+        assert_eq!(client.get_factory_operator().unwrap(), operator);
         assert_eq!(client.get_lockbox_wasm_hash().unwrap(), wasm_hash);
     }
 

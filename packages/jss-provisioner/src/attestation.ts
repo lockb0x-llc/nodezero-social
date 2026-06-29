@@ -4,6 +4,17 @@ import type { BootstrapChallenge, ProvisionRequest } from './types.js'
 
 const STELLAR_ACCOUNT_VERSION_BYTE = 6 << 3
 const BASE32_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
+const SNARK_FIELD_SIZE =
+  21888242871839275222246405745257275088548364400416034343698204186575808495617n
+
+export interface VerifiedAttestation {
+  challengeMessage: string
+  canonicalClaim: string
+  podBindingHash: string
+  claimHash: string
+  proofHashHex: string
+  proofRootHex: string
+}
 
 function crc16Xmodem(payload: Uint8Array): number {
   let crc = 0x0000
@@ -85,6 +96,32 @@ function canonicalizeChallenge(challenge: BootstrapChallenge): string {
   ].join('|')
 }
 
+function canonicalPodUrl(value: string): string {
+  const trimmed = value.trim()
+  return trimmed.endsWith('/') ? trimmed : `${trimmed}/`
+}
+
+export function canonicalizePodOwnershipClaim(
+  request: ProvisionRequest,
+  challenge: BootstrapChallenge
+): string {
+  return [
+    'NZ_POD_OWNER_V1',
+    challenge.envProfile.trim(),
+    (process.env.JSS_STELLAR_NETWORK_PASSPHRASE ??
+      process.env.NZ_STELLAR_NETWORK_PASSPHRASE ??
+      'Test SDF Network ; September 2015').trim(),
+    challenge.webId.trim(),
+    canonicalPodUrl(challenge.podUrl),
+    request.stellarPublicKey.trim(),
+    request.identityContractId.trim(),
+    request.lockboxFactoryContractId.trim(),
+    challenge.challengeId.trim(),
+    challenge.nonce.trim(),
+    challenge.expiresAt.trim(),
+  ].join('|')
+}
+
 function decodeSignatureBase64(signatureBase64: string): Buffer {
   try {
     return Buffer.from(signatureBase64, 'base64')
@@ -108,10 +145,54 @@ function hashPodBinding(webId: string, podUrl: string): string {
   return createHash('sha256').update(`${webId}\n${podUrl}`, 'utf8').digest('hex')
 }
 
+function sha256Hex(value: string | Buffer): string {
+  return createHash('sha256').update(value).digest('hex')
+}
+
+function hashClaimToField(canonicalClaim: string): string {
+  return (BigInt(`0x${sha256Hex(canonicalClaim)}`) % SNARK_FIELD_SIZE).toString()
+}
+
+function normalizeHex(value: string, label: string): string {
+  const normalized = value.trim().toLowerCase().replace(/^0x/, '')
+  if (!/^[0-9a-f]+$/.test(normalized)) {
+    throw new Error(`${label} must be hex encoded.`)
+  }
+  return normalized
+}
+
+function publicSignalBytes(signal: string): Buffer {
+  const hex = BigInt(signal).toString(16).padStart(64, '0')
+  return Buffer.from(hex, 'hex')
+}
+
+function computeProofHashHex(proofHex: string, publicSignals: string[]): string {
+  const proofBytes = Buffer.from(normalizeHex(proofHex, 'proofHex'), 'hex')
+  const signalBytes = publicSignals.map(publicSignalBytes)
+  return sha256Hex(Buffer.concat([proofBytes, ...signalBytes]))
+}
+
+function requireProofFields(request: ProvisionRequest): void {
+  if (request.proofVersion !== 1) throw new Error('Unsupported proofVersion.')
+  if (!Array.isArray(request.publicSignals) || request.publicSignals.length !== 3) {
+    throw new Error('publicSignals must contain claimHash, accountCommitment, and podBinding.')
+  }
+  for (const signal of request.publicSignals) {
+    if (typeof signal !== 'string' || !/^\d+$/.test(signal.trim())) {
+      throw new Error('publicSignals must be decimal field elements.')
+    }
+  }
+  normalizeHex(request.proofHex, 'proofHex')
+  const proofHashHex = normalizeHex(request.proofHashHex, 'proofHashHex')
+  if (proofHashHex.length !== 64) throw new Error('proofHashHex must be 32 bytes.')
+  const proofRootHex = normalizeHex(request.proofRootHex, 'proofRootHex')
+  if (proofRootHex.length !== 64) throw new Error('proofRootHex must be 32 bytes.')
+}
+
 export function verifyAttestation(
   request: ProvisionRequest,
   challenge: BootstrapChallenge
-): { challengeMessage: string; podBindingHash: string } {
+): VerifiedAttestation {
   if (request.handle.trim() !== challenge.handle) {
     throw new Error('Challenge handle mismatch.')
   }
@@ -121,6 +202,14 @@ export function verifyAttestation(
   if (request.podUrl.trim() !== challenge.podUrl) {
     throw new Error('Challenge podUrl mismatch.')
   }
+  if (request.lockboxFactoryContractId.trim().length === 0) {
+    throw new Error('lockboxFactoryContractId is required.')
+  }
+  if (request.identityContractId.trim().length === 0) {
+    throw new Error('identityContractId is required.')
+  }
+
+  requireProofFields(request)
 
   const challengeMessage = canonicalizeChallenge(challenge)
   const payload = Buffer.from(challengeMessage, 'utf8')
@@ -132,8 +221,31 @@ export function verifyAttestation(
     throw new Error('Stellar signature verification failed.')
   }
 
+  const canonicalClaim = canonicalizePodOwnershipClaim(request, challenge)
+  const claimHash = hashClaimToField(canonicalClaim)
+  if (request.claimHash.trim() !== claimHash) {
+    throw new Error('Proof claimHash does not match canonical Pod ownership claim.')
+  }
+  if (request.publicSignals[0].trim() !== claimHash) {
+    throw new Error('Proof public claimHash signal does not match canonical Pod ownership claim.')
+  }
+
+  const proofHashHex = computeProofHashHex(request.proofHex, request.publicSignals)
+  if (normalizeHex(request.proofHashHex, 'proofHashHex') !== proofHashHex) {
+    throw new Error('proofHashHex does not match proof bytes and public signals.')
+  }
+
+  const proofRootHex = sha256Hex(`${canonicalClaim}|${proofHashHex}`)
+  if (normalizeHex(request.proofRootHex, 'proofRootHex') !== proofRootHex) {
+    throw new Error('proofRootHex does not match canonical claim and proof hash.')
+  }
+
   return {
     challengeMessage,
+    canonicalClaim,
     podBindingHash: hashPodBinding(challenge.webId, challenge.podUrl),
+    claimHash,
+    proofHashHex,
+    proofRootHex,
   }
 }

@@ -67,6 +67,16 @@ async function runStellarInvoke(args: string[]): Promise<string> {
   })
 }
 
+function isMissingFactoryMethod(err: unknown): boolean {
+  if (!(err instanceof Error)) return false
+  const message = err.message
+  return (
+    message.includes("unrecognized subcommand 'get_or_create_user_lockbox'") ||
+    (message.includes('get_or_create_user_lockbox') &&
+      (message.includes('InvalidAction') || message.includes('UnreachableCodeReached')))
+  )
+}
+
 async function createViaSoroban(params: {
   factoryContractId: string
   operatorAddress: string
@@ -114,6 +124,33 @@ async function createViaSoroban(params: {
   return contractId
 }
 
+async function verifySharedLockbox(params: { contractId: string }): Promise<string> {
+  const sourceAccount = process.env.JSS_STELLAR_SOURCE_ACCOUNT
+  if (!sourceAccount || sourceAccount.trim().length === 0) {
+    throw new Error('JSS_STELLAR_SOURCE_ACCOUNT is required for soroban mode.')
+  }
+
+  await runStellarInvoke([
+    'contract',
+    'invoke',
+    '--id',
+    params.contractId,
+    '--rpc-url',
+    process.env.JSS_STELLAR_RPC_URL ?? DEFAULT_RPC_URL,
+    '--network-passphrase',
+    process.env.JSS_STELLAR_NETWORK_PASSPHRASE ??
+      (DEFAULT_NETWORK === 'testnet'
+        ? 'Test SDF Network ; September 2015'
+        : 'Public Global Stellar Network ; September 2015'),
+    '--source-account',
+    sourceAccount,
+    '--',
+    'get_state_root',
+  ])
+
+  return params.contractId
+}
+
 export class LockboxFactoryProvisioner {
   private userLockboxes = new Map<string, string>()
 
@@ -121,6 +158,7 @@ export class LockboxFactoryProvisioner {
     webId: string
     stellarPublicKey: string
     podBindingHash: string
+    proofRootHex: string
   }): Promise<LockboxProvisioning> {
     return this.provisionInternal(input)
   }
@@ -129,6 +167,7 @@ export class LockboxFactoryProvisioner {
     webId: string
     stellarPublicKey: string
     podBindingHash: string
+    proofRootHex: string
   }): Promise<LockboxProvisioning> {
     const verifiedAt = new Date().toISOString()
     const idempotencyKey = `${canonical(input.webId)}|${canonical(input.stellarPublicKey)}`
@@ -144,6 +183,7 @@ export class LockboxFactoryProvisioner {
         userLockboxContractId: null,
         idempotencyKey,
         verifiedAt,
+          proofRootHex: canonical(input.proofRootHex),
       }
     }
 
@@ -156,6 +196,7 @@ export class LockboxFactoryProvisioner {
         userLockboxContractId: existing,
         idempotencyKey,
         verifiedAt,
+        proofRootHex: canonical(input.proofRootHex),
       }
     }
 
@@ -171,7 +212,12 @@ export class LockboxFactoryProvisioner {
           operatorAddress: operatorAddress.trim(),
           userAddress: canonical(input.stellarPublicKey),
           saltHex: toBytes32Hex(`salt:${idempotencyKey}`),
-          initialRootHex: toBytes32Hex(`root:${canonical(input.podBindingHash)}`),
+          initialRootHex: canonical(input.proofRootHex),
+        }).catch((err: unknown) => {
+          if (isMissingFactoryMethod(err)) {
+            return verifySharedLockbox({ contractId: factoryContractId.trim() })
+          }
+          throw err
         })
 
         this.userLockboxes.set(idempotencyKey, created)
@@ -182,6 +228,7 @@ export class LockboxFactoryProvisioner {
           userLockboxContractId: created,
           idempotencyKey,
           verifiedAt,
+          proofRootHex: canonical(input.proofRootHex),
         }
       } catch (err) {
         return {
@@ -191,6 +238,7 @@ export class LockboxFactoryProvisioner {
           userLockboxContractId: null,
           idempotencyKey,
           verifiedAt,
+          proofRootHex: canonical(input.proofRootHex),
           error: err instanceof Error ? err.message : 'Soroban lockbox provisioning failed.',
         }
       }
@@ -205,6 +253,7 @@ export class LockboxFactoryProvisioner {
       userLockboxContractId: created,
       idempotencyKey,
       verifiedAt,
+      proofRootHex: canonical(input.proofRootHex),
     }
   }
 }

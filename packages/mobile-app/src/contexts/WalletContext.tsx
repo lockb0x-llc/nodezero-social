@@ -19,6 +19,7 @@ import * as SecureStore from 'expo-secure-store'
 import { Platform } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { EnclaveAdapter, WalletService, type WalletInfo } from '@nodezero/embedded-wallet'
+import type { PodOwnershipClaim } from '@nodezero/zk-crypto/pod-ownership'
 import Constants from 'expo-constants'
 import { useSolid } from './SolidContext'
 
@@ -33,6 +34,8 @@ interface AttestationDetails {
   lockboxFactoryContractId: string | null
   userLockboxContractId: string | null
   lockboxIdempotencyKey: string | null
+  proofHashHex: string | null
+  proofRootHex: string | null
 }
 
 interface CustodyReceipt {
@@ -40,6 +43,8 @@ interface CustodyReceipt {
   challengeId: string
   verifiedAt: string
   claimHash: string
+  proofHashHex?: string
+  proofRootHex?: string
 }
 
 interface PairingAttestationRecord {
@@ -55,6 +60,8 @@ interface PairingAttestationRecord {
   lockboxFactoryContractId?: string
   userLockboxContractId?: string
   lockboxIdempotencyKey?: string
+  proofHashHex?: string
+  proofRootHex?: string
 }
 
 const PAIRING_ATTESTATION_STORAGE_KEY = 'attestation.pairing.v1'
@@ -115,6 +122,8 @@ async function loadPairingRecord(): Promise<PairingAttestationRecord | null> {
         typeof parsed.userLockboxContractId === 'string' ? parsed.userLockboxContractId : undefined,
       lockboxIdempotencyKey:
         typeof parsed.lockboxIdempotencyKey === 'string' ? parsed.lockboxIdempotencyKey : undefined,
+      proofHashHex: typeof parsed.proofHashHex === 'string' ? parsed.proofHashHex : undefined,
+      proofRootHex: typeof parsed.proofRootHex === 'string' ? parsed.proofRootHex : undefined,
       custodyReceipt:
         parsed.custodyReceipt &&
         typeof parsed.custodyReceipt.jobId === 'string' &&
@@ -126,6 +135,10 @@ async function loadPairingRecord(): Promise<PairingAttestationRecord | null> {
               challengeId: parsed.custodyReceipt.challengeId,
               verifiedAt: parsed.custodyReceipt.verifiedAt,
               claimHash: parsed.custodyReceipt.claimHash,
+              proofHashHex:
+                typeof parsed.custodyReceipt.proofHashHex === 'string' ? parsed.custodyReceipt.proofHashHex : undefined,
+              proofRootHex:
+                typeof parsed.custodyReceipt.proofRootHex === 'string' ? parsed.custodyReceipt.proofRootHex : undefined,
             }
           : undefined,
     }
@@ -148,6 +161,9 @@ interface ProvisionerChallenge {
 interface ProvisionerSubmitResponse {
   status: 'ready' | 'pending'
   jobId: string
+  claimHash?: string
+  proofHashHex?: string
+  proofRootHex?: string
 }
 
 interface ProvisionerStatusReady {
@@ -166,6 +182,8 @@ interface ProvisionerStatusReady {
     challengeId: string
     verifiedAt: string
     claimHash: string
+    proofHashHex?: string
+    proofRootHex?: string
   }
 }
 
@@ -176,6 +194,10 @@ interface CustodyProvisioningResult {
     userLockboxContractId: string | null
     idempotencyKey: string
   }
+}
+
+interface ZkArtifactManifest {
+  artifacts?: Array<{ file: string }>
 }
 
 function extractPodIdentity(webId: string): { handle: string; podUrl: string; podSlug: string } {
@@ -204,6 +226,31 @@ function buildAttestationChallengePayload(challenge: ProvisionerChallenge): stri
   ].join('|')
 }
 
+function joinUrl(baseUrl: string, filePath: string): string {
+  return `${baseUrl.replace(/\/$/, '')}/${filePath.replace(/^packages\/zk-crypto\/build\//, '')}`
+}
+
+async function resolvePodOwnershipArtifacts(params: {
+  zkArtifactsUrl: string
+  zkManifestUrl: string
+}): Promise<{ wasmPath: string; zkeyPath: string }> {
+  const manifestResponse = await fetch(params.zkManifestUrl)
+  if (!manifestResponse.ok) {
+    throw new Error(`Unable to load ZK artifact manifest (${manifestResponse.status}).`)
+  }
+  const manifest = (await manifestResponse.json()) as ZkArtifactManifest
+  const artifacts = manifest.artifacts ?? []
+  const wasm = artifacts.find((artifact) => artifact.file.endsWith('pod_ownership_js/pod_ownership.wasm'))
+  const zkey = artifacts.find((artifact) => artifact.file.endsWith('pod_ownership_final.zkey'))
+  if (!wasm || !zkey) {
+    throw new Error('Pod ownership proving artifacts are missing from the ZK manifest.')
+  }
+  return {
+    wasmPath: joinUrl(params.zkArtifactsUrl, wasm.file),
+    zkeyPath: joinUrl(params.zkArtifactsUrl, zkey.file),
+  }
+}
+
 async function parseJsonResponse<T>(response: Response): Promise<T> {
   const body = (await response.json()) as T
   if (!response.ok) {
@@ -216,11 +263,26 @@ async function parseJsonResponse<T>(response: Response): Promise<T> {
 async function runCustodyProvisioning(params: {
   provisionerUrl: string
   webId: string
+  walletInfo: WalletInfo
   wallet: WalletService
+  appExtra: Record<string, string> | undefined
 }): Promise<CustodyProvisioningResult> {
-  const { provisionerUrl, webId, wallet } = params
+  const { provisionerUrl, webId, wallet, walletInfo, appExtra } = params
   const baseUrl = provisionerUrl.replace(/\/$/, '')
   const identity = extractPodIdentity(webId)
+  const identityContractId = appExtra?.identityContractId ?? ''
+  const lockboxFactoryContractId = appExtra?.lockboxFactoryContractId ?? ''
+  const envProfile = appExtra?.envProfile ?? 'local'
+  const stellarNetworkPassphrase = appExtra?.stellarNetworkPassphrase ?? 'Test SDF Network ; September 2015'
+  const zkArtifactsUrl = appExtra?.zkArtifactsUrl ?? ''
+  const zkManifestUrl = appExtra?.zkManifestUrl ?? ''
+
+  if (!identityContractId || !lockboxFactoryContractId) {
+    throw new Error('Identity and lockbox factory contract IDs are required for proof-backed provisioning.')
+  }
+  if (!zkArtifactsUrl || !zkManifestUrl) {
+    throw new Error('ZK artifact URLs are required for proof-backed provisioning.')
+  }
 
   const challengeResponse = await fetch(`${baseUrl}/v1/bootstrap-challenge`, {
     method: 'POST',
@@ -234,6 +296,28 @@ async function runCustodyProvisioning(params: {
   const challenge = await parseJsonResponse<ProvisionerChallenge>(challengeResponse)
   const challengePayload = buildAttestationChallengePayload(challenge)
   const signature = await wallet.signAttestationChallenge(challengePayload)
+  const secret = await _adapter?.loadOrCreate()
+  if (!secret) throw new Error('Embedded wallet secret is unavailable for proof generation.')
+  const artifactPaths = await resolvePodOwnershipArtifacts({ zkArtifactsUrl, zkManifestUrl })
+  const claim: PodOwnershipClaim = {
+    envProfile,
+    stellarNetworkPassphrase,
+    webId,
+    podUrl: identity.podUrl,
+    stellarPublicKey: walletInfo.publicKey,
+    identityContractId,
+    lockboxFactoryContractId,
+    challengeId: challenge.challengeId,
+    nonce: challenge.nonce,
+    expiresAt: challenge.expiresAt,
+  }
+  const { generatePodOwnershipProof } = await import('@nodezero/zk-crypto/pod-ownership')
+  const podProof = await generatePodOwnershipProof({
+    stellarSecretKey: secret,
+    claim,
+    wasmPath: artifactPaths.wasmPath,
+    zkeyPath: artifactPaths.zkeyPath,
+  })
 
   const submitResponse = await fetch(`${baseUrl}/v1/provision`, {
     method: 'POST',
@@ -244,8 +328,16 @@ async function runCustodyProvisioning(params: {
       webId,
       podUrl: identity.podUrl,
       stellarPublicKey: signature.stellarPublicKey,
+      identityContractId,
+      lockboxFactoryContractId,
       challengeId: challenge.challengeId,
       signatureBase64: signature.signatureBase64,
+      proofVersion: 1,
+      claimHash: podProof.claimHash.toString(),
+      proofHex: podProof.proofHex,
+      proofHashHex: podProof.proofHashHex,
+      proofRootHex: podProof.proofRootHex,
+      publicSignals: podProof.publicSignals,
     }),
   })
   const submit = await parseJsonResponse<ProvisionerSubmitResponse>(submitResponse)
@@ -263,6 +355,8 @@ async function runCustodyProvisioning(params: {
       challengeId: status.custodyReceipt.challengeId,
       verifiedAt: status.custodyReceipt.verifiedAt,
       claimHash: status.custodyReceipt.claimHash,
+      proofHashHex: status.custodyReceipt.proofHashHex ?? submit.proofHashHex ?? podProof.proofHashHex,
+      proofRootHex: status.custodyReceipt.proofRootHex ?? submit.proofRootHex ?? podProof.proofRootHex,
     },
     lockbox: status.lockbox
       ? {
@@ -363,6 +457,8 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
     lockboxFactoryContractId: null,
     userLockboxContractId: null,
     lockboxIdempotencyKey: null,
+    proofHashHex: null,
+    proofRootHex: null,
   })
   const lastCheckedKeyRef = useRef<string | null>(null)
 
@@ -412,6 +508,8 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
         lockboxFactoryContractId: null,
         userLockboxContractId: null,
         lockboxIdempotencyKey: null,
+        proofHashHex: null,
+        proofRootHex: null,
       })
       lastCheckedKeyRef.current = null
       return
@@ -437,6 +535,8 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
           lockboxFactoryContractId: null,
           userLockboxContractId: null,
           lockboxIdempotencyKey: null,
+          proofHashHex: null,
+          proofRootHex: null,
         })
         return
       }
@@ -462,6 +562,8 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
         let lockboxFactoryContractId = priorRecord?.lockboxFactoryContractId
         let userLockboxContractId = priorRecord?.userLockboxContractId
         let lockboxIdempotencyKey = priorRecord?.lockboxIdempotencyKey
+        let proofHashHex = priorRecord?.proofHashHex ?? priorRecord?.custodyReceipt?.proofHashHex
+        let proofRootHex = priorRecord?.proofRootHex ?? priorRecord?.custodyReceipt?.proofRootHex
 
         if (!isReturningSignIn && mappedWebId !== webId) {
           registerTxHash = await registerIdentity(webId, identityContractId)
@@ -472,15 +574,20 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
           const provisioning = await runCustodyProvisioning({
             provisionerUrl,
             webId,
+            walletInfo: info,
             wallet: service,
+            appExtra,
           })
           custodyReceipt = provisioning.custodyReceipt
           lockboxFactoryContractId = provisioning.lockbox?.factoryContractId ?? undefined
           userLockboxContractId = provisioning.lockbox?.userLockboxContractId ?? undefined
           lockboxIdempotencyKey = provisioning.lockbox?.idempotencyKey ?? undefined
+          proofHashHex = provisioning.custodyReceipt.proofHashHex
+          proofRootHex = provisioning.custodyReceipt.proofRootHex
         }
 
-        const lockboxRoot = await service.getLockboxStateRoot(lockboxContractId)
+        const effectiveLockboxContractId = userLockboxContractId ?? lockboxContractId
+        const lockboxRoot = await service.getLockboxStateRoot(effectiveLockboxContractId)
 
         if (mappedWebId !== webId) {
           setAttestationStatus('unlinked')
@@ -494,6 +601,26 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
             lockboxFactoryContractId: lockboxFactoryContractId ?? null,
             userLockboxContractId: userLockboxContractId ?? null,
             lockboxIdempotencyKey: lockboxIdempotencyKey ?? null,
+            proofHashHex: proofHashHex ?? null,
+            proofRootHex: proofRootHex ?? null,
+          })
+          return
+        }
+
+        if (proofRootHex && lockboxRoot && lockboxRoot.toLowerCase() !== proofRootHex.toLowerCase()) {
+          setAttestationStatus('unlinked')
+          setAttestationMessage('User lockbox root does not match the browser-generated proof root. Relink required.')
+          setAttestationDetails({
+            registeredWebId: mappedWebId,
+            lockboxStateRoot: lockboxRoot,
+            registerTxHash: registerTxHash || null,
+            verifiedAt: null,
+            custodyClaimHash: custodyReceipt?.claimHash ?? null,
+            lockboxFactoryContractId: lockboxFactoryContractId ?? null,
+            userLockboxContractId: userLockboxContractId ?? null,
+            lockboxIdempotencyKey: lockboxIdempotencyKey ?? null,
+            proofHashHex: proofHashHex ?? null,
+            proofRootHex: proofRootHex ?? null,
           })
           return
         }
@@ -510,6 +637,8 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
             lockboxFactoryContractId: lockboxFactoryContractId ?? null,
             userLockboxContractId: userLockboxContractId ?? null,
             lockboxIdempotencyKey: lockboxIdempotencyKey ?? null,
+            proofHashHex: proofHashHex ?? null,
+            proofRootHex: proofRootHex ?? null,
           })
           return
         }
@@ -518,7 +647,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
           webId,
           stellarPublicKey: info.publicKey,
           identityContractId,
-          lockboxContractId,
+          lockboxContractId: effectiveLockboxContractId,
           lockboxStateRoot: lockboxRoot,
         }
 
@@ -534,6 +663,8 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
             lockboxFactoryContractId: priorRecord.lockboxFactoryContractId ?? null,
             userLockboxContractId: priorRecord.userLockboxContractId ?? null,
             lockboxIdempotencyKey: priorRecord.lockboxIdempotencyKey ?? null,
+            proofHashHex: priorRecord.proofHashHex ?? priorRecord.custodyReceipt?.proofHashHex ?? null,
+            proofRootHex: priorRecord.proofRootHex ?? priorRecord.custodyReceipt?.proofRootHex ?? null,
           })
           return
         }
@@ -545,7 +676,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
           webId,
           stellarPublicKey: info.publicKey,
           identityContractId,
-          lockboxContractId,
+          lockboxContractId: effectiveLockboxContractId,
           lockboxStateRoot: lockboxRoot,
           registerTxHash,
           verifiedAt,
@@ -561,6 +692,12 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
         if (lockboxIdempotencyKey) {
           record.lockboxIdempotencyKey = lockboxIdempotencyKey
         }
+        if (proofHashHex) {
+          record.proofHashHex = proofHashHex
+        }
+        if (proofRootHex) {
+          record.proofRootHex = proofRootHex
+        }
         await AsyncStorage.setItem(PAIRING_ATTESTATION_STORAGE_KEY, JSON.stringify(record))
 
         setAttestationStatus('verified')
@@ -573,6 +710,8 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
           lockboxFactoryContractId: lockboxFactoryContractId ?? null,
           userLockboxContractId: userLockboxContractId ?? null,
           lockboxIdempotencyKey: lockboxIdempotencyKey ?? null,
+          proofHashHex: proofHashHex ?? null,
+          proofRootHex: proofRootHex ?? null,
         })
         setAttestationMessage(
           isReturningSignIn
@@ -591,6 +730,8 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
           lockboxFactoryContractId: null,
           userLockboxContractId: null,
           lockboxIdempotencyKey: null,
+          proofHashHex: null,
+          proofRootHex: null,
         })
       }
     })()

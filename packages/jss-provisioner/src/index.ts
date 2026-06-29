@@ -67,8 +67,16 @@ function validateProvisionRequest(body: ProvisionRequest): void {
   if (!isNonEmpty(body.webId)) throw new Error('webId is required.')
   if (!isNonEmpty(body.podUrl)) throw new Error('podUrl is required.')
   if (!isNonEmpty(body.stellarPublicKey)) throw new Error('stellarPublicKey is required.')
+  if (!isNonEmpty(body.identityContractId)) throw new Error('identityContractId is required.')
+  if (!isNonEmpty(body.lockboxFactoryContractId)) throw new Error('lockboxFactoryContractId is required.')
   if (!isNonEmpty(body.challengeId)) throw new Error('challengeId is required.')
   if (!isNonEmpty(body.signatureBase64)) throw new Error('signatureBase64 is required.')
+  if (body.proofVersion !== 1) throw new Error('proofVersion=1 is required.')
+  if (!isNonEmpty(body.claimHash)) throw new Error('claimHash is required.')
+  if (!isNonEmpty(body.proofHex)) throw new Error('proofHex is required.')
+  if (!isNonEmpty(body.proofHashHex)) throw new Error('proofHashHex is required.')
+  if (!isNonEmpty(body.proofRootHex)) throw new Error('proofRootHex is required.')
+  if (!Array.isArray(body.publicSignals)) throw new Error('publicSignals is required.')
 }
 
 async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -121,6 +129,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Pro
         webId: body.webId,
         stellarPublicKey: body.stellarPublicKey,
         podBindingHash: receipt.podBindingHash,
+        proofRootHex: receipt.proofRootHex,
       })
 
       store.resolveJob(jobId, {
@@ -130,6 +139,9 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Pro
         issuer: ISSUER,
         stellarPublicKey: body.stellarPublicKey.trim(),
         challengeId: challenge.challengeId,
+        claimHash: receipt.claimHash,
+        proofHashHex: receipt.proofHashHex,
+        proofRootHex: receipt.proofRootHex,
         lockbox,
       })
 
@@ -143,6 +155,10 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Pro
         ...result,
         challengeMessage: receipt.challengeMessage,
         podBindingHash: receipt.podBindingHash,
+        canonicalClaim: receipt.canonicalClaim,
+        claimHash: receipt.claimHash,
+        proofHashHex: receipt.proofHashHex,
+        proofRootHex: receipt.proofRootHex,
       })
       return
     } catch (err) {
