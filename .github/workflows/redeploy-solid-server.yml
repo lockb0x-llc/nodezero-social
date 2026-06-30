@@ -1,0 +1,101 @@
+name: Redeploy Solid Server
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment_name:
+        description: Target environment profile
+        required: true
+        default: staging-testnet
+        type: choice
+        options:
+          - staging-testnet
+          - testnet
+      resource_group:
+        description: Azure resource group name
+        required: true
+        default: rg-nodezero-social-staging-testnet
+        type: string
+      parameters_file:
+        description: Bicep parameters file path
+        required: true
+        default: infrastructure/azure/solid-server.parameters.staging-testnet.json
+        type: string
+      css_config_arg:
+        description: Optional CSS -c override
+        required: false
+        type: string
+      css_data_path:
+        description: Optional CSS -f override (absolute Linux path)
+        required: false
+        type: string
+      css_extra_args_json:
+        description: Optional JSON array string for extra CSS args
+        required: false
+        type: string
+      dns_autofix:
+        description: Auto-correct DNS CNAME when custom host is used
+        required: true
+        default: false
+        type: boolean
+      dns_zone_name:
+        description: DNS zone (required when dns_autofix is true)
+        required: false
+        type: string
+      dns_resource_group:
+        description: DNS resource group override
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  redeploy-solid:
+    name: Redeploy Solid server (idempotent)
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment_name }}
+
+    env:
+      AZURE_CLIENT_ID: 52120dbe-2b66-4e12-bdad-9f872a3ae845
+      AZURE_TENANT_ID: bab5056b-732f-4710-a7b9-e9c5807cd6f9
+      AZURE_SUBSCRIPTION_ID: 1f002267-9614-4a2a-a0e0-217493d6d011
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Validate environment isolation policy
+        run: corepack pnpm policy:validate-env
+
+      - name: Run idempotent Solid redeploy
+        env:
+          AZURE_RESOURCE_GROUP: ${{ inputs.resource_group }}
+          AZURE_BICEP_PARAMETERS_FILE: ${{ inputs.parameters_file }}
+          AZURE_ENVIRONMENT_NAME: ${{ inputs.environment_name }}
+          AZURE_CSS_CONFIG_ARG: ${{ inputs.css_config_arg }}
+          AZURE_CSS_DATA_PATH: ${{ inputs.css_data_path }}
+          AZURE_CSS_EXTRA_ARGS_JSON: ${{ inputs.css_extra_args_json }}
+          AZURE_SOLID_DNS_AUTOFIX: ${{ inputs.dns_autofix }}
+          AZURE_SOLID_DNS_ZONE_NAME: ${{ inputs.dns_zone_name }}
+          AZURE_SOLID_DNS_RESOURCE_GROUP: ${{ inputs.dns_resource_group }}
+        run: |
+          chmod +x scripts/azure/deploy-solid-server.sh
+          chmod +x scripts/azure/redeploy-solid-server.sh
+          bash ./scripts/azure/redeploy-solid-server.sh
+
+      - name: Redeploy summary
+        run: echo "Solid server redeploy workflow completed."

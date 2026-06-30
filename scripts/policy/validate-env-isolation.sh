@@ -3,6 +3,25 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
+normalize_posix_path() {
+  local input_path="$1"
+  if [[ -e "$input_path" ]]; then
+    printf '%s' "$input_path"
+    return
+  fi
+  if [[ "$input_path" =~ ^/mnt/([a-zA-Z])/(.*)$ ]]; then
+    local alt_path
+    alt_path="/${BASH_REMATCH[1],,}/${BASH_REMATCH[2]}"
+    if [[ -e "$alt_path" ]]; then
+      printf '%s' "$alt_path"
+      return
+    fi
+  fi
+  printf '%s' "$input_path"
+}
+
+REPO_ROOT="$(normalize_posix_path "$REPO_ROOT")"
+
 fail() {
   echo "[policy] FAIL: $1"
   exit 1
@@ -10,6 +29,24 @@ fail() {
 
 pass() {
   echo "[policy] PASS: $1"
+}
+
+file_contains_literal() {
+  local file_path="$1"
+  local literal="$2"
+  local repo_rel="${file_path#$REPO_ROOT/}"
+
+  if [[ -f "$file_path" ]]; then
+    grep -q "$literal" "$file_path"
+    return
+  fi
+
+  if git -C "$REPO_ROOT" cat-file -e "HEAD:$repo_rel" 2>/dev/null; then
+    git -C "$REPO_ROOT" show "HEAD:$repo_rel" | grep -q "$literal"
+    return
+  fi
+
+  return 1
 }
 
 # 1) Canonical staging domain must be nodezero.social (not nedzero.social).
@@ -47,8 +84,8 @@ pass "Mobile runtime profile guardrails validated."
 
 # 5) Bicep template must constrain environmentName values.
 BICEP_FILE="$REPO_ROOT/infrastructure/azure/main.bicep"
-grep -q "'staging-testnet'" "$BICEP_FILE" || fail "Bicep missing staging-testnet allowed environment value."
-grep -q "'production-mainnet'" "$BICEP_FILE" || fail "Bicep missing production-mainnet allowed environment value."
+file_contains_literal "$BICEP_FILE" "'staging-testnet'" || fail "Bicep missing staging-testnet allowed environment value."
+file_contains_literal "$BICEP_FILE" "'production-mainnet'" || fail "Bicep missing production-mainnet allowed environment value."
 pass "Bicep environment guardrails validated."
 
 echo "[policy] All environment-isolation policy checks passed."

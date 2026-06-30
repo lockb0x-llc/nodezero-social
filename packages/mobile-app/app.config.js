@@ -57,7 +57,8 @@ const lockboxFactoryContractId = process.env.NZ_LOCKBOX_FACTORY_CONTRACT_ID ?? '
 const zkArtifactsUrl = process.env.NZ_ZK_ARTIFACTS_URL ?? ''
 const zkManifestUrl = process.env.NZ_ZK_MANIFEST_URL ?? ''
 const solidOidcIssuerUrl = process.env.NZ_SOLID_OIDC_ISSUER_URL ?? ''
-const nodeZeroIssuerUrl = process.env.NZ_NODEZERO_ISSUER_URL ?? ''
+const nodeZeroIssuerUrl =
+  process.env.NZ_NODEZERO_ISSUER_URL ?? (envProfile === 'staging-testnet' ? 'https://solid.nodezero.social/' : '')
 const solidSignupUrl = process.env.NZ_SOLID_SIGNUP_URL ?? ''
 const solidAccountPortalUrl = process.env.NZ_SOLID_ACCOUNT_PORTAL_URL ?? ''
 const solidSignupReturnMode = process.env.NZ_SOLID_SIGNUP_RETURN_MODE ?? 'auto'
