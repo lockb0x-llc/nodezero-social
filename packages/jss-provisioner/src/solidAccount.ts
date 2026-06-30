@@ -29,6 +29,11 @@ export interface CreateSolidAccountResult {
   clientCredentialsResource: string
 }
 
+export interface ClientCredentials {
+  id: string
+  secret: string
+}
+
 interface CssControls {
   account: { create: string; pod: string; clientCredentials: string; webId: string }
   password: { create: string; login: string }
@@ -106,4 +111,123 @@ export async function createSolidAccount(
     clientCredentialsSecret: cc.secret,
     clientCredentialsResource: cc.resource ?? '',
   }
+}
+
+// ---------------------------------------------------------------------------
+// Authenticated Pod writes (client_credentials + ES256 DPoP)
+//
+// CSS's OIDC token endpoint accepts the client_credentials grant and binds the
+// issued access token to a DPoP key. The resource server rejects EdDSA DPoP
+// proofs, so the per-request DPoP key is ES256 (P-256). These writes run
+// server-side in the provisioner so the client secret never reaches the
+// browser.
+// ---------------------------------------------------------------------------
+
+function b64url(buf: Buffer): string {
+  return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+interface DpopSigner {
+  proof: (htu: string, htm: string, ath?: string) => string
+}
+
+async function createDpopSigner(): Promise<DpopSigner> {
+  const { generateKeyPairSync, sign, randomUUID } = await import('node:crypto')
+  const keyPair = generateKeyPairSync('ec', { namedCurve: 'P-256' })
+  const pub = keyPair.publicKey.export({ format: 'jwk' }) as { crv?: string; kty?: string; x?: string; y?: string }
+  const jwk = { crv: pub.crv, kty: pub.kty, x: pub.x, y: pub.y }
+
+  return {
+    proof(htu, htm, ath) {
+      const header = { alg: 'ES256', typ: 'dpop+jwt', jwk }
+      const payload: Record<string, unknown> = {
+        htu,
+        htm,
+        iat: Math.floor(Date.now() / 1000),
+        jti: randomUUID(),
+      }
+      if (ath) payload.ath = ath
+      const signingInput = `${b64url(Buffer.from(JSON.stringify(header)))}.${b64url(Buffer.from(JSON.stringify(payload)))}`
+      const sig = sign('sha256', Buffer.from(signingInput), {
+        key: keyPair.privateKey,
+        dsaEncoding: 'ieee-p1363',
+      })
+      return `${signingInput}.${b64url(sig)}`
+    },
+  }
+}
+
+async function exchangeClientCredentials(
+  baseUrl: string,
+  credentials: ClientCredentials,
+  signer: DpopSigner,
+): Promise<string> {
+  const tokenUrl = `${baseUrl}/.oidc/token`
+  const basic = Buffer.from(
+    `${encodeURIComponent(credentials.id)}:${encodeURIComponent(credentials.secret)}`,
+  ).toString('base64')
+  const res = await fetch(tokenUrl, {
+    method: 'POST',
+    headers: {
+      authorization: `Basic ${basic}`,
+      'content-type': 'application/x-www-form-urlencoded',
+      dpop: signer.proof(tokenUrl, 'POST'),
+    },
+    body: 'grant_type=client_credentials&scope=webid',
+  })
+  const body = (await res.json()) as { access_token?: string }
+  if (!res.ok || !body.access_token) {
+    throw new Error(`CSS token exchange failed (${res.status}): ${JSON.stringify(body)}`)
+  }
+  return body.access_token
+}
+
+/**
+ * Writes (PUT) a document into an already-provisioned Pod using a fresh
+ * client_credentials access token + ES256 DPoP proofs. Returns the resource URL.
+ */
+export async function writePodDocument(
+  baseUrl: string,
+  credentials: ClientCredentials,
+  options: { resourceUrl: string; contentType: string; body: string },
+): Promise<string> {
+  const { createHash } = await import('node:crypto')
+  const normalizedBase = baseUrl.replace(/\/+$/, '')
+  const signer = await createDpopSigner()
+  const accessToken = await exchangeClientCredentials(normalizedBase, credentials, signer)
+  const ath = b64url(createHash('sha256').update(accessToken).digest())
+
+  const res = await fetch(options.resourceUrl, {
+    method: 'PUT',
+    headers: {
+      authorization: `DPoP ${accessToken}`,
+      dpop: signer.proof(options.resourceUrl, 'PUT', ath),
+      'content-type': options.contentType,
+    },
+    body: options.body,
+  })
+  if (!res.ok) {
+    throw new Error(`CSS Pod PUT ${options.resourceUrl} failed (${res.status}): ${await res.text()}`)
+  }
+  return options.resourceUrl
+}
+
+/**
+ * Persists the NodeZero account profile (WebID <-> Stellar pairing + on-chain
+ * lockb0x references) as a JSON document inside the user's own Pod, so the
+ * account data lives with the user from creation. Returns the document URL.
+ */
+export async function writePodAccountDocument(
+  baseUrl: string,
+  credentials: ClientCredentials,
+  podUrl: string,
+  account: Record<string, unknown>,
+): Promise<string> {
+  const normalizedPod = podUrl.replace(/\/+$/, '')
+  const resourceUrl = `${normalizedPod}/nodezero-account.json`
+  return writePodDocument(baseUrl, credentials, {
+    resourceUrl,
+    contentType: 'application/json',
+    body: JSON.stringify(account, null, 2),
+  })
 }

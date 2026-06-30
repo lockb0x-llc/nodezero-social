@@ -29,7 +29,7 @@ import { aesthetic } from '../src/theme/aesthetic'
 const SHOW_NSFW_KEY = 'settings.showNsfw'
 
 export default function SettingsScreen(): JSX.Element {
-  const { signOut, webId } = useSolid()
+  const { signOut, webId, nodeSession } = useSolid()
   const router = useRouter()
   const {
     walletInfo,
@@ -153,7 +153,42 @@ export default function SettingsScreen(): JSX.Element {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-
+      {/* ── Your Node ────────────────────────────────── */}
+      {nodeSession ? (
+        <>
+          <Text style={styles.sectionHeader}>Your Node</Text>
+          <View style={styles.card}>
+            <Row label="WebID" value={nodeSession.webId} mono />
+            <Row label="Pod URL" value={nodeSession.podUrl} mono />
+            <Row
+              label="Stellar Key"
+              value={nodeSession.stellarPublicKey ?? 'Not linked'}
+              mono
+            />
+            <Row
+              label="Lockb0x (on-chain)"
+              value={nodeSession.userLockboxContractId ?? 'Not anchored'}
+              mono
+            />
+            <Row
+              label="Lockb0x Factory"
+              value={nodeSession.lockboxFactoryContractId ?? 'Not configured'}
+              mono
+            />
+            <Row
+              label="Pairing Root"
+              value={nodeSession.proofRootHex ?? 'Not generated'}
+              mono
+            />
+            <Row
+              label="Pod Account Doc"
+              value={nodeSession.accountDocumentUrl ?? 'Not written'}
+              mono
+            />
+            <Row label="Created" value={nodeSession.createdAt} />
+          </View>
+        </>
+      ) : null}
       {/* ── Solid Pod ─────────────────────────────────────────────── */}
       <Text style={styles.sectionHeader}>Solid Pod</Text>
       <View style={styles.card}>

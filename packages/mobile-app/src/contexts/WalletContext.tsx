@@ -453,7 +453,7 @@ function getWalletService(): WalletService {
  * Provisions and exposes the embedded Stellar wallet.
  */
 export function WalletProvider({ children }: { children: ReactNode }): JSX.Element {
-  const { isLoggedIn, isRestoring, webId } = useSolid()
+  const { isLoggedIn, isRestoring, webId, nodeSession } = useSolid()
   const [walletInfo, setWalletInfo] = useState<WalletInfo | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [attestationStatus, setAttestationStatus] = useState<AttestationStatus>('idle')
@@ -522,6 +522,29 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
         proofRootHex: null,
       })
       lastCheckedKeyRef.current = null
+      return
+    }
+
+    // Seamless node sessions already had their WebID<->Stellar pairing anchored
+    // on-chain server-side during provisioning. Skip the in-browser on-chain
+    // verification (which needs Node-only crypto) and surface the verified
+    // state directly from the node session record.
+    if (nodeSession) {
+      setAttestationStatus('verified')
+      setAttestationMessage('Pairing anchored on-chain during node creation.')
+      setAttestationDetails({
+        registeredWebId: nodeSession.webId,
+        lockboxStateRoot: nodeSession.proofRootHex,
+        registerTxHash: null,
+        verifiedAt: nodeSession.createdAt,
+        custodyClaimHash: null,
+        lockboxFactoryContractId: nodeSession.lockboxFactoryContractId,
+        userLockboxContractId: nodeSession.userLockboxContractId,
+        lockboxIdempotencyKey: null,
+        proofHashHex: null,
+        proofRootHex: nodeSession.proofRootHex,
+      })
+      lastCheckedKeyRef.current = `node:${nodeSession.webId}`
       return
     }
 
@@ -763,7 +786,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
         })
       }
     })()
-  }, [isLoggedIn, isRestoring, registerIdentity, walletInfo, webId])
+  }, [isLoggedIn, isRestoring, nodeSession, registerIdentity, walletInfo, webId])
 
   const exportRecoveryBundle = useCallback(async (): Promise<{ fileName: string; json: string }> => {
     const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined

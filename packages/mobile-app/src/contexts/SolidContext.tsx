@@ -26,6 +26,12 @@ import {
   getDefaultSession,
 } from '@inrupt/solid-client-authn-browser'
 import { clearSignupIntent, getSignupResumeState } from '../onboarding/signupBridge'
+import {
+  clearNodeSession,
+  loadNodeSession,
+  saveNodeSession,
+  type NodeSessionRecord,
+} from '../onboarding/nodeSession'
 
 /** Shape of the Solid authentication context. */
 interface SolidContextValue {
@@ -37,6 +43,15 @@ interface SolidContextValue {
   webId: string | null
   /** Initiates the login redirect to the user's Solid identity provider. */
   signIn: (idpUrl: string) => Promise<void>
+  /**
+   * Signs the user in using a locally-held seamless-onboarding node session
+   * (no OIDC redirect). The provisioner has already persisted the account to
+   * the Pod and anchored the pairing on-chain, so this only records the
+   * non-secret session locally and flips auth state.
+   */
+  signInWithNode: (record: NodeSessionRecord) => Promise<void>
+  /** The active seamless node session, when present. */
+  nodeSession: NodeSessionRecord | null
   /** Logs the user out and clears local session state. */
   signOut: () => Promise<void>
   /** `true` while the initial session restore is in progress. */
@@ -150,6 +165,7 @@ export function SolidProvider({ children }: { children: ReactNode }): JSX.Elemen
   const [isRestoring, setIsRestoring] = useState(true)
   const [signupResumeActive, setSignupResumeActive] = useState(false)
   const [signupReturnDetected, setSignupReturnDetected] = useState(false)
+  const [nodeSession, setNodeSession] = useState<NodeSessionRecord | null>(null)
 
   const applyWebId = useCallback((nextWebId: string | null): void => {
     setIsLoggedIn(Boolean(nextWebId))
@@ -181,10 +197,20 @@ export function SolidProvider({ children }: { children: ReactNode }): JSX.Elemen
     session.events.on(EVENTS.LOGOUT, handleUnauthenticated)
     session.events.on(EVENTS.SESSION_EXPIRED, handleUnauthenticated)
 
-    void Promise.all([AsyncStorage.getItem(SOLID_WEBID_STORAGE_KEY), getSignupResumeState()])
-      .then(([cachedWebId, signupResume]) => {
+    void Promise.all([
+      AsyncStorage.getItem(SOLID_WEBID_STORAGE_KEY),
+      getSignupResumeState(),
+      loadNodeSession(),
+    ])
+      .then(([cachedWebId, signupResume, savedNodeSession]) => {
         setSignupResumeActive(signupResume.hasActiveIntent)
         setSignupReturnDetected(signupResume.returnDetected)
+        // A seamless node session is a complete, self-contained auth state.
+        if (savedNodeSession) {
+          setNodeSession(savedNodeSession)
+          applyWebId(savedNodeSession.webId)
+          return undefined
+        }
         if (cachedWebId) applyWebId(cachedWebId)
         if (!hasOidcRedirectParams()) return undefined
         return handleIncomingRedirect({ restorePreviousSession: false })
@@ -222,9 +248,25 @@ export function SolidProvider({ children }: { children: ReactNode }): JSX.Elemen
     })
   }, [])
 
+  const signInWithNode = useCallback(
+    async (record: NodeSessionRecord) => {
+      await saveNodeSession(record)
+      setNodeSession(record)
+      applyWebId(record.webId)
+    },
+    [applyWebId],
+  )
+
   const signOut = useCallback(async () => {
-    await logout()
+    // Inrupt logout is a no-op for node sessions but is safe to call.
+    try {
+      await logout()
+    } catch {
+      // Ignore: node sessions have no Inrupt session to tear down.
+    }
     await AsyncStorage.removeItem(SOLID_WEBID_STORAGE_KEY)
+    await clearNodeSession()
+    setNodeSession(null)
     setIsLoggedIn(false)
     setWebId(null)
   }, [])
@@ -236,6 +278,8 @@ export function SolidProvider({ children }: { children: ReactNode }): JSX.Elemen
         isLoggedIn,
         webId,
         signIn,
+        signInWithNode,
+        nodeSession,
         signOut,
         isRestoring,
         signupResumeActive,

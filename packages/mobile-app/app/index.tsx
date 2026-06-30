@@ -27,17 +27,54 @@ import { useWallet } from '../src/contexts/WalletContext'
 import { aesthetic } from '../src/theme/aesthetic'
 import { beginSolidSignup } from '../src/onboarding/signupBridge'
 import { createSeamlessNode, getSeamlessSignupConfig } from '../src/onboarding/seamlessSignup'
+import type { NodeSessionRecord } from '../src/onboarding/nodeSession'
 
 const PRESS_OPACITY = 0.82
 
-function getSolidOidcIssuerUrl(): string {
+interface IssuerOption {
+  /** Short display name shown in the dropdown. */
+  label: string
+  /** Secondary descriptive line. */
+  sublabel: string
+  /** The OIDC issuer URL used to start the sign-in flow. */
+  value: string
+  /** Optional brand glyph rendered before the label (e.g. the NodeZero mark). */
+  mark?: string
+}
+
+/**
+ * Builds the identity-provider options for the sign-in dropdown. The NodeZero
+ * authentication flow (the self-hosted NodeZero identity provider) is always
+ * the default first option; solidcommunity.net is offered second for users
+ * with an external Solid Pod.
+ */
+function getIssuerOptions(): IssuerOption[] {
   const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
-  return appExtra?.solidOidcIssuerUrl?.trim() || 'https://solidcommunity.net/.account/login/password/register/'
+  const nodeZeroIssuer = appExtra?.nodeZeroIssuerUrl?.trim() ?? ''
+  const solidIssuer = appExtra?.solidOidcIssuerUrl?.trim() || 'https://solidcommunity.net/'
+
+  const options: IssuerOption[] = []
+  if (nodeZeroIssuer) {
+    options.push({
+      label: 'NodeZero',
+      sublabel: 'Sign in with your NodeZero node (recommended)',
+      value: nodeZeroIssuer,
+      mark: '⊙',
+    })
+  }
+  options.push({
+    label: 'solidcommunity.net',
+    sublabel: 'Sign in with an external Solid Pod',
+    value: solidIssuer,
+  })
+  return options
 }
 
 export default function LandingScreen(): JSX.Element {
   const {
     signIn,
+    signInWithNode,
+    nodeSession,
     isLoggedIn,
     isRestoring,
     signupResumeActive,
@@ -46,10 +83,12 @@ export default function LandingScreen(): JSX.Element {
   const { attestationStatus, walletInfo } = useWallet()
   const router = useRouter()
   const pathname = usePathname()
-  const defaultIdp = getSolidOidcIssuerUrl()
+  const issuerOptions = getIssuerOptions()
   const seamlessConfig = getSeamlessSignupConfig()
 
-  const [idpUrl, setIdpUrl] = useState(defaultIdp)
+  const [selectedIssuer, setSelectedIssuer] = useState(issuerOptions[0]?.value ?? '')
+  const [issuerMenuOpen, setIssuerMenuOpen] = useState(false)
+  const selectedOption = issuerOptions.find((option) => option.value === selectedIssuer) ?? issuerOptions[0]
   const [isSigningIn, setIsSigningIn] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [nodeHandle, setNodeHandle] = useState('')
@@ -59,23 +98,27 @@ export default function LandingScreen(): JSX.Element {
 
   React.useEffect(() => {
     if (!isRestoring && isLoggedIn && pathname === '/') {
-      if (attestationStatus === 'verified') {
+      if (nodeSession) {
+        // Seamless node users are already provisioned + anchored on-chain;
+        // drop them straight into their Local node.
+        router.replace('/local')
+      } else if (attestationStatus === 'verified') {
         router.replace('/feed')
       } else {
         router.replace('/onboarding')
       }
     }
-  }, [attestationStatus, isLoggedIn, isRestoring, pathname, router])
+  }, [attestationStatus, isLoggedIn, isRestoring, nodeSession, pathname, router])
 
   const handleSignIn = async (): Promise<void> => {
     setError(null)
-    const trimmed = idpUrl.trim()
+    const trimmed = selectedIssuer.trim()
     if (!trimmed) {
-      setError('Enter your Identity Provider URL.')
+      setError('Select an identity provider to continue.')
       return
     }
     if (!trimmed.startsWith('https://')) {
-      setError('URL must start with https://')
+      setError('Identity provider must use https://')
       return
     }
     setIsSigningIn(true)
@@ -111,10 +154,25 @@ export default function LandingScreen(): JSX.Element {
       const root = result.lockbox?.proofRootHex
       setCreateNotice(
         anchored
-          ? `Node created. WebID: ${result.webId}\nStellar key: ${result.stellarPublicKey}\nLockb0x (on-chain): ${anchored}${root ? `\nPairing root: ${root}` : ''}\nSign in with your Pod to continue.`
-          : `Node created. Sign in with ${result.webId} to continue.`,
+          ? `Node created. WebID: ${result.webId}\nStellar key: ${result.stellarPublicKey}\nLockb0x (on-chain): ${anchored}${root ? `\nPairing root: ${root}` : ''}\nSigning you in…`
+          : `Node created. Signing you in with ${result.webId}…`,
       )
-      setIdpUrl(new URL(result.webId).origin)
+
+      // Auto sign-in: the provisioner already persisted the account to the Pod
+      // and anchored the pairing on-chain, so we record the non-secret node
+      // session locally and land the user in their Local node.
+      const record: NodeSessionRecord = {
+        webId: result.webId,
+        podUrl: result.podUrl,
+        stellarPublicKey: result.stellarPublicKey,
+        userLockboxContractId: result.lockbox?.userLockboxContractId ?? null,
+        lockboxFactoryContractId: result.lockbox?.factoryContractId ?? null,
+        proofRootHex: result.lockbox?.proofRootHex ?? null,
+        accountDocumentUrl: result.accountDocumentUrl,
+        createdAt: new Date().toISOString(),
+      }
+      await signInWithNode(record)
+      router.replace('/local')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not create your node. Try again.')
     } finally {
@@ -153,8 +211,12 @@ export default function LandingScreen(): JSX.Element {
 
         {/* ── Sign-in panel (always visible) ───────────── */}
         <View style={styles.signInPanel}>
+          <View style={styles.signInBrand}>
+            <Text style={styles.signInBrandMark}>⊙</Text>
+            <Text style={styles.signInBrandName}>NodeZero</Text>
+          </View>
           <Text style={styles.signInTitle}>Sign in with your Solid Pod</Text>
-          <Text style={styles.signInHint}>Enter your Identity Provider URL</Text>
+          <Text style={styles.signInHint}>Choose your identity provider</Text>
           {signupResumeActive ? (
             <Text style={styles.resumeHint}>
               {signupReturnDetected
@@ -162,17 +224,56 @@ export default function LandingScreen(): JSX.Element {
                 : 'Need a Pod first? Create one, then return here to continue onboarding.'}
             </Text>
           ) : null}
-          <TextInput
-            style={styles.input}
-            value={idpUrl}
-            onChangeText={setIdpUrl}
-            placeholder="https://solidcommunity.net"
-            placeholderTextColor="#555"
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="url"
-            accessibilityLabel="Identity Provider URL"
-          />
+          <View style={styles.dropdownWrap}>
+            <TouchableOpacity
+              style={styles.dropdownField}
+              onPress={() => setIssuerMenuOpen((open) => !open)}
+              activeOpacity={PRESS_OPACITY}
+              accessibilityRole="button"
+              accessibilityLabel="Identity provider"
+              accessibilityState={{ expanded: issuerMenuOpen }}
+            >
+              <View style={styles.dropdownFieldText}>
+                <View style={styles.dropdownLabelRow}>
+                  {selectedOption?.mark ? <Text style={styles.dropdownMark}>{selectedOption.mark}</Text> : null}
+                  <Text style={styles.dropdownLabel}>{selectedOption?.label ?? 'Select provider'}</Text>
+                </View>
+                <Text style={styles.dropdownSub}>{selectedOption?.sublabel ?? ''}</Text>
+              </View>
+              <Text style={styles.dropdownChevron}>{issuerMenuOpen ? '▴' : '▾'}</Text>
+            </TouchableOpacity>
+            {issuerMenuOpen ? (
+              <View style={styles.dropdownMenu}>
+                {issuerOptions.map((opt, i) => (
+                  <TouchableOpacity
+                    key={opt.value || opt.label}
+                    style={[
+                      styles.dropdownOption,
+                      i < issuerOptions.length - 1 && styles.dropdownOptionDivider,
+                      opt.value === selectedIssuer && styles.dropdownOptionActive,
+                    ]}
+                    onPress={() => {
+                      setSelectedIssuer(opt.value)
+                      setIssuerMenuOpen(false)
+                      setError(null)
+                    }}
+                    activeOpacity={PRESS_OPACITY}
+                    accessibilityRole="button"
+                    accessibilityLabel={opt.label}
+                  >
+                    <View style={styles.dropdownFieldText}>
+                      <View style={styles.dropdownLabelRow}>
+                        {opt.mark ? <Text style={styles.dropdownMark}>{opt.mark}</Text> : null}
+                        <Text style={styles.dropdownLabel}>{opt.label}</Text>
+                      </View>
+                      <Text style={styles.dropdownSub}>{opt.sublabel}</Text>
+                    </View>
+                    {opt.value === selectedIssuer ? <Text style={styles.dropdownCheck}>✓</Text> : null}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ) : null}
+          </View>
           {error && <Text style={styles.errorText}>{error}</Text>}
           <TouchableOpacity
             style={[styles.btnPrimary, isSigningIn && styles.btnDisabled]}
@@ -195,7 +296,7 @@ export default function LandingScreen(): JSX.Element {
                 value={nodeHandle}
                 onChangeText={setNodeHandle}
                 placeholder="Choose a handle (e.g. alice)"
-                placeholderTextColor="#555"
+                placeholderTextColor={DIM}
                 autoCapitalize="none"
                 autoCorrect={false}
                 accessibilityLabel="Node handle"
@@ -205,7 +306,7 @@ export default function LandingScreen(): JSX.Element {
                 value={notificationEmail}
                 onChangeText={setNotificationEmail}
                 placeholder="Notification email"
-                placeholderTextColor="#555"
+                placeholderTextColor={DIM}
                 autoCapitalize="none"
                 autoCorrect={false}
                 keyboardType="email-address"
@@ -350,6 +451,9 @@ const BORDER = aesthetic.color.border
 const TEXT = aesthetic.color.textHigh
 const MUTED = aesthetic.color.textMid
 const DIM = aesthetic.color.textLow
+const INPUT_BG = aesthetic.color.bgInk
+const CHIP = aesthetic.color.chip
+const DANGER = aesthetic.color.danger
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: BG },
@@ -463,6 +567,9 @@ const styles = StyleSheet.create({
   },
   signInTitle: { fontSize: 17, fontWeight: '700', color: TEXT, marginBottom: 4 },
   signInHint: { fontSize: 13, color: MUTED, marginBottom: 16 },
+  signInBrand: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
+  signInBrandMark: { fontSize: 18, color: PURPLE, marginRight: 8 },
+  signInBrandName: { fontSize: 15, fontWeight: '800', color: TEXT, letterSpacing: -0.3 },
   resumeHint: { fontSize: 12, color: DIM, marginBottom: 12, lineHeight: 18 },
   input: {
     borderWidth: 1,
@@ -472,10 +579,47 @@ const styles = StyleSheet.create({
     paddingVertical: 13,
     color: TEXT,
     fontSize: 15,
-    backgroundColor: '#111',
+    backgroundColor: INPUT_BG,
     marginBottom: 12,
   },
-  errorText: { color: '#FF4D4D', fontSize: 13, marginBottom: 10 },
+  errorText: { color: DANGER, fontSize: 13, marginBottom: 10 },
+  // Identity-provider dropdown
+  dropdownWrap: { marginBottom: 12 },
+  dropdownField: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+    backgroundColor: INPUT_BG,
+  },
+  dropdownFieldText: { flex: 1 },
+  dropdownLabelRow: { flexDirection: 'row', alignItems: 'center' },
+  dropdownMark: { color: PURPLE, fontSize: 15, marginRight: 8 },
+  dropdownLabel: { color: TEXT, fontSize: 15, fontWeight: '600' },
+  dropdownSub: { color: MUTED, fontSize: 12, marginTop: 2 },
+  dropdownChevron: { color: MUTED, fontSize: 14, marginLeft: 12 },
+  dropdownMenu: {
+    marginTop: 6,
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 10,
+    backgroundColor: INPUT_BG,
+    overflow: 'hidden',
+  },
+  dropdownOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+  },
+  dropdownOptionDivider: { borderBottomWidth: 1, borderBottomColor: BORDER },
+  dropdownOptionActive: { backgroundColor: CHIP },
+  dropdownCheck: { color: PURPLE, fontSize: 15, fontWeight: '700', marginLeft: 12 },
   createPodLink: { marginTop: 8, alignItems: 'center' },
   createPodText: { color: PURPLE, fontSize: 13 },
   createNodeBlock: { marginTop: 16, borderTopWidth: 1, borderTopColor: BORDER, paddingTop: 16 },

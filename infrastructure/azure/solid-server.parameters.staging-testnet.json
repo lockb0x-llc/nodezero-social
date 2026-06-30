@@ -9,6 +9,7 @@
     "fileShareQuotaGb": { "value": 100 },
     "containerCpu": { "value": "1.0" },
     "containerMemory": { "value": "2Gi" },
+    "cssCustomDomain": { "value": "solid.nodezero.social" },
     "logAnalyticsRetentionDays": { "value": 30 },
     "logAnalyticsDailyQuotaGb": { "value": 1 }
   }

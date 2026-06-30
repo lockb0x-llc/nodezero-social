@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { ProvisionStore } from './store.js'
 import { verifyAttestation } from './attestation.js'
-import { createSolidAccount } from './solidAccount.js'
+import { createSolidAccount, writePodAccountDocument } from './solidAccount.js'
 import type {
   BootstrapChallengeRequest,
   ProvisionRequest,
@@ -16,7 +16,7 @@ const SOLID_CSS_BASE_URL = (process.env.JSS_SOLID_CSS_BASE_URL ?? '').trim().rep
 const LOCKBOX_FACTORY_CONTRACT_ID =
   process.env.JSS_LOCKBOX_FACTORY_CONTRACT_ID ?? process.env.NZ_LOCKBOX_FACTORY_CONTRACT_ID ?? ''
 const LOCKBOX_FACTORY_MODE = (process.env.JSS_LOCKBOX_FACTORY_MODE ?? 'mock').toLowerCase()
-const ALLOWED_ORIGINS = (process.env.JSS_ALLOWED_ORIGINS ?? 'https://staging.nodezero.social,http://localhost:19006,http://localhost:8081')
+const ALLOWED_ORIGINS = (process.env.JSS_ALLOWED_ORIGINS ?? 'https://staging.nodezero.social,https://nodezero.social,https://www.nodezero.social,http://localhost:19006,http://localhost:8081')
   .split(',')
   .map((origin) => origin.trim())
   .filter((origin) => origin.length > 0)
@@ -183,11 +183,46 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Pro
         }
       }
 
+      // Persist the account profile (WebID <-> Stellar pairing + on-chain
+      // lockb0x references) into the user's own Pod, so the data lives with the
+      // user from creation. Best-effort: the on-chain lockb0x remains the source
+      // of truth, so a transient Pod write failure does not fail onboarding.
+      const accountRecord = {
+        version: 1,
+        type: 'nodezero-account',
+        webId: account.webId,
+        podUrl: account.podUrl,
+        stellarPublicKey: stellarPublicKey || null,
+        issuer: ISSUER,
+        envProfile: process.env.NZ_ENV_PROFILE ?? 'local',
+        lockbox: lockbox
+          ? {
+              userLockboxContractId: lockbox.userLockboxContractId,
+              factoryContractId: lockbox.factoryContractId,
+              proofRootHex: lockbox.proofRootHex,
+            }
+          : null,
+        createdAt: new Date().toISOString(),
+      }
+      let accountDocumentUrl: string | null = null
+      try {
+        accountDocumentUrl = await writePodAccountDocument(
+          SOLID_CSS_BASE_URL,
+          { id: account.clientCredentialsId, secret: account.clientCredentialsSecret },
+          account.podUrl,
+          accountRecord,
+        )
+      } catch (writeErr) {
+        // Surface in logs but do not fail onboarding; the lockb0x is authoritative.
+        console.warn('[solid-account] Pod account document write failed:', writeErr)
+      }
+
       sendJson(req, res, 200, {
         status: 'ready',
         webId: account.webId,
         podUrl: account.podUrl,
         stellarPublicKey: stellarPublicKey || null,
+        accountDocumentUrl,
         clientCredentials: {
           id: account.clientCredentialsId,
           secret: account.clientCredentialsSecret,

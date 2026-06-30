@@ -33,6 +33,7 @@ export interface CreateNodeResult {
   webId: string
   podUrl: string
   stellarPublicKey: string | null
+  accountDocumentUrl: string | null
   clientCredentials: { id: string; secret: string; resource: string }
   lockbox: {
     status: string

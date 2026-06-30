@@ -40,6 +40,9 @@ param containerCpu string = '1.0'
 @description('Memory for the CSS container (e.g. 2Gi pairs with 1.0 vCPU).')
 param containerMemory string = '2Gi'
 
+@description('Optional custom domain host for CSS identity URLs (for example, solid.nodezero.social). Leave empty to use the default ACA ingress domain.')
+param cssCustomDomain string = ''
+
 @description('Log Analytics retention period in days.')
 @minValue(30)
 @maxValue(90)
@@ -141,7 +144,9 @@ resource envStorage 'Microsoft.App/managedEnvironments/storages@2024-03-01' = {
 }
 
 // OIDC issuer + WebID base URL must be the public HTTPS origin of the ingress.
-var baseUrl = 'https://${containerAppName}.${managedEnv.properties.defaultDomain}/'
+var baseHostRaw = empty(cssCustomDomain) ? '${containerAppName}.${managedEnv.properties.defaultDomain}' : cssCustomDomain
+var baseHost = endsWith(baseHostRaw, '/') ? substring(baseHostRaw, 0, length(baseHostRaw) - 1) : baseHostRaw
+var baseUrl = 'https://${baseHost}/'
 
 resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
   name: containerAppName
