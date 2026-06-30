@@ -5,6 +5,7 @@
 - [Getting Started](Getting-Started)
 - Features
 - [Mobile App](Mobile-App)
+- [Mobile App UI Feature Catalog](Mobile-App#ui-navigation-tabs-and-feature-catalog)
 - [Solid Pod Sync](Solid-Pod-Sync)
 - [P2P Comms](P2P-Comms)
 - [Relay Service](Relay-Service)
