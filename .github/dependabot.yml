@@ -1,0 +1,74 @@
+version: 2
+updates:
+  # npm — workspace root (covers shared devDeps, scripts, and unlisted transitive)
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # Expo SDK version bumps require manual testing across web and native
+      - dependency-name: expo
+        update-types: ["version-update:semver-major"]
+      - dependency-name: expo-*
+        update-types: ["version-update:semver-major"]
+
+  # npm — mobile app (Expo, Stellar SDK, snarkjs)
+  - package-ecosystem: npm
+    directory: /packages/mobile-app
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+
+  # npm — provisioner (zero runtime deps; dev dep updates only)
+  - package-ecosystem: npm
+    directory: /packages/jss-provisioner
+    schedule:
+      interval: weekly
+      day: monday
+
+  # npm — zk-crypto (snarkjs, circomlibjs)
+  - package-ecosystem: npm
+    directory: /packages/zk-crypto
+    schedule:
+      interval: weekly
+      day: monday
+
+  # Cargo — Soroban contracts (soroban-sdk, arkworks)
+  - package-ecosystem: cargo
+    directory: /packages/contracts
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # soroban-sdk major bumps require contract rebuild + re-deploy
+      - dependency-name: soroban-sdk
+        update-types: ["version-update:semver-major"]
+
+  # GitHub Actions
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday

@@ -19,9 +19,9 @@ jobs:
     env:
       STATIC_WEB_APP_NAME: nodezero-social-staging-testnet-web
       JSS_PROVISIONER_APP_NAME: nodezero-social-staging-testnet-provisioner
-      AZURE_CLIENT_ID: 52120dbe-2b66-4e12-bdad-9f872a3ae845
-      AZURE_TENANT_ID: bab5056b-732f-4710-a7b9-e9c5807cd6f9
-      AZURE_SUBSCRIPTION_ID: 1f002267-9614-4a2a-a0e0-217493d6d011
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       AZURE_RESOURCE_GROUP: rg-nodezero-social-staging-testnet
 
     steps:

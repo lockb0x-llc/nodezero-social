@@ -6,7 +6,6 @@ import {
   ScrollView,
   TouchableOpacity,
   SafeAreaView,
-  ActivityIndicator,
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -75,13 +74,11 @@ export default function DocustreamScreen() {
   const { isLoggedIn, webId, session } = useSolid();
   const [filter, setFilter] = useState<FilterType>('all');
   const [items, setItems] = useState<StreamItem[]>(MOCK_DOCUSTREAM);
-  const [loadingPod, setLoadingPod] = useState(false);
   const [savingItemId, setSavingItemId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isLoggedIn || !webId) return;
     const podRoot = webId.split('/profile/')[0] + '/';
-    setLoadingPod(true);
     const manager = new DocustreamManager(session);
     manager
       .listActivities(podRoot)
@@ -90,8 +87,7 @@ export default function DocustreamScreen() {
       })
       .catch(() => {
         // Keep mock fallback on error
-      })
-      .finally(() => setLoadingPod(false));
+      });
   }, [isLoggedIn, webId]);
 
   const filteredStream =

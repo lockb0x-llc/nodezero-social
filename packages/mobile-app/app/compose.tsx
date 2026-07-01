@@ -26,12 +26,12 @@ export default function ComposeScreen() {
   const [audience, setAudience] = useState<AudienceType>('verified');
   const [sending, setSending] = useState(false);
 
-  const { session, webId, isLoggedIn } = useSolid();
+  const { session, webId } = useSolid();
   const { surroundingNodes } = useDiscovery();
   // verifyPoH may not exist on the wallet context type; cast as a stub if absent
   const walletCtx = useWallet() as { verifyPoH?: (webId: string) => Promise<boolean> };
   const verifyPoH: (webId: string) => Promise<boolean> =
-    walletCtx.verifyPoH ?? (async (_: string) => false);
+    walletCtx.verifyPoH ?? ((_: string) => Promise.resolve(false));
 
   const handlePost = async (): Promise<void> => {
     if (!postText.trim()) return;
@@ -41,7 +41,7 @@ export default function ComposeScreen() {
         // Route via P2P relay to surrounding H3 nodes
         const nodes = surroundingNodes ?? [];
         await Promise.allSettled(
-          nodes.map(async (node) => {
+          nodes.map((node) => {
             const ch = new P2PChannel({
               localWebId: webId ?? '',
               remoteWebId: (node as { webId?: string }).webId ?? String(node),
@@ -57,7 +57,7 @@ export default function ComposeScreen() {
         const connections = await graph.listConnections(podRoot).catch(() => []);
         const payload = JSON.stringify({ text: postText, audience, ts: Date.now() });
         await Promise.allSettled(
-          connections.map((c) =>
+          connections.map((_c) =>
             session.fetch(
               podRoot +
                 'outbox/' +
@@ -131,7 +131,7 @@ export default function ComposeScreen() {
           <TouchableOpacity
             style={[styles.postButton, (!postText.trim() || sending) && styles.postButtonDisabled]}
             disabled={!postText.trim() || sending}
-            onPress={handlePost}
+            onPress={() => { void handlePost() }}
           >
             {sending ? (
               <ActivityIndicator size="small" color="#FFF" />
