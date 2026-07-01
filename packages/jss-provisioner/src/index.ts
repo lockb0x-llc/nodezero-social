@@ -138,8 +138,17 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Pro
       return
     }
 
-    const stellarPublicKey = isNonEmpty(body.stellarPublicKey) ? body.stellarPublicKey.trim() : ''
-    if (stellarPublicKey && !/^G[A-Z2-7]{55}$/.test(stellarPublicKey)) {
+    // Fail-closed: seamless onboarding must anchor the WebID<->Stellar pairing
+    // in a per-user lockb0x on-chain, which requires the member's Stellar public
+    // key. Reject requests that omit it so an un-anchored account can never be
+    // created (previously a missing key silently skipped lockbox provisioning).
+    if (!isNonEmpty(body.stellarPublicKey)) {
+      sendJson(req, res, 400, { error: 'stellarPublicKey is required.' })
+      return
+    }
+
+    const stellarPublicKey = body.stellarPublicKey.trim()
+    if (!/^G[A-Z2-7]{55}$/.test(stellarPublicKey)) {
       sendJson(req, res, 400, { error: 'stellarPublicKey must be a valid Stellar public key (G...).' })
       return
     }

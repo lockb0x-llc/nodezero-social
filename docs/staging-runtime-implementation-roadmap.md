@@ -2,11 +2,13 @@
 
 **Environment:** `staging-testnet`
 **Resource group:** `rg-nodezero-social-staging-testnet`
-**Subscription:** `1f002267-9614-4a2a-a0e0-217493d6d011`
+**Subscription:** `<AZURE_SUBSCRIPTION_ID>` — see [`docs/dev-only/azure-identity.md`](dev-only/azure-identity.md) (gitignored)
 **Public URL:** `https://staging.nodezero.social`
 **Chain:** Stellar TestNet (`Test SDF Network ; September 2015`)
 **Document status:** Living — update status column and date after each change.
 **Last verified:** 2026-06-30 (Azure Resource Graph live query + repo analysis)
+
+> **Operator note:** Azure Subscription ID, Tenant ID, service principal Client ID, and generated storage/ACA hostnames are stored in the gitignored internal reference file [`docs/dev-only/azure-identity.md`](dev-only/azure-identity.md). That file must never be committed. Runtime secrets are managed via GitHub environment secrets and Azure Key Vault.
 
 ---
 

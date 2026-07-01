@@ -98,12 +98,12 @@ export default function LandingScreen(): JSX.Element {
 
   React.useEffect(() => {
     if (!isRestoring && isLoggedIn && pathname === '/') {
-      if (nodeSession) {
-        // Seamless node users are already provisioned + anchored on-chain;
-        // drop them straight into their Local node.
-        router.replace('/local')
-      } else if (attestationStatus === 'verified') {
-        router.replace('/feed')
+      // Fail-closed routing: only verified sessions enter the app. Seamless node
+      // users (already anchored on-chain) go straight to their Local node;
+      // everyone else must pass through onboarding, which blocks until the
+      // on-chain lockb0x pairing is verified.
+      if (attestationStatus === 'verified') {
+        router.replace(nodeSession ? '/local' : '/feed')
       } else {
         router.replace('/onboarding')
       }
@@ -143,19 +143,35 @@ export default function LandingScreen(): JSX.Element {
   const handleCreateNode = async (): Promise<void> => {
     setError(null)
     setCreateNotice(null)
+
+    // Fail-closed: the embedded wallet must be provisioned before onboarding.
+    // Without a Stellar public key the provisioner silently skips on-chain
+    // lockb0x creation, which previously let users continue un-anchored.
+    if (!walletInfo?.publicKey) {
+      setError('Your wallet is still initializing. Wait a moment and try again.')
+      return
+    }
+
     setIsCreating(true)
     try {
       const result = await createSeamlessNode({
         handle: nodeHandle,
         notificationEmail,
-        stellarPublicKey: walletInfo?.publicKey,
+        stellarPublicKey: walletInfo.publicKey,
       })
+
+      // Fail-closed: onboarding is only complete when the per-user lockb0x was
+      // created AND anchored on-chain. If the provisioner did not return a
+      // ready lockbox, do NOT sign the user in — surface an actionable error.
       const anchored = result.lockbox?.userLockboxContractId
-      const root = result.lockbox?.proofRootHex
+      if (!result.lockbox || result.lockbox.status !== 'ready' || !anchored) {
+        setError('Node created, but on-chain lockb0x provisioning did not complete. Please try again.')
+        return
+      }
+
+      const root = result.lockbox.proofRootHex
       setCreateNotice(
-        anchored
-          ? `Node created. WebID: ${result.webId}\nStellar key: ${result.stellarPublicKey}\nLockb0x (on-chain): ${anchored}${root ? `\nPairing root: ${root}` : ''}\nSigning you in…`
-          : `Node created. Signing you in with ${result.webId}…`,
+        `Node created. WebID: ${result.webId}\nStellar key: ${result.stellarPublicKey}\nLockb0x (on-chain): ${anchored}${root ? `\nPairing root: ${root}` : ''}\nSigning you in…`,
       )
 
       // Auto sign-in: the provisioner already persisted the account to the Pod
@@ -165,9 +181,9 @@ export default function LandingScreen(): JSX.Element {
         webId: result.webId,
         podUrl: result.podUrl,
         stellarPublicKey: result.stellarPublicKey,
-        userLockboxContractId: result.lockbox?.userLockboxContractId ?? null,
-        lockboxFactoryContractId: result.lockbox?.factoryContractId ?? null,
-        proofRootHex: result.lockbox?.proofRootHex ?? null,
+        userLockboxContractId: anchored,
+        lockboxFactoryContractId: result.lockbox.factoryContractId ?? null,
+        proofRootHex: result.lockbox.proofRootHex ?? null,
         accountDocumentUrl: result.accountDocumentUrl,
         createdAt: new Date().toISOString(),
       }
@@ -313,15 +329,17 @@ export default function LandingScreen(): JSX.Element {
                 accessibilityLabel="Notification email"
               />
               <TouchableOpacity
-                style={[styles.btnPrimary, isCreating && styles.btnDisabled]}
+                style={[styles.btnPrimary, (isCreating || !walletInfo?.publicKey) && styles.btnDisabled]}
                 onPress={() => void handleCreateNode()}
-                disabled={isCreating}
+                disabled={isCreating || !walletInfo?.publicKey}
                 activeOpacity={PRESS_OPACITY}
               >
                 {isCreating ? (
                   <ActivityIndicator color="#FFF" />
                 ) : (
-                  <Text style={styles.btnPrimaryText}>Create Your Node</Text>
+                  <Text style={styles.btnPrimaryText}>
+                    {walletInfo?.publicKey ? 'Create Your Node' : 'Preparing wallet…'}
+                  </Text>
                 )}
               </TouchableOpacity>
             </View>

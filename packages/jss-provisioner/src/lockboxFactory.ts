@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import type { LockboxProvisioning } from './types.js'
+import { ensureDeployerFunded, getDeployerSourceAccount } from './deployerTopup.js'
 
 type FactoryMode = 'mock' | 'disabled' | 'soroban'
 
@@ -78,9 +79,9 @@ async function createViaSoroban(params: {
   saltHex: string
   initialRootHex: string
 }): Promise<string> {
-  const sourceAccount = process.env.JSS_STELLAR_SOURCE_ACCOUNT
-  if (!sourceAccount || sourceAccount.trim().length === 0) {
-    throw new Error('JSS_STELLAR_SOURCE_ACCOUNT is required for soroban mode.')
+  const sourceAccount = getDeployerSourceAccount()
+  if (!sourceAccount) {
+    throw new Error('Deployer source account is required for soroban mode (JSS_DEPLOYER_SOURCE_ACCOUNT).')
   }
 
   const args = [
@@ -119,9 +120,9 @@ async function createViaSoroban(params: {
 }
 
 async function readLockboxWasmHash(factoryContractId: string): Promise<string> {
-  const sourceAccount = process.env.JSS_STELLAR_SOURCE_ACCOUNT
-  if (!sourceAccount || sourceAccount.trim().length === 0) {
-    throw new Error('JSS_STELLAR_SOURCE_ACCOUNT is required for soroban mode.')
+  const sourceAccount = getDeployerSourceAccount()
+  if (!sourceAccount) {
+    throw new Error('Deployer source account is required for soroban mode (JSS_DEPLOYER_SOURCE_ACCOUNT).')
   }
 
   const configuredWasmHash = process.env.JSS_LOCKBOX_WASM_HASH?.trim()
@@ -180,9 +181,9 @@ async function readLockboxWasmHash(factoryContractId: string): Promise<string> {
 }
 
 async function deployLockboxContract(wasmHash: string): Promise<string> {
-  const sourceAccount = process.env.JSS_STELLAR_SOURCE_ACCOUNT
-  if (!sourceAccount || sourceAccount.trim().length === 0) {
-    throw new Error('JSS_STELLAR_SOURCE_ACCOUNT is required for soroban mode.')
+  const sourceAccount = getDeployerSourceAccount()
+  if (!sourceAccount) {
+    throw new Error('Deployer source account is required for soroban mode (JSS_DEPLOYER_SOURCE_ACCOUNT).')
   }
 
   const args = [
@@ -234,9 +235,9 @@ async function initializeLockboxContract(params: {
   operatorAddress: string
   initialRootHex: string
 }): Promise<void> {
-  const sourceAccount = process.env.JSS_STELLAR_SOURCE_ACCOUNT
-  if (!sourceAccount || sourceAccount.trim().length === 0) {
-    throw new Error('JSS_STELLAR_SOURCE_ACCOUNT is required for soroban mode.')
+  const sourceAccount = getDeployerSourceAccount()
+  if (!sourceAccount) {
+    throw new Error('Deployer source account is required for soroban mode (JSS_DEPLOYER_SOURCE_ACCOUNT).')
   }
 
   const args = [
@@ -380,6 +381,11 @@ export class LockboxFactoryProvisioner {
       if (!operatorAddress || operatorAddress.trim().length === 0) {
         throw new Error('JSS_LOCKBOX_FACTORY_OPERATOR_ADDRESS is required for soroban mode.')
       }
+
+      // Pre-flight top-up (fail-closed): ensure the Deployer holds >= 50 TestNet
+      // XLM before spending gas on the per-user lockb0x deploy + initialize. If
+      // the Treasury cannot restore the floor, do NOT attempt lockbox creation.
+      await ensureDeployerFunded()
 
       let created: string
       try {

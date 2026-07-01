@@ -58,6 +58,27 @@ if ! stellar network ls | grep -qE "^${NETWORK_NAME}\\b"; then
   stellar network add "$NETWORK_NAME" --rpc-url "$RPC_URL" --network-passphrase "$NETWORK_PASSPHRASE"
 fi
 
+# ── Model B: import canonical Treasury/Deployer keys from injected secrets ───
+# Secrets are provided via Key Vault-backed app settings (JSS_TREASURY_SECRET,
+# JSS_DEPLOYER_SECRET). Writing the identity toml directly is the reliable
+# non-interactive import path. When a secret is absent, the legacy generated
+# source account (below) is used instead, preserving backward compatibility.
+TREASURY_ALIAS="${JSS_TREASURY_SOURCE_ACCOUNT:-nodezero-testnet-treasury}"
+DEPLOYER_ALIAS="${JSS_DEPLOYER_SOURCE_ACCOUNT:-nodezero-testnet-lockbox-deployer}"
+IDENTITY_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/stellar/identity"
+mkdir -p "$IDENTITY_DIR"
+
+import_key() {
+  local alias="$1" secret="$2"
+  if [[ -n "$secret" ]]; then
+    printf 'secret_key = "%s"\n' "$secret" > "$IDENTITY_DIR/${alias}.toml"
+    log "Imported key alias '${alias}' from injected secret."
+  fi
+}
+
+import_key "$TREASURY_ALIAS" "${JSS_TREASURY_SECRET:-}"
+import_key "$DEPLOYER_ALIAS" "${JSS_DEPLOYER_SECRET:-}"
+
 if ! stellar keys ls | grep -qE "^${SOURCE_ALIAS}\\b"; then
   log "Generating and funding source identity ${SOURCE_ALIAS}"
   stellar keys generate "$SOURCE_ALIAS" --network "$NETWORK_NAME" --fund
@@ -111,20 +132,22 @@ EOF
     export JSS_LOCKBOX_FACTORY_CONTRACT_ID="$BOOTSTRAPPED_FACTORY_ID"
     ;;
   *)
-    # Default path: keep factory ID from env authoritative to prevent config drift.
-    export JSS_STELLAR_SOURCE_ACCOUNT="${JSS_STELLAR_SOURCE_ACCOUNT:-$SOURCE_ALIAS}"
+    # Model B default: the Deployer is the factory operator + Soroban signer;
+    # the Treasury funds member account creation, fee-bumps, and Deployer
+    # top-ups. When the canonical keys were not injected, fall back to the
+    # legacy generated source account so existing deployments keep working.
+    export JSS_TREASURY_SOURCE_ACCOUNT="${JSS_TREASURY_SOURCE_ACCOUNT:-$SOURCE_ALIAS}"
+    export JSS_DEPLOYER_SOURCE_ACCOUNT="${JSS_DEPLOYER_SOURCE_ACCOUNT:-$SOURCE_ALIAS}"
+    export JSS_STELLAR_SOURCE_ACCOUNT="${JSS_STELLAR_SOURCE_ACCOUNT:-$JSS_DEPLOYER_SOURCE_ACCOUNT}"
 
-    EFFECTIVE_SOURCE_PUBKEY="$(stellar keys public-key "$JSS_STELLAR_SOURCE_ACCOUNT")"
-    CONFIGURED_OPERATOR_ADDRESS="${JSS_LOCKBOX_FACTORY_OPERATOR_ADDRESS:-}"
-    if [[ -n "$CONFIGURED_OPERATOR_ADDRESS" && "$CONFIGURED_OPERATOR_ADDRESS" != "$EFFECTIVE_SOURCE_PUBKEY" ]]; then
-      log "Configured operator address does not match source key; overriding to source public key"
-    fi
-
-    export JSS_LOCKBOX_FACTORY_OPERATOR_ADDRESS="$EFFECTIVE_SOURCE_PUBKEY"
+    EFFECTIVE_DEPLOYER_PUBKEY="$(stellar keys public-key "$JSS_DEPLOYER_SOURCE_ACCOUNT")"
+    export JSS_LOCKBOX_FACTORY_OPERATOR_ADDRESS="$EFFECTIVE_DEPLOYER_PUBKEY"
     export JSS_LOCKBOX_FACTORY_CONTRACT_ID="$REFERENCE_FACTORY_ID"
     ;;
 esac
 
+log "Using treasury alias: ${JSS_TREASURY_SOURCE_ACCOUNT:-<unset>}"
+log "Using deployer alias: ${JSS_DEPLOYER_SOURCE_ACCOUNT:-<unset>}"
 log "Using source alias: $JSS_STELLAR_SOURCE_ACCOUNT"
 log "Using factory contract: $JSS_LOCKBOX_FACTORY_CONTRACT_ID"
 log "Using operator address: $JSS_LOCKBOX_FACTORY_OPERATOR_ADDRESS"

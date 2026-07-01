@@ -86,13 +86,19 @@ export async function createSeamlessNode(input: CreateNodeInput): Promise<Create
     throw new Error('Enter a valid notification email address.')
   }
 
+  // Fail-closed: a valid Stellar public key is mandatory. Without it the
+  // provisioner cannot anchor the WebID<->Stellar pairing on-chain, which
+  // previously produced an un-anchored account. Require it before submitting.
+  const stellarPublicKey = (input.stellarPublicKey ?? '').trim()
+  if (!/^G[A-Z2-7]{55}$/.test(stellarPublicKey)) {
+    throw new Error('Your wallet is still initializing. Wait a moment and try again.')
+  }
+
   const body: Record<string, string> = {
     name: handle,
     email,
     password: generatePassword(),
-  }
-  if (input.stellarPublicKey && /^G[A-Z2-7]{55}$/.test(input.stellarPublicKey)) {
-    body.stellarPublicKey = input.stellarPublicKey
+    stellarPublicKey,
   }
 
   const res = await fetch(`${config.provisionerUrl}/v1/solid-account`, {

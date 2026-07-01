@@ -530,6 +530,30 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
     // verification (which needs Node-only crypto) and surface the verified
     // state directly from the node session record.
     if (nodeSession) {
+      // Fail-closed: a node session is only verified when it carries an
+      // on-chain per-user lockb0x contract. A session without one means
+      // provisioning did not complete; never report it as verified.
+      if (!nodeSession.userLockboxContractId) {
+        setAttestationStatus('error')
+        setAttestationMessage(
+          'Your node session is missing its on-chain lockb0x. Re-create your node to finish onboarding.',
+        )
+        setAttestationDetails({
+          registeredWebId: nodeSession.webId,
+          lockboxStateRoot: null,
+          registerTxHash: null,
+          verifiedAt: null,
+          custodyClaimHash: null,
+          lockboxFactoryContractId: nodeSession.lockboxFactoryContractId,
+          userLockboxContractId: null,
+          lockboxIdempotencyKey: null,
+          proofHashHex: null,
+          proofRootHex: nodeSession.proofRootHex,
+        })
+        lastCheckedKeyRef.current = `node:${nodeSession.webId}`
+        return
+      }
+
       setAttestationStatus('verified')
       setAttestationMessage('Pairing anchored on-chain during node creation.')
       setAttestationDetails({

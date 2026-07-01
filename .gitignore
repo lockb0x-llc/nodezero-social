@@ -18,6 +18,7 @@ build/
 # Dev-only credentials and scratch files — never commit these
 docs/dev-only/nodezero pod solidcommunity-net.txt
 docs/dev-only/prototypes/
+docs/dev-only/azure-identity.md
 
 # Playwright MCP session artifacts (tool output, not project files)
 .playwright-mcp/
