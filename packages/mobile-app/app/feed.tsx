@@ -22,6 +22,7 @@ import {
 import { Ionicons } from '@expo/vector-icons'
 import Slider from '@react-native-community/slider'
 import { useSolid } from '../src/contexts/SolidContext'
+import { useWallet } from '../src/contexts/WalletContext'
 import { useRouter } from 'expo-router'
 import { SocialGraph, ProfileManager, DocustreamManager, type StreamItem } from '@nodezero/solid-pod-sync'
 import { aesthetic } from '../src/theme/aesthetic'
@@ -38,6 +39,7 @@ interface FeedPost {
 
 export default function GlobalFeedScreen(): JSX.Element {
   const { isLoggedIn, isRestoring, session, webId } = useSolid()
+  const { attestationStatus } = useWallet()
   const router = useRouter()
   const authModeLabel = 'OIDC Redirect'
   const [posts, setPosts] = useState<FeedPost[]>([])
@@ -133,6 +135,30 @@ export default function GlobalFeedScreen(): JSX.Element {
         <Text style={styles.emptyText}>Please sign in to view your feed.</Text>
         <TouchableOpacity style={styles.button} onPress={() => router.replace('/')}>
           <Text style={styles.buttonText}>Sign In</Text>
+        </TouchableOpacity>
+      </View>
+    )
+  }
+
+  // Fail-closed: block feed access until the Stellar<->Solid pairing is verified
+  // against the on-chain lockb0x. While verification is in flight, show a
+  // spinner; on failure, route the user back to onboarding.
+  if (attestationStatus === 'idle' || attestationStatus === 'verifying') {
+    return (
+      <View style={styles.centred}>
+        <ActivityIndicator color="#6C63FF" size="large" />
+      </View>
+    )
+  }
+
+  if (attestationStatus !== 'verified') {
+    return (
+      <View style={styles.centred}>
+        <Text style={styles.emptyText}>
+          Finish onboarding to access your feed. Your on-chain lockb0x must be verified first.
+        </Text>
+        <TouchableOpacity style={styles.button} onPress={() => router.replace('/onboarding')}>
+          <Text style={styles.buttonText}>Continue Onboarding</Text>
         </TouchableOpacity>
       </View>
     )

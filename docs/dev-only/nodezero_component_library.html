@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NodeZero Component Library</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            /* Core Palette */
+            --bg-night: #070d17;
+            --bg-ink: #0f1a2e;
+            --card-shell: #13243f;
+            --card-glass: rgba(20, 37, 64, 0.76);
+            --line-steel: #26456d;
+            --text-high: #9ec8ff;
+            --text-mid: #7fa8de;
+            --text-low: #5f7da8;
+            --shadow-depth: 0 12px 32px rgba(2, 8, 18, 0.6);
+
+            /* Accents */
+            --accent-teal: #2baf8a;
+            --accent-seafoam: #60c6ac;
+            --accent-alert: #d46b6b; /* Muted coral for locked states */
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            background: linear-gradient(160deg, var(--bg-night) 0%, var(--bg-ink) 100%);
+            color: var(--text-high);
+            font-family: 'IBM Plex Sans', sans-serif;
+            margin: 0;
+            padding: 40px 20px;
+            min-height: 100vh;
+        }
+
+        /* Subtle Background Grid */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(125, 162, 205, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(125, 162, 205, 0.03) 1px, transparent 1px);
+            background-size: 30px 30px;
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .header h1 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 2.5rem;
+            margin: 0;
+            letter-spacing: -0.03em;
+        }
+
+        .header span {
+            color: var(--accent-teal);
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+            gap: 24px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .card {
+            background: linear-gradient(145deg, var(--card-glass), rgba(14, 29, 52, 0.95));
+            border: 1px solid var(--line-steel);
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: var(--shadow-depth);
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .card-title {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.25rem;
+            margin: 0 0 8px 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .card-desc {
+            color: var(--text-mid);
+            font-size: 0.85rem;
+            margin: 0 0 24px 0;
+            line-height: 1.5;
+        }
+
+        /* -------------------------------------
+           1. Data Backpack (The Vault)
+           ------------------------------------- */
+        .vault-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            background: rgba(15, 26, 46, 0.5);
+            border: 1px solid var(--line-steel);
+            border-radius: 8px;
+            margin-bottom: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .vault-item:hover { background: var(--card-shell); }
+        .vault-item.unlocked {
+            border-color: var(--accent-teal);
+            box-shadow: 0 0 12px rgba(43, 175, 138, 0.15);
+        }
+        .vault-item .meta { display: flex; flex-direction: column; }
+        .vault-item .label { font-weight: 600; font-size: 0.9rem; }
+        .vault-item .source { font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: var(--text-low); margin-top: 4px; }
+        
+        /* SVGs for Locks */
+        .lock-icon { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transition: all 0.3s ease; }
+        .vault-item.unlocked .lock-icon { stroke: var(--accent-teal); }
+        .vault-item:not(.unlocked) .lock-icon { stroke: var(--text-low); }
+
+        /* -------------------------------------
+           2. Feed Tuner (The Equalizer)
+           ------------------------------------- */
+        .tuner-row { margin-bottom: 20px; }
+        .tuner-labels { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.8rem; font-weight: 500; color: var(--text-mid); text-transform: uppercase; letter-spacing: 0.05em; }
+        .val-readout { font-family: 'JetBrains Mono', monospace; color: var(--accent-seafoam); }
+        
+        /* Custom Range Slider */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+        input[type=range]:focus { outline: none; }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 6px;
+            cursor: pointer;
+            background: var(--bg-night);
+            border: 1px solid var(--line-steel);
+            border-radius: 4px;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            height: 18px;
+            width: 12px;
+            border-radius: 4px;
+            background: var(--accent-teal);
+            cursor: pointer;
+            -webkit-appearance: none;
+            margin-top: -7px;
+            box-shadow: 0 0 10px rgba(43, 175, 138, 0.4);
+            border: 1px solid #fff;
+        }
+
+        /* -------------------------------------
+           3. Docustream (Unified Timeline)
+           ------------------------------------- */
+        .timeline {
+            position: relative;
+            padding-left: 20px;
+            border-left: 2px solid var(--line-steel);
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .timeline-item { position: relative; }
+        .timeline-node {
+            position: absolute;
+            left: -27px; /* 20px padding + 2px border + half width */
+            top: 4px;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--bg-ink);
+            border: 2px solid var(--accent-teal);
+        }
+        .timeline-item.rss .timeline-node { border-color: var(--accent-seafoam); }
+        .timeline-item.web2 .timeline-node { border-color: var(--text-mid); }
+        
+        .timeline-meta {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 6px;
+        }
+        .timeline-badge {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.65rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            background: rgba(43, 175, 138, 0.1);
+            color: var(--accent-teal);
+            border: 1px solid rgba(43, 175, 138, 0.3);
+        }
+        .timeline-item.rss .timeline-badge { background: rgba(96, 198, 172, 0.1); color: var(--accent-seafoam); border-color: rgba(96, 198, 172, 0.3); }
+        .timeline-item.web2 .timeline-badge { background: rgba(127, 168, 222, 0.1); color: var(--text-mid); border-color: rgba(127, 168, 222, 0.3); }
+        
+        .timeline-time { font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: var(--text-low); }
+        .timeline-content { font-size: 0.9rem; line-height: 1.4; color: var(--text-high); }
+
+        /* -------------------------------------
+           4. Local Nodes (Geo-Grid)
+           ------------------------------------- */
+        .card.geo-grid {
+            /* Subtle green-tinted background representing physical boundary limits */
+            background: radial-gradient(circle at 100% 0%, rgba(43, 175, 138, 0.15) 0%, var(--card-glass) 60%);
+        }
+        .h3-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 12px;
+            border-bottom: 1px dashed var(--line-steel);
+            margin-bottom: 16px;
+        }
+        .h3-index { font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: var(--accent-teal); }
+        .h3-res { font-size: 0.75rem; color: var(--text-low); text-transform: uppercase; letter-spacing: 0.05em; }
+        
+        .peer-node {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+        .peer-ident { display: flex; align-items: center; gap: 10px; }
+        .peer-dot { width: 8px; height: 8px; background: var(--accent-seafoam); border-radius: 50%; box-shadow: 0 0 8px var(--accent-seafoam); }
+        .peer-node.distant .peer-dot { background: var(--text-low); box-shadow: none; }
+        .peer-hash { font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; }
+        .peer-dist { font-size: 0.75rem; color: var(--text-mid); }
+
+        /* -------------------------------------
+           5. Trust Circles (Mini Orbit)
+           ------------------------------------- */
+        .mini-orbit-wrapper {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px 0;
+            flex-grow: 1;
+        }
+        .mini-orbit {
+            position: relative;
+            width: 160px;
+            height: 160px;
+            border-radius: 50%;
+            border: 1px dashed var(--text-low);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .mini-orbit-inner {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            border: 1px solid var(--accent-teal);
+            background: rgba(43, 175, 138, 0.05);
+            box-shadow: 0 0 20px rgba(43, 175, 138, 0.1);
+        }
+        .data-dot {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background: var(--text-high);
+            border-radius: 50%;
+        }
+        .dot-1 { top: -4px; left: 76px; background: var(--text-low); } /* Outer */
+        .dot-2 { top: 60px; left: 18px; background: var(--accent-teal); box-shadow: 0 0 6px var(--accent-teal); } /* Inner */
+        .dot-3 { bottom: 20px; right: 20px; background: var(--text-high); } /* Middle / Draggable state */
+
+        .orbit-legend {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-left: 20px;
+        }
+        .legend-item { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--text-mid); }
+        .legend-color { width: 12px; height: 2px; }
+        .lc-teal { background: var(--accent-teal); }
+        .lc-grey { background: var(--text-low); }
+
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>NodeZero <span>UI Library</span></h1>
+    </div>
+
+    <div class="dashboard-grid">
+
+        <!-- 1. Data Backpack -->
+        <div class="card">
+            <h2 class="card-title">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+                Data Backpack
+            </h2>
+            <p class="card-desc">Click to toggle cryptographic WebACL permissions for your Solid Pod.</p>
+            
+            <div class="vault-item unlocked" onclick="toggleLock(this)">
+                <div class="meta">
+                    <span class="label">Identity Schema</span>
+                    <span class="source">pod: /profile/card#me</span>
+                </div>
+                <!-- Unlocked Icon -->
+                <svg class="lock-icon" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 9.9-1"></path></svg>
+            </div>
+
+            <div class="vault-item" onclick="toggleLock(this)">
+                <div class="meta">
+                    <span class="label">Social Graph (FOAF)</span>
+                    <span class="source">pod: /contacts/friends.ttl</span>
+                </div>
+                <!-- Locked Icon -->
+                <svg class="lock-icon" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+            </div>
+        </div>
+
+        <!-- 2. Feed Tuner -->
+        <div class="card">
+            <h2 class="card-title">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22v-7"></path><path d="M4 11V2"></path><path d="M12 22v-11"></path><path d="M12 7V2"></path><path d="M20 22v-5"></path><path d="M20 13V2"></path><line x1="2" y1="11" x2="6" y2="11"></line><line x1="10" y1="7" x2="14" y2="7"></line><line x1="18" y1="13" x2="22" y2="13"></line></svg>
+                Feed Equalizer
+            </h2>
+            <p class="card-desc">Hardware-style physical sliders to tune your client-side algorithm.</p>
+            
+            <div class="tuner-row">
+                <div class="tuner-labels">
+                    <span>Serendipity</span>
+                    <span class="val-readout" id="val1">0.85</span>
+                </div>
+                <input type="range" min="0" max="1" step="0.01" value="0.85" oninput="document.getElementById('val1').innerText = this.value">
+            </div>
+
+            <div class="tuner-row">
+                <div class="tuner-labels">
+                    <span>Deep Ties</span>
+                    <span class="val-readout" id="val2" style="color: var(--accent-seafoam);">0.40</span>
+                </div>
+                <input type="range" min="0" max="1" step="0.01" value="0.40" oninput="document.getElementById('val2').innerText = this.value">
+            </div>
+        </div>
+
+        <!-- 3. Local Nodes (Geo-Grid) -->
+        <div class="card geo-grid">
+            <h2 class="card-title">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"></polygon><line x1="9" y1="3" x2="9" y2="18"></line><line x1="15" y1="6" x2="15" y2="21"></line></svg>
+                Local Grid Network
+            </h2>
+            <p class="card-desc">Ephemeral P2P discovery within physical boundary limits.</p>
+            
+            <div class="h3-meta">
+                <span class="h3-index">H3: 89283082803ffff</span>
+                <span class="h3-res">Res 9 (Local)</span>
+            </div>
+
+            <div class="peer-node">
+                <div class="peer-ident">
+                    <div class="peer-dot"></div>
+                    <span class="peer-hash">0x4A7b...9E21</span>
+                </div>
+                <span class="peer-dist">0.2 km</span>
+            </div>
+            
+            <div class="peer-node distant">
+                <div class="peer-ident">
+                    <div class="peer-dot"></div>
+                    <span class="peer-hash">0x9C11...3F0A</span>
+                </div>
+                <span class="peer-dist">1.4 km</span>
+            </div>
+        </div>
+
+        <!-- 4. Docustream -->
+        <div class="card" style="grid-column: 1 / -1;">
+            <h2 class="card-title">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+                Unified Docustream
+            </h2>
+            <p class="card-desc">Client-side aggregated timeline written directly to your Solid Pod.</p>
+
+            <div class="timeline">
+                <div class="timeline-item pod">
+                    <div class="timeline-node"></div>
+                    <div class="timeline-meta">
+                        <span class="timeline-badge">[ Solid ]</span>
+                        <span class="timeline-time">10:42 AM</span>
+                    </div>
+                    <div class="timeline-content">Published a new thought to personal pod index.</div>
+                </div>
+
+                <div class="timeline-item rss">
+                    <div class="timeline-node"></div>
+                    <div class="timeline-meta">
+                        <span class="timeline-badge">[ RSS ]</span>
+                        <span class="timeline-time">09:15 AM</span>
+                    </div>
+                    <div class="timeline-content">New post from cryptography blog detected and cached.</div>
+                </div>
+
+                <div class="timeline-item web2">
+                    <div class="timeline-node"></div>
+                    <div class="timeline-meta">
+                        <span class="timeline-badge">[ Reddit ]</span>
+                        <span class="timeline-time">Yesterday</span>
+                    </div>
+                    <div class="timeline-content">Client-side fetched r/web3 digest.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 5. Trust Circles Mini -->
+        <div class="card" style="grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 250px;">
+                <h2 class="card-title">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg>
+                    Trust Circles (Orbit)
+                </h2>
+                <p class="card-desc">Visualizing spatial data sovereignty. Data dropped into inner rings is encrypted for close contacts only.</p>
+                
+                <div class="orbit-legend">
+                    <div class="legend-item"><div class="legend-color lc-teal"></div> Close Friends (Teal)</div>
+                    <div class="legend-item"><div class="legend-color lc-grey"></div> Public Boundary (Grey)</div>
+                </div>
+            </div>
+
+            <div class="mini-orbit-wrapper">
+                <div class="mini-orbit">
+                    <div class="mini-orbit-inner"></div>
+                    <!-- Nodes -->
+                    <div class="data-dot dot-1"></div>
+                    <div class="data-dot dot-2"></div>
+                    <div class="data-dot dot-3"></div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // Interactive logic for the Vault Locks
+        function toggleLock(element) {
+            const isUnlocked = element.classList.contains('unlocked');
+            
+            // Toggle class
+            if (isUnlocked) {
+                element.classList.remove('unlocked');
+                // Change path to locked
+                element.querySelector('.lock-icon path').setAttribute('d', 'M7 11V7a5 5 0 0 1 10 0v4');
+            } else {
+                element.classList.add('unlocked');
+                // Change path to unlocked (shorter right hook)
+                element.querySelector('.lock-icon path').setAttribute('d', 'M7 11V7a5 5 0 0 1 9.9-1');
+            }
+        }
+    </script>
+</body>
+</html>

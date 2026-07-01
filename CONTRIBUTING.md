@@ -4,9 +4,8 @@ Thanks for contributing to NodeZero Social.
 
 ## Prerequisites
 
-- Node.js 18+
-- pnpm 8+
-- PowerShell (for PM orchestration scripts)
+- Node.js 20+
+- pnpm 11+
 - Bash-compatible shell (for deployment and QA scripts)
 
 ## Development setup

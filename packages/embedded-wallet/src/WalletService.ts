@@ -318,6 +318,22 @@ export class WalletService {
     return bytesLikeToHex(value)
   }
 
+  /**
+   * Reads `Lockb0x.get_account_commitment()` and returns the 32-byte identity
+   * anchor as hex, or `null` when unset. Used to verify a returning login
+   * against the on-chain ZK identity commitment.
+   */
+  async getLockboxAccountCommitment(contractId: string): Promise<string | null> {
+    const value = await this.simulateContractCall(contractId, 'get_account_commitment', [])
+
+    if (value == null) return null
+    if (Array.isArray(value) && value.length > 0) {
+      const inner = (value as unknown[])[0]
+      return bytesLikeToHex(inner)
+    }
+    return bytesLikeToHex(value)
+  }
+
   private async simulateContractCall(
     contractId: string,
     method: string,

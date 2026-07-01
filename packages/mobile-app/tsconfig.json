@@ -13,7 +13,8 @@
       "@nodezero/embedded-wallet": ["../embedded-wallet/src/index.ts"],
       "@nodezero/p2p-comms": ["../p2p-comms/src/index.ts"],
       "@nodezero/zk-crypto": ["../zk-crypto/src/index.ts"],
-      "@nodezero/zk-crypto/pod-ownership": ["../zk-crypto/src/pod-ownership-prover.ts"]
+      "@nodezero/zk-crypto/pod-ownership": ["../zk-crypto/src/pod-ownership-prover.ts"],
+      "@nodezero/zk-crypto/attestation-cipher": ["../zk-crypto/src/attestation-cipher.ts"]
     }
   },
   "include": ["app/**/*", "src/**/*"],

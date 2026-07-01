@@ -80,7 +80,7 @@ export default function LandingScreen(): JSX.Element {
     signupResumeActive,
     signupReturnDetected,
   } = useSolid()
-  const { attestationStatus, walletInfo } = useWallet()
+  const { attestationStatus, walletInfo, createSeamlessAttestation } = useWallet()
   const router = useRouter()
   const pathname = usePathname()
   const issuerOptions = getIssuerOptions()
@@ -98,12 +98,12 @@ export default function LandingScreen(): JSX.Element {
 
   React.useEffect(() => {
     if (!isRestoring && isLoggedIn && pathname === '/') {
-      if (nodeSession) {
-        // Seamless node users are already provisioned + anchored on-chain;
-        // drop them straight into their Local node.
-        router.replace('/local')
-      } else if (attestationStatus === 'verified') {
-        router.replace('/feed')
+      // Fail-closed routing: only verified sessions enter the app. Seamless node
+      // users (already anchored on-chain) go straight to their Local node;
+      // everyone else must pass through onboarding, which blocks until the
+      // on-chain lockb0x pairing is verified.
+      if (attestationStatus === 'verified') {
+        router.replace(nodeSession ? '/local' : '/feed')
       } else {
         router.replace('/onboarding')
       }
@@ -143,19 +143,64 @@ export default function LandingScreen(): JSX.Element {
   const handleCreateNode = async (): Promise<void> => {
     setError(null)
     setCreateNotice(null)
+
+    // Fail-closed: the embedded wallet must be provisioned before onboarding.
+    // Without a Stellar public key the provisioner silently skips on-chain
+    // lockb0x creation, which previously let users continue un-anchored.
+    if (!walletInfo?.publicKey) {
+      setError('Your wallet is still initializing. Wait a moment and try again.')
+      return
+    }
+
     setIsCreating(true)
     try {
+      // Produce the real on-device attestation first: a pod_ownership Groth16
+      // proof (identity commitment) + Stellar-encrypted claim. Bound to the
+      // deterministic WebID/Pod the provisioner will create for this handle.
+      const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
+      const issuerBase = (appExtra?.nodeZeroIssuerUrl ?? '').replace(/\/+$/, '')
+      const normalizedHandle = nodeHandle.trim().toLowerCase().replace(/[^a-z0-9-]/g, '')
+      if (!issuerBase || !normalizedHandle) {
+        setError('Node identity provider is not configured. Try again later.')
+        return
+      }
+      const expectedWebId = `${issuerBase}/${normalizedHandle}/profile/card#me`
+      const expectedPodUrl = `${issuerBase}/${normalizedHandle}/`
+
+      setCreateNotice('Generating your zero-knowledge proof…')
+      const attestation = await createSeamlessAttestation(
+        expectedWebId,
+        expectedPodUrl,
+        walletInfo.publicKey,
+      )
+
       const result = await createSeamlessNode({
         handle: nodeHandle,
         notificationEmail,
-        stellarPublicKey: walletInfo?.publicKey,
+        stellarPublicKey: walletInfo.publicKey,
+        accountCommitmentHex: attestation.accountCommitmentHex,
+        ciphertextHex: attestation.ciphertextHex,
       })
+
+      // Fail-closed: onboarding is only complete when the per-user lockb0x was
+      // created AND anchored on-chain. If the provisioner did not return a
+      // ready lockbox, do NOT sign the user in — surface an actionable error.
       const anchored = result.lockbox?.userLockboxContractId
-      const root = result.lockbox?.proofRootHex
+      if (!result.lockbox || result.lockbox.status !== 'ready' || !anchored) {
+        setError('Node created, but on-chain lockb0x provisioning did not complete. Please try again.')
+        return
+      }
+
+      // Fail-closed: the real ZK attestation (identity commitment + encrypted
+      // claim) must be anchored on-chain. Without it the node is unverifiable.
+      if (!result.attestation) {
+        setError('Node created, but the on-chain attestation was not anchored. Please try again.')
+        return
+      }
+
+      const root = result.lockbox.proofRootHex
       setCreateNotice(
-        anchored
-          ? `Node created. WebID: ${result.webId}\nStellar key: ${result.stellarPublicKey}\nLockb0x (on-chain): ${anchored}${root ? `\nPairing root: ${root}` : ''}\nSigning you in…`
-          : `Node created. Signing you in with ${result.webId}…`,
+        `Node created. WebID: ${result.webId}\nStellar key: ${result.stellarPublicKey}\nLockb0x (on-chain): ${anchored}\nIdentity anchor: ${result.attestation.accountCommitmentHex}${root ? `\nPairing root: ${root}` : ''}\nSigning you in…`,
       )
 
       // Auto sign-in: the provisioner already persisted the account to the Pod
@@ -165,9 +210,9 @@ export default function LandingScreen(): JSX.Element {
         webId: result.webId,
         podUrl: result.podUrl,
         stellarPublicKey: result.stellarPublicKey,
-        userLockboxContractId: result.lockbox?.userLockboxContractId ?? null,
-        lockboxFactoryContractId: result.lockbox?.factoryContractId ?? null,
-        proofRootHex: result.lockbox?.proofRootHex ?? null,
+        userLockboxContractId: anchored,
+        lockboxFactoryContractId: result.lockbox.factoryContractId ?? null,
+        proofRootHex: result.lockbox.proofRootHex ?? null,
         accountDocumentUrl: result.accountDocumentUrl,
         createdAt: new Date().toISOString(),
       }
@@ -313,15 +358,17 @@ export default function LandingScreen(): JSX.Element {
                 accessibilityLabel="Notification email"
               />
               <TouchableOpacity
-                style={[styles.btnPrimary, isCreating && styles.btnDisabled]}
+                style={[styles.btnPrimary, (isCreating || !walletInfo?.publicKey) && styles.btnDisabled]}
                 onPress={() => void handleCreateNode()}
-                disabled={isCreating}
+                disabled={isCreating || !walletInfo?.publicKey}
                 activeOpacity={PRESS_OPACITY}
               >
                 {isCreating ? (
                   <ActivityIndicator color="#FFF" />
                 ) : (
-                  <Text style={styles.btnPrimaryText}>Create Your Node</Text>
+                  <Text style={styles.btnPrimaryText}>
+                    {walletInfo?.publicKey ? 'Create Your Node' : 'Preparing wallet…'}
+                  </Text>
                 )}
               </TouchableOpacity>
             </View>

@@ -1,156 +1,186 @@
 # NodeZero Social
 
-NodeZero Social is a decentralized social app that combines Solid Pods,
-Stellar Soroban contracts, and zero-knowledge proofs.
+**Decentralized · Private · Yours.**
 
-For the Stellar Hacks: Real-World ZK hackathon, the current implementation
-targets Proof of Pod Ownership on Stellar TestNet:
+NodeZero Social is a decentralized social platform where users own every byte of their
+identity and content. It combines three open protocols into one coherent identity stack:
 
-1. Link a Solid Pod WebID to a Stellar account using `NodeZeroIdentity`.
-2. Generate a browser-side Groth16/WASM proof commitment for the canonical
-   WebID/Pod + Stellar account ownership claim.
-3. Create or reuse a factory-provisioned user `Lockb0x` contract whose initial
-   root is the validated proof root.
-4. Verify returning sign-ins against the per-user lockbox root.
+- **Solid Pods** — user-controlled Pod for profile, posts, and social graph.
+- **Stellar Soroban smart contracts** — on-chain identity anchor, per-user `Lockb0x`, and
+  factory provisioning (Stellar TestNet).
+- **Groth16 zero-knowledge proofs** — browser-generated `pod_ownership` proof binding a
+  WebID/Pod to a Stellar account, encrypted and anchored on-chain.
 
-PoH-style human-uniqueness verification is planned for a future release and is
-explicitly out of scope for this milestone.
+The live staging environment is at **[https://staging.nodezero.social](https://staging.nodezero.social)**
+(Stellar TestNet; no real assets at risk).
 
-## Hackathon Fit
-
-This submission satisfies the core requirement: meaningful ZK integrated with
-Stellar smart contracts.
-
-1. On-chain identity link contract: `packages/contracts/src/lib.rs` (`NodeZeroIdentity`).
-2. Factory-created user lockbox anchor: `packages/contracts/src/lib.rs` (`Lockb0xFactory`, `Lockb0x`).
-3. Proof of Pod Ownership circuit and prover: `packages/zk-crypto/circuits/pod_ownership.circom`, `packages/zk-crypto/src/pod-ownership-prover.ts`.
-4. Proof-backed provisioning path: `packages/mobile-app/src/contexts/WalletContext.tsx`, `packages/jss-provisioner/src/attestation.ts`.
+---
 
 ## Architecture
 
-```mermaid
-flowchart LR
-   A[Solid Sign-In] --> B[WebID]
-   C[Embedded Wallet] --> D[Stellar Public Key]
-   B --> E[NodeZeroIdentity register_webid]
-   D --> E
-   E --> F[Browser Proof of Pod Ownership]
-   F --> G[Proof Root]
-   G --> H[Lockb0xFactory creates User Lockb0x]
-   H --> I[Returning Sign-In Root Verification]
 ```
+   User Browser (Expo web)
+   ┌─────────────────────────────────────────────────────┐
+   │  Embedded Wallet (Stellar keypair, localStorage)    │
+   │  pod_ownership Groth16 Proof (snarkjs/WASM)         │
+   │  AES-256-GCM claim encryption (Web Crypto)          │
+   └─────────────┬────────────┬────────────┬─────────────┘
+                 │            │            │
+    Solid OIDC   │  /v1/solid │  Soroban   │  wss relay
+    sign-in      │  -account  │  RPC       │  (geo-local)
+                 ▼            ▼            ▼
+   CSS (self-hosted)   Provisioner (Azure App Service)
+   solid.nodezero.social   ┌──────────────────────────────┐
+                           │  Creates CSS account + Pod   │
+                           │  Deploys per-user Lockb0x    │
+                           │  Calls Lockb0x.set_attestation│
+                           │  PATCHes WebID profile card  │
+                           └──────────────────────────────┘
+                                          │ Soroban
+                                          ▼
+                              Stellar TestNet contracts
+                              ┌────────────────────────┐
+                              │ NodeZeroIdentity        │
+                              │ Lockb0x (per-user)      │
+                              │   .accountCommitment    │
+                              │   .attestationCiphertext│
+                              │ LockboxFactory          │
+                              └────────────────────────┘
+```
+
+On returning sign-in the browser derives `Poseidon(identitySecret)` from the embedded
+wallet and compares it to the on-chain `accountCommitment` — fail-closed if they differ.
+
+---
 
 ## Repository Map
 
-1. `packages/mobile-app`: Expo web/mobile UI and auth flows.
-2. `packages/contracts`: `NodeZeroIdentity`, `Lockb0x`.
-3. `packages/zk-crypto`: Circuits and artifact tooling for attestation proofs.
-4. `packages/embedded-wallet`: Wallet and Soroban tx submission.
-5. `scripts/stellar/deploy-testnet.sh`: TestNet deployment flow.
-6. `deployments/stellar-testnet.contracts.json`: Current deployed testnet IDs.
+| Package / Path | Purpose |
+|---|---|
+| `packages/mobile-app` | Expo Router app — all user-facing screens and auth flows |
+| `packages/contracts` | Soroban Rust contracts: `NodeZeroIdentity`, `Lockb0x`, `LockboxFactory`, `PoHVerifier` |
+| `packages/zk-crypto` | Circom circuits, Groth16 prover/verifier, attestation cipher (AES-256-GCM) |
+| `packages/embedded-wallet` | Stellar keypair enclave, Soroban invocation helpers |
+| `packages/solid-pod-sync` | Solid Pod read/write, `ProfileManager`, social graph |
+| `packages/jss-provisioner` | Server-side account provisioner (REST API, zero runtime deps) |
+| `packages/relay-service` | WebSocket signaling relay for local P2P discovery |
+| `packages/p2p-comms` | Local peer messaging and signaling protocol |
+| `packages/geo-discovery` | H3 geospatial discovery utilities |
+| `infrastructure/azure` | Bicep templates for the staging Azure resource group |
+| `scripts/azure` | Deploy, redeploy, and validation scripts for Azure |
+| `scripts/stellar` | TestNet contract deploy and Treasury/Deployer key setup |
+| `scripts/qa` | Smoke tests for provisioner, Soroban, Pod, and relay |
+| `deployments/` | Deployed contract IDs, artifact checksums, and domain cutover state |
+| `docs/` | Architecture, environment isolation, UAT checklist, roadmap |
 
-## Quick Start (Hackathon Demo)
+---
 
-Prerequisites:
+## Stellar TestNet Contracts (current)
 
-1. Node 20+, pnpm 11+, Stellar CLI v27.
-2. Rust toolchain compatible with `packages/contracts`.
-3. Circom and snarkjs available.
+| Contract | ID |
+|---|---|
+| `NodeZeroIdentity` | `CCHFYOKLGVTXEYYHWEFPI22FR26VRGG2CBBUTP6XPW3ZSIWIKEVQQ44K` |
+| `Lockb0x` (demo-init) | `CB36LY5WZLJNMY4DHRXQER6LU3L4E5MGFYT2XSJG7ZJZV5SIIOKODT2H` |
+| `LockboxFactory` v2 | `CA5MASVC7CH646QUZM6HFC3JAYIG4TCRHJDSBDOBFP66IW7TXYYHFUVB` |
 
-Install dependencies:
+Lockb0x wasm hash (includes `set_attestation`):
+`55bcb3a4c05ff935a421f10d1a72bdeb6e4573de8954e4fbd263f7ac88a8fbd9`
+
+Source of truth: [`deployments/stellar-testnet.contracts.json`](deployments/stellar-testnet.contracts.json)
+
+---
+
+## Quick Start
+
+**Prerequisites:** Node.js 20+, pnpm 11+, Stellar CLI v27, Rust (wasm32v1-none target).
 
 ```bash
+# Install dependencies
 corepack pnpm install
+
+# Type-check all packages
+corepack pnpm type-check
+
+# Lint
+corepack pnpm lint
+
+# Run tests
+corepack pnpm test
+
+# Validate environment isolation policy
+corepack pnpm policy:validate-env
 ```
 
-Build circuits and trusted setup:
+To run the app locally against the staging provisioner and TestNet contracts, set the
+environment variables documented in [`docs/environment-isolation-matrix.md`](docs/environment-isolation-matrix.md)
+and run:
 
 ```bash
-corepack pnpm --filter @nodezero/zk-crypto build:circuits
-corepack pnpm --filter @nodezero/zk-crypto build:setup
+corepack pnpm --filter @nodezero/mobile-app web
 ```
 
-Deploy contracts to Stellar TestNet:
+---
 
-```bash
-LOCKBOX_INITIALIZATION_PROOF="demo-init" \
-AUTO_FUND_SOURCE_ACCOUNT=1 \
-bash scripts/stellar/deploy-testnet.sh
-```
+## ZK Attestation Flow (implemented, live on staging)
 
-Prepare ZK artifacts and manifest:
+1. **Onboarding** — the browser generates a `pod_ownership` Groth16 proof
+   (`identitySecret` private, `claimHash`/`accountCommitment`/`podBinding` public),
+   encrypts the canonical claim with a Stellar-derived AES-256-GCM key, and sends
+   `accountCommitmentHex` + `ciphertextHex` to the provisioner.
+2. **Provisioner** — creates a CSS Solid account + Pod, deploys a per-user `Lockb0x`
+   via `LockboxFactory`, calls `Lockb0x.set_attestation` (stores the identity anchor
+   and encrypted claim on-chain), and PATCHes `nz:` anchor triples into the WebID
+   profile card.
+3. **Returning sign-in** — the browser derives the device commitment
+   (`Poseidon(identitySecret)`) and compares it to the on-chain `get_account_commitment`;
+   mismatches are fail-closed (session refused).
+4. **Recovery** — the holder re-derives the AES-256-GCM key from the Stellar secret and
+   decrypts the on-chain `attestationCiphertext` to recover the canonical claim.
 
-```bash
-corepack pnpm prepare:zk:testnet
-```
+---
 
-Deploy identity and lockbox contracts to Stellar TestNet:
+## Environment isolation
 
-```bash
-LOCKBOX_INITIALIZATION_PROOF="demo-init" \
-AUTO_FUND_SOURCE_ACCOUNT=1 \
-bash scripts/stellar/deploy-testnet.sh
-```
+Three canonical profiles: `local`, `staging-testnet`, `production-mainnet`. The policy
+script `scripts/policy/validate-env-isolation.sh` (run via `pnpm policy:validate-env`)
+enforces that staging and production values never mix. See
+[`docs/environment-isolation-matrix.md`](docs/environment-isolation-matrix.md).
 
-Run the app and complete onboarding to register WebID on-chain:
+---
 
-1. Sign in with a Solid IdP.
-2. Provision wallet.
-3. Register the WebID against the wallet Stellar key.
+## Status
 
-## Demo Video Outline (2-3 minutes)
+| Area | Status |
+|---|---|
+| Solid OIDC sign-in | ✅ Live — `staging.nodezero.social` |
+| Seamless "Create Your Node" | ✅ Live — CSS Pod + Lockb0x deployed per user |
+| ZK pod_ownership proof (browser) | ✅ Live — Groth16/snarkjs, on-device |
+| On-chain attestation (`set_attestation`) | ✅ Live — `accountCommitment` + `attestationCiphertext` on TestNet |
+| WebID profile-card anchor (`nz:` triples) | ✅ Live |
+| On-return fail-closed attestation check | ✅ Live |
+| Local peer messaging (P2P relay) | ✅ Live — staging relay healthy |
+| Feed / social graph (FOAF) | 🔶 Shell renders; real Pod-connected graph is post-MVP |
+| Proof-of-Humanity (poh.circom + PoHVerifier) | ⚪ Contract deployed; not wired into onboarding yet |
+| Production-mainnet deployment | ⚪ Planned; Stellar MainNet and nodezero.social domain |
 
-1. Problem: prove a Solid Pod is linked to the signing Stellar account.
-2. Show `NodeZeroIdentity` + `Lockb0x` in repo.
-3. Show onboarding path that registers WebID on-chain.
-4. Show browser proof fields sent to the provisioner.
-5. Show factory-created user lockbox root matching the proof root.
-6. Close with practical fit: non-fungible WebID/Pod + Stellar account ownership.
+---
 
-## Submission Checklist
+## Deployment references
 
-1. Public repo link: https://github.com/lockb0x-llc/nodezero-social
-2. Demo video link: add link before submission.
-3. Stellar network used: TestNet.
-4. Live staging demo: https://staging.nodezero.social
-5. ZK is load-bearing: browser-generated Proof of Pod Ownership root anchors the user lockbox.
-6. Known limitations documented: yes (B1/B2/D1/D3/J3 are post-hackathon scope, all documented in `docs/staging-uat-checklist.md`).
+- Azure Bicep: `infrastructure/azure/main.bicep`
+- Staging deploy workflow: `.github/workflows/staging-deploy.yml`
+- Stellar TestNet setup runbook: `scripts/stellar/setup-treasury-deployer.sh`
+- Two-account funding model (Treasury + Deployer): `packages/jss-provisioner/src/deployerTopup.ts`
+- Runtime implementation roadmap: `docs/staging-runtime-implementation-roadmap.md`
+- UAT checklist: `docs/staging-uat-checklist.md`
 
-## Future Scope
+---
 
-Planned, but explicitly out of scope for this milestone:
+## Contributing
 
-1. Proof-of-Humanity flows.
-2. Nullifier-based replay-protected human uniqueness proofs.
-3. Dedicated PoH verifier integration in release gates.
+See [`CONTRIBUTING.md`](CONTRIBUTING.md). All PRs must pass `pnpm lint`, `pnpm type-check`,
+`pnpm test`, and `pnpm policy:validate-env`. Environment isolation is a non-negotiable gate.
 
-## Deployment References
+## License
 
-1. Stellar TestNet + Azure release requirements:
-   `docs/testnet-azure-release-requirements.md`
-2. Azure Bicep templates:
-   `infrastructure/azure/main.bicep`
-
-## Current Staging TestNet Contract IDs
-
-As of 2026-06-26, the current deployed Soroban contract IDs used for staging are:
-
-1. Identity (`NodeZeroIdentity`):
-   `CCHFYOKLGVTXEYYHWEFPI22FR26VRGG2CBBUTP6XPW3ZSIWIKEVQQ44K`
-2. Lockbox (`Lockb0x`):
-   `CB36LY5WZLJNMY4DHRXQER6LU3L4E5MGFYT2XSJG7ZJZV5SIIOKODT2H`
-
-Deployment manifest source:
-
-1. `deployments/stellar-testnet.contracts.json`
-
-## Key Vault Secret Mapping (Staging)
-
-These contract IDs are stored in Azure Key Vault `nodezerosocialstagingtes`:
-
-1. `stellar-identity-contract-id`
-2. `stellar-lockbox-contract-id`
-
-Important RBAC note: this vault uses Azure RBAC authorization.
-To set/update these secrets, the caller must have a role with `setSecret` permission,
-for example `Key Vault Secrets Officer` (the `Key Vault Secrets User` role is read-only).
+MIT — see [`LICENSE`](LICENSE).

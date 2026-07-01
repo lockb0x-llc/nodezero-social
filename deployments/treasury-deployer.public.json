@@ -1,0 +1,40 @@
+{
+  "note": "Public identifiers only. Secrets live in Azure Key Vault (stellar-treasury-secret, stellar-deployer-secret) and the gitignored docs/dev-only/azure-identity.md.",
+  "network": "testnet",
+  "networkPassphrase": "Test SDF Network ; September 2015",
+  "rpcUrl": "https://soroban-testnet.stellar.org",
+  "treasury": {
+    "alias": "nodezero-testnet-treasury",
+    "publicKey": "GAUMNOPBK5WYUGIV2VH7JXMHACFSB4QV4HCJM5LB7ERUYKUN6UEZGEYI",
+    "role": "Canonical funder: member account creation, fee-bumps, and Deployer top-ups."
+  },
+  "deployer": {
+    "alias": "nodezero-testnet-lockbox-deployer",
+    "publicKey": "GDMJ3GFM2RPB5FRX5DS2IRRSVF6RFYILXZ2WIUIJQJJOHXJTQXOQVBHR",
+    "role": "Lockb0x factory operator: deploys + initializes per-user lockb0x contracts. Kept >= 50 XLM by Treasury top-up."
+  },
+  "lockboxFactory": {
+    "alias": "nodezero-lockbox-factory-testnet-v2",
+    "id": "CA5MASVC7CH646QUZM6HFC3JAYIG4TCRHJDSBDOBFP66IW7TXYYHFUVB",
+    "operator": "GDMJ3GFM2RPB5FRX5DS2IRRSVF6RFYILXZ2WIUIJQJJOHXJTQXOQVBHR",
+    "lockboxWasmHash": "795157cc49e66f79d2ce06049687d5ad20d625d38c772035dbb4e9463360885f",
+    "initTx": "b8ad8700f1717519b42f64677106ac54b0ba031018b4d9197795fa834d9e57fd",
+    "storageEntries": 3,
+    "previousFactoryId": "CBV5KWYWK4O44JX4JK57IDGPA2IZSKJR2SC2UNYV65RU4S7MSK66F2WA"
+  },
+  "evidence": {
+    "testLockbox": {
+      "id": "CCEYVXVGD6E3UKOMLOSWO4OL2CGH32U7OAHJ3BX7UZLZB6M2LKR6EZ5N",
+      "creator": "GDMJ3GFM2RPB5FRX5DS2IRRSVF6RFYILXZ2WIUIJQJJOHXJTQXOQVBHR",
+      "initTx": "5002beab7cf5e87eda04afa85514cf7177fc87e45ebc71ca2314b8049d268bbc",
+      "storageEntries": 3,
+      "note": "Direct deploy+initialize path (operator = Deployer) that the provisioner uses server-side."
+    },
+    "topUpSyntaxCheck": {
+      "tx": "770ad7f4ce9f650b0d2916e1a3ba1711fd52a399f571b5522149a26cd9d044ee",
+      "note": "Validated 'stellar tx new payment ... --amount <stroops>' used by deployerTopup.ts."
+    },
+    "factoryPathAuthFinding": "get_or_create_user_lockbox fails with Error(Auth, InvalidAction) because the nested Lockb0x.initialize calls require_auth on the USER address, which does not sign the server-side tx. The provisioner therefore uses the direct deploy+initialize fallback (operator = Deployer). True user-owned lockboxes require the device to co-sign (fee-bump model, P4)."
+  },
+  "generatedAt": "2026-07-01T00:00:00Z"
+}

@@ -25,6 +25,7 @@ import { useLocalSearchParams } from 'expo-router'
 import Constants from 'expo-constants'
 import { useDiscovery } from '../src/contexts/DiscoveryContext'
 import { useSolid } from '../src/contexts/SolidContext'
+import { useWallet } from '../src/contexts/WalletContext'
 import { P2PChannel, SignalRelay, type SignalMessage } from '@nodezero/p2p-comms'
 import { SocialGraph } from '@nodezero/solid-pod-sync'
 import { aesthetic } from '../src/theme/aesthetic'
@@ -56,6 +57,7 @@ function isValidRelayOverrideWebId(raw: string): boolean {
 export default function LocalNodeScreen(): JSX.Element {
   const { currentNode, surroundingNodes, locationStatus, refresh } = useDiscovery()
   const { webId, isLoggedIn, isRestoring, session } = useSolid()
+  const { attestationStatus } = useWallet()
   const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
   const params = useLocalSearchParams<{
     qaRelayWebId?: string | string[]
@@ -265,6 +267,29 @@ export default function LocalNodeScreen(): JSX.Element {
     return (
       <View style={styles.centred}>
         <Text style={styles.infoText}>Sign in to join your Local Node.</Text>
+      </View>
+    )
+  }
+
+  // Fail-closed: block Local Node access until the on-chain lockb0x pairing is
+  // verified. Show a spinner while verification runs; route unverified sessions
+  // back to onboarding.
+  if (attestationStatus === 'idle' || attestationStatus === 'verifying') {
+    return (
+      <View style={styles.centred}>
+        <ActivityIndicator color="#6C63FF" size="large" />
+        <Text style={styles.infoText}>Verifying your on-chain lockb0x…</Text>
+      </View>
+    )
+  }
+
+  if (attestationStatus !== 'verified') {
+    return (
+      <View style={styles.centred}>
+        <Text style={styles.infoText}>
+          Finish onboarding to join your Local Node.{"\n"}
+          Your on-chain lockb0x must be verified first.
+        </Text>
       </View>
     )
   }
