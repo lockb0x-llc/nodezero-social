@@ -1,9 +1,10 @@
 import { createServer } from 'node:http'
-import { createHash } from 'node:crypto'
+import { createHash, timingSafeEqual } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { ProvisionStore } from './store.js'
 import { verifyAttestation } from './attestation.js'
 import { createSolidAccount, writePodAccountDocument } from './solidAccount.js'
+import { treasuryCreateAccount } from './treasuryCreateAccount.js'
 import type {
   BootstrapChallengeRequest,
   ProvisionRequest,
@@ -16,6 +17,16 @@ const SOLID_CSS_BASE_URL = (process.env.JSS_SOLID_CSS_BASE_URL ?? '').trim().rep
 const LOCKBOX_FACTORY_CONTRACT_ID =
   process.env.JSS_LOCKBOX_FACTORY_CONTRACT_ID ?? process.env.NZ_LOCKBOX_FACTORY_CONTRACT_ID ?? ''
 const LOCKBOX_FACTORY_MODE = (process.env.JSS_LOCKBOX_FACTORY_MODE ?? 'mock').toLowerCase()
+// P3: Treasury-sponsored member account creation is a privileged, funds-moving
+// operation. It is disabled unless an internal API key is configured, and every
+// request must present it (fail-closed). This prevents an open endpoint from
+// draining the Treasury by creating accounts for arbitrary fresh keys.
+const INTERNAL_API_KEY = (process.env.JSS_INTERNAL_API_KEY ?? '').trim()
+// P3: when enabled, the provisioner funds each member's Stellar account from the
+// Treasury during onboarding (replacing testnet Friendbot on MainNet, where no
+// faucet exists). Off by default to preserve the testnet Friendbot self-funding
+// path; enable via JSS_TREASURY_FUND_MEMBERS=1 for MainNet readiness.
+const TREASURY_FUND_MEMBERS = /^(1|true|yes)$/i.test((process.env.JSS_TREASURY_FUND_MEMBERS ?? '').trim())
 const ALLOWED_ORIGINS = (process.env.JSS_ALLOWED_ORIGINS ?? 'https://staging.nodezero.social,https://nodezero.social,https://www.nodezero.social,http://localhost:19006,http://localhost:8081')
   .split(',')
   .map((origin) => origin.trim())
@@ -44,7 +55,7 @@ function sendJson(req: IncomingMessage, res: ServerResponse, statusCode: number,
 
 async function readJsonBody<T>(req: IncomingMessage): Promise<T> {
   const chunks: Buffer[] = []
-  for await (const chunk of req) {
+  for await (const chunk of req as AsyncIterable<Buffer | string>) {
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
   }
   const raw = Buffer.concat(chunks).toString('utf8')
@@ -56,6 +67,17 @@ async function readJsonBody<T>(req: IncomingMessage): Promise<T> {
 
 function isNonEmpty(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0
+}
+
+/** Constant-time check that the request presents the configured internal API key. */
+function hasValidInternalKey(req: IncomingMessage): boolean {
+  if (!INTERNAL_API_KEY) return false
+  const provided = req.headers['x-nz-internal-key']
+  const value = Array.isArray(provided) ? provided[0] ?? '' : provided ?? ''
+  const a = new TextEncoder().encode(value)
+  const b = new TextEncoder().encode(INTERNAL_API_KEY)
+  if (a.length !== b.length) return false
+  return timingSafeEqual(a, b)
 }
 
 function validateChallengeRequest(body: BootstrapChallengeRequest): void {
@@ -104,6 +126,9 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Pro
       solidAccount: {
         configured: Boolean(SOLID_CSS_BASE_URL),
         cssBaseUrl: SOLID_CSS_BASE_URL || null,
+      },
+      treasuryCreateAccount: {
+        enabled: Boolean(INTERNAL_API_KEY),
       },
       uptimeMs: Math.round(process.uptime() * 1000),
     })
@@ -165,6 +190,20 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Pro
         email: body.email.trim(),
         password: body.password,
       })
+
+      // P3: on MainNet there is no Friendbot, so the member's Stellar account
+      // must be Treasury-funded before they can author on-chain operations
+      // (e.g. register_webid). Idempotent + fail-closed: a funding failure aborts
+      // onboarding so we never hand back an account the member cannot use.
+      if (TREASURY_FUND_MEMBERS) {
+        try {
+          await treasuryCreateAccount(stellarPublicKey)
+        } catch (fundErr) {
+          const message = fundErr instanceof Error ? fundErr.message : 'Treasury member funding failed.'
+          sendJson(req, res, 502, { error: message, webId: account.webId, podUrl: account.podUrl })
+          return
+        }
+      }
 
       // Optionally anchor the WebID<->Stellar pairing in a per-user lockb0x.
       // Requested by supplying stellarPublicKey; fail-closed when requested.
@@ -241,6 +280,39 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Pro
       })
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Solid account provisioning failed.'
+      sendJson(req, res, 502, { error: message })
+    }
+    return
+  }
+
+  if (req.method === 'POST' && url.pathname === '/v1/create-account') {
+    // P3: Treasury-sponsored member account creation. Privileged, funds-moving,
+    // and disabled unless an internal API key is configured (fail-closed).
+    if (!INTERNAL_API_KEY) {
+      sendJson(req, res, 503, { error: 'Treasury account creation is not enabled (JSS_INTERNAL_API_KEY).' })
+      return
+    }
+    if (!hasValidInternalKey(req)) {
+      sendJson(req, res, 401, { error: 'A valid x-nz-internal-key header is required.' })
+      return
+    }
+
+    const body = await readJsonBody<{ stellarPublicKey?: string; startingBalanceXlm?: number }>(req)
+    if (!isNonEmpty(body.stellarPublicKey)) {
+      sendJson(req, res, 400, { error: 'stellarPublicKey is required.' })
+      return
+    }
+    const destination = body.stellarPublicKey.trim()
+    if (!/^G[A-Z2-7]{55}$/.test(destination)) {
+      sendJson(req, res, 400, { error: 'stellarPublicKey must be a valid Stellar public key (G...).' })
+      return
+    }
+
+    try {
+      const result = await treasuryCreateAccount(destination, body.startingBalanceXlm)
+      sendJson(req, res, 200, { status: 'ok', ...result })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Treasury account creation failed.'
       sendJson(req, res, 502, { error: message })
     }
     return

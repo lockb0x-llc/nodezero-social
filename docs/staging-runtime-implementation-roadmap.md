@@ -89,11 +89,20 @@ Full resource count: **14 resources**.
 |---|---|---|---|
 | `NodeZeroIdentity` | `CCHFYOKLGVTXEYYHWEFPI22FR26VRGG2CBBUTP6XPW3ZSIWIKEVQQ44K` | `GBMXG2UIWFBHPKRBDQCEFNIDR3WHJAPVVGBCIOD5SGKZYZQISENZKD5O` | ✅ Live — TestNet |
 | `Lockb0x` | `CB36LY5WZLJNMY4DHRXQER6LU3L4E5MGFYT2XSJG7ZJZV5SIIOKODT2H` | (demo-init) | ✅ Live — TestNet |
-| `Lockb0xFactory` | `CBV5KWYWK4O44JX4JK57IDGPA2IZSKJR2SC2UNYV65RU4S7MSK66F2WA` | — | ✅ Live — wasmHash `795157cc…` |
+| `Lockb0xFactory` (v2) | `CA5MASVC7CH646QUZM6HFC3JAYIG4TCRHJDSBDOBFP66IW7TXYYHFUVB` | Deployer `GDMJ3GFM…` | ✅ Live — wasmHash `795157cc…`; replaces v1 `CBV5KWYW…` |
 
 Key Vault mirrors (RBAC: Key Vault Secrets Officer required to write):
 - `stellar-identity-contract-id` → `CCHFYOKLGVTXEYYHWEFPI22FR26VRGG2CBBUTP6XPW3ZSIWIKEVQQ44K`
 - `stellar-lockbox-contract-id` → `CB36LY5WZLJNMY4DHRXQER6LU3L4E5MGFYT2XSJG7ZJZV5SIIOKODT2H`
+
+### Two-account funding model (TestNet)
+
+| Role | Alias | Public key | KV secret | Purpose |
+|---|---|---|---|---|
+| Treasury (canonical funder) | `nodezero-testnet-treasury` | `GAUMNOPBK5WYUGIV2VH7JXMHACFSB4QV4HCJM5LB7ERUYKUN6UEZGEYI` | `stellar-treasury-secret` | Funds member account creation + fee-bumps; tops up Deployer to ≥50 XLM |
+| Deployer (factory operator) | `nodezero-testnet-deployer` | `GDMJ3GFM2RPB5FRX5DS2IRRSVF6RFYILXZ2WIUIJQJJOHXJTQXOQVBHR` | `stellar-deployer-secret` | Deploys + initializes per-user lockb0x contracts and pays their gas |
+
+Pre-flight invariant: before every lockb0x creation the provisioner ensures the Deployer holds ≥ `JSS_DEPLOYER_MIN_XLM` (default 50), topping up from the Treasury when below the floor ([deployerTopup.ts](../packages/jss-provisioner/src/deployerTopup.ts)).
 
 ---
 
@@ -108,6 +117,7 @@ This is the correlation layer: what workflow/artifact deploys what, and what use
 | Seamless "Create Your Node" | [seamlessSignup.ts](../packages/mobile-app/src/onboarding/seamlessSignup.ts) → provisioner | SWA publish + `NZ_JSS_PROVISIONER_URL` env in build | W1 (SWA) → S1 (provisioner) → I1 (CSS) | QA: [solid-account-endpoint-smoke.mjs](../scripts/qa/solid-account-endpoint-smoke.mjs) — **PASS 2026-06-29** |
 | Pod account creation + CSS account JSON API | [solidAccount.ts](../packages/jss-provisioner/src/solidAccount.ts) | Provisioner zip deploy — [staging-deploy.yml#L82](../.github/workflows/staging-deploy.yml#L82) | S1 (provisioner) → I1 (CSS) → I4 (storage) | Manual: `solid-pod-smoke.mjs` |
 | Stellar attestation anchoring + per-user Lockb0x | [lockboxFactory.ts](../packages/jss-provisioner/src/lockboxFactory.ts) | Provisioner deploy + `JSS_LOCKBOX_FACTORY_MODE=soroban` app setting | S1 (provisioner) + Stellar TestNet RPC (external) | QA: `soroban-provision-smoke.mjs` — **PASS 2026-06-29** |
+| Treasury-sponsored member account creation (P3) | [treasuryCreateAccount.ts](../packages/jss-provisioner/src/treasuryCreateAccount.ts) + `POST /v1/create-account` | Provisioner deploy + `JSS_TREASURY_FUND_MEMBERS=1` / `JSS_INTERNAL_API_KEY` app settings | S1 (provisioner) + Treasury key + Stellar TestNet | Unit: `treasuryCreateAccount.test.ts` — **PASS**; idempotent + fail-closed |
 | Pod account document write (DPoP) | [solidAccount.ts#writePodAccountDocument](../packages/jss-provisioner/src/solidAccount.ts) | Provisioner deploy + `JSS_SOLID_CSS_BASE_URL` app setting | S1 (provisioner) → I1 (CSS) | Covered by E2E onboarding PASS 2026-06-29 |
 | ZK Proof of Pod Ownership browser proof | [pod-ownership-prover.ts](../packages/zk-crypto/src/pod-ownership-prover.ts) | ZK artifact build → blob upload to A1 | W1 (SWA) + A1 (storage, ZK artifacts) | UAT AT1–AT3 — **PASS 2026-06-26** |
 | On-chain wallet registration (`NodeZeroIdentity`) | [WalletContext.tsx](../packages/mobile-app/src/contexts/WalletContext.tsx) | SWA publish + contract IDs from K1 | W1 (SWA) + K1 (Key Vault) + Stellar TestNet | UAT AT1 — **PASS 2026-06-26** |
@@ -147,9 +157,15 @@ staging deploy workflow. They are the main source of config drift between CI/CD 
 | Setting | Purpose | Current value (confirmed) | Risk if missing |
 |---|---|---|---|
 | `JSS_SOLID_CSS_BASE_URL` | Provisioner → CSS account API base URL | `https://nz-staging-testnet-solid.calmwater-b7429d4d.eastus2.azurecontainerapps.io` | Seamless onboarding returns 503 |
-| `JSS_LOCKBOX_FACTORY_CONTRACT_ID` | Factory contract for per-user lockbox | `CBV5KWYWK4O44JX4JK57IDGPA2IZSKJR2SC2UNYV65RU4S7MSK66F2WA` | Soroban lockbox provision fails |
+| `JSS_LOCKBOX_FACTORY_CONTRACT_ID` | Factory contract for per-user lockbox | `CA5MASVC7CH646QUZM6HFC3JAYIG4TCRHJDSBDOBFP66IW7TXYYHFUVB` (v2, Deployer operator) | Soroban lockbox provision fails |
 | `JSS_LOCKBOX_FACTORY_MODE` | `soroban` = live Stellar invoke, `mock` = stub | `soroban` | Attestation silently skipped or returns mock data |
-| `JSS_STELLAR_SOURCE_ACCOUNT` | Stellar CLI key alias for Soroban invocations | `nodezero-staging-provisioner` | Soroban invocations fail at key lookup |
+| `JSS_STELLAR_SOURCE_ACCOUNT` | Legacy single-key alias (fallback for Treasury/Deployer) | `nodezero-staging-provisioner` | Soroban invocations fail at key lookup |
+| `JSS_TREASURY_SOURCE_ACCOUNT` | Treasury CLI key alias — funds accounts + tops up Deployer | `nodezero-testnet-treasury` | Falls back to `JSS_STELLAR_SOURCE_ACCOUNT` |
+| `JSS_DEPLOYER_SOURCE_ACCOUNT` | Deployer CLI key alias — factory operator, pays lockb0x gas | `nodezero-testnet-deployer` | Falls back to `JSS_STELLAR_SOURCE_ACCOUNT` |
+| `JSS_DEPLOYER_MIN_XLM` | Deployer top-up floor (pre-flight before each lockb0x) | `50` | Defaults to 50 |
+| `JSS_TREASURY_FUND_MEMBERS` | `1` = provisioner Treasury-funds member accounts during onboarding (MainNet: no Friendbot) | unset (testnet uses Friendbot) | Members not auto-funded; MainNet register_webid fails |
+| `JSS_INTERNAL_API_KEY` | Enables + authenticates `POST /v1/create-account` (fail-closed when unset) | unset (endpoint disabled) | Endpoint returns 503; onboarding auto-fund still works |
+| `JSS_MEMBER_STARTING_XLM` | Sponsored starting balance for new member accounts (capped by `JSS_MEMBER_STARTING_MAX_XLM`, default 2) | `1` | Defaults to 1 XLM |
 | `JSS_LOCKBOX_FACTORY_OPERATOR_ADDRESS` | Operator public key for factory | Derived from source account at startup | Factory initialize fails if mismatched |
 | `JSS_LOCKBOX_WASM_HASH` | Pinned wasm hash for direct lockbox deploy fallback | `795157cc49e66f79d2ce06049687d5ad20d625d38c772035dbb4e9463360885f` | Direct deploy fallback resolves dynamically (latency) |
 | `JSS_STELLAR_RPC_URL` | Soroban RPC for contract invocations | `https://soroban-testnet.stellar.org` | Falls back to default (safe but unverified) |
@@ -215,10 +231,13 @@ Each row is a discrete unit of work. Mark ✅ when complete with evidence.
 |---|---|---|---|
 | ZK-01 | `NodeZeroIdentity` contract live on TestNet | ✅ Done | `CCHFYOKLGVTXEYYHWEFPI22FR26VRGG2CBBUTP6XPW3ZSIWIKEVQQ44K` 2026-06-26 |
 | ZK-02 | `Lockb0x` contract live on TestNet | ✅ Done | `CB36LY5WZLJNMY4DHRXQER6LU3L4E5MGFYT2XSJG7ZJZV5SIIOKODT2H` |
-| ZK-03 | `Lockb0xFactory` contract live on TestNet | ✅ Done | `CBV5KWYWK4O44JX4JK57IDGPA2IZSKJR2SC2UNYV65RU4S7MSK66F2WA` |
+| ZK-03 | `Lockb0xFactory` contract live on TestNet | ✅ Done | v2 `CA5MASVC7CH646QUZM6HFC3JAYIG4TCRHJDSBDOBFP66IW7TXYYHFUVB` (Deployer operator); replaces v1 `CBV5KWYW…` |
 | ZK-04 | ZK artifacts (wasm + zkey + vk) published to blob storage | ✅ Done | `stki7yquyjmnskg/zk-artifacts/`; manifest URL in app bundle |
 | ZK-05 | Browser Groth16 proof generation + submission flow | ✅ Done | `pod-ownership-prover.ts`; UAT AT1/AT2/AT3 PASS 2026-06-26 |
-| ZK-06 | Per-user Lockb0x deploy + initialize via provisioner | ✅ Done | Onboarding E2E PASS 2026-06-29; `storage_entries:3` confirmed on-chain |
+| ZK-06 | Per-user Lockb0x deploy + initialize via provisioner | ✅ Done | Onboarding E2E PASS 2026-06-29; `storage_entries:3` confirmed on-chain. UI happy-path re-validated 2026-07-01 (lockbox `CBFEODFE…`, creator=Deployer) |
+| ZK-06b | Treasury → Deployer pre-flight top-up (≥50 XLM) | ✅ Done | [deployerTopup.ts](../packages/jss-provisioner/src/deployerTopup.ts); fail-closed |
+| ZK-06c | Treasury-sponsored member `CreateAccount` (P3) | ✅ Done | [treasuryCreateAccount.ts](../packages/jss-provisioner/src/treasuryCreateAccount.ts); `POST /v1/create-account` (internal-key gated) + onboarding auto-fund via `JSS_TREASURY_FUND_MEMBERS`; unit tests PASS |
+| ZK-06d | True `FeeBumpTransaction` wrapping (P4) | ⚪ Deferred | Blocked by zero-dependency provisioner (no `@stellar/stellar-sdk`) + no `stellar` CLI fee-bump command. Requirement "users pay no fees / need no pre-funded account" is met by ZK-06c Treasury funding. Revisit if a dedicated SDK-backed signer service is introduced |
 | ZK-07 | Returning sign-in lockbox root verification | ✅ Done | UAT AT3 PASS 2026-06-26 |
 | ZK-08 | **Checksum verification (`pnpm verify:checksums:testnet`) in CI** | ⬜ To Do | Script exists; not run in current CI gate |
 | ZK-09 | **Contract drift check between Key Vault and `stellar-testnet.contracts.json`** | ⬜ To Do | `verify-staging-drift.mjs` checks bundle; does not verify Key Vault directly |

@@ -21,76 +21,22 @@
  * node_modules, so no SDK may be imported).
  */
 
-import { spawn } from 'node:child_process'
+import {
+  getDeployerSourceAccount,
+  getNativeBalance,
+  getTreasurySourceAccount,
+  NETWORK,
+  resolvePublicKey,
+  runStellar,
+  STROOPS_PER_XLM,
+} from './stellarCli.js'
 
-const HORIZON_URL = (process.env.JSS_HORIZON_URL ?? 'https://horizon-testnet.stellar.org').replace(/\/+$/, '')
+// Re-exported for callers that historically imported the account getters from
+// this module (e.g. lockboxFactory.ts). The canonical definitions now live in
+// stellarCli.ts alongside the other shared CLI helpers.
+export { getDeployerSourceAccount, getTreasurySourceAccount } from './stellarCli.js'
+
 const MIN_DEPLOYER_XLM = Number(process.env.JSS_DEPLOYER_MIN_XLM ?? '50')
-const NETWORK = process.env.JSS_STELLAR_NETWORK ?? process.env.STELLAR_NETWORK ?? 'testnet'
-const STROOPS_PER_XLM = 10_000_000
-
-/** Resolves the Deployer CLI alias (falls back to the legacy single source account). */
-export function getDeployerSourceAccount(): string {
-  return (
-    process.env.JSS_DEPLOYER_SOURCE_ACCOUNT ??
-    process.env.JSS_STELLAR_SOURCE_ACCOUNT ??
-    ''
-  ).trim()
-}
-
-/** Resolves the Treasury CLI alias (falls back to the legacy single source account). */
-export function getTreasurySourceAccount(): string {
-  return (
-    process.env.JSS_TREASURY_SOURCE_ACCOUNT ??
-    process.env.JSS_STELLAR_SOURCE_ACCOUNT ??
-    ''
-  ).trim()
-}
-
-function runStellar(args: string[]): Promise<string> {
-  return new Promise<string>((resolve, reject) => {
-    const proc = spawn('stellar', args, { env: process.env, stdio: ['ignore', 'pipe', 'pipe'] })
-    let stdout = ''
-    let stderr = ''
-    proc.stdout.setEncoding('utf8')
-    proc.stderr.setEncoding('utf8')
-    proc.stdout.on('data', (chunk) => {
-      stdout += chunk
-    })
-    proc.stderr.on('data', (chunk) => {
-      stderr += chunk
-    })
-    proc.on('error', (err) => reject(err))
-    proc.on('close', (code) => {
-      if (code === 0) {
-        resolve(stdout.trim())
-        return
-      }
-      reject(new Error(stderr.trim() || `stellar exited with code ${String(code)}`))
-    })
-  })
-}
-
-/** Returns the G... public key for a stellar CLI key alias. */
-async function resolvePublicKey(alias: string): Promise<string> {
-  const out = await runStellar(['keys', 'public-key', alias])
-  const match = out.match(/G[A-Z2-7]{55}/)
-  if (!match) {
-    throw new Error(`Could not resolve public key for stellar key alias '${alias}'.`)
-  }
-  return match[0]
-}
-
-/** Reads the native (XLM) balance for a public key via Horizon. Returns 0 when the account does not yet exist. */
-async function getNativeBalance(publicKey: string): Promise<number> {
-  const res = await fetch(`${HORIZON_URL}/accounts/${encodeURIComponent(publicKey)}`)
-  if (res.status === 404) return 0
-  if (!res.ok) {
-    throw new Error(`Horizon account lookup failed (${res.status}) for ${publicKey}.`)
-  }
-  const body = (await res.json()) as { balances?: Array<{ asset_type: string; balance: string }> }
-  const native = body.balances?.find((entry) => entry.asset_type === 'native')
-  return native ? Number(native.balance) : 0
-}
 
 /** Sends a Treasury-signed native payment of `amountXlm` to `destinationPublicKey`. */
 async function treasuryPayment(
