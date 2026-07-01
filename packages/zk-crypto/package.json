@@ -13,6 +13,10 @@
     "./pod-ownership": {
       "import": "./src/pod-ownership-prover.ts",
       "types": "./src/pod-ownership-prover.ts"
+    },
+    "./attestation-cipher": {
+      "import": "./src/attestation-cipher.ts",
+      "types": "./src/attestation-cipher.ts"
     }
   },
   "scripts": {
@@ -29,6 +33,7 @@
     "snarkjs": "^0.7.5"
   },
   "devDependencies": {
+    "@types/jest": "^29.5.12",
     "@types/node": "^20.0.0",
     "jest": "^29.0.0",
     "ts-jest": "^29.0.0",

@@ -3,8 +3,9 @@ import { createHash, timingSafeEqual } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { ProvisionStore } from './store.js'
 import { verifyAttestation } from './attestation.js'
-import { createSolidAccount, writePodAccountDocument } from './solidAccount.js'
+import { createSolidAccount, patchPodProfileAnchor, writePodAccountDocument } from './solidAccount.js'
 import { treasuryCreateAccount } from './treasuryCreateAccount.js'
+import { anchorAttestation } from './attestationAnchor.js'
 import type {
   BootstrapChallengeRequest,
   ProvisionRequest,
@@ -149,7 +150,14 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Pro
       return
     }
 
-    const body = await readJsonBody<{ name?: string; email?: string; password?: string; stellarPublicKey?: string }>(req)
+    const body = await readJsonBody<{
+      name?: string
+      email?: string
+      password?: string
+      stellarPublicKey?: string
+      accountCommitmentHex?: string
+      ciphertextHex?: string
+    }>(req)
     if (!isNonEmpty(body.name)) {
       sendJson(req, res, 400, { error: 'name is required.' })
       return
@@ -231,6 +239,31 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Pro
         }
       }
 
+      // Phase E: anchor the REAL ZK attestation — the identity commitment
+      // (Poseidon(identitySecret)) plus the Stellar-encrypted claim ciphertext —
+      // into the lockb0x via `set_attestation` (Deployer = operator). The client
+      // produces these on-device from a verified `pod_ownership` proof. This
+      // replaces the earlier sha256 pairing root as the authoritative anchor.
+      // Fail-closed when supplied: onboarding must not complete half-anchored.
+      let attestation: { accountCommitmentHex: string; ciphertextSha256Hex: string } | null = null
+      const accountCommitmentHex = typeof body.accountCommitmentHex === 'string' ? body.accountCommitmentHex.trim() : ''
+      const ciphertextHex = typeof body.ciphertextHex === 'string' ? body.ciphertextHex.trim() : ''
+      if (lockbox?.userLockboxContractId && accountCommitmentHex && ciphertextHex) {
+        try {
+          await anchorAttestation(lockbox.userLockboxContractId, accountCommitmentHex, ciphertextHex)
+          attestation = {
+            accountCommitmentHex: accountCommitmentHex.toLowerCase().replace(/^0x/, ''),
+            ciphertextSha256Hex: createHash('sha256')
+              .update(Buffer.from(ciphertextHex.replace(/^0x/, ''), 'hex'))
+              .digest('hex'),
+          }
+        } catch (anchorErr) {
+          const message = anchorErr instanceof Error ? anchorErr.message : 'Attestation anchoring failed.'
+          sendJson(req, res, 502, { error: message, webId: account.webId, podUrl: account.podUrl })
+          return
+        }
+      }
+
       // Persist the account profile (WebID <-> Stellar pairing + on-chain
       // lockb0x references) into the user's own Pod, so the data lives with the
       // user from creation. Best-effort: the on-chain lockb0x remains the source
@@ -250,6 +283,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Pro
               proofRootHex: lockbox.proofRootHex,
             }
           : null,
+        attestation,
         createdAt: new Date().toISOString(),
       }
       let accountDocumentUrl: string | null = null
@@ -265,6 +299,27 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Pro
         console.warn('[solid-account] Pod account document write failed:', writeErr)
       }
 
+      // Allocate + fill the WebID profile-card anchor slot with the on-chain
+      // bindings (lockb0x, Stellar account, ZK identity commitment) so the
+      // attestation is discoverable from the WebID. Best-effort: the on-chain
+      // lockb0x remains authoritative, so a PATCH failure does not fail onboarding.
+      if (attestation && lockbox?.userLockboxContractId) {
+        try {
+          await patchPodProfileAnchor(
+            SOLID_CSS_BASE_URL,
+            { id: account.clientCredentialsId, secret: account.clientCredentialsSecret },
+            account.webId,
+            {
+              lockboxContractId: lockbox.userLockboxContractId,
+              stellarPublicKey,
+              accountCommitmentHex: attestation.accountCommitmentHex,
+            },
+          )
+        } catch (patchErr) {
+          console.warn('[solid-account] Pod profile-card anchor PATCH failed:', patchErr)
+        }
+      }
+
       sendJson(req, res, 200, {
         status: 'ready',
         webId: account.webId,
@@ -277,6 +332,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Pro
           resource: account.clientCredentialsResource,
         },
         lockbox: lockbox ?? null,
+        attestation,
       })
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Solid account provisioning failed.'

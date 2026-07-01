@@ -26,6 +26,10 @@ export interface CreateNodeInput {
   notificationEmail: string
   /** Stellar public key to anchor the WebID pairing on-chain (optional). */
   stellarPublicKey?: string
+  /** 32-byte hex identity commitment (Poseidon(identitySecret)) to anchor on-chain. */
+  accountCommitmentHex?: string
+  /** Hex of the Stellar-encrypted attestation claim ciphertext. */
+  ciphertextHex?: string
 }
 
 export interface CreateNodeResult {
@@ -40,6 +44,10 @@ export interface CreateNodeResult {
     userLockboxContractId: string | null
     factoryContractId: string | null
     proofRootHex?: string
+  } | null
+  attestation: {
+    accountCommitmentHex: string
+    ciphertextSha256Hex: string
   } | null
 }
 
@@ -99,6 +107,15 @@ export async function createSeamlessNode(input: CreateNodeInput): Promise<Create
     email,
     password: generatePassword(),
     stellarPublicKey,
+  }
+
+  // Include the on-device attestation (identity commitment + encrypted claim)
+  // so the provisioner anchors it in the lockb0x during account creation.
+  const accountCommitmentHex = (input.accountCommitmentHex ?? '').trim()
+  const ciphertextHex = (input.ciphertextHex ?? '').trim()
+  if (accountCommitmentHex && ciphertextHex) {
+    body.accountCommitmentHex = accountCommitmentHex
+    body.ciphertextHex = ciphertextHex
   }
 
   const res = await fetch(`${config.provisionerUrl}/v1/solid-account`, {

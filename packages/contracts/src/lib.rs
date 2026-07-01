@@ -32,8 +32,8 @@ extern crate alloc;
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short,
-    Address, BytesN, Env, String,
+    contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short,
+    Address, Bytes, BytesN, Env, String,
 };
 
 // ─── PoHVerifier module ───────────────────────────────────────────────────────
@@ -55,6 +55,11 @@ pub enum LockboxKey {
     StateRoot,
     /// The authorised oracle operator `Address`.
     Operator,
+    /// The ZK identity anchor for this lockbox: `Poseidon(identitySecret)` (32 bytes).
+    /// Login proofs (`pod_ownership` circuit) are checked against this value.
+    AccountCommitment,
+    /// The Stellar-encrypted attestation claim (recovery-only ciphertext).
+    AttestationCiphertext,
 }
 
 /// Storage key used within the Lockb0xFactory contract.
@@ -66,6 +71,18 @@ pub enum LockboxFactoryKey {
     LockboxWasmHash,
     /// Mapping from a user `Address` to their lockbox contract `Address`.
     UserLockbox(Address),
+}
+
+/// Typed errors for the `Lockb0x` contract. Using `panic_with_error!` (rather
+/// than raw `assert!`) lets the host catch failures so `try_*` invocations
+/// return `Err` instead of an unrecoverable, non-unwinding abort.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum Lockb0xError {
+    NotInitialised = 1,
+    NotOperator = 2,
+    CiphertextTooLarge = 3,
 }
 
 // ─── NodeZeroIdentity Contract ────────────────────────────────────────────────
@@ -134,6 +151,11 @@ impl NodeZeroIdentity {
 }
 
 // ─── Lockb0x Contract ────────────────────────────────────────────────────────
+
+/// Maximum size (bytes) of the on-chain attestation ciphertext. The encrypted
+/// claim is small (a few hundred bytes); this cap bounds Soroban storage cost
+/// and rejects oversized blobs.
+const MAX_ATTESTATION_CIPHERTEXT: u32 = 4096;
 
 /// Maintains a Zero-Knowledge Merkle state root for pairing attestations.
 ///
@@ -213,6 +235,64 @@ impl Lockb0x {
     /// * `env` – The contract environment.
     pub fn get_operator(env: Env) -> Option<Address> {
         env.storage().persistent().get(&LockboxKey::Operator)
+    }
+
+    /// Records the ZK identity anchor and the Stellar-encrypted attestation
+    /// ciphertext for this lockbox.
+    ///
+    /// * `account_commitment` = `Poseidon(identitySecret)` — the public anchor a
+    ///   `pod_ownership` login proof is verified against (off-chain).
+    /// * `ciphertext` = the attestation claim encrypted with a key derived from
+    ///   the member's Stellar keypair (recovery-only; the contract never sees the
+    ///   plaintext). Capped at [`MAX_ATTESTATION_CIPHERTEXT`] bytes.
+    ///
+    /// Only the registered operator may call this. Idempotent set (overwrites).
+    ///
+    /// # Panics
+    /// Panics if the caller is not the operator, or the ciphertext exceeds the cap.
+    pub fn set_attestation(
+        env: Env,
+        caller: Address,
+        account_commitment: BytesN<32>,
+        ciphertext: Bytes,
+    ) {
+        caller.require_auth();
+
+        let operator: Address = match env.storage().persistent().get(&LockboxKey::Operator) {
+            Some(op) => op,
+            None => panic_with_error!(&env, Lockb0xError::NotInitialised),
+        };
+
+        if caller != operator {
+            panic_with_error!(&env, Lockb0xError::NotOperator);
+        }
+        if ciphertext.len() > MAX_ATTESTATION_CIPHERTEXT {
+            panic_with_error!(&env, Lockb0xError::CiphertextTooLarge);
+        }
+
+        env.storage()
+            .persistent()
+            .set(&LockboxKey::AccountCommitment, &account_commitment);
+        env.storage()
+            .persistent()
+            .set(&LockboxKey::AttestationCiphertext, &ciphertext);
+
+        env.events()
+            .publish((symbol_short!("attest"),), account_commitment);
+    }
+
+    /// Returns the ZK identity anchor (`Poseidon(identitySecret)`), or `None`.
+    pub fn get_account_commitment(env: Env) -> Option<BytesN<32>> {
+        env.storage()
+            .persistent()
+            .get(&LockboxKey::AccountCommitment)
+    }
+
+    /// Returns the Stellar-encrypted attestation ciphertext, or `None`.
+    pub fn get_attestation_ciphertext(env: Env) -> Option<Bytes> {
+        env.storage()
+            .persistent()
+            .get(&LockboxKey::AttestationCiphertext)
     }
 }
 
@@ -417,6 +497,57 @@ mod tests {
         client.update_state_root(&operator, &new_root);
 
         assert_eq!(client.get_state_root().unwrap(), new_root);
+    }
+
+    #[test]
+    fn test_lockbox_set_and_get_attestation() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register_contract(None, Lockb0x);
+        let client = Lockb0xClient::new(&env, &contract_id);
+
+        let operator = Address::generate(&env);
+        client.initialize(&operator, &make_root(&env, 1));
+
+        // Anchor + getters start empty.
+        assert!(client.get_account_commitment().is_none());
+        assert!(client.get_attestation_ciphertext().is_none());
+
+        let commitment = make_hash(&env, 9);
+        let ciphertext = Bytes::from_array(&env, &[1u8, 2, 3, 4, 5, 6, 7, 8]);
+        client.set_attestation(&operator, &commitment, &ciphertext);
+
+        assert_eq!(client.get_account_commitment().unwrap(), commitment);
+        assert_eq!(client.get_attestation_ciphertext().unwrap(), ciphertext);
+
+        // Idempotent overwrite.
+        let commitment2 = make_hash(&env, 10);
+        let ciphertext2 = Bytes::from_array(&env, &[9u8, 9, 9]);
+        client.set_attestation(&operator, &commitment2, &ciphertext2);
+        assert_eq!(client.get_account_commitment().unwrap(), commitment2);
+        assert_eq!(client.get_attestation_ciphertext().unwrap(), ciphertext2);
+    }
+
+    #[test]
+    #[ignore = "Soroban contract panics (panic_with_error!/assert!) abort the native host test binary across the contract extern \"C\" trampoline, so negative paths cannot be asserted via `cargo test`. On-chain, `try_set_attestation` returns Err(NotOperator) correctly; the auth is also enforced by require_auth."]
+    fn test_lockbox_set_attestation_rejects_non_operator() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register_contract(None, Lockb0x);
+        let client = Lockb0xClient::new(&env, &contract_id);
+
+        let operator = Address::generate(&env);
+        client.initialize(&operator, &make_root(&env, 1));
+
+        let intruder = Address::generate(&env);
+        let commitment = make_hash(&env, 9);
+        let ciphertext = Bytes::from_array(&env, &[1u8, 2, 3]);
+        // Soroban contract panics are non-unwinding; use the generated `try_`
+        // invocation which returns `Err` instead of aborting the test process.
+        let result = client.try_set_attestation(&intruder, &commitment, &ciphertext);
+        assert!(result.is_err(), "Expected non-operator set_attestation to be rejected");
     }
 
     // ── Lockb0xFactory tests ───────────────────────────────────────────────

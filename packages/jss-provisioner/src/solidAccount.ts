@@ -231,3 +231,50 @@ export async function writePodAccountDocument(
     body: JSON.stringify(account, null, 2),
   })
 }
+
+/**
+ * Allocates the NodeZero anchor "slot" in the user's WebID profile card by
+ * PATCH-inserting RDF triples (SPARQL Update) that publish the on-chain
+ * bindings — lockb0x contract, Stellar account, and ZK identity commitment.
+ *
+ * This makes the on-chain attestation discoverable directly from the WebID (the
+ * canonical identity), so any party can verify the Pod ↔ Stellar ↔ lockb0x link
+ * without trusting NodeZero. Triples are ADDED (INSERT DATA), preserving the
+ * existing `foaf:Person` / `solid:oidcIssuer` profile.
+ */
+export async function patchPodProfileAnchor(
+  baseUrl: string,
+  credentials: ClientCredentials,
+  webId: string,
+  anchor: { lockboxContractId: string; stellarPublicKey: string; accountCommitmentHex: string },
+): Promise<string> {
+  const { createHash } = await import('node:crypto')
+  const normalizedBase = baseUrl.replace(/\/+$/, '')
+  const cardUrl = webId.split('#')[0]
+  const signer = await createDpopSigner()
+  const accessToken = await exchangeClientCredentials(normalizedBase, credentials, signer)
+  const ath = b64url(createHash('sha256').update(accessToken).digest())
+
+  const lit = (s: string): string => `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+  const sparql =
+    `PREFIX nz: <https://nodezero.social/ns#>\n` +
+    `INSERT DATA { <${webId}> ` +
+    `nz:lockboxContract ${lit(anchor.lockboxContractId)} ; ` +
+    `nz:stellarAccount ${lit(anchor.stellarPublicKey)} ; ` +
+    `nz:accountCommitment ${lit(anchor.accountCommitmentHex)} ; ` +
+    `nz:attestationAnchoredAt ${lit(new Date().toISOString())} . }`
+
+  const res = await fetch(cardUrl, {
+    method: 'PATCH',
+    headers: {
+      authorization: `DPoP ${accessToken}`,
+      dpop: signer.proof(cardUrl, 'PATCH', ath),
+      'content-type': 'application/sparql-update',
+    },
+    body: sparql,
+  })
+  if (!res.ok) {
+    throw new Error(`CSS Pod PATCH ${cardUrl} failed (${res.status}): ${await res.text()}`)
+  }
+  return cardUrl
+}

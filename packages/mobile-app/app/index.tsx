@@ -80,7 +80,7 @@ export default function LandingScreen(): JSX.Element {
     signupResumeActive,
     signupReturnDetected,
   } = useSolid()
-  const { attestationStatus, walletInfo } = useWallet()
+  const { attestationStatus, walletInfo, createSeamlessAttestation } = useWallet()
   const router = useRouter()
   const pathname = usePathname()
   const issuerOptions = getIssuerOptions()
@@ -154,10 +154,32 @@ export default function LandingScreen(): JSX.Element {
 
     setIsCreating(true)
     try {
+      // Produce the real on-device attestation first: a pod_ownership Groth16
+      // proof (identity commitment) + Stellar-encrypted claim. Bound to the
+      // deterministic WebID/Pod the provisioner will create for this handle.
+      const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
+      const issuerBase = (appExtra?.nodeZeroIssuerUrl ?? '').replace(/\/+$/, '')
+      const normalizedHandle = nodeHandle.trim().toLowerCase().replace(/[^a-z0-9-]/g, '')
+      if (!issuerBase || !normalizedHandle) {
+        setError('Node identity provider is not configured. Try again later.')
+        return
+      }
+      const expectedWebId = `${issuerBase}/${normalizedHandle}/profile/card#me`
+      const expectedPodUrl = `${issuerBase}/${normalizedHandle}/`
+
+      setCreateNotice('Generating your zero-knowledge proof…')
+      const attestation = await createSeamlessAttestation(
+        expectedWebId,
+        expectedPodUrl,
+        walletInfo.publicKey,
+      )
+
       const result = await createSeamlessNode({
         handle: nodeHandle,
         notificationEmail,
         stellarPublicKey: walletInfo.publicKey,
+        accountCommitmentHex: attestation.accountCommitmentHex,
+        ciphertextHex: attestation.ciphertextHex,
       })
 
       // Fail-closed: onboarding is only complete when the per-user lockb0x was
@@ -169,9 +191,16 @@ export default function LandingScreen(): JSX.Element {
         return
       }
 
+      // Fail-closed: the real ZK attestation (identity commitment + encrypted
+      // claim) must be anchored on-chain. Without it the node is unverifiable.
+      if (!result.attestation) {
+        setError('Node created, but the on-chain attestation was not anchored. Please try again.')
+        return
+      }
+
       const root = result.lockbox.proofRootHex
       setCreateNotice(
-        `Node created. WebID: ${result.webId}\nStellar key: ${result.stellarPublicKey}\nLockb0x (on-chain): ${anchored}${root ? `\nPairing root: ${root}` : ''}\nSigning you in…`,
+        `Node created. WebID: ${result.webId}\nStellar key: ${result.stellarPublicKey}\nLockb0x (on-chain): ${anchored}\nIdentity anchor: ${result.attestation.accountCommitmentHex}${root ? `\nPairing root: ${root}` : ''}\nSigning you in…`,
       )
 
       // Auto sign-in: the provisioner already persisted the account to the Pod

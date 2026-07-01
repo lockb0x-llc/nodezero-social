@@ -20,6 +20,23 @@ config.resolver.nodeModulesPaths = [
   pnpmStoreRoot,
 ]
 config.resolver.unstable_enablePackageExports = true
+// Force `buffer` to resolve to the real npm package (Node's builtin is empty on
+// web, so `require('buffer').Buffer` returns undefined). snarkjs/circomlibjs
+// need Buffer.from. Resolve the package dir, falling back to the pnpm store.
+function resolveBufferDir() {
+  try {
+    return path.dirname(require.resolve('buffer/package.json', { paths: [workspaceRoot, projectRoot] }))
+  } catch {
+    const pnpmDir = path.join(workspaceRoot, 'node_modules/.pnpm')
+    const entry = require('node:fs').readdirSync(pnpmDir).find((d) => d.startsWith('buffer@'))
+    if (!entry) throw new Error('buffer package not found in pnpm store')
+    return path.join(pnpmDir, entry, 'node_modules/buffer')
+  }
+}
+config.resolver.extraNodeModules = {
+  ...(config.resolver.extraNodeModules ?? {}),
+  buffer: resolveBufferDir(),
+}
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   try {
     return defaultResolveRequest

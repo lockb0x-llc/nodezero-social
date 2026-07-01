@@ -27,3 +27,11 @@ docs/dev-only/namecheap-api-key.txt
 # Generated ARM JSON output (local build artifact)
 infrastructure/azure/main.json
 packages/jss-provisioner/deploy.zip
+
+# Provisioner Azure log download directories (local debug artifacts)
+provisioner-logs/
+provisioner-logs-live/
+provisioner-logs-latest.zip
+
+# Soroban test snapshots emitted by cargo test --target x86_64-unknown-linux-gnu
+packages/contracts/test_snapshots/

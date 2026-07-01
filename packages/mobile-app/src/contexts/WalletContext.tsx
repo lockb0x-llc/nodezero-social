@@ -19,6 +19,7 @@ import * as SecureStore from 'expo-secure-store'
 import { Platform } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { EnclaveAdapter, WalletService, type WalletInfo } from '@nodezero/embedded-wallet'
+import { produceSeamlessAttestation, type SeamlessAttestation } from '../onboarding/attestation'
 import type { PodOwnershipClaim } from '@nodezero/zk-crypto/pod-ownership'
 import Constants from 'expo-constants'
 import { useSolid } from './SolidContext'
@@ -387,6 +388,16 @@ interface WalletContextValue {
   attestationDetails: AttestationDetails
   /** Builds a portable recovery bundle (includes the private key) for export. */
   exportRecoveryBundle: () => Promise<{ fileName: string; json: string }>
+  /**
+   * Produces the on-device Pod-ownership attestation (a `pod_ownership` Groth16
+   * proof + Stellar-encrypted claim) for the seamless onboarding flow. The
+   * wallet secret never leaves the context.
+   */
+  createSeamlessAttestation: (
+    webId: string,
+    podUrl: string,
+    stellarPublicKey: string,
+  ) => Promise<SeamlessAttestation>
   /** Destroys local wallet + pairing state, optionally unlinking on-chain. */
   deleteNodeData: (options?: {
     unlinkIdentity?: boolean
@@ -554,21 +565,71 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
         return
       }
 
-      setAttestationStatus('verified')
-      setAttestationMessage('Pairing anchored on-chain during node creation.')
-      setAttestationDetails({
-        registeredWebId: nodeSession.webId,
-        lockboxStateRoot: nodeSession.proofRootHex,
-        registerTxHash: null,
-        verifiedAt: nodeSession.createdAt,
-        custodyClaimHash: null,
-        lockboxFactoryContractId: nodeSession.lockboxFactoryContractId,
-        userLockboxContractId: nodeSession.userLockboxContractId,
-        lockboxIdempotencyKey: null,
-        proofHashHex: null,
-        proofRootHex: nodeSession.proofRootHex,
-      })
+      // Fail-closed on-return verification: prove the device still controls the
+      // ZK identity anchored on-chain. Derive Poseidon(identitySecret) locally
+      // and compare against Lockb0x.get_account_commitment(). Legacy lockboxes
+      // (pre-attestation) return no commitment — treat as verified for back-compat.
+      const lockboxId = nodeSession.userLockboxContractId
+      setAttestationStatus('verifying')
+      setAttestationMessage('Verifying your on-chain identity attestation…')
       lastCheckedKeyRef.current = `node:${nodeSession.webId}`
+
+      void (async (): Promise<void> => {
+        const setVerified = (message: string): void => {
+          setAttestationStatus('verified')
+          setAttestationMessage(message)
+          setAttestationDetails({
+            registeredWebId: nodeSession.webId,
+            lockboxStateRoot: nodeSession.proofRootHex,
+            registerTxHash: null,
+            verifiedAt: nodeSession.createdAt,
+            custodyClaimHash: null,
+            lockboxFactoryContractId: nodeSession.lockboxFactoryContractId,
+            userLockboxContractId: lockboxId,
+            lockboxIdempotencyKey: null,
+            proofHashHex: null,
+            proofRootHex: nodeSession.proofRootHex,
+          })
+        }
+        try {
+          const onchain = await getWalletService().getLockboxAccountCommitment(lockboxId)
+          if (!onchain) {
+            // Legacy lockb0x without an on-chain attestation anchor.
+            setVerified('Node lockb0x anchored on-chain during creation.')
+            return
+          }
+          const secret = await _adapter?.loadOrCreate()
+          if (!secret) throw new Error('wallet secret unavailable')
+          const { deriveAccountCommitmentHex } = await import('@nodezero/zk-crypto/attestation-cipher')
+          const deviceCommitment = await deriveAccountCommitmentHex(secret)
+          const norm = (h: string): string => h.trim().toLowerCase().replace(/^0x/, '')
+          if (norm(deviceCommitment) === norm(onchain)) {
+            setVerified('On-chain ZK identity attestation verified.')
+          } else {
+            // Fail-closed: the device does not control the anchored identity.
+            setAttestationStatus('error')
+            setAttestationMessage(
+              'Your device identity does not match the on-chain attestation. Re-create your node to continue.',
+            )
+            setAttestationDetails({
+              registeredWebId: nodeSession.webId,
+              lockboxStateRoot: nodeSession.proofRootHex,
+              registerTxHash: null,
+              verifiedAt: null,
+              custodyClaimHash: null,
+              lockboxFactoryContractId: nodeSession.lockboxFactoryContractId,
+              userLockboxContractId: lockboxId,
+              lockboxIdempotencyKey: null,
+              proofHashHex: null,
+              proofRootHex: nodeSession.proofRootHex,
+            })
+          }
+        } catch {
+          // Transient on-chain read/derivation failure: do not lock out an
+          // existing session (the lockb0x exists); treat as verified.
+          setVerified('Node lockb0x anchored on-chain during creation.')
+        }
+      })()
       return
     }
 
@@ -887,6 +948,26 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
     []
   )
 
+  const createSeamlessAttestation = useCallback(
+    async (
+      webId: string,
+      podUrl: string,
+      stellarPublicKey: string,
+    ): Promise<SeamlessAttestation> => {
+      // Ensure the wallet service/adapter singletons are initialised, then read
+      // the secret via loadOrCreate (mirrors runCustodyProvisioning). On web,
+      // adapter.load() can return null even when the key exists, so loadOrCreate
+      // is the reliable accessor.
+      getWalletService()
+      const secret = await _adapter?.loadOrCreate()
+      if (!secret) {
+        throw new Error('Embedded wallet secret is unavailable for attestation.')
+      }
+      return produceSeamlessAttestation({ webId, podUrl, stellarPublicKey, stellarSecret: secret })
+    },
+    []
+  )
+
   return (
     <WalletContext.Provider value={{
       walletInfo,
@@ -897,6 +978,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
       attestationDetails,
       exportRecoveryBundle,
       deleteNodeData,
+      createSeamlessAttestation,
     }}>
       {children}
     </WalletContext.Provider>

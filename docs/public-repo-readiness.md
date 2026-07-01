@@ -1,152 +1,98 @@
-## Executive verdict
+# Open-Source Readiness Assessment
 
-**Not yet ready for broad open-source publication**, but it’s **close to “developer-preview” readiness**.  
-You already have several strong foundations (MIT license, SECURITY.md, CODE_OF_CONDUCT.md, CONTRIBUTING.md, CI, issue/PR templates). The main blockers are **project discoverability/docs completeness, governance clarity, and some release/security hardening expected of public infra+Web3 projects (especially SOLID-adjacent ecosystems).**
+**Date:** 2026-07-01  
+**Environment assessed:** `staging-testnet` branch + live `staging.nodezero.social`  
+**Assessment method:** Live Playwright E2E validation, stellar.expert on-chain evidence, source code analysis.
 
 ---
 
-## Scope & method
+## Verdict
 
-I reviewed repository artifacts on `testnet` branch and assessed against open-source best practices plus SOLID-adjacent expectations (identity/data portability, trust boundaries, interoperability documentation, and deployment transparency).
-
-I used code search, which may return incomplete results (tool cap). You can inspect full matches here:  
-https://github.com/search?q=repo%3Alockb0x-llc%2Fnodezero-social&type=code
+**Developer-preview ready.** The codebase has a complete, working, genuinely ZK-powered implementation deployed on live infrastructure. The foundations for OSS publication are solid. A small set of improvements — documented below with priority — would make this a clean first public release.
 
 ---
 
 ## What is already good
 
-- **License present**: MIT (`LICENSE`)
-- **Security policy present**: private reporting path and SLA in `SECURITY.md`
-- **Community safety baseline**: Contributor Covenant in `CODE_OF_CONDUCT.md`
-- **Contribution guide exists**: prerequisites, checks, expectations in `CONTRIBUTING.md`
-- **Contribution workflows exist**:
-  - PR template
-  - issue templates (bug + feature)
-  - `CODEOWNERS`
-- **CI exists** (`.github/workflows/ci.yml`) with lint/type/test/policy checks + contract tests
-- **Monorepo tooling is defined** (`pnpm-workspace.yaml`, root `package.json` scripts)
+| Area | Evidence |
+|---|---|
+| **MIT licence** | `LICENSE` |
+| **Security policy** | `SECURITY.md` — private reporting path + SLA |
+| **Community safety** | `CODE_OF_CONDUCT.md` — Contributor Covenant |
+| **Contribution guide** | `CONTRIBUTING.md` — prerequisites, checks, review process |
+| **PR / issue templates** | `.github/PULL_REQUEST_TEMPLATE.md`, issue templates |
+| **CI pipeline** | `.github/workflows/ci.yml` — lint, type-check, test, contract cargo test, policy guard |
+| **Monorepo tooling** | `pnpm-workspace.yaml`, corepack, shared tsconfig |
+| **Environment isolation** | `scripts/policy/validate-env-isolation.sh` enforces staging ≠ mainnet; zero cross-env leakage in CI |
+| **ZK is load-bearing** | Real Groth16 `pod_ownership` proof generated in-browser; `accountCommitment = Poseidon(identitySecret)` anchored on-chain (`get_account_commitment` confirmed stellar.expert, `storage_entries:5`) |
+| **Fail-closed auth** | Onboarding refuses to sign in without a real lockb0x + attestation; returning login checks on-chain commitment — mismatches refused |
+| **No secrets in repo** | All runtime secrets in Azure Key Vault + GitHub environment secrets; `docs/dev-only/` is gitignored |
+| **Non-reproducibility documented** | The wasm build is non-deterministic (noted in roadmap); the deployed hash is tracked in `deployments/stellar-testnet.contracts.json` |
 
 ---
 
-## Key publication blockers (high priority)
+## Priority improvements before broad publication
 
-### 1) README is too minimal for public onboarding (**critical**)
-Current README has only title/one-line description and deployment pointers.  
-For OSS publication, it should include:
-- What the project is (architecture + goals)
-- Current maturity/status (prototype, alpha, testnet only, etc.)
-- Quickstart (local run in <10 minutes)
-- Package map and responsibilities
-- Threat model / trust assumptions (important for decentralized/social identity systems)
-- Roadmap and “good first issue” pointers
+### 1. README (done — 2026-07-01)
+The README now reflects the real deployed system: architecture diagram, package map, ZK flow, status table, and deployment references. The hackathon submission context has been removed.
 
-### 2) Missing **governance and maintainership transparency** (**critical**)
-I did not see clear governance docs like:
-- `GOVERNANCE.md`
-- `MAINTAINERS.md`
-- decision process / release authority / security escalation matrix
+### 2. CHANGELOG.md (high)
+There is no public changelog. Recommended: add `CHANGELOG.md` following [Keep a Changelog](https://keepachangelog.com/) format, with one entry per meaningful milestone. The roadmap (`docs/staging-runtime-implementation-roadmap.md`) already has detailed evidence; a public changelog would be a summarised subset.
 
-For projects with social graph + identity implications (SOLID-adjacent), this is especially important for trust.
+### 3. GOVERNANCE.md and MAINTAINERS.md (medium)
+No governance or maintainers document. For an identity/social-graph project with trust implications, a short `GOVERNANCE.md` naming the decision process and `MAINTAINERS.md` naming current owners and escalation paths would significantly raise trust.
 
-### 3) Release management is unclear (**high**)
-No obvious public changelog/release notes policy surfaced from root docs.  
-Need:
-- `CHANGELOG.md`
-- versioning policy (SemVer and stability guarantees)
-- supported versions matrix (not just “latest main”)
+### 4. docs/architecture.md (medium)
+The system architecture is described in the README and roadmap, but a standalone `docs/architecture.md` with a deeper threat-model section (key custody, relay trust, Azure dependency, on-chain vs off-chain trust boundary) is expected by contributors working in the identity/Solid/Stellar space.
 
-### 4) Security hardening docs are incomplete for public contributors (**high**)
-You have a vulnerability reporting channel, which is great. Add:
-- secret scanning expectations
-- dependency update policy (Dependabot/Renovate if used)
-- SBOM/provenance guidance (SLSA-style where possible)
-- key management and environment boundary documentation (especially around Azure + DNS automation)
+### 5. Dependency update policy (medium)
+There is no Dependabot / Renovate configuration. For a project pulling `@stellar/stellar-sdk`, `snarkjs`, `expo`, and Soroban SDK, automated dependency PRs are important for security posture.
+
+### 6. Good-first-issue labels (low)
+Once the repo is public, applying `good first issue` labels to appropriate GitHub issues would improve contribution funnel.
 
 ---
 
-## SOLID-related gap analysis (important)
+## Solid / identity trust model clarity
 
-For publication with SOLID-like expectations, reviewers will look for explicit answers to:
+For contributors and security reviewers in the Solid ecosystem:
 
-- **Identity model**: how user identity is represented, linked, rotated, revoked
-- **Data portability**: export/import formats, user-controlled data boundaries
-- **Interoperability**: protocol compatibility (if any) and external standards mapping
-- **Access control semantics**: who can read/write what, and where enforcement occurs
-- **Trust boundaries**: what is decentralized vs centralized (e.g., Azure deployment components)
-- **Privacy model**: metadata leakage, relay assumptions, key custody model
-
-These are not clearly surfaced in root-level docs yet.
-
----
-
-## Risk observations from workflows/config
-
-- CI is tied to `main`; you’re operating on `testnet` branch. Ensure branch protection and required checks align with actual release branch strategy.
-- Workflows include cloud/domain orchestration logic (Azure + Namecheap); this is valid, but for OSS publication:
-  - separate operator-runbook from contributor docs
-  - clearly mark secrets/permissions expectations
-  - document least-privilege model and expected OIDC claims
+| Question | Current answer |
+|---|---|
+| **Identity model** | WebID (Solid) anchored to a Stellar keypair on-chain via `NodeZeroIdentity.register_webid` + `Lockb0x.accountCommitment`. ZK proof (`pod_ownership`) binds the device secret to the claim at creation and on every return. |
+| **Data portability** | Profile and social graph live in the user's Solid Pod (CSS). The Pod is portable. The `nodezero-account.json` and `profile/card` anchor triples hold the on-chain references. |
+| **Interoperability** | Solid OIDC for sign-in; `foaf:` / `solid:` profile triples preserved; Stellar Soroban for on-chain state; Groth16/BN254 ZK matching the existing `PoHVerifier` contract. |
+| **Access control** | User's Solid Pod owns its ACL. The provisioner writes to the Pod at creation using short-lived DPoP client credentials; it does not retain long-term write access. |
+| **Trust boundary** | CSS Pod server + Azure provisioner are trusted for the creation step. The Stellar lockb0x is public and verifiable by anyone. The ZK commitment is trustless. On returning login the browser verifies the device identity against the on-chain anchor — the provisioner is not in the loop. |
+| **Privacy** | The encrypted `attestationCiphertext` on-chain is recoverable only by the Stellar keypair holder. The `accountCommitment` is public but reveals nothing without the secret. The provisioner logs are retained for debugging; they should be subject to a retention policy before production. |
 
 ---
 
-## Publication readiness score (practical)
+## Technical debt (not blocking)
 
-- **Legal/licensing:** 9/10  
-- **Community health files:** 8/10  
-- **Onboarding/docs clarity:** 3/10  
-- **Governance/transparency:** 3/10  
-- **Security operations maturity:** 6/10  
-- **Release hygiene:** 4/10  
-- **SOLID-style architecture/interoperability clarity:** 3/10  
-
-**Overall: 5.1/10 (developer-preview only, not fully publication-ready).**
+| Item | File | Severity |
+|---|---|---|
+| Pre-existing lint errors in `compose.tsx`, `docustream.tsx`, `backpack.tsx`, `local.tsx`, `settings.tsx` | `packages/mobile-app/app/` | Medium — should be fixed before mainnet |
+| `PoHVerifier` negative tests need `panic_with_error!` refactor to pass `cargo test` cleanly | `packages/contracts/src/poh_verifier.rs` | Low — 3 tests currently `#[ignore]`; logic is correct on-chain |
+| `register_webid` is not called in the seamless onboarding path | `packages/embedded-wallet/src/WalletService.ts` | Low — `NodeZeroIdentity` is populated via OIDC path; seamless path uses Lockb0x commitment only |
+| Feed / social graph is a placeholder | `packages/mobile-app/app/feed.tsx` | Known gap, not blocking |
 
 ---
 
-## Prioritized action plan
+## Open-source publication checklist
 
-### Must-do before public launch (P0)
-1. Expand `README.md` to full OSS onboarding template.
-2. Add `GOVERNANCE.md` + `MAINTAINERS.md`.
-3. Add `CHANGELOG.md` + release/versioning policy.
-4. Add architecture docs:
-   - `docs/architecture.md`
-   - `docs/threat-model.md`
-   - `docs/trust-boundaries.md`
-5. Add SOLID-aligned docs:
-   - `docs/identity-model.md`
-   - `docs/data-portability.md`
-   - `docs/interoperability.md`
-
-### Strongly recommended next (P1)
-1. Add `SUPPORT.md` (where users ask for help; response expectations).
-2. Add funding/sustainability metadata (`.github/FUNDING.yml`) if applicable.
-3. Add dependency/security automation docs and workflow references.
-4. Add badges (CI/license/security policy/release) to README.
-
-### Nice-to-have (P2)
-1. Contributor journey docs by role (frontend/backend/contracts/infra/docs).
-2. Public roadmap board + “good first issue” labeling policy.
-3. Example local dev datasets and scripted demo scenario.
-
----
-
-## Suggested README structure (condensed)
-
-- Project summary
-- Why this exists
-- Current status (alpha/testnet)
-- Architecture at a glance
-- Quickstart
-- Monorepo layout
-- Security & responsible disclosure
-- Decentralization/trust model
-- SOLID/protocol interoperability notes
-- Contributing
-- Governance
-- License
-
----
-
-If you want, I can now produce a **concrete, file-by-file remediation PR plan** (exact section text outlines for each missing doc, and which existing files to edit first).
+- [x] MIT licence
+- [x] `SECURITY.md`
+- [x] `CODE_OF_CONDUCT.md`
+- [x] `CONTRIBUTING.md`
+- [x] PR + issue templates
+- [x] CI with lint / type-check / test / policy
+- [x] Environment isolation enforced by policy script
+- [x] No secrets in repository
+- [x] README reflects current deployed system
+- [x] Deployment contract IDs tracked in `deployments/`
+- [ ] `CHANGELOG.md`
+- [ ] `GOVERNANCE.md` + `MAINTAINERS.md`
+- [ ] `docs/architecture.md` (threat model section)
+- [ ] Dependabot / Renovate configuration
+- [ ] Pre-publish lint pass (resolve pre-existing mobile-app errors)

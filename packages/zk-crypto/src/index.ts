@@ -15,7 +15,20 @@ export {
 } from './pod-ownership-prover.js'
 export { serializeProof, serializePublicSignal, proofToSorobanArgs } from './serializer.js'
 
+export {
+	encryptAttestation,
+	decryptAttestation,
+	verifyLoginAttestation,
+	fieldToBytes32Hex,
+	deriveAccountCommitmentHex,
+} from './attestation-cipher.js'
+
 export type { Identity } from './identity.js'
 export type { MerkleProof } from './merkle-tree.js'
 export type { PoHProofInputs, PoHProof } from './prover.js'
 export type { PodOwnershipClaim, PodOwnershipProofInputs, PodOwnershipProof } from './pod-ownership-prover.js'
+export type {
+	EncryptedAttestation,
+	LoginAttestationInput,
+	LoginAttestationResult,
+} from './attestation-cipher.js'
