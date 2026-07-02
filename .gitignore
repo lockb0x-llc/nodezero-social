@@ -16,13 +16,10 @@ build/
 .agent-worktrees/
 
 # Dev-only credentials and scratch files — never commit these
-docs/dev-only/nodezero pod solidcommunity-net.txt
-docs/dev-only/prototypes/
-docs/dev-only/azure-identity.md
+docs/dev-only/
 
 # Playwright MCP session artifacts (tool output, not project files)
 .playwright-mcp/
-docs/dev-only/namecheap-api-key.txt
 
 # Generated ARM JSON output (local build artifact)
 infrastructure/azure/main.json
