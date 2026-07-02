@@ -70,6 +70,206 @@ function getIssuerOptions(): IssuerOption[] {
   return options
 }
 
+type AuthCardSource = 'card' | 'footer'
+
+type LandingMode = 'marketing' | 'onboarding'
+
+function getLandingMode(): LandingMode {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') {
+    return 'onboarding'
+  }
+
+  const host = window.location.hostname.toLowerCase()
+  if (host === 'nodezero.social' || host === 'www.nodezero.social') {
+    return 'marketing'
+  }
+
+  return 'onboarding'
+}
+
+interface LandingAuthCardProps {
+  source: AuthCardSource
+  showResumeHint: boolean
+  issuerOptions: IssuerOption[]
+  selectedIssuer: string
+  signupResumeActive: boolean
+  signupReturnDetected: boolean
+  error: string | null
+  isSigningIn: boolean
+  seamlessEnabled: boolean
+  nodeHandle: string
+  notificationEmail: string
+  isCreating: boolean
+  walletReady: boolean
+  createNotice: string | null
+  onIssuerChange: (nextIssuer: string) => void
+  onNodeHandleChange: (value: string) => void
+  onNotificationEmailChange: (value: string) => void
+  onSignIn: () => Promise<void>
+  onCreateNode: () => Promise<void>
+  onGetStarted: (source: AuthCardSource) => Promise<void>
+  onClearError: () => void
+}
+
+function LandingAuthCard({
+  source,
+  showResumeHint,
+  issuerOptions,
+  selectedIssuer,
+  signupResumeActive,
+  signupReturnDetected,
+  error,
+  isSigningIn,
+  seamlessEnabled,
+  nodeHandle,
+  notificationEmail,
+  isCreating,
+  walletReady,
+  createNotice,
+  onIssuerChange,
+  onNodeHandleChange,
+  onNotificationEmailChange,
+  onSignIn,
+  onCreateNode,
+  onGetStarted,
+  onClearError,
+}: LandingAuthCardProps): JSX.Element {
+  const [issuerMenuOpen, setIssuerMenuOpen] = useState(false)
+  const selectedOption = issuerOptions.find((option) => option.value === selectedIssuer) ?? issuerOptions[0]
+
+  return (
+    <View style={styles.signInPanel}>
+      <View style={styles.signInBrand}>
+        <Text style={styles.signInBrandMark}>⊙</Text>
+        <Text style={styles.signInBrandName}>NodeZero</Text>
+      </View>
+      <Text style={styles.signInTitle}>Sign in with your Solid Pod</Text>
+      <Text style={styles.signInHint}>Choose your identity provider</Text>
+      {showResumeHint && signupResumeActive ? (
+        <Text style={styles.resumeHint}>
+          {signupReturnDetected
+            ? 'Signup return detected. Continue by signing in with your new Solid Pod identity.'
+            : 'Need a Pod first? Create one, then return here to continue onboarding.'}
+        </Text>
+      ) : null}
+      <View style={styles.dropdownWrap}>
+        <TouchableOpacity
+          style={styles.dropdownField}
+          onPress={() => setIssuerMenuOpen((open) => !open)}
+          activeOpacity={PRESS_OPACITY}
+          accessibilityRole="button"
+          accessibilityLabel="Identity provider"
+          accessibilityState={{ expanded: issuerMenuOpen }}
+        >
+          <View style={styles.dropdownFieldText}>
+            <View style={styles.dropdownLabelRow}>
+              {selectedOption?.mark ? <Text style={styles.dropdownMark}>{selectedOption.mark}</Text> : null}
+              <Text style={styles.dropdownLabel}>{selectedOption?.label ?? 'Select provider'}</Text>
+            </View>
+            <Text style={styles.dropdownSub}>{selectedOption?.sublabel ?? ''}</Text>
+          </View>
+          <Text style={styles.dropdownChevron}>{issuerMenuOpen ? '▴' : '▾'}</Text>
+        </TouchableOpacity>
+        {issuerMenuOpen ? (
+          <View style={styles.dropdownMenu}>
+            {issuerOptions.map((opt, i) => (
+              <TouchableOpacity
+                key={opt.value || opt.label}
+                style={[
+                  styles.dropdownOption,
+                  i < issuerOptions.length - 1 && styles.dropdownOptionDivider,
+                  opt.value === selectedIssuer && styles.dropdownOptionActive,
+                ]}
+                onPress={() => {
+                  onIssuerChange(opt.value)
+                  setIssuerMenuOpen(false)
+                  onClearError()
+                }}
+                activeOpacity={PRESS_OPACITY}
+                accessibilityRole="button"
+                accessibilityLabel={opt.label}
+              >
+                <View style={styles.dropdownFieldText}>
+                  <View style={styles.dropdownLabelRow}>
+                    {opt.mark ? <Text style={styles.dropdownMark}>{opt.mark}</Text> : null}
+                    <Text style={styles.dropdownLabel}>{opt.label}</Text>
+                  </View>
+                  <Text style={styles.dropdownSub}>{opt.sublabel}</Text>
+                </View>
+                {opt.value === selectedIssuer ? <Text style={styles.dropdownCheck}>✓</Text> : null}
+              </TouchableOpacity>
+            ))}
+          </View>
+        ) : null}
+      </View>
+      {error && <Text style={styles.errorText}>{error}</Text>}
+      <TouchableOpacity
+        style={[styles.btnPrimary, isSigningIn && styles.btnDisabled]}
+        onPress={() => void onSignIn()}
+        disabled={isSigningIn}
+        activeOpacity={PRESS_OPACITY}
+        accessibilityRole="button"
+        accessibilityLabel="Sign In"
+      >
+        {isSigningIn ? (
+          <ActivityIndicator color="#FFF" />
+        ) : (
+          <Text style={styles.btnPrimaryText}>Sign In</Text>
+        )}
+      </TouchableOpacity>
+      {seamlessEnabled ? (
+        <View style={styles.createNodeBlock}>
+          <Text style={styles.createNodeTitle}>Or create your node in seconds</Text>
+          {createNotice ? <Text style={styles.createNotice}>{createNotice}</Text> : null}
+          <TextInput
+            style={styles.input}
+            value={nodeHandle}
+            onChangeText={onNodeHandleChange}
+            placeholder="Choose a handle (e.g. alice)"
+            placeholderTextColor={DIM}
+            autoCapitalize="none"
+            autoCorrect={false}
+            accessibilityLabel="Node handle"
+          />
+          <TextInput
+            style={styles.input}
+            value={notificationEmail}
+            onChangeText={onNotificationEmailChange}
+            placeholder="Notification email"
+            placeholderTextColor={DIM}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="email-address"
+            accessibilityLabel="Notification email"
+          />
+          <TouchableOpacity
+            style={[styles.btnPrimary, (isCreating || !walletReady) && styles.btnDisabled]}
+            onPress={() => void onCreateNode()}
+            disabled={isCreating || !walletReady}
+            activeOpacity={PRESS_OPACITY}
+          >
+            {isCreating ? (
+              <ActivityIndicator color="#FFF" />
+            ) : (
+              <Text style={styles.btnPrimaryText}>
+                {walletReady ? 'Create Your Node' : 'Preparing wallet…'}
+              </Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <TouchableOpacity
+          onPress={() => void onGetStarted(source)}
+          style={styles.createPodLink}
+          activeOpacity={PRESS_OPACITY}
+        >
+          <Text style={styles.createPodText}>Need a Pod? Create one free →</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  )
+}
+
 export default function LandingScreen(): JSX.Element {
   const {
     signIn,
@@ -83,12 +283,12 @@ export default function LandingScreen(): JSX.Element {
   const { attestationStatus, walletInfo, createSeamlessAttestation } = useWallet()
   const router = useRouter()
   const pathname = usePathname()
+  const landingMode = getLandingMode()
+  const showMarketingContent = landingMode === 'marketing'
   const issuerOptions = getIssuerOptions()
   const seamlessConfig = getSeamlessSignupConfig()
 
   const [selectedIssuer, setSelectedIssuer] = useState(issuerOptions[0]?.value ?? '')
-  const [issuerMenuOpen, setIssuerMenuOpen] = useState(false)
-  const selectedOption = issuerOptions.find((option) => option.value === selectedIssuer) ?? issuerOptions[0]
   const [isSigningIn, setIsSigningIn] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [nodeHandle, setNodeHandle] = useState('')
@@ -247,202 +447,135 @@ export default function LandingScreen(): JSX.Element {
 
         {/* ── Hero ────────────────────────────────────── */}
         <View style={styles.hero}>
-          <Text style={styles.heroEyebrow}>Decentralized · Private · Yours</Text>
-          <Text style={styles.heroHeadline}>The social network{'\n'}you actually own.</Text>
-          <Text style={styles.heroBody}>
-            {'Create a real Solid account with your own Pod, then sign in through OIDC. Your profile, posts, and connections stay portable from day one.'}
-          </Text>
-        </View>
-
-        {/* ── Sign-in panel (always visible) ───────────── */}
-        <View style={styles.signInPanel}>
-          <View style={styles.signInBrand}>
-            <Text style={styles.signInBrandMark}>⊙</Text>
-            <Text style={styles.signInBrandName}>NodeZero</Text>
-          </View>
-          <Text style={styles.signInTitle}>Sign in with your Solid Pod</Text>
-          <Text style={styles.signInHint}>Choose your identity provider</Text>
-          {signupResumeActive ? (
-            <Text style={styles.resumeHint}>
-              {signupReturnDetected
-                ? 'Signup return detected. Continue by signing in with your new Solid Pod identity.'
-                : 'Need a Pod first? Create one, then return here to continue onboarding.'}
-            </Text>
-          ) : null}
-          <View style={styles.dropdownWrap}>
-            <TouchableOpacity
-              style={styles.dropdownField}
-              onPress={() => setIssuerMenuOpen((open) => !open)}
-              activeOpacity={PRESS_OPACITY}
-              accessibilityRole="button"
-              accessibilityLabel="Identity provider"
-              accessibilityState={{ expanded: issuerMenuOpen }}
-            >
-              <View style={styles.dropdownFieldText}>
-                <View style={styles.dropdownLabelRow}>
-                  {selectedOption?.mark ? <Text style={styles.dropdownMark}>{selectedOption.mark}</Text> : null}
-                  <Text style={styles.dropdownLabel}>{selectedOption?.label ?? 'Select provider'}</Text>
-                </View>
-                <Text style={styles.dropdownSub}>{selectedOption?.sublabel ?? ''}</Text>
-              </View>
-              <Text style={styles.dropdownChevron}>{issuerMenuOpen ? '▴' : '▾'}</Text>
-            </TouchableOpacity>
-            {issuerMenuOpen ? (
-              <View style={styles.dropdownMenu}>
-                {issuerOptions.map((opt, i) => (
-                  <TouchableOpacity
-                    key={opt.value || opt.label}
-                    style={[
-                      styles.dropdownOption,
-                      i < issuerOptions.length - 1 && styles.dropdownOptionDivider,
-                      opt.value === selectedIssuer && styles.dropdownOptionActive,
-                    ]}
-                    onPress={() => {
-                      setSelectedIssuer(opt.value)
-                      setIssuerMenuOpen(false)
-                      setError(null)
-                    }}
-                    activeOpacity={PRESS_OPACITY}
-                    accessibilityRole="button"
-                    accessibilityLabel={opt.label}
-                  >
-                    <View style={styles.dropdownFieldText}>
-                      <View style={styles.dropdownLabelRow}>
-                        {opt.mark ? <Text style={styles.dropdownMark}>{opt.mark}</Text> : null}
-                        <Text style={styles.dropdownLabel}>{opt.label}</Text>
-                      </View>
-                      <Text style={styles.dropdownSub}>{opt.sublabel}</Text>
-                    </View>
-                    {opt.value === selectedIssuer ? <Text style={styles.dropdownCheck}>✓</Text> : null}
-                  </TouchableOpacity>
-                ))}
-              </View>
-            ) : null}
-          </View>
-          {error && <Text style={styles.errorText}>{error}</Text>}
-          <TouchableOpacity
-            style={[styles.btnPrimary, isSigningIn && styles.btnDisabled]}
-            onPress={() => void handleSignIn()}
-            disabled={isSigningIn}
-            activeOpacity={PRESS_OPACITY}
-          >
-            {isSigningIn ? (
-              <ActivityIndicator color="#FFF" />
-            ) : (
-              <Text style={styles.btnPrimaryText}>Sign In</Text>
-            )}
-          </TouchableOpacity>
-          {seamlessConfig.enabled ? (
-            <View style={styles.createNodeBlock}>
-              <Text style={styles.createNodeTitle}>Or create your node in seconds</Text>
-              {createNotice ? <Text style={styles.createNotice}>{createNotice}</Text> : null}
-              <TextInput
-                style={styles.input}
-                value={nodeHandle}
-                onChangeText={setNodeHandle}
-                placeholder="Choose a handle (e.g. alice)"
-                placeholderTextColor={DIM}
-                autoCapitalize="none"
-                autoCorrect={false}
-                accessibilityLabel="Node handle"
-              />
-              <TextInput
-                style={styles.input}
-                value={notificationEmail}
-                onChangeText={setNotificationEmail}
-                placeholder="Notification email"
-                placeholderTextColor={DIM}
-                autoCapitalize="none"
-                autoCorrect={false}
-                keyboardType="email-address"
-                accessibilityLabel="Notification email"
-              />
-              <TouchableOpacity
-                style={[styles.btnPrimary, (isCreating || !walletInfo?.publicKey) && styles.btnDisabled]}
-                onPress={() => void handleCreateNode()}
-                disabled={isCreating || !walletInfo?.publicKey}
-                activeOpacity={PRESS_OPACITY}
-              >
-                {isCreating ? (
-                  <ActivityIndicator color="#FFF" />
-                ) : (
-                  <Text style={styles.btnPrimaryText}>
-                    {walletInfo?.publicKey ? 'Create Your Node' : 'Preparing wallet…'}
-                  </Text>
-                )}
-              </TouchableOpacity>
-            </View>
+          {showMarketingContent ? (
+            <>
+              <Text style={styles.heroEyebrow}>Decentralized · Private · Yours</Text>
+              <Text style={styles.heroHeadline}>The social network{'\n'}you actually own.</Text>
+              <Text style={styles.heroBody}>
+                {'Create a real Solid account with your own Pod, then sign in through OIDC. For local real-time discovery, NodeZero only uses your location when you explicitly enable it, converts it to an H3 hex area, and never stores raw GPS in a central database.'}
+              </Text>
+              <Text style={styles.heroBody}>
+                {'An H3 hex is a small hexagon-shaped map cell from the open-source H3 grid. Nearby discovery uses these cells so people see an approximate area instead of exact coordinates. We are also adding controls to further obscure or randomize the visible H3 area.'}
+              </Text>
+            </>
           ) : (
-            <TouchableOpacity
-              onPress={() => void handleGetStarted('card')}
-              style={styles.createPodLink}
-              activeOpacity={PRESS_OPACITY}
-            >
-              <Text style={styles.createPodText}>Need a Pod? Create one free →</Text>
-            </TouchableOpacity>
+            <>
+              <Text style={styles.heroEyebrow}>NodeZero Staging</Text>
+              <Text style={styles.heroHeadline}>Continue to your node</Text>
+              <Text style={styles.heroBody}>
+                {'Returning user: sign in with your existing Solid identity provider.'}
+              </Text>
+              <Text style={styles.heroBody}>
+                {'New user: create your node with the streamlined flow below, then you will be signed in automatically.'}
+              </Text>
+            </>
           )}
         </View>
 
-        {/* ── How it works ────────────────────────────── */}
-        <View style={styles.section}>
-          <Text style={styles.sectionEyebrow}>Three steps</Text>
-          <Text style={styles.sectionTitle}>Own your identity in minutes</Text>
-          {STEPS.map((s, i) => (
-            <View key={i} style={styles.stepRow}>
-              <View style={styles.stepNumber}>
-                <Text style={styles.stepNumberText}>{i + 1}</Text>
-              </View>
-              <View style={styles.stepContent}>
-                <Text style={styles.stepTitle}>{s.title}</Text>
-                <Text style={styles.stepDesc}>{s.desc}</Text>
+        {/* ── Sign-in panel (always visible) ───────────── */}
+        <LandingAuthCard
+          source="card"
+          showResumeHint
+          issuerOptions={issuerOptions}
+          selectedIssuer={selectedIssuer}
+          signupResumeActive={signupResumeActive}
+          signupReturnDetected={signupReturnDetected}
+          error={error}
+          isSigningIn={isSigningIn}
+          seamlessEnabled={seamlessConfig.enabled}
+          nodeHandle={nodeHandle}
+          notificationEmail={notificationEmail}
+          isCreating={isCreating}
+          walletReady={Boolean(walletInfo?.publicKey)}
+          createNotice={createNotice}
+          onIssuerChange={setSelectedIssuer}
+          onNodeHandleChange={setNodeHandle}
+          onNotificationEmailChange={setNotificationEmail}
+          onSignIn={handleSignIn}
+          onCreateNode={handleCreateNode}
+          onGetStarted={handleGetStarted}
+          onClearError={() => setError(null)}
+        />
+
+        {showMarketingContent ? (
+          <>
+            {/* ── How it works ────────────────────────────── */}
+            <View style={styles.section}>
+              <Text style={styles.sectionEyebrow}>Three steps</Text>
+              <Text style={styles.sectionTitle}>Own your identity in minutes</Text>
+              {STEPS.map((s, i) => (
+                <View key={i} style={styles.stepRow}>
+                  <View style={styles.stepNumber}>
+                    <Text style={styles.stepNumberText}>{i + 1}</Text>
+                  </View>
+                  <View style={styles.stepContent}>
+                    <Text style={styles.stepTitle}>{s.title}</Text>
+                    <Text style={styles.stepDesc}>{s.desc}</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+
+            {/* ── Features ────────────────────────────────── */}
+            <View style={styles.section}>
+              <Text style={styles.sectionEyebrow}>Why NodeZero</Text>
+              <Text style={styles.sectionTitle}>Built on different principles</Text>
+              <View style={styles.featureGrid}>
+                {FEATURES.map((f) => (
+                  <View key={f.title} style={styles.featureCard}>
+                    <Text style={styles.featureIcon}>{f.icon}</Text>
+                    <Text style={styles.featureTitle}>{f.title}</Text>
+                    <Text style={styles.featureDesc}>{f.desc}</Text>
+                  </View>
+                ))}
               </View>
             </View>
-          ))}
-        </View>
 
-        {/* ── Features ────────────────────────────────── */}
-        <View style={styles.section}>
-          <Text style={styles.sectionEyebrow}>Why NodeZero</Text>
-          <Text style={styles.sectionTitle}>Built on different principles</Text>
-          <View style={styles.featureGrid}>
-            {FEATURES.map((f) => (
-              <View key={f.title} style={styles.featureCard}>
-                <Text style={styles.featureIcon}>{f.icon}</Text>
-                <Text style={styles.featureTitle}>{f.title}</Text>
-                <Text style={styles.featureDesc}>{f.desc}</Text>
-              </View>
-            ))}
-          </View>
-        </View>
+            {/* ── Trust statement ─────────────────────────── */}
+            <View style={styles.trustBlock}>
+              <Text style={styles.trustStatement}>
+                "NodeZero cannot read your data, sell your profile, or take your identity away."
+              </Text>
+              <Text style={styles.trustSub}>Your Pod. Your keys. Your network.</Text>
+            </View>
 
-        {/* ── Trust statement ─────────────────────────── */}
-        <View style={styles.trustBlock}>
-          <Text style={styles.trustStatement}>
-            "NodeZero cannot read your data, sell your profile, or take your identity away."
-          </Text>
-          <Text style={styles.trustSub}>Your Pod. Your keys. Your network.</Text>
-        </View>
-
-        {/* ── Final CTA ───────────────────────────────── */}
-        <View style={styles.finalCta}>
-          <Text style={styles.finalCtaTitle}>Ready to own your network?</Text>
-          <TouchableOpacity
-            style={[styles.btnPrimary, isSigningIn && styles.btnDisabled]}
-            onPress={() => void handleGetStarted('footer')}
-            disabled={isSigningIn}
-            activeOpacity={PRESS_OPACITY}
-          >
-            <Text style={styles.btnPrimaryText}>Create Your Node - Free</Text>
-          </TouchableOpacity>
-          <Text style={styles.finalCtaSub}>
-            Powered by{' '}
-            <Text style={styles.link} onPress={() => void Linking.openURL('https://solidproject.org')}>Solid</Text>
-            {' '}·{' '}
-            <Text style={styles.link} onPress={() => void Linking.openURL('https://stellar.org')}>Stellar</Text>
-            {' '}·{' '}
-            {'Open source'}
-          </Text>
-        </View>
+            {/* ── Final CTA ───────────────────────────────── */}
+            <View style={styles.finalCta}>
+              <Text style={styles.finalCtaTitle}>Ready to own your network?</Text>
+              <LandingAuthCard
+                source="footer"
+                showResumeHint={false}
+                issuerOptions={issuerOptions}
+                selectedIssuer={selectedIssuer}
+                signupResumeActive={signupResumeActive}
+                signupReturnDetected={signupReturnDetected}
+                error={error}
+                isSigningIn={isSigningIn}
+                seamlessEnabled={seamlessConfig.enabled}
+                nodeHandle={nodeHandle}
+                notificationEmail={notificationEmail}
+                isCreating={isCreating}
+                walletReady={Boolean(walletInfo?.publicKey)}
+                createNotice={createNotice}
+                onIssuerChange={setSelectedIssuer}
+                onNodeHandleChange={setNodeHandle}
+                onNotificationEmailChange={setNotificationEmail}
+                onSignIn={handleSignIn}
+                onCreateNode={handleCreateNode}
+                onGetStarted={handleGetStarted}
+                onClearError={() => setError(null)}
+              />
+              <Text style={styles.finalCtaSub}>
+                Powered by{' '}
+                <Text style={styles.link} onPress={() => void Linking.openURL('https://solidproject.org')}>Solid</Text>
+                {' '}·{' '}
+                <Text style={styles.link} onPress={() => void Linking.openURL('https://stellar.org')}>Stellar</Text>
+                {' '}·{' '}
+                {'Open source'}
+              </Text>
+            </View>
+          </>
+        ) : null}
 
       </ScrollView>
     </KeyboardAvoidingView>
@@ -461,8 +594,8 @@ const STEPS = [
     desc: 'Connect your Stellar wallet. A zero-knowledge attestation links your Web3 identity to your Pod without exposing private data.',
   },
   {
-    title: 'Start broadcasting',
-    desc: 'Post to your local H3 grid, your close circles, or verified humans nearby. Your feed — chronological, unmanipulated.',
+    title: 'Enable local discovery on your terms',
+    desc: 'When you choose, enable location to discover nearby nodes by H3 hex area (not exact GPS). Your feed stays chronological and unmanipulated.',
   },
 ]
 
@@ -475,7 +608,7 @@ const FEATURES = [
   {
     icon: '📍',
     title: 'Find people nearby',
-    desc: 'H3 hexagonal grids surface real people in your vicinity. No global firehose, no follower counts.',
+    desc: 'Location is opt-in and translated into an H3 hex area. Other users see your H3 area, not your exact coordinates.',
   },
   {
     icon: '🚫',
@@ -485,7 +618,7 @@ const FEATURES = [
   {
     icon: '🛡️',
     title: 'Verified, not surveilled',
-    desc: 'Zero-knowledge proofs confirm you\'re a real human. NodeZero never learns your name, location, or IP.',
+    desc: 'Zero-knowledge proofs confirm you\'re a real human. NodeZero does not store your raw location in a central database, and additional H3 obfuscation is being added.',
   },
 ]
 

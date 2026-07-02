@@ -55,7 +55,7 @@ function isValidRelayOverrideWebId(raw: string): boolean {
 }
 
 export default function LocalNodeScreen(): JSX.Element {
-  const { currentNode, surroundingNodes, locationStatus, refresh } = useDiscovery()
+  const { currentNode, surroundingNodes, locationStatus, requestAccess } = useDiscovery()
   const { webId, isLoggedIn, isRestoring, session } = useSolid()
   const { attestationStatus } = useWallet()
   const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
@@ -294,11 +294,29 @@ export default function LocalNodeScreen(): JSX.Element {
     )
   }
 
-  if (locationStatus === 'requesting' || locationStatus === 'idle') {
+  if (locationStatus === 'idle') {
+    return (
+      <View style={styles.centred}>
+        <Text style={styles.infoText}>
+          Enable location when you are ready to discover nearby nodes in your H3 area.{'\n'}
+          NodeZero does not share your raw GPS coordinates.
+        </Text>
+        <TouchableOpacity
+          style={styles.refreshBtn}
+          onPress={() => void requestAccess()}
+          activeOpacity={aesthetic.motion.pressOpacity}
+        >
+          <Text style={styles.refreshBtnText}>Enable Location</Text>
+        </TouchableOpacity>
+      </View>
+    )
+  }
+
+  if (locationStatus === 'requesting') {
     return (
       <View style={styles.centred}>
         <ActivityIndicator color="#6C63FF" size="large" />
-        <Text style={styles.infoText}>Detecting your Local Node…</Text>
+        <Text style={styles.infoText}>Requesting location permission…</Text>
       </View>
     )
   }
@@ -312,10 +330,10 @@ export default function LocalNodeScreen(): JSX.Element {
         </Text>
         <TouchableOpacity
           style={styles.refreshBtn}
-          onPress={() => void refresh()}
+          onPress={() => void requestAccess()}
           activeOpacity={aesthetic.motion.pressOpacity}
         >
-          <Text style={styles.refreshBtnText}>Retry</Text>
+          <Text style={styles.refreshBtnText}>Grant Location Access</Text>
         </TouchableOpacity>
       </View>
     )

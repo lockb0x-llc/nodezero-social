@@ -27,6 +27,8 @@ interface DiscoveryContextValue {
   surroundingNodes: LocalNode[]
   /** Permission + availability status of location services. */
   locationStatus: 'idle' | 'requesting' | 'granted' | 'denied' | 'unavailable'
+  /** Explicitly request location permission and start live updates. */
+  requestAccess: () => Promise<void>
   /** Manually refresh the current position. */
   refresh: () => Promise<void>
 }
@@ -52,45 +54,67 @@ export function DiscoveryProvider({ children }: { children: ReactNode }): JSX.El
     setSurroundingNodes(result.surroundingNodes)
   }, [])
 
-  const refresh = useCallback(async () => {
-    const location = await Location.getCurrentPositionAsync({
-      accuracy: Location.Accuracy.Balanced,
-    })
-    applyPosition(location.coords.latitude, location.coords.longitude)
+  const startWatching = useCallback(async () => {
+    watchRef.current?.remove()
+    watchRef.current = await Location.watchPositionAsync(
+      { accuracy: Location.Accuracy.Balanced, timeInterval: 10_000, distanceInterval: 50 },
+      (location) => {
+        applyPosition(location.coords.latitude, location.coords.longitude)
+      }
+    )
   }, [applyPosition])
 
-  useEffect(() => {
-    let mounted = true
-
-    void (async () => {
-      setLocationStatus('requesting')
-      const { status } = await Location.requestForegroundPermissionsAsync()
-
-      if (!mounted) return
-
-      if (status !== Location.PermissionStatus.GRANTED) {
-        setLocationStatus('denied')
-        return
-      }
-      setLocationStatus('granted')
-
-      // Start a live position watch so Local Node updates as the user moves.
-      watchRef.current = await Location.watchPositionAsync(
-        { accuracy: Location.Accuracy.Balanced, timeInterval: 10_000, distanceInterval: 50 },
-        (location) => {
-          if (mounted) applyPosition(location.coords.latitude, location.coords.longitude)
-        }
-      )
-    })()
-
-    return () => {
-      mounted = false
-      watchRef.current?.remove()
+  const refresh = useCallback(async () => {
+    try {
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      })
+      applyPosition(location.coords.latitude, location.coords.longitude)
+    } catch {
+      setLocationStatus('unavailable')
     }
   }, [applyPosition])
 
+  const requestAccess = useCallback(async () => {
+    setLocationStatus('requesting')
+    const { status } = await Location.requestForegroundPermissionsAsync()
+
+    if (status !== Location.PermissionStatus.GRANTED) {
+      setLocationStatus('denied')
+      return
+    }
+
+    setLocationStatus('granted')
+    await startWatching()
+    await refresh()
+  }, [refresh, startWatching])
+
+  useEffect(() => {
+    void (async () => {
+      const { status } = await Location.getForegroundPermissionsAsync()
+
+      if (status === Location.PermissionStatus.GRANTED) {
+        setLocationStatus('granted')
+        await startWatching()
+        await refresh()
+        return
+      }
+
+      if (status === Location.PermissionStatus.DENIED) {
+        setLocationStatus('denied')
+        return
+      }
+
+      setLocationStatus('idle')
+    })()
+
+    return () => {
+      watchRef.current?.remove()
+    }
+  }, [refresh, startWatching])
+
   return (
-    <DiscoveryContext.Provider value={{ currentNode, surroundingNodes, locationStatus, refresh }}>
+    <DiscoveryContext.Provider value={{ currentNode, surroundingNodes, locationStatus, requestAccess, refresh }}>
       {children}
     </DiscoveryContext.Provider>
   )

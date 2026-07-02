@@ -90,8 +90,8 @@ test('T7: landing shows Solid sign-in card by default', async ({ page }) => {
   await page.waitForLoadState('networkidle')
 
   await expect(page.getByText('Sign in with your Solid Pod')).toBeVisible()
-  await expect(page.getByRole('textbox', { name: 'Identity Provider URL' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Sign In' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Identity provider' })).toBeVisible()
+  await expect(page.getByText('Sign In', { exact: true })).toBeVisible()
 })
 
 // ─── T8: Legacy hero buttons are removed from landing ──────────────────────
