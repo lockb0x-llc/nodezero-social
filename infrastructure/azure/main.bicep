@@ -103,8 +103,28 @@ resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' = {
   kind: 'StorageV2'
   properties: {
     minimumTlsVersion: 'TLS1_2'
-    allowBlobPublicAccess: false
+    // Anonymous blob read is required: the web client downloads the public
+    // ZK proving artifacts (pod_ownership wasm/zkey + manifest) directly from
+    // the zk-artifacts container during onboarding. Artifacts are non-secret
+    // and integrity-pinned via sha256 in the published manifest.
+    allowBlobPublicAccess: true
     supportsHttpsTrafficOnly: true
+  }
+}
+
+resource storageBlobService 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01' = {
+  parent: storage
+  name: 'default'
+}
+
+// Public ZK proving artifacts consumed by the browser (wasm/zkey/manifest).
+// publicAccess 'Blob' allows anonymous reads of individual blobs but not
+// container listing.
+resource zkArtifactsContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
+  parent: storageBlobService
+  name: 'zk-artifacts'
+  properties: {
+    publicAccess: 'Blob'
   }
 }
 

@@ -5,7 +5,7 @@
 NodeZero Social is a decentralized social platform where users own every byte of their
 identity and content. It combines three open protocols into one coherent identity stack:
 
-- **Solid Pods** — user-controlled Pod for profile, posts, and social graph.
+- **Solid Pods** — user-controlled Pod for profile, posts, and social graph, served by the Node Zero Community Server at `solid.nodezero.social` in staging.
 - **Stellar Soroban smart contracts** — on-chain identity anchor, per-user `Lockb0x`, and
   factory provisioning (Stellar TestNet).
 - **Groth16 zero-knowledge proofs** — browser-generated `pod_ownership` proof binding a
@@ -29,7 +29,7 @@ The live staging environment is at **[https://staging.nodezero.social](https://s
     Solid OIDC   │  /v1/solid │  Soroban   │  wss relay
     sign-in      │  -account  │  RPC       │  (geo-local)
                  ▼            ▼            ▼
-   CSS (self-hosted)   Provisioner (Azure App Service)
+   Node Zero Community Server (self-hosted CSS)   Provisioner (Azure App Service)
    solid.nodezero.social   ┌──────────────────────────────┐
                            │  Creates CSS account + Pod   │
                            │  Deploys per-user Lockb0x    │
@@ -127,7 +127,7 @@ corepack pnpm --filter @nodezero/mobile-app web
    (`identitySecret` private, `claimHash`/`accountCommitment`/`podBinding` public),
    encrypts the canonical claim with a Stellar-derived AES-256-GCM key, and sends
    `accountCommitmentHex` + `ciphertextHex` to the provisioner.
-2. **Provisioner** — creates a CSS Solid account + Pod, deploys a per-user `Lockb0x`
+2. **Provisioner** — creates a Solid account + Pod on the Node Zero Community Server, deploys a per-user `Lockb0x`
    via `LockboxFactory`, calls `Lockb0x.set_attestation` (stores the identity anchor
    and encrypted claim on-chain), and PATCHes `nz:` anchor triples into the WebID
    profile card.
@@ -152,8 +152,8 @@ enforces that staging and production values never mix. See
 
 | Area | Status |
 |---|---|
-| Solid OIDC sign-in | ✅ Live — `staging.nodezero.social` |
-| Seamless "Create Your Node" | ✅ Live — CSS Pod + Lockb0x deployed per user |
+| Solid OIDC sign-in | ✅ Live — `staging.nodezero.social` and `solid.nodezero.social` Community Server |
+| Seamless "Create Your Node" | ✅ Live — Node Zero Community Server Pod + Lockb0x deployed per user |
 | ZK pod_ownership proof (browser) | ✅ Live — Groth16/snarkjs, on-device |
 | On-chain attestation (`set_attestation`) | ✅ Live — `accountCommitment` + `attestationCiphertext` on TestNet |
 | WebID profile-card anchor (`nz:` triples) | ✅ Live |

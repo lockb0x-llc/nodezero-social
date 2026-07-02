@@ -56,8 +56,8 @@ function getIssuerOptions(): IssuerOption[] {
   const options: IssuerOption[] = []
   if (nodeZeroIssuer) {
     options.push({
-      label: 'NodeZero',
-      sublabel: 'Sign in with your NodeZero node (recommended)',
+      label: 'Node Zero Community Server',
+      sublabel: 'Sign in with the hosted Node Zero Community Server (recommended)',
       value: nodeZeroIssuer,
       mark: '⊙',
     })
@@ -71,6 +71,35 @@ function getIssuerOptions(): IssuerOption[] {
 }
 
 type AuthCardSource = 'card' | 'footer'
+
+/**
+ * Maps low-level node-creation failures to actionable user-facing messages.
+ * ZK artifact delivery problems (wasm fetch returning HTML/XML, missing
+ * manifest entries, blocked storage access) otherwise surface as raw
+ * WebAssembly parser internals like "module doesn't start with '\\0asm'".
+ */
+function mapCreateNodeError(err: unknown): string {
+  if (!(err instanceof Error)) {
+    return 'Could not create your node. Try again.'
+  }
+  const lower = (err.message ?? '').toLowerCase()
+  const isZkArtifactFailure =
+    lower.includes("doesn't start with") ||
+    lower.includes('webassembly.module') ||
+    lower.includes('webassembly.compile') ||
+    lower.includes('compileerror') ||
+    lower.includes('unable to load zk artifact manifest') ||
+    lower.includes('zk artifact manifest is not valid json') ||
+    lower.includes('pod ownership proving artifacts are missing')
+  if (isZkArtifactFailure) {
+    return (
+      'Zero-knowledge proof assets could not be loaded. This is usually a temporary ' +
+      'artifact delivery issue — please try again shortly. If it keeps failing, ' +
+      'contact support and mention "ZK artifact access".'
+    )
+  }
+  return err.message || 'Could not create your node. Try again.'
+}
 
 type LandingMode = 'marketing' | 'onboarding'
 
@@ -419,7 +448,7 @@ export default function LandingScreen(): JSX.Element {
       await signInWithNode(record)
       router.replace('/local')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not create your node. Try again.')
+      setError(mapCreateNodeError(err))
     } finally {
       setIsCreating(false)
     }
@@ -452,10 +481,10 @@ export default function LandingScreen(): JSX.Element {
               <Text style={styles.heroEyebrow}>Decentralized · Private · Yours</Text>
               <Text style={styles.heroHeadline}>The social network{'\n'}you actually own.</Text>
               <Text style={styles.heroBody}>
-                {'Create a real Solid account with your own Pod, then sign in through OIDC. For local real-time discovery, NodeZero only uses your location when you explicitly enable it, converts it to an H3 hex area, and never stores raw GPS in a central database.'}
+                {'Create a real Solid account with your own Pod on the Node Zero Community Server, then sign in through OIDC. For local real-time discovery, NodeZero only uses your location when you explicitly enable it, converts it to an H3 hex area, and never stores raw GPS in a central database.'}
               </Text>
               <Text style={styles.heroBody}>
-                {'An H3 hex is a small hexagon-shaped map cell from the open-source H3 grid. Nearby discovery uses these cells so people see an approximate area instead of exact coordinates. We are also adding controls to further obscure or randomize the visible H3 area.'}
+                {'The Node Zero Community Server at solid.nodezero.social handles Pod creation and hosted Solid OIDC. An H3 hex is a small hexagon-shaped map cell from the open-source H3 grid. Nearby discovery uses these cells so people see an approximate area instead of exact coordinates. We are also adding controls to further obscure or randomize the visible H3 area.'}
               </Text>
             </>
           ) : (
@@ -463,10 +492,10 @@ export default function LandingScreen(): JSX.Element {
               <Text style={styles.heroEyebrow}>NodeZero Staging</Text>
               <Text style={styles.heroHeadline}>Continue to your node</Text>
               <Text style={styles.heroBody}>
-                {'Returning user: sign in with your existing Solid identity provider.'}
+                {'Returning user: sign in with the Node Zero Community Server or your existing Solid identity provider.'}
               </Text>
               <Text style={styles.heroBody}>
-                {'New user: create your node with the streamlined flow below, then you will be signed in automatically.'}
+                {'New user: create your node with the streamlined flow below. The Node Zero Community Server creates your Pod, then you will be signed in automatically.'}
               </Text>
             </>
           )}
@@ -587,11 +616,11 @@ export default function LandingScreen(): JSX.Element {
 const STEPS = [
   {
     title: 'Get your Pod',
-    desc: 'Create a Solid account with your Pod using the configured staging identity provider.',
+    desc: 'Create a Solid account with your Pod on the Node Zero Community Server.',
   },
   {
     title: 'Link your identity',
-    desc: 'Connect your Stellar wallet. A zero-knowledge attestation links your Web3 identity to your Pod without exposing private data.',
+    desc: 'Connect your Stellar wallet. A zero-knowledge attestation links your Web3 identity to your Community Server Pod without exposing private data.',
   },
   {
     title: 'Enable local discovery on your terms',
@@ -603,7 +632,7 @@ const FEATURES = [
   {
     icon: '🔐',
     title: 'You own every byte',
-    desc: 'Your profile lives in your Solid Pod. Delete your NodeZero account and your data stays with you.',
+    desc: 'Your profile lives in your Solid Pod on the Node Zero Community Server. Delete your NodeZero account and your data stays with you.',
   },
   {
     icon: '📍',

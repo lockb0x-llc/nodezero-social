@@ -17,6 +17,7 @@
 
 import Constants from 'expo-constants'
 import type { PodOwnershipClaim } from '@nodezero/zk-crypto/pod-ownership'
+import { resolvePodOwnershipArtifacts } from './zkArtifacts'
 
 /**
  * Fixed placeholders for the seamless (non-interactive) attestation claim. The
@@ -34,6 +35,7 @@ interface AttestationConfig {
   identityContractId: string
   lockboxFactoryContractId: string
   zkArtifactsUrl: string
+  zkManifestUrl: string
 }
 
 function getConfig(): AttestationConfig {
@@ -44,6 +46,7 @@ function getConfig(): AttestationConfig {
     identityContractId: extra.identityContractId ?? '',
     lockboxFactoryContractId: extra.lockboxFactoryContractId ?? '',
     zkArtifactsUrl: (extra.zkArtifactsUrl ?? '').replace(/\/+$/, ''),
+    zkManifestUrl: (extra.zkManifestUrl ?? '').trim(),
   }
 }
 
@@ -103,8 +106,8 @@ export async function produceSeamlessAttestation(
   input: SeamlessAttestationInput,
 ): Promise<SeamlessAttestation> {
   const config = getConfig()
-  if (!config.zkArtifactsUrl) {
-    throw new Error('ZK artifacts URL is not configured (NZ_ZK_ARTIFACTS_URL).')
+  if (!config.zkArtifactsUrl || !config.zkManifestUrl) {
+    throw new Error('ZK artifact URLs are not configured (NZ_ZK_ARTIFACTS_URL, NZ_ZK_MANIFEST_URL).')
   }
 
   const claim = buildSeamlessClaim(input)
@@ -126,11 +129,19 @@ export async function produceSeamlessAttestation(
 
   const canonicalClaim = buildPodOwnershipClaim(claim)
 
+  // Resolve the proving artifact URLs from the published manifest (same path
+  // as custody provisioning) instead of hardcoding filenames, so artifact
+  // bundle layout changes cannot silently break seamless onboarding.
+  const artifactPaths = await resolvePodOwnershipArtifacts({
+    zkArtifactsUrl: config.zkArtifactsUrl,
+    zkManifestUrl: config.zkManifestUrl,
+  })
+
   const proof = await generatePodOwnershipProof({
     stellarSecretKey: input.stellarSecret,
     claim,
-    wasmPath: `${config.zkArtifactsUrl}/pod_ownership_js/pod_ownership.wasm`,
-    zkeyPath: `${config.zkArtifactsUrl}/pod_ownership_final.zkey`,
+    wasmPath: artifactPaths.wasmPath,
+    zkeyPath: artifactPaths.zkeyPath,
   })
 
   const encrypted = await encryptAttestation(canonicalClaim, input.stellarSecret)

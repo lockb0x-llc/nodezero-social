@@ -29,9 +29,9 @@ responsibilities, trust boundaries, and threat model.
 Solid OIDC │  /v1/solid │  Soroban   │  wss relay
 sign-in    │  -account  │  RPC       │  (geo-local)
            ▼            ▼            ▼
-CSS (self-hosted Solid)  Provisioner (Azure App Service)
+Node Zero Community Server (self-hosted CSS)  Provisioner (Azure App Service)
 solid.nodezero.social   ┌───────────────────────────────────┐
-                        │  1. Creates CSS account + Pod      │
+                        │  1. Creates Solid account + Pod    │
                         │  2. Deploys Lockb0x via factory    │
                         │  3. Calls Lockb0x.set_attestation  │
                         │  4. PATCHes nz: triples to card    │
@@ -89,7 +89,7 @@ plaintext claim or the identitySecret.
 | **Stellar Lockb0x** | Decentralized (on-chain) | `accountCommitment` (public), `attestationCiphertext` (public but encrypted), `storage_entries`, event log |
 | **ZK proof** | Trustless | Prover knows `identitySecret`; verifier only sees the three public signals |
 | **Device wallet** | User-controlled | Holds `stellarSecretKey`; derives `identitySecret`; generates proof and encryption key |
-| **CSS Pod server** | Centralized (operator-run) | Pod content, OIDC tokens (short-lived), DPoP-bound access tokens |
+| **Node Zero Community Server (CSS Pod server)** | Centralized (operator-run) | Pod content, OIDC tokens (short-lived), DPoP-bound access tokens |
 | **Provisioner (Azure App Service)** | Centralized (operator-run) | CSS account creation payload, `accountCommitmentHex`, `ciphertextHex`, Stellar deploy invocations |
 | **WebSocket relay** | Centralized (operator-run) | Signaling messages (offer/answer/ICE), not message content |
 | **On-chain NodeZeroIdentity** | Decentralized (on-chain) | Stellar public key → WebID mapping (public) |
@@ -163,5 +163,5 @@ factory re-initialisation (explicit, not automatic).
 | **User Stellar keypair** | `localStorage` / `expo-secure-store` | User's device only | Destroy + re-provision |
 | **Deployer keypair** | Azure Key Vault (`stellar-deployer-secret`) | Provisioner (read at startup via managed identity) | `setup-treasury-deployer.sh` |
 | **Treasury keypair** | Azure Key Vault (`stellar-treasury-secret`) | Provisioner (top-up only) | `setup-treasury-deployer.sh` |
-| **CSS client credentials** | Provisioner (generated per account, stored in Pod) | Provisioner at creation only | Revocable per CSS account |
+| **CSS client credentials** | Provisioner (generated per account, stored in Pod) | Provisioner at creation only | Revocable per Community Server account |
 | **Azure Managed Identity** | Azure (RBAC-granted to App Service) | Provisioner → Key Vault reads | Azure RBAC rotation |

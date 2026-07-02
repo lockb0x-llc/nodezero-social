@@ -20,6 +20,7 @@ import { Platform } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { EnclaveAdapter, WalletService, type WalletInfo } from '@nodezero/embedded-wallet'
 import { produceSeamlessAttestation, type SeamlessAttestation } from '../onboarding/attestation'
+import { resolvePodOwnershipArtifacts } from '../onboarding/zkArtifacts'
 import type { PodOwnershipClaim } from '@nodezero/zk-crypto/pod-ownership'
 import Constants from 'expo-constants'
 import { useSolid } from './SolidContext'
@@ -197,10 +198,6 @@ interface CustodyProvisioningResult {
   }
 }
 
-interface ZkArtifactManifest {
-  artifacts?: Array<{ file: string }>
-}
-
 function extractPodIdentity(webId: string): { handle: string; podUrl: string; podSlug: string } {
   const parsed = new URL(webId)
   const hostname = parsed.hostname
@@ -225,31 +222,6 @@ function buildAttestationChallengePayload(challenge: ProvisionerChallenge): stri
     challenge.webId,
     challenge.podUrl,
   ].join('|')
-}
-
-function joinUrl(baseUrl: string, filePath: string): string {
-  return `${baseUrl.replace(/\/$/, '')}/${filePath.replace(/^packages\/zk-crypto\/build\//, '')}`
-}
-
-async function resolvePodOwnershipArtifacts(params: {
-  zkArtifactsUrl: string
-  zkManifestUrl: string
-}): Promise<{ wasmPath: string; zkeyPath: string }> {
-  const manifestResponse = await fetch(params.zkManifestUrl)
-  if (!manifestResponse.ok) {
-    throw new Error(`Unable to load ZK artifact manifest (${manifestResponse.status}).`)
-  }
-  const manifest = (await manifestResponse.json()) as ZkArtifactManifest
-  const artifacts = manifest.artifacts ?? []
-  const wasm = artifacts.find((artifact) => artifact.file.endsWith('pod_ownership_js/pod_ownership.wasm'))
-  const zkey = artifacts.find((artifact) => artifact.file.endsWith('pod_ownership_final.zkey'))
-  if (!wasm || !zkey) {
-    throw new Error('Pod ownership proving artifacts are missing from the ZK manifest.')
-  }
-  return {
-    wasmPath: joinUrl(params.zkArtifactsUrl, wasm.file),
-    zkeyPath: joinUrl(params.zkArtifactsUrl, zkey.file),
-  }
 }
 
 async function parseJsonResponse<T>(response: Response): Promise<T> {
