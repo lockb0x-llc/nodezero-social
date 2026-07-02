@@ -1,4 +1,8 @@
 packages:
   - 'packages/*'
 allowBuilds:
+  blake-hash: true
   esbuild: true
+onlyBuiltDependencies:
+  - esbuild
+  - blake-hash
