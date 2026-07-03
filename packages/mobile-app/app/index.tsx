@@ -27,6 +27,7 @@ import { useWallet } from '../src/contexts/WalletContext'
 import { aesthetic } from '../src/theme/aesthetic'
 import { beginSolidSignup } from '../src/onboarding/signupBridge'
 import { createSeamlessNode, getSeamlessSignupConfig } from '../src/onboarding/seamlessSignup'
+import { ProgressStepLadder, type ProgressStep } from '../src/components/ProgressStepLadder'
 import type { NodeSessionRecord } from '../src/onboarding/nodeSession'
 
 const PRESS_OPACITY = 0.82
@@ -71,6 +72,15 @@ function getIssuerOptions(): IssuerOption[] {
 }
 
 type AuthCardSource = 'card' | 'footer'
+
+/** Major operations of the "Create Your Node" flow, in execution order. */
+const CREATE_STEP_DEFS: Array<[key: string, label: string]> = [
+  ['wallet', 'Prepare your secure wallet'],
+  ['proof', 'Generate your zero-knowledge proof'],
+  ['pod', 'Create your Pod on the Node Zero Community Server'],
+  ['anchor', 'Anchor your identity on-chain (lockb0x)'],
+  ['signin', 'Sign you in'],
+]
 
 /**
  * Maps low-level node-creation failures to actionable user-facing messages.
@@ -131,6 +141,7 @@ interface LandingAuthCardProps {
   isCreating: boolean
   walletReady: boolean
   createNotice: string | null
+  createSteps: ProgressStep[]
   onIssuerChange: (nextIssuer: string) => void
   onNodeHandleChange: (value: string) => void
   onNotificationEmailChange: (value: string) => void
@@ -155,6 +166,7 @@ function LandingAuthCard({
   isCreating,
   walletReady,
   createNotice,
+  createSteps,
   onIssuerChange,
   onNodeHandleChange,
   onNotificationEmailChange,
@@ -249,6 +261,7 @@ function LandingAuthCard({
       {seamlessEnabled ? (
         <View style={styles.createNodeBlock}>
           <Text style={styles.createNodeTitle}>Or create your node in seconds</Text>
+          {createSteps.length > 0 ? <ProgressStepLadder steps={createSteps} /> : null}
           {createNotice ? <Text style={styles.createNotice}>{createNotice}</Text> : null}
           <TextInput
             style={styles.input}
@@ -324,6 +337,27 @@ export default function LandingScreen(): JSX.Element {
   const [notificationEmail, setNotificationEmail] = useState('')
   const [isCreating, setIsCreating] = useState(false)
   const [createNotice, setCreateNotice] = useState<string | null>(null)
+  const [createSteps, setCreateSteps] = useState<ProgressStep[]>([])
+
+  /** Marks the given step done and activates the next pending step. */
+  const advanceCreateStep = (doneKey: string): void => {
+    setCreateSteps((steps) => {
+      const doneIndex = steps.findIndex((step) => step.key === doneKey)
+      if (doneIndex === -1) return steps
+      return steps.map((step, index) => {
+        if (index <= doneIndex) return step.status === 'done' ? step : { ...step, status: 'done' }
+        if (index === doneIndex + 1 && step.status === 'pending') return { ...step, status: 'active' }
+        return step
+      })
+    })
+  }
+
+  /** Marks whichever step is currently running as failed. */
+  const failActiveCreateStep = (): void => {
+    setCreateSteps((steps) =>
+      steps.map((step) => (step.status === 'active' ? { ...step, status: 'error' } : step)),
+    )
+  }
 
   React.useEffect(() => {
     if (!isRestoring && isLoggedIn && pathname === '/') {
@@ -396,12 +430,24 @@ export default function LandingScreen(): JSX.Element {
       const expectedWebId = `${issuerBase}/${normalizedHandle}/profile/card#me`
       const expectedPodUrl = `${issuerBase}/${normalizedHandle}/`
 
+      // Show the step ladder: the wallet is ready (checked above), so it is
+      // pre-completed and proof generation becomes the active step.
+      setCreateSteps(
+        CREATE_STEP_DEFS.map(([key, label]) => ({
+          key,
+          label,
+          status: key === 'wallet' ? 'done' : key === 'proof' ? 'active' : 'pending',
+        })),
+      )
+
       setCreateNotice('Generating your zero-knowledge proof…')
       const attestation = await createSeamlessAttestation(
         expectedWebId,
         expectedPodUrl,
         walletInfo.publicKey,
       )
+      advanceCreateStep('proof')
+      setCreateNotice('Creating your Pod on the Node Zero Community Server…')
 
       const result = await createSeamlessNode({
         handle: nodeHandle,
@@ -410,12 +456,15 @@ export default function LandingScreen(): JSX.Element {
         accountCommitmentHex: attestation.accountCommitmentHex,
         ciphertextHex: attestation.ciphertextHex,
       })
+      advanceCreateStep('pod')
+      setCreateNotice('Confirming your on-chain lockb0x anchor…')
 
       // Fail-closed: onboarding is only complete when the per-user lockb0x was
       // created AND anchored on-chain. If the provisioner did not return a
       // ready lockbox, do NOT sign the user in — surface an actionable error.
       const anchored = result.lockbox?.userLockboxContractId
       if (!result.lockbox || result.lockbox.status !== 'ready' || !anchored) {
+        failActiveCreateStep()
         setError('Node created, but on-chain lockb0x provisioning did not complete. Please try again.')
         return
       }
@@ -423,9 +472,11 @@ export default function LandingScreen(): JSX.Element {
       // Fail-closed: the real ZK attestation (identity commitment + encrypted
       // claim) must be anchored on-chain. Without it the node is unverifiable.
       if (!result.attestation) {
+        failActiveCreateStep()
         setError('Node created, but the on-chain attestation was not anchored. Please try again.')
         return
       }
+      advanceCreateStep('anchor')
 
       const root = result.lockbox.proofRootHex
       setCreateNotice(
@@ -446,8 +497,10 @@ export default function LandingScreen(): JSX.Element {
         createdAt: new Date().toISOString(),
       }
       await signInWithNode(record)
+      advanceCreateStep('signin')
       router.replace('/local')
     } catch (err) {
+      failActiveCreateStep()
       setError(mapCreateNodeError(err))
     } finally {
       setIsCreating(false)
@@ -517,6 +570,7 @@ export default function LandingScreen(): JSX.Element {
           isCreating={isCreating}
           walletReady={Boolean(walletInfo?.publicKey)}
           createNotice={createNotice}
+          createSteps={createSteps}
           onIssuerChange={setSelectedIssuer}
           onNodeHandleChange={setNodeHandle}
           onNotificationEmailChange={setNotificationEmail}
@@ -586,6 +640,7 @@ export default function LandingScreen(): JSX.Element {
                 isCreating={isCreating}
                 walletReady={Boolean(walletInfo?.publicKey)}
                 createNotice={createNotice}
+                createSteps={createSteps}
                 onIssuerChange={setSelectedIssuer}
                 onNodeHandleChange={setNodeHandle}
                 onNotificationEmailChange={setNotificationEmail}

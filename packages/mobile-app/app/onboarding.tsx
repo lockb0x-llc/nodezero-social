@@ -3,6 +3,7 @@ import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'rea
 import { useRouter } from 'expo-router'
 import { useSolid } from '../src/contexts/SolidContext'
 import { useWallet } from '../src/contexts/WalletContext'
+import { ProgressStepLadder } from '../src/components/ProgressStepLadder'
 import { aesthetic } from '../src/theme/aesthetic'
 
 const STATUS_TEXT: Record<string, string> = {
@@ -15,7 +16,7 @@ const STATUS_TEXT: Record<string, string> = {
 
 export default function OnboardingScreen(): JSX.Element {
   const { isLoggedIn, isRestoring, nodeSession } = useSolid()
-  const { attestationStatus, attestationMessage } = useWallet()
+  const { attestationStatus, attestationMessage, verificationSteps } = useWallet()
   const router = useRouter()
 
   React.useEffect(() => {
@@ -36,7 +37,13 @@ export default function OnboardingScreen(): JSX.Element {
       <Text style={styles.title}>Finalizing your onboarding</Text>
       <Text style={styles.subtitle}>{STATUS_TEXT[attestationStatus] ?? 'Running onboarding checks...'}</Text>
 
-      {(attestationStatus === 'idle' || attestationStatus === 'verifying') ? (
+      {verificationSteps.length > 0 ? (
+        <View style={styles.ladderWrap}>
+          <ProgressStepLadder steps={verificationSteps} />
+        </View>
+      ) : null}
+
+      {(attestationStatus === 'idle' || attestationStatus === 'verifying') && verificationSteps.length === 0 ? (
         <ActivityIndicator size="large" color={aesthetic.color.accent} style={styles.spinner} />
       ) : null}
 
@@ -80,6 +87,11 @@ const styles = StyleSheet.create({
   },
   spinner: {
     marginTop: 24,
+  },
+  ladderWrap: {
+    marginTop: 24,
+    width: '100%',
+    maxWidth: 420,
   },
   detail: {
     marginTop: 16,

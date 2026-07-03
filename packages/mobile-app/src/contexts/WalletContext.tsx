@@ -21,6 +21,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import { EnclaveAdapter, WalletService, type WalletInfo } from '@nodezero/embedded-wallet'
 import { produceSeamlessAttestation, type SeamlessAttestation } from '../onboarding/attestation'
 import { resolvePodOwnershipArtifacts } from '../onboarding/zkArtifacts'
+import type { ProgressStep } from '../components/ProgressStepLadder'
 import type { PodOwnershipClaim } from '@nodezero/zk-crypto/pod-ownership'
 import Constants from 'expo-constants'
 import { useSolid } from './SolidContext'
@@ -356,6 +357,12 @@ interface WalletContextValue {
   attestationStatus: AttestationStatus
   /** Human-readable status detail for pairing checks. */
   attestationMessage: string | null
+  /**
+   * Step ladder for the sign-in attestation verification flow. Empty when no
+   * verification is in progress. Steps advance as each major operation
+   * completes; a failed operation is marked with an error status.
+   */
+  verificationSteps: ProgressStep[]
   /** Machine-verifiable attestation details for QA and diagnostics. */
   attestationDetails: AttestationDetails
   /** Builds a portable recovery bundle (includes the private key) for export. */
@@ -441,6 +448,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
   const [isLoading, setIsLoading] = useState(true)
   const [attestationStatus, setAttestationStatus] = useState<AttestationStatus>('idle')
   const [attestationMessage, setAttestationMessage] = useState<string | null>(null)
+  const [verificationSteps, setVerificationSteps] = useState<ProgressStep[]>([])
   const [attestationDetails, setAttestationDetails] = useState<AttestationDetails>({
     registeredWebId: null,
     lockboxStateRoot: null,
@@ -454,6 +462,39 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
     proofRootHex: null,
   })
   const lastCheckedKeyRef = useRef<string | null>(null)
+
+  /** Initialises the verification ladder: first step active, rest pending. */
+  const initVerificationSteps = useCallback((defs: Array<[key: string, label: string]>): void => {
+    setVerificationSteps(
+      defs.map(([key, label], index) => ({ key, label, status: index === 0 ? 'active' : 'pending' })),
+    )
+  }, [])
+
+  /** Marks the given step done and activates the next pending step. */
+  const advanceVerificationStep = useCallback((doneKey: string): void => {
+    setVerificationSteps((steps) => {
+      const doneIndex = steps.findIndex((step) => step.key === doneKey)
+      if (doneIndex === -1) return steps
+      return steps.map((step, index) => {
+        if (index <= doneIndex) return step.status === 'done' ? step : { ...step, status: 'done' }
+        if (index === doneIndex + 1 && step.status === 'pending') return { ...step, status: 'active' }
+        return step
+      })
+    })
+  }, [])
+
+  // Keep the ladder consistent with the overall attestation outcome: a
+  // verified session completes every step; an error/unlinked outcome marks
+  // the step that was running as failed.
+  useEffect(() => {
+    if (attestationStatus === 'verified') {
+      setVerificationSteps((steps) => steps.map((step) => (step.status === 'done' ? step : { ...step, status: 'done' })))
+    } else if (attestationStatus === 'error' || attestationStatus === 'unlinked') {
+      setVerificationSteps((steps) =>
+        steps.map((step) => (step.status === 'active' ? { ...step, status: 'error' } : step)),
+      )
+    }
+  }, [attestationStatus])
 
   useEffect(() => {
     void (async (): Promise<void> => {
@@ -492,6 +533,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
     if (!isLoggedIn || !webId) {
       setAttestationStatus('idle')
       setAttestationMessage(null)
+      setVerificationSteps([])
       setAttestationDetails({
         registeredWebId: null,
         lockboxStateRoot: null,
@@ -513,6 +555,12 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
     // verification (which needs Node-only crypto) and surface the verified
     // state directly from the node session record.
     if (nodeSession) {
+      initVerificationSteps([
+        ['session', 'Load your node session'],
+        ['anchor', 'Read your on-chain identity anchor'],
+        ['identity', 'Confirm this device controls the anchored identity'],
+      ])
+      advanceVerificationStep('session')
       // Fail-closed: a node session is only verified when it carries an
       // on-chain per-user lockb0x contract. A session without one means
       // provisioning did not complete; never report it as verified.
@@ -565,6 +613,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
         }
         try {
           const onchain = await getWalletService().getLockboxAccountCommitment(lockboxId)
+          advanceVerificationStep('anchor')
           if (!onchain) {
             // Legacy lockb0x without an on-chain attestation anchor.
             setVerified('Node lockb0x anchored on-chain during creation.')
@@ -637,6 +686,12 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
 
       setAttestationStatus('verifying')
       setAttestationMessage('Validating Stellar<->Solid pairing attestation...')
+      initVerificationSteps([
+        ['registration', 'Check on-chain identity registration'],
+        ['custody', 'Provision & confirm your custody lockb0x'],
+        ['root', 'Verify the lockb0x state root'],
+        ['proof', 'Verify your pairing attestation'],
+      ])
 
       try {
         let mappedWebId = await service.getRegisteredWebId(identityContractId)
@@ -659,6 +714,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
           registerTxHash = await registerIdentity(webId, identityContractId)
           mappedWebId = await service.getRegisteredWebId(identityContractId)
         }
+        advanceVerificationStep('registration')
 
         if (!isReturningSignIn && provisionerUrl) {
           const provisioning = await runCustodyProvisioning({
@@ -695,6 +751,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
         }
 
         const effectiveLockboxContractId = userLockboxContractId
+        advanceVerificationStep('custody')
         const lockboxRoot = await service.getLockboxStateRoot(effectiveLockboxContractId)
 
         if (mappedWebId !== webId) {
@@ -758,6 +815,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
           lockboxContractId: effectiveLockboxContractId,
           lockboxStateRoot: lockboxRoot,
         }
+        advanceVerificationStep('root')
 
         if (isReturningSignIn && priorRecord && !hasMatchingProof(priorRecord, proofInputs)) {
           setAttestationStatus('unlinked')
@@ -843,7 +901,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
         })
       }
     })()
-  }, [isLoggedIn, isRestoring, nodeSession, registerIdentity, walletInfo, webId])
+  }, [advanceVerificationStep, initVerificationSteps, isLoggedIn, isRestoring, nodeSession, registerIdentity, walletInfo, webId])
 
   const exportRecoveryBundle = useCallback(async (): Promise<{ fileName: string; json: string }> => {
     const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
@@ -947,6 +1005,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
       registerIdentity,
       attestationStatus,
       attestationMessage,
+      verificationSteps,
       attestationDetails,
       exportRecoveryBundle,
       deleteNodeData,
