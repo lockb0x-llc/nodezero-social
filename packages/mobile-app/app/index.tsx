@@ -20,6 +20,7 @@ import {
   Platform,
   ScrollView,
   Linking,
+  Modal,
 } from 'react-native'
 import { useRouter, usePathname } from 'expo-router'
 import Constants from 'expo-constants'
@@ -313,6 +314,57 @@ function LandingAuthCard({
   )
 }
 
+function NodeZeroConceptDiagram(): JSX.Element {
+  return (
+    <View style={styles.diagramCard}>
+      <View style={styles.diagramRowTop}>
+        <View style={[styles.diagramNode, styles.diagramNodePrimary]}>
+          <Text style={styles.diagramNodeTitle}>Your device</Text>
+          <Text style={styles.diagramNodeSub}>Active Node Zero</Text>
+        </View>
+        <Text style={styles.diagramArrow}>syncs with</Text>
+        <View style={styles.diagramNode}>
+          <Text style={styles.diagramNodeTitle}>Your Pod</Text>
+          <Text style={styles.diagramNodeSub}>Source of truth</Text>
+          <Text style={styles.diagramNodeMeta}>profile + FOAF graph</Text>
+        </View>
+      </View>
+
+      <View style={styles.diagramDivider} />
+
+      <View style={styles.diagramRowBottom}>
+        <View style={styles.diagramChip}>
+          <Text style={styles.diagramChipTitle}>Connected devices</Text>
+          <Text style={styles.diagramChipSub}>phone · laptop · tablet</Text>
+          <Text style={styles.diagramChipMeta}>Any can become your active Node Zero</Text>
+        </View>
+        <View style={styles.diagramChip}>
+          <Text style={styles.diagramChipTitle}>NodeZero network layer</Text>
+          <Text style={styles.diagramChipSub}>local discovery + chronological feed</Text>
+          <Text style={styles.diagramChipMeta}>Built from Pod-based FOAF connections</Text>
+        </View>
+      </View>
+    </View>
+  )
+}
+
+function AuthRedirectOverlay({ visible }: { visible: boolean }): JSX.Element {
+  return (
+    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent>
+      <View style={styles.redirectOverlayBackdrop}>
+        <View style={styles.redirectOverlayCard}>
+          <Text style={styles.redirectOverlayMark}>⊙</Text>
+          <Text style={styles.redirectOverlayTitle}>Continuing to sign in</Text>
+          <Text style={styles.redirectOverlayBody}>
+            Taking you to the Node Zero Community Server to complete secure sign-in.
+          </Text>
+          <ActivityIndicator color={PURPLE} size="small" />
+        </View>
+      </View>
+    </Modal>
+  )
+}
+
 export default function LandingScreen(): JSX.Element {
   const {
     signIn,
@@ -517,11 +569,13 @@ export default function LandingScreen(): JSX.Element {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.root}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+    <>
+      <AuthRedirectOverlay visible={isSigningIn} />
+      <KeyboardAvoidingView
+        style={styles.root}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 
         {/* ── Top nav ─────────────────────────────────── */}
         <View style={styles.nav}>
@@ -532,13 +586,13 @@ export default function LandingScreen(): JSX.Element {
         <View style={styles.hero}>
           {showMarketingContent ? (
             <>
-              <Text style={styles.heroEyebrow}>Decentralized · Private · Yours</Text>
-              <Text style={styles.heroHeadline}>The social network{'\n'}you actually own.</Text>
+              <Text style={styles.heroEyebrow}>Local · Private · Human</Text>
+              <Text style={styles.heroHeadline}>A calmer social network{`\n`}for real communities.</Text>
               <Text style={styles.heroBody}>
-                {'Create a real Solid account with your own Pod on the Node Zero Community Server, then sign in through OIDC. For local real-time discovery, NodeZero only uses your location when you explicitly enable it, converts it to an H3 hex area, and never stores raw GPS in a central database.'}
+                {'Sign in with the Node Zero Community Server in one tap. New here? Create your node in seconds and you are ready to post.'}
               </Text>
               <Text style={styles.heroBody}>
-                {'The Node Zero Community Server at solid.nodezero.social handles Pod creation and hosted Solid OIDC. An H3 hex is a small hexagon-shaped map cell from the open-source H3 grid. Nearby discovery uses these cells so people see an approximate area instead of exact coordinates. We are also adding controls to further obscure or randomize the visible H3 area.'}
+                {'NodeZero keeps the experience simple up front: chronological feed, optional nearby discovery, and privacy controls that you can change anytime.'}
               </Text>
             </>
           ) : (
@@ -586,7 +640,7 @@ export default function LandingScreen(): JSX.Element {
             {/* ── How it works ────────────────────────────── */}
             <View style={styles.section}>
               <Text style={styles.sectionEyebrow}>Three steps</Text>
-              <Text style={styles.sectionTitle}>Own your identity in minutes</Text>
+              <Text style={styles.sectionTitle}>Get started in minutes</Text>
               {STEPS.map((s, i) => (
                 <View key={i} style={styles.stepRow}>
                   <View style={styles.stepNumber}>
@@ -598,6 +652,12 @@ export default function LandingScreen(): JSX.Element {
                   </View>
                 </View>
               ))}
+            </View>
+
+            <View style={styles.section}>
+              <Text style={styles.sectionEyebrow}>Node Zero model</Text>
+              <Text style={styles.sectionTitle}>One identity, multiple devices</Text>
+              <NodeZeroConceptDiagram />
             </View>
 
             {/* ── Features ────────────────────────────────── */}
@@ -618,14 +678,14 @@ export default function LandingScreen(): JSX.Element {
             {/* ── Trust statement ─────────────────────────── */}
             <View style={styles.trustBlock}>
               <Text style={styles.trustStatement}>
-                "NodeZero cannot read your data, sell your profile, or take your identity away."
+                "Built for real communities, not engagement hacks."
               </Text>
-              <Text style={styles.trustSub}>Your Pod. Your keys. Your network.</Text>
+              <Text style={styles.trustSub}>Chronological by default. Local by choice.</Text>
             </View>
 
             {/* ── Final CTA ───────────────────────────────── */}
             <View style={styles.finalCta}>
-              <Text style={styles.finalCtaTitle}>Ready to own your network?</Text>
+              <Text style={styles.finalCtaTitle}>Ready to join your local NodeZero community?</Text>
               <LandingAuthCard
                 source="footer"
                 showResumeHint={false}
@@ -662,8 +722,9 @@ export default function LandingScreen(): JSX.Element {
           </>
         ) : null}
 
-      </ScrollView>
-    </KeyboardAvoidingView>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </>
   )
 }
 
@@ -671,39 +732,39 @@ export default function LandingScreen(): JSX.Element {
 
 const STEPS = [
   {
-    title: 'Get your Pod',
-    desc: 'Create a Solid account with your Pod on the Node Zero Community Server.',
+    title: 'Create your node',
+    desc: 'Use the Node Zero Community Server to create your account and profile in seconds.',
   },
   {
-    title: 'Link your identity',
-    desc: 'Connect your Stellar wallet. A zero-knowledge attestation links your Web3 identity to your Community Server Pod without exposing private data.',
+    title: 'Set up your profile',
+    desc: 'Choose a handle, add your details, and sign in from any device. Your Pod carries your profile and FOAF social graph with you.',
   },
   {
-    title: 'Enable local discovery on your terms',
-    desc: 'When you choose, enable location to discover nearby nodes by H3 hex area (not exact GPS). Your feed stays chronological and unmanipulated.',
+    title: 'Discover people nearby',
+    desc: 'Turn on location only when you want local discovery. You can turn it off anytime.',
   },
 ]
 
 const FEATURES = [
   {
+    icon: '🧭',
+    title: 'Community-first feed',
+    desc: 'See posts in time order from people and places you care about.',
+  },
+  {
     icon: '🔐',
-    title: 'You own every byte',
-    desc: 'Your profile lives in your Solid Pod on the Node Zero Community Server. Delete your NodeZero account and your data stays with you.',
+    title: 'Node Zero starts with you',
+    desc: 'Your Pod is the source of truth, and any device you connect can act as your active Node Zero in your own network.',
   },
   {
     icon: '📍',
-    title: 'Find people nearby',
-    desc: 'Location is opt-in and translated into an H3 hex area. Other users see your H3 area, not your exact coordinates.',
-  },
-  {
-    icon: '🚫',
-    title: 'No feed manipulation',
-    desc: 'Posts arrive in the order they were sent. No engagement scoring, no recommendation engine.',
+    title: 'Privacy by default',
+    desc: 'Nearby discovery uses approximate H3 areas so other users never see your exact coordinates.',
   },
   {
     icon: '🛡️',
-    title: 'Verified, not surveilled',
-    desc: 'Zero-knowledge proofs confirm you\'re a real human. NodeZero does not store your raw location in a central database, and additional H3 obfuscation is being added.',
+    title: 'FOAF-powered social graph',
+    desc: 'Your network is grounded in FOAF connections stored in your Pod, not in a platform-owned follower database.',
   },
 ]
 
@@ -890,6 +951,46 @@ const styles = StyleSheet.create({
   createNodeBlock: { marginTop: 16, borderTopWidth: 1, borderTopColor: BORDER, paddingTop: 16 },
   createNodeTitle: { color: MUTED, fontSize: 13, fontWeight: '600', marginBottom: 12 },
   createNotice: { color: PURPLE, fontSize: 12, lineHeight: 18, marginBottom: 12 },
+
+  // Redirect overlay
+  redirectOverlayBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.56)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  redirectOverlayCard: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: SURFACE,
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 16,
+    paddingHorizontal: 20,
+    paddingVertical: 18,
+    alignItems: 'center',
+  },
+  redirectOverlayMark: {
+    fontSize: 26,
+    color: PURPLE,
+    marginBottom: 8,
+  },
+  redirectOverlayTitle: {
+    color: TEXT,
+    fontSize: 18,
+    fontWeight: '800',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  redirectOverlayBody: {
+    color: MUTED,
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+
   // How it works
   section: {
     paddingHorizontal: 24,
@@ -931,6 +1032,93 @@ const styles = StyleSheet.create({
   stepContent: { flex: 1 },
   stepTitle: { fontSize: 16, fontWeight: '700', color: TEXT, marginBottom: 4 },
   stepDesc: { fontSize: 14, color: MUTED, lineHeight: 22 },
+
+  // Node Zero concept diagram
+  diagramCard: {
+    backgroundColor: SURFACE,
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 16,
+    padding: 16,
+    gap: 14,
+  },
+  diagramRowTop: {
+    flexDirection: Platform.OS === 'web' ? 'row' : 'column',
+    alignItems: Platform.OS === 'web' ? 'center' : 'stretch',
+    gap: 12,
+  },
+  diagramRowBottom: {
+    flexDirection: Platform.OS === 'web' ? 'row' : 'column',
+    gap: 10,
+  },
+  diagramNode: {
+    flex: 1,
+    minHeight: 96,
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 12,
+    backgroundColor: INPUT_BG,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    justifyContent: 'center',
+  },
+  diagramNodePrimary: {
+    borderColor: PURPLE,
+    backgroundColor: CHIP,
+  },
+  diagramArrow: {
+    color: PURPLE,
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    textAlign: 'center',
+  },
+  diagramNodeTitle: {
+    color: TEXT,
+    fontSize: 15,
+    fontWeight: '700',
+    marginBottom: 3,
+  },
+  diagramNodeSub: {
+    color: MUTED,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  diagramNodeMeta: {
+    color: DIM,
+    fontSize: 11,
+    marginTop: 4,
+  },
+  diagramDivider: {
+    height: 1,
+    backgroundColor: BORDER,
+  },
+  diagramChip: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 10,
+    backgroundColor: BG,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  diagramChipTitle: {
+    color: TEXT,
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  diagramChipSub: {
+    color: MUTED,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  diagramChipMeta: {
+    color: DIM,
+    fontSize: 11,
+    marginTop: 4,
+  },
 
   // Features
   featureGrid: {

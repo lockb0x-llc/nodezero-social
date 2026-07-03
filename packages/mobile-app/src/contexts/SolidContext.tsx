@@ -134,7 +134,9 @@ export function validateIdpUrl(raw: string, envProfile: string = getEnvProfile()
 
 function resolveRedirectUrl(): string {
   if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.href) {
-    return window.location.href
+    // OIDC redirectUrl must not include reserved callback params such as `code` or `state`.
+    // Using origin + pathname prevents stale error/callback query fragments from breaking login.
+    return `${window.location.origin}${window.location.pathname}`
   }
   if (Platform.OS === 'web') {
     throw new Error(

@@ -1,0 +1,394 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.41.2.15936",
+      "templateHash": "2286920949046773426"
+    }
+  },
+  "parameters": {
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]",
+      "metadata": {
+        "description": "Deployment location for all resources."
+      }
+    },
+    "environmentName": {
+      "type": "string",
+      "defaultValue": "staging-testnet",
+      "allowedValues": [
+        "testnet",
+        "staging-testnet"
+      ],
+      "metadata": {
+        "description": "Short environment identifier. Production intentionally unsupported by this MVP module."
+      }
+    },
+    "appName": {
+      "type": "string",
+      "defaultValue": "nodezero-social",
+      "minLength": 3,
+      "metadata": {
+        "description": "Global application name prefix."
+      }
+    },
+    "cssImage": {
+      "type": "string",
+      "defaultValue": "docker.io/solidproject/community-server:7.1.9",
+      "metadata": {
+        "description": "Pinned Community Solid Server container image."
+      }
+    },
+    "cssConfigArg": {
+      "type": "string",
+      "defaultValue": "@css:config/file.json",
+      "metadata": {
+        "description": "CSS config argument passed to `-c` (for example, @css:config/file.json or a custom config path)."
+      }
+    },
+    "cssDataPath": {
+      "type": "string",
+      "defaultValue": "/data",
+      "metadata": {
+        "description": "CSS data directory argument passed to `-f`. Must be an absolute Linux path in the container."
+      }
+    },
+    "cssExtraArgs": {
+      "type": "array",
+      "defaultValue": [],
+      "metadata": {
+        "description": "Optional extra CLI args appended to the CSS container command."
+      }
+    },
+    "fileShareQuotaGb": {
+      "type": "int",
+      "defaultValue": 100,
+      "minValue": 1,
+      "maxValue": 1024,
+      "metadata": {
+        "description": "Azure Files share size in GiB for Pod + account data."
+      }
+    },
+    "containerCpu": {
+      "type": "string",
+      "defaultValue": "1.0",
+      "metadata": {
+        "description": "vCPU cores for the CSS container (must pair with containerMemory per ACA rules)."
+      }
+    },
+    "containerMemory": {
+      "type": "string",
+      "defaultValue": "2Gi",
+      "metadata": {
+        "description": "Memory for the CSS container (e.g. 2Gi pairs with 1.0 vCPU)."
+      }
+    },
+    "cssCustomDomain": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Optional custom domain host for CSS identity URLs (for example, solid.nodezero.social). Leave empty to use the default ACA ingress domain."
+      }
+    },
+    "logAnalyticsRetentionDays": {
+      "type": "int",
+      "defaultValue": 30,
+      "minValue": 30,
+      "maxValue": 90,
+      "metadata": {
+        "description": "Log Analytics retention period in days."
+      }
+    },
+    "logAnalyticsDailyQuotaGb": {
+      "type": "int",
+      "defaultValue": 1,
+      "minValue": 1,
+      "maxValue": 10,
+      "metadata": {
+        "description": "Daily ingestion cap (GB) for the Log Analytics workspace."
+      }
+    },
+    "emailProviderMode": {
+      "type": "string",
+      "defaultValue": "none",
+      "allowedValues": [
+        "none",
+        "smtp"
+      ],
+      "metadata": {
+        "description": "Email provider mode for CSS identity notifications. Use smtp to enable forgot-password email delivery, or none to disable email sending."
+      }
+    },
+    "emailFromAddress": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "From address for security/auth emails sent by CSS."
+      }
+    },
+    "emailFromName": {
+      "type": "string",
+      "defaultValue": "Node Zero Security",
+      "metadata": {
+        "description": "From display name for security/auth emails sent by CSS."
+      }
+    },
+    "smtpHost": {
+      "type": "string",
+      "defaultValue": "smtp.azurecomm.net",
+      "metadata": {
+        "description": "SMTP host used when emailProviderMode=smtp."
+      }
+    },
+    "smtpPort": {
+      "type": "int",
+      "defaultValue": 587,
+      "minValue": 1,
+      "maxValue": 65535,
+      "metadata": {
+        "description": "SMTP port used when emailProviderMode=smtp."
+      }
+    },
+    "smtpStartTls": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Whether STARTTLS should be used for SMTP connections."
+      }
+    },
+    "smtpUsername": {
+      "type": "securestring",
+      "defaultValue": "",
+      "metadata": {
+        "description": "SMTP username used when emailProviderMode=smtp."
+      }
+    },
+    "smtpPassword": {
+      "type": "securestring",
+      "defaultValue": "",
+      "metadata": {
+        "description": "SMTP password/secret used when emailProviderMode=smtp."
+      }
+    }
+  },
+  "variables": {
+    "resourceToken": "[toLower(uniqueString(resourceGroup().id, parameters('appName'), parameters('environmentName'), 'solid'))]",
+    "logAnalyticsName": "[format('{0}-{1}-solid-law', parameters('appName'), parameters('environmentName'))]",
+    "storageAccountName": "[format('stsolid{0}', take(variables('resourceToken'), 16))]",
+    "managedEnvName": "[format('{0}-{1}-solid-env', parameters('appName'), parameters('environmentName'))]",
+    "containerAppName": "[format('nz-{0}-solid', parameters('environmentName'))]",
+    "shareName": "css-data",
+    "envStorageName": "cssdata",
+    "volumeName": "css-data",
+    "commonTags": {
+      "application": "[parameters('appName')]",
+      "environment": "[parameters('environmentName')]",
+      "component": "solid-server",
+      "runtimeBoundary": "non-production",
+      "costGuardrail": "enabled"
+    },
+    "smtpSecrets": "[if(equals(parameters('emailProviderMode'), 'smtp'), createArray(createObject('name', 'solid-smtp-username', 'value', parameters('smtpUsername')), createObject('name', 'solid-smtp-password', 'value', parameters('smtpPassword'))), createArray())]",
+    "emailBaseEnv": [
+      {
+        "name": "NZ_SOLID_EMAIL_PROVIDER_MODE",
+        "value": "[parameters('emailProviderMode')]"
+      },
+      {
+        "name": "NZ_SOLID_EMAIL_FROM_ADDRESS",
+        "value": "[parameters('emailFromAddress')]"
+      },
+      {
+        "name": "NZ_SOLID_EMAIL_FROM_NAME",
+        "value": "[parameters('emailFromName')]"
+      },
+      {
+        "name": "NZ_SOLID_SMTP_HOST",
+        "value": "[parameters('smtpHost')]"
+      },
+      {
+        "name": "NZ_SOLID_SMTP_PORT",
+        "value": "[string(parameters('smtpPort'))]"
+      },
+      {
+        "name": "NZ_SOLID_SMTP_STARTTLS",
+        "value": "[if(parameters('smtpStartTls'), 'true', 'false')]"
+      }
+    ],
+    "smtpSecretEnv": "[if(equals(parameters('emailProviderMode'), 'smtp'), createArray(createObject('name', 'NZ_SOLID_SMTP_USERNAME', 'secretRef', 'solid-smtp-username'), createObject('name', 'NZ_SOLID_SMTP_PASSWORD', 'secretRef', 'solid-smtp-password')), createArray())]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.OperationalInsights/workspaces",
+      "apiVersion": "2022-10-01",
+      "name": "[variables('logAnalyticsName')]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('commonTags')]",
+      "properties": {
+        "retentionInDays": "[parameters('logAnalyticsRetentionDays')]",
+        "sku": {
+          "name": "PerGB2018"
+        },
+        "workspaceCapping": {
+          "dailyQuotaGb": "[parameters('logAnalyticsDailyQuotaGb')]"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Storage/storageAccounts",
+      "apiVersion": "2023-05-01",
+      "name": "[variables('storageAccountName')]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('commonTags')]",
+      "sku": {
+        "name": "Standard_LRS"
+      },
+      "kind": "StorageV2",
+      "properties": {
+        "minimumTlsVersion": "TLS1_2",
+        "allowBlobPublicAccess": false,
+        "supportsHttpsTrafficOnly": true
+      }
+    },
+    {
+      "type": "Microsoft.Storage/storageAccounts/fileServices",
+      "apiVersion": "2023-05-01",
+      "name": "[format('{0}/{1}', variables('storageAccountName'), 'default')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Storage/storageAccounts/fileServices/shares",
+      "apiVersion": "2023-05-01",
+      "name": "[format('{0}/{1}/{2}', variables('storageAccountName'), 'default', variables('shareName'))]",
+      "properties": {
+        "shareQuota": "[parameters('fileShareQuotaGb')]",
+        "enabledProtocols": "SMB"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts/fileServices', variables('storageAccountName'), 'default')]"
+      ]
+    },
+    {
+      "type": "Microsoft.App/managedEnvironments",
+      "apiVersion": "2024-03-01",
+      "name": "[variables('managedEnvName')]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('commonTags')]",
+      "properties": {
+        "appLogsConfiguration": {
+          "destination": "log-analytics",
+          "logAnalyticsConfiguration": {
+            "customerId": "[reference(resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsName')), '2022-10-01').customerId]",
+            "sharedKey": "[listKeys(resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsName')), '2022-10-01').primarySharedKey]"
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.App/managedEnvironments/storages",
+      "apiVersion": "2024-03-01",
+      "name": "[format('{0}/{1}', variables('managedEnvName'), variables('envStorageName'))]",
+      "properties": {
+        "azureFile": {
+          "accountName": "[variables('storageAccountName')]",
+          "accountKey": "[listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2023-05-01').keys[0].value]",
+          "shareName": "[variables('shareName')]",
+          "accessMode": "ReadWrite"
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.App/managedEnvironments', variables('managedEnvName'))]",
+        "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.App/containerApps",
+      "apiVersion": "2024-03-01",
+      "name": "[variables('containerAppName')]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('commonTags')]",
+      "properties": {
+        "managedEnvironmentId": "[resourceId('Microsoft.App/managedEnvironments', variables('managedEnvName'))]",
+        "configuration": {
+          "secrets": "[variables('smtpSecrets')]",
+          "ingress": {
+            "external": true,
+            "targetPort": 3000,
+            "transport": "auto",
+            "allowInsecure": false,
+            "traffic": [
+              {
+                "latestRevision": true,
+                "weight": 100
+              }
+            ]
+          }
+        },
+        "template": {
+          "containers": [
+            {
+              "name": "css",
+              "image": "[parameters('cssImage')]",
+              "resources": {
+                "cpu": "[json(parameters('containerCpu'))]",
+                "memory": "[parameters('containerMemory')]"
+              },
+              "args": "[concat(createArray('-b', format('https://{0}/', if(endsWith(if(empty(parameters('cssCustomDomain')), format('{0}.{1}', variables('containerAppName'), reference(resourceId('Microsoft.App/managedEnvironments', variables('managedEnvName')), '2024-03-01').defaultDomain), parameters('cssCustomDomain')), '/'), substring(if(empty(parameters('cssCustomDomain')), format('{0}.{1}', variables('containerAppName'), reference(resourceId('Microsoft.App/managedEnvironments', variables('managedEnvName')), '2024-03-01').defaultDomain), parameters('cssCustomDomain')), 0, max(sub(length(if(empty(parameters('cssCustomDomain')), format('{0}.{1}', variables('containerAppName'), reference(resourceId('Microsoft.App/managedEnvironments', variables('managedEnvName')), '2024-03-01').defaultDomain), parameters('cssCustomDomain'))), 1), 0)), if(empty(parameters('cssCustomDomain')), format('{0}.{1}', variables('containerAppName'), reference(resourceId('Microsoft.App/managedEnvironments', variables('managedEnvName')), '2024-03-01').defaultDomain), parameters('cssCustomDomain')))), '-c', parameters('cssConfigArg'), '-f', parameters('cssDataPath'), '-p', '3000', '--loggingLevel', 'info'), parameters('cssExtraArgs'))]",
+              "env": "[concat(variables('emailBaseEnv'), variables('smtpSecretEnv'))]",
+              "volumeMounts": [
+                {
+                  "volumeName": "[variables('volumeName')]",
+                  "mountPath": "/data"
+                }
+              ]
+            }
+          ],
+          "scale": {
+            "minReplicas": 1,
+            "maxReplicas": 1
+          },
+          "volumes": [
+            {
+              "name": "[variables('volumeName')]",
+              "storageType": "AzureFile",
+              "storageName": "[variables('envStorageName')]"
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.App/managedEnvironments/storages', variables('managedEnvName'), variables('envStorageName'))]",
+        "[resourceId('Microsoft.App/managedEnvironments', variables('managedEnvName'))]"
+      ]
+    }
+  ],
+  "outputs": {
+    "cssBaseUrl": {
+      "type": "string",
+      "value": "[format('https://{0}/', if(endsWith(if(empty(parameters('cssCustomDomain')), format('{0}.{1}', variables('containerAppName'), reference(resourceId('Microsoft.App/managedEnvironments', variables('managedEnvName')), '2024-03-01').defaultDomain), parameters('cssCustomDomain')), '/'), substring(if(empty(parameters('cssCustomDomain')), format('{0}.{1}', variables('containerAppName'), reference(resourceId('Microsoft.App/managedEnvironments', variables('managedEnvName')), '2024-03-01').defaultDomain), parameters('cssCustomDomain')), 0, max(sub(length(if(empty(parameters('cssCustomDomain')), format('{0}.{1}', variables('containerAppName'), reference(resourceId('Microsoft.App/managedEnvironments', variables('managedEnvName')), '2024-03-01').defaultDomain), parameters('cssCustomDomain'))), 1), 0)), if(empty(parameters('cssCustomDomain')), format('{0}.{1}', variables('containerAppName'), reference(resourceId('Microsoft.App/managedEnvironments', variables('managedEnvName')), '2024-03-01').defaultDomain), parameters('cssCustomDomain'))))]"
+    },
+    "cssFqdn": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.App/containerApps', variables('containerAppName')), '2024-03-01').configuration.ingress.fqdn]"
+    },
+    "containerAppName": {
+      "type": "string",
+      "value": "[variables('containerAppName')]"
+    },
+    "storageAccountName": {
+      "type": "string",
+      "value": "[variables('storageAccountName')]"
+    },
+    "logAnalyticsName": {
+      "type": "string",
+      "value": "[variables('logAnalyticsName')]"
+    }
+  }
+}
