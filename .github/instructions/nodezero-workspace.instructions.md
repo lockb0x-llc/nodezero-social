@@ -41,6 +41,7 @@ Hard rules:
 - Never target production domain from staging flows.
 - Never bypass production protection in staging scripts.
 - Never use example parameters file for real deployment.
+- The Node Zero Community Server (`https://solid.nodezero.social/`) is the default identity provider in all auth surfaces; `solidcommunity.net` is a secondary external-Pod option only. Never build/deploy a web bundle without `NZ_ENV_PROFILE` and `NZ_NODEZERO_ISSUER_URL` resolved (a `local`-profile bundle drops the Community Server from sign-in).
 
 When modifying env or deploy logic, verify:
 - `scripts/policy/validate-env-isolation.sh` still passes.

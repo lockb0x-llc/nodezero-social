@@ -2,8 +2,9 @@
  * LandingScreen – NodeZero.social public entry point.
  *
  * Marketing landing page for new and returning visitors.
- * New users: "Create Your Node" → solidcommunity.net Pod creation flow.
- * Returning users: "Sign In" → IDP URL entry → Solid Pod auth.
+ * New users: "Create Your Node" → Node Zero Community Server Pod creation.
+ * Returning users: "Sign In" → Node Zero Community Server OIDC by default
+ * (solidcommunity.net offered as a secondary external-Pod option).
  * Authenticated users are immediately redirected to /feed.
  */
 

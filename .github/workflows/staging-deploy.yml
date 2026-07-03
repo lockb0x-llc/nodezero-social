@@ -116,6 +116,22 @@ jobs:
 
       - name: Build Expo web artifact
         env:
+          # Full staging-testnet profile. NZ_ENV_PROFILE enables the strict
+          # variable checks in app.config.js, so a build missing any of these
+          # fails instead of silently shipping a local-profile bundle (which
+          # would drop the Node Zero Community Server as the default IdP).
+          NZ_ENV_PROFILE: staging-testnet
+          NZ_RELAY_URL: wss://nodezero-social-staging-testnet-relay.azurewebsites.net
+          NZ_IDENTITY_CONTRACT_ID: CCHFYOKLGVTXEYYHWEFPI22FR26VRGG2CBBUTP6XPW3ZSIWIKEVQQ44K
+          NZ_LOCKBOX_CONTRACT_ID: CB36LY5WZLJNMY4DHRXQER6LU3L4E5MGFYT2XSJG7ZJZV5SIIOKODT2H
+          NZ_LOCKBOX_FACTORY_CONTRACT_ID: CA5MASVC7CH646QUZM6HFC3JAYIG4TCRHJDSBDOBFP66IW7TXYYHFUVB
+          NZ_ZK_ARTIFACTS_URL: https://stki7yquyjmnskg.blob.core.windows.net/zk-artifacts/
+          NZ_ZK_MANIFEST_URL: https://stki7yquyjmnskg.blob.core.windows.net/zk-artifacts/zk-testnet-artifacts.json
+          NZ_NODEZERO_ISSUER_URL: https://solid.nodezero.social/
+          NZ_SOLID_OIDC_ISSUER_URL: https://solidcommunity.net/
+          NZ_SOLID_SIGNUP_URL: https://solidcommunity.net/register
+          NZ_SOLID_ACCOUNT_PORTAL_URL: https://solidcommunity.net/
+          NZ_SEAMLESS_ONBOARDING_ENABLED: 'true'
           NZ_JSS_PROVISIONER_URL: https://nodezero-social-staging-testnet-provisioner.azurewebsites.net
         run: pnpm --filter @nodezero/mobile-app build:web
 

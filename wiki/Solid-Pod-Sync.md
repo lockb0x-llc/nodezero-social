@@ -10,6 +10,11 @@ This package provides SOLID-backed profile and social graph synchronization.
 
 ## Staging Pod (verified 2026-06-25)
 
+> **Identity provider policy:** The **Node Zero Community Server**
+> (`https://solid.nodezero.social/`) is the default identity provider for all
+> app sign-in and node creation. The `solidcommunity.net` account below is a
+> legacy external-Pod test fixture, retained for the external-IdP sign-in path.
+
 The `admin@nodezero.social` test account uses a Solid Pod at:
 
 | Field | Value |

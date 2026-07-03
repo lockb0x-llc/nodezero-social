@@ -318,7 +318,8 @@ Items marked ⬜ are not yet started; ✅ items are already structured to suppor
 | `NZ_IDENTITY_CONTRACT_ID` | TestNet ID | MainNet ID (to be deployed) |
 | `NZ_LOCKBOX_CONTRACT_ID` | TestNet ID | MainNet ID |
 | `NZ_LOCKBOX_FACTORY_CONTRACT_ID` | TestNet ID | MainNet ID |
-| `NZ_SOLID_OIDC_ISSUER_URL` | `https://solidcommunity.net/` | `https://solid.nodezero.social/` or external |
+| `NZ_NODEZERO_ISSUER_URL` | `https://solid.nodezero.social/` (default IdP: Node Zero Community Server) | production Community Server issuer (must be set explicitly) |
+| `NZ_SOLID_OIDC_ISSUER_URL` | `https://solidcommunity.net/` (secondary external-Pod option) | external Solid IdP option |
 | `NZ_RELAY_URL` | `wss://nodezero-social-staging-testnet-relay.azurewebsites.net` | production relay endpoint |
 | `NZ_JSS_PROVISIONER_URL` | `https://nodezero-social-staging-testnet-provisioner.azurewebsites.net` | production provisioner endpoint |
 

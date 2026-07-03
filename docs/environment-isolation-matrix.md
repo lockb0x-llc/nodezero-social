@@ -30,6 +30,21 @@ All non-local builds must define these variables explicitly:
 - NZ_LOCKBOX_CONTRACT_ID
 - NZ_ZK_ARTIFACTS_URL
 - NZ_ZK_MANIFEST_URL
+- NZ_NODEZERO_ISSUER_URL
+- NZ_SOLID_OIDC_ISSUER_URL
+- NZ_SOLID_SIGNUP_URL
+
+## Identity provider defaults
+
+The Node Zero Community Server is the default identity provider in every
+sign-in/signup surface. `solidcommunity.net` is a secondary option for users
+with an external Solid Pod — it must never be presented as the default.
+
+| Profile | Node Zero Community Server issuer (`NZ_NODEZERO_ISSUER_URL`) |
+|---|---|
+| local | https://solid.nodezero.social/ (staging server; default) |
+| staging-testnet | https://solid.nodezero.social/ (default; build fails if unset) |
+| production-mainnet | Must be set explicitly; never inherit the staging URL |
 
 ## Required deployment variables
 

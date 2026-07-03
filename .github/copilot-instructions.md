@@ -32,6 +32,12 @@ Preserve environment isolation at all times:
 - Production mainnet deployment is not allowed from staging scripts.
 - Do not deploy with `infrastructure/azure/main.parameters.example.json`.
 
+## Identity provider policy
+- NodeZero operates its own hosted Solid server: the **Node Zero Community Server** at `https://solid.nodezero.social/` (Community Solid Server on Azure Container Apps, `infrastructure/azure/solid-server.bicep`).
+- The Node Zero Community Server is the **default identity provider** in every sign-in and signup surface. `solidcommunity.net` is only a secondary option for users with an external Solid Pod — never the default.
+- `NZ_NODEZERO_ISSUER_URL` drives this. `app.config.js` defaults it to the hosted staging Community Server for local/staging; strict profiles fail the build if it is missing.
+- Web bundles MUST be built with `NZ_ENV_PROFILE=staging-testnet` (or production) and the full variable set — a bundle built under the `local` profile silently drops the Community Server from the sign-in options. The staging workflow's "Build Expo web artifact" step is the reference variable set.
+
 When touching deployment or environment code, ensure these pass:
 - `pnpm policy:validate-env`
 - Script guardrails in `scripts/azure/deploy.sh`

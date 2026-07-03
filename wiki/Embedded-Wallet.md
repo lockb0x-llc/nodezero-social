@@ -45,7 +45,7 @@ High-level Stellar operations: derive keypair from enclave, submit Soroban contr
 The test Solid Pod for staging is:
 - **Pod URL**: `https://nodezero.solidcommunity.net/`
 - **WebID**: `https://nodezero.solidcommunity.net/profile/card#me`
-- **OIDC Issuer / IdP**: `https://solidcommunity.net/`
+- **OIDC Issuer / IdP**: `https://solidcommunity.net/` (external-Pod test fixture; the app default IdP is the Node Zero Community Server at `https://solid.nodezero.social/`)
 - **Pod structure**: `inbox/`, `public/`, `profile/`, `settings/`, `README`, `robots.txt`
 - **Profile state**: Fresh pod — no custom `foaf:name`, no social graph (`/social/` not yet created)
 - **Auth method**: CSS client credentials token exchange works (200 OK); DPoP required for write operations
