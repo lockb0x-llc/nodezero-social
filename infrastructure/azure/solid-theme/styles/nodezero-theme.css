@@ -1,0 +1,150 @@
+:root {
+  --nz-bg: #0a1b2a;
+  --nz-bg-soft: #16364f;
+  --nz-card: #0f2638;
+  --nz-text: #e7f3ff;
+  --nz-muted: #9ec1de;
+  --nz-accent: #22d3ee;
+  --nz-accent-strong: #06b6d4;
+  --nz-border: rgba(158, 193, 222, 0.35);
+}
+
+body.nz-shell {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "Space Grotesk", "Segoe UI", sans-serif;
+  color: var(--nz-text);
+  background: radial-gradient(circle at 15% 15%, #1f4e70 0%, var(--nz-bg) 45%),
+              linear-gradient(145deg, #07111b 0%, #0a1b2a 100%);
+}
+
+.nz-bg-orb {
+  position: fixed;
+  border-radius: 9999px;
+  filter: blur(42px);
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+.nz-bg-orb--one {
+  width: 18rem;
+  height: 18rem;
+  right: -4rem;
+  top: -4rem;
+  background: #06b6d4;
+}
+
+.nz-bg-orb--two {
+  width: 14rem;
+  height: 14rem;
+  left: -3rem;
+  bottom: -3rem;
+  background: #0ea5e9;
+}
+
+.nz-header,
+.nz-main,
+.nz-footer {
+  position: relative;
+  z-index: 2;
+}
+
+.nz-header {
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: 1.25rem 1rem 0.5rem;
+}
+
+.nz-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  text-decoration: none;
+  color: var(--nz-text);
+}
+
+.nz-logo {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 9999px;
+  box-shadow: 0 0 0 2px rgba(34, 211, 238, 0.3);
+}
+
+.nz-brand-text {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.nz-main {
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: 0.5rem 1rem 2rem;
+}
+
+main h1,
+main h2,
+main h3,
+main p,
+main label,
+main li,
+main span {
+  color: var(--nz-text);
+}
+
+main a {
+  color: var(--nz-accent);
+}
+
+main form,
+main section,
+main .card,
+main article {
+  background: linear-gradient(170deg, rgba(17, 44, 64, 0.96) 0%, rgba(11, 29, 42, 0.96) 100%);
+  border: 1px solid var(--nz-border);
+  border-radius: 1rem;
+  box-shadow: 0 20px 45px rgba(1, 8, 14, 0.45);
+}
+
+main form {
+  padding: 1.25rem;
+}
+
+main input,
+main select,
+main textarea,
+main button {
+  font-family: inherit;
+}
+
+main input,
+main select,
+main textarea {
+  background: rgba(4, 14, 22, 0.75);
+  color: var(--nz-text);
+  border: 1px solid var(--nz-border);
+  border-radius: 0.65rem;
+}
+
+main button,
+main [type="submit"],
+main .button {
+  background: linear-gradient(120deg, var(--nz-accent) 0%, var(--nz-accent-strong) 100%);
+  color: #042133;
+  border: none;
+  border-radius: 0.7rem;
+  font-weight: 700;
+}
+
+main button:hover,
+main [type="submit"]:hover,
+main .button:hover {
+  filter: brightness(1.05);
+}
+
+.nz-footer {
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: 0 1rem 1.5rem;
+  color: var(--nz-muted);
+  font-size: 0.85rem;
+}

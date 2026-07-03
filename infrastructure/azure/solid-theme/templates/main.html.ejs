@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title><%= extractTitle(htmlBody) %></title>
+  <link rel="stylesheet" href="<%= baseUrl -%>.well-known/css/styles/main.css?v=20260703-nodezero" type="text/css">
+  <link rel="stylesheet" href="<%= baseUrl -%>.well-known/css/styles/nodezero-base-tailwind.css?v=20260703-nodezero" type="text/css">
+  <link rel="stylesheet" href="<%= baseUrl -%>.well-known/css/styles/nodezero-theme.css?v=20260703-nodezero" type="text/css">
+  <script type="text/javascript" src="<%= baseUrl -%>.well-known/css/scripts/util.js?v=20260703-nodezero"></script>
+</head>
+<body class="nz-shell">
+  <div class="nz-bg-orb nz-bg-orb--one"></div>
+  <div class="nz-bg-orb nz-bg-orb--two"></div>
+  <header class="nz-header">
+    <a class="nz-brand" href="<%= baseUrl %>">
+      <img class="nz-logo" src="<%= baseUrl -%>.well-known/css/images/solid.svg" alt="Solid logo" />
+      <span class="nz-brand-text">NodeZero Identity</span>
+    </a>
+  </header>
+  <main class="nz-main">
+    <%- htmlBody %>
+  </main>
+  <footer class="nz-footer">
+    <p>Powered by Community Solid Server for NodeZero.</p>
+  </footer>
+</body>
+</html>
+
+<%
+function extractTitle(body) {
+  const match = /^<h1[^>]*>([^<]*)<\/h1>/u.exec(body);
+  return match ? match[1] : 'NodeZero Identity';
+}
+%>

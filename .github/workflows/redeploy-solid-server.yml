@@ -21,6 +21,23 @@ on:
         required: true
         default: infrastructure/azure/solid-server.parameters.staging-testnet.json
         type: string
+      css_image:
+        description: Optional custom Community Solid Server image override
+        required: false
+        type: string
+      css_image_registry_server:
+        description: Optional registry server for private css_image pulls
+        required: false
+        type: string
+      css_image_registry_username:
+        description: Optional registry username for private css_image pulls
+        required: false
+        type: string
+      css_image_registry_password_secret_name:
+        description: GitHub environment secret name containing private registry password/token
+        required: false
+        default: SOLID_CSS_IMAGE_REGISTRY_PASSWORD
+        type: string
       css_config_arg:
         description: Optional CSS -c override
         required: false
@@ -32,6 +49,48 @@ on:
       css_extra_args_json:
         description: Optional JSON array string for extra CSS args
         required: false
+        type: string
+      email_provider_mode:
+        description: Email provider mode for CSS notifications (none or smtp)
+        required: false
+        default: none
+        type: choice
+        options:
+          - none
+          - smtp
+      email_from_address:
+        description: From email address for CSS auth/security notifications
+        required: false
+        type: string
+      email_from_name:
+        description: From display name for CSS auth/security notifications
+        required: false
+        default: Node Zero Security
+        type: string
+      smtp_host:
+        description: SMTP host (used when email_provider_mode=smtp)
+        required: false
+        default: smtp.azurecomm.net
+        type: string
+      smtp_port:
+        description: SMTP port (used when email_provider_mode=smtp)
+        required: false
+        default: "587"
+        type: string
+      smtp_starttls:
+        description: Use STARTTLS for SMTP
+        required: false
+        default: true
+        type: boolean
+      smtp_username_secret_name:
+        description: GitHub environment secret name containing SMTP username
+        required: false
+        default: SOLID_SMTP_USERNAME
+        type: string
+      smtp_password_secret_name:
+        description: GitHub environment secret name containing SMTP password
+        required: false
+        default: SOLID_SMTP_PASSWORD
         type: string
       dns_autofix:
         description: Auto-correct DNS CNAME when custom host is used
@@ -86,9 +145,21 @@ jobs:
           AZURE_RESOURCE_GROUP: ${{ inputs.resource_group }}
           AZURE_BICEP_PARAMETERS_FILE: ${{ inputs.parameters_file }}
           AZURE_ENVIRONMENT_NAME: ${{ inputs.environment_name }}
+          AZURE_SOLID_CSS_IMAGE: ${{ inputs.css_image }}
+          AZURE_SOLID_CSS_IMAGE_REGISTRY_SERVER: ${{ inputs.css_image_registry_server }}
+          AZURE_SOLID_CSS_IMAGE_REGISTRY_USERNAME: ${{ inputs.css_image_registry_username }}
+          AZURE_SOLID_CSS_IMAGE_REGISTRY_PASSWORD: ${{ secrets[inputs.css_image_registry_password_secret_name] }}
           AZURE_CSS_CONFIG_ARG: ${{ inputs.css_config_arg }}
           AZURE_CSS_DATA_PATH: ${{ inputs.css_data_path }}
           AZURE_CSS_EXTRA_ARGS_JSON: ${{ inputs.css_extra_args_json }}
+          AZURE_SOLID_EMAIL_PROVIDER_MODE: ${{ inputs.email_provider_mode }}
+          AZURE_SOLID_EMAIL_FROM_ADDRESS: ${{ inputs.email_from_address }}
+          AZURE_SOLID_EMAIL_FROM_NAME: ${{ inputs.email_from_name }}
+          AZURE_SOLID_SMTP_HOST: ${{ inputs.smtp_host }}
+          AZURE_SOLID_SMTP_PORT: ${{ inputs.smtp_port }}
+          AZURE_SOLID_SMTP_STARTTLS: ${{ inputs.smtp_starttls }}
+          AZURE_SOLID_SMTP_USERNAME: ${{ secrets[inputs.smtp_username_secret_name] }}
+          AZURE_SOLID_SMTP_PASSWORD: ${{ secrets[inputs.smtp_password_secret_name] }}
           AZURE_SOLID_DNS_AUTOFIX: ${{ inputs.dns_autofix }}
           AZURE_SOLID_DNS_ZONE_NAME: ${{ inputs.dns_zone_name }}
           AZURE_SOLID_DNS_RESOURCE_GROUP: ${{ inputs.dns_resource_group }}

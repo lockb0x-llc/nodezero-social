@@ -29,6 +29,25 @@ param appName string = 'nodezero-social'
 @description('Pinned Community Solid Server container image.')
 param cssImage string = 'docker.io/solidproject/community-server:7.1.9'
 
+@description('Optional container registry server for cssImage when pulling from a private registry.')
+param cssImageRegistryServer string = ''
+
+@description('Optional container registry username for cssImage private pulls.')
+param cssImageRegistryUsername string = ''
+
+@description('Optional container registry password/token for cssImage private pulls.')
+@secure()
+param cssImageRegistryPassword string = ''
+
+@description('CSS config argument passed to `-c` (for example, @css:config/file.json or a custom config path).')
+param cssConfigArg string = '@css:config/file.json'
+
+@description('CSS data directory argument passed to `-f`. Must be an absolute Linux path in the container.')
+param cssDataPath string = '/data'
+
+@description('Optional extra CLI args appended to the CSS container command.')
+param cssExtraArgs array = []
+
 @description('Azure Files share size in GiB for Pod + account data.')
 @minValue(1)
 @maxValue(1024)
@@ -52,6 +71,38 @@ param logAnalyticsRetentionDays int = 30
 @minValue(1)
 @maxValue(10)
 param logAnalyticsDailyQuotaGb int = 1
+
+@description('Email provider mode for CSS identity notifications. Use smtp to enable forgot-password email delivery, or none to disable email sending.')
+@allowed([
+  'none'
+  'smtp'
+])
+param emailProviderMode string = 'none'
+
+@description('From address for security/auth emails sent by CSS.')
+param emailFromAddress string = ''
+
+@description('From display name for security/auth emails sent by CSS.')
+param emailFromName string = 'Node Zero Security'
+
+@description('SMTP host used when emailProviderMode=smtp.')
+param smtpHost string = 'smtp.azurecomm.net'
+
+@description('SMTP port used when emailProviderMode=smtp.')
+@minValue(1)
+@maxValue(65535)
+param smtpPort int = 587
+
+@description('Whether STARTTLS should be used for SMTP connections.')
+param smtpStartTls bool = true
+
+@description('SMTP username used when emailProviderMode=smtp.')
+@secure()
+param smtpUsername string = ''
+
+@description('SMTP password/secret used when emailProviderMode=smtp.')
+@secure()
+param smtpPassword string = ''
 
 var resourceToken = toLower(uniqueString(resourceGroup().id, appName, environmentName, 'solid'))
 var logAnalyticsName = '${appName}-${environmentName}-solid-law'
@@ -145,8 +196,88 @@ resource envStorage 'Microsoft.App/managedEnvironments/storages@2024-03-01' = {
 
 // OIDC issuer + WebID base URL must be the public HTTPS origin of the ingress.
 var baseHostRaw = empty(cssCustomDomain) ? '${containerAppName}.${managedEnv.properties.defaultDomain}' : cssCustomDomain
-var baseHost = endsWith(baseHostRaw, '/') ? substring(baseHostRaw, 0, length(baseHostRaw) - 1) : baseHostRaw
+var baseHost = endsWith(baseHostRaw, '/') ? substring(baseHostRaw, 0, max(length(baseHostRaw) - 1, 0)) : baseHostRaw
 var baseUrl = 'https://${baseHost}/'
+var cssContainerArgs = concat([
+  '-b'
+  baseUrl
+  '-c'
+  cssConfigArg
+  '-f'
+  cssDataPath
+  '-p'
+  '3000'
+  '--loggingLevel'
+  'info'
+], cssExtraArgs)
+var smtpSecrets = emailProviderMode == 'smtp'
+  ? [
+      {
+        name: 'solid-smtp-username'
+        value: smtpUsername
+      }
+      {
+        name: 'solid-smtp-password'
+        value: smtpPassword
+      }
+    ]
+  : []
+var cssImageRegistryEnabled = !empty(cssImageRegistryServer) && !empty(cssImageRegistryUsername) && !empty(cssImageRegistryPassword)
+var cssImageRegistrySecrets = cssImageRegistryEnabled
+  ? [
+      {
+        name: 'css-image-registry-password'
+        value: cssImageRegistryPassword
+      }
+    ]
+  : []
+var cssImageRegistries = cssImageRegistryEnabled
+  ? [
+      {
+        server: cssImageRegistryServer
+        username: cssImageRegistryUsername
+        passwordSecretRef: 'css-image-registry-password'
+      }
+    ]
+  : []
+var emailBaseEnv = [
+  {
+    name: 'NZ_SOLID_EMAIL_PROVIDER_MODE'
+    value: emailProviderMode
+  }
+  {
+    name: 'NZ_SOLID_EMAIL_FROM_ADDRESS'
+    value: emailFromAddress
+  }
+  {
+    name: 'NZ_SOLID_EMAIL_FROM_NAME'
+    value: emailFromName
+  }
+  {
+    name: 'NZ_SOLID_SMTP_HOST'
+    value: smtpHost
+  }
+  {
+    name: 'NZ_SOLID_SMTP_PORT'
+    value: string(smtpPort)
+  }
+  {
+    name: 'NZ_SOLID_SMTP_STARTTLS'
+    value: smtpStartTls ? 'true' : 'false'
+  }
+]
+var smtpSecretEnv = emailProviderMode == 'smtp'
+  ? [
+      {
+        name: 'NZ_SOLID_SMTP_USERNAME'
+        secretRef: 'solid-smtp-username'
+      }
+      {
+        name: 'NZ_SOLID_SMTP_PASSWORD'
+        secretRef: 'solid-smtp-password'
+      }
+    ]
+  : []
 
 resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
   name: containerAppName
@@ -155,6 +286,8 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
   properties: {
     managedEnvironmentId: managedEnv.id
     configuration: {
+      secrets: concat(smtpSecrets, cssImageRegistrySecrets)
+      registries: cssImageRegistries
       ingress: {
         external: true
         targetPort: 3000
@@ -177,18 +310,8 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
             cpu: json(containerCpu)
             memory: containerMemory
           }
-          args: [
-            '-b'
-            baseUrl
-            '-c'
-            '@css:config/file.json'
-            '-f'
-            '/data'
-            '-p'
-            '3000'
-            '--loggingLevel'
-            'info'
-          ]
+          args: cssContainerArgs
+          env: concat(emailBaseEnv, smtpSecretEnv)
           volumeMounts: [
             {
               volumeName: volumeName

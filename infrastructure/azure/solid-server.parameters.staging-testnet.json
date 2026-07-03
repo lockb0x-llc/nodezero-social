@@ -10,6 +10,12 @@
     "containerCpu": { "value": "1.0" },
     "containerMemory": { "value": "2Gi" },
     "cssCustomDomain": { "value": "solid.nodezero.social" },
+    "emailProviderMode": { "value": "none" },
+    "emailFromAddress": { "value": "" },
+    "emailFromName": { "value": "Node Zero Security" },
+    "smtpHost": { "value": "smtp.azurecomm.net" },
+    "smtpPort": { "value": 587 },
+    "smtpStartTls": { "value": true },
     "logAnalyticsRetentionDays": { "value": 30 },
     "logAnalyticsDailyQuotaGb": { "value": 1 }
   }

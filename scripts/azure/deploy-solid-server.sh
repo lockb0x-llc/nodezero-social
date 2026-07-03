@@ -12,6 +12,18 @@ TARGET_ENVIRONMENT="${AZURE_ENVIRONMENT_NAME:-staging-testnet}"
 CSS_CONFIG_ARG="${AZURE_CSS_CONFIG_ARG:-}"
 CSS_DATA_PATH="${AZURE_CSS_DATA_PATH:-}"
 CSS_EXTRA_ARGS_JSON="${AZURE_CSS_EXTRA_ARGS_JSON:-}"
+CSS_IMAGE="${AZURE_SOLID_CSS_IMAGE:-}"
+CSS_IMAGE_REGISTRY_SERVER="${AZURE_SOLID_CSS_IMAGE_REGISTRY_SERVER:-}"
+CSS_IMAGE_REGISTRY_USERNAME="${AZURE_SOLID_CSS_IMAGE_REGISTRY_USERNAME:-}"
+CSS_IMAGE_REGISTRY_PASSWORD="${AZURE_SOLID_CSS_IMAGE_REGISTRY_PASSWORD:-}"
+EMAIL_PROVIDER_MODE="${AZURE_SOLID_EMAIL_PROVIDER_MODE:-}"
+EMAIL_FROM_ADDRESS="${AZURE_SOLID_EMAIL_FROM_ADDRESS:-}"
+EMAIL_FROM_NAME="${AZURE_SOLID_EMAIL_FROM_NAME:-}"
+SMTP_HOST="${AZURE_SOLID_SMTP_HOST:-}"
+SMTP_PORT="${AZURE_SOLID_SMTP_PORT:-}"
+SMTP_STARTTLS="${AZURE_SOLID_SMTP_STARTTLS:-}"
+SMTP_USERNAME="${AZURE_SOLID_SMTP_USERNAME:-}"
+SMTP_PASSWORD="${AZURE_SOLID_SMTP_PASSWORD:-}"
 
 az_path() {
   local input_path="$1"
@@ -84,8 +96,52 @@ if [[ "$PARAM_ENVIRONMENT" != "$TARGET_ENVIRONMENT" ]]; then
   exit 1
 fi
 
+PARAM_EMAIL_MODE="$(node -e "const fs = require('fs'); const p = JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); console.log((p?.parameters?.emailProviderMode?.value ?? 'none').toLowerCase());" "$PARAM_FILE")"
+EFFECTIVE_EMAIL_MODE="${EMAIL_PROVIDER_MODE:-$PARAM_EMAIL_MODE}"
+
+if [[ "$EFFECTIVE_EMAIL_MODE" != "none" && "$EFFECTIVE_EMAIL_MODE" != "smtp" ]]; then
+  echo "Invalid effective emailProviderMode '$EFFECTIVE_EMAIL_MODE'. Allowed values: none, smtp."
+  exit 1
+fi
+
+if [[ "$EFFECTIVE_EMAIL_MODE" == "smtp" ]]; then
+  if [[ -z "$SMTP_USERNAME" || -z "$SMTP_PASSWORD" ]]; then
+    echo "SMTP mode requires AZURE_SOLID_SMTP_USERNAME and AZURE_SOLID_SMTP_PASSWORD to be set."
+    exit 1
+  fi
+  if [[ -n "$SMTP_PORT" && ! "$SMTP_PORT" =~ ^[0-9]+$ ]]; then
+    echo "AZURE_SOLID_SMTP_PORT must be numeric when provided."
+    exit 1
+  fi
+  if [[ -n "$SMTP_STARTTLS" ]]; then
+    case "${SMTP_STARTTLS,,}" in
+      true|false) ;;
+      *)
+        echo "AZURE_SOLID_SMTP_STARTTLS must be true or false when provided."
+        exit 1
+        ;;
+    esac
+  fi
+fi
+
 if [[ -n "$CSS_CONFIG_ARG" ]]; then
   PARAM_OVERRIDES+=("cssConfigArg=$CSS_CONFIG_ARG")
+fi
+
+if [[ -n "$CSS_IMAGE" ]]; then
+  PARAM_OVERRIDES+=("cssImage=$CSS_IMAGE")
+fi
+
+if [[ -n "$CSS_IMAGE_REGISTRY_SERVER" ]]; then
+  PARAM_OVERRIDES+=("cssImageRegistryServer=$CSS_IMAGE_REGISTRY_SERVER")
+fi
+
+if [[ -n "$CSS_IMAGE_REGISTRY_USERNAME" ]]; then
+  PARAM_OVERRIDES+=("cssImageRegistryUsername=$CSS_IMAGE_REGISTRY_USERNAME")
+fi
+
+if [[ -n "$CSS_IMAGE_REGISTRY_PASSWORD" ]]; then
+  PARAM_OVERRIDES+=("cssImageRegistryPassword=$CSS_IMAGE_REGISTRY_PASSWORD")
 fi
 
 if [[ -n "$CSS_DATA_PATH" ]]; then
@@ -102,6 +158,38 @@ if [[ -n "$CSS_EXTRA_ARGS_JSON" ]]; then
     exit 1
   fi
   PARAM_OVERRIDES+=("cssExtraArgs=$CSS_EXTRA_ARGS_JSON")
+fi
+
+if [[ -n "$EMAIL_PROVIDER_MODE" ]]; then
+  PARAM_OVERRIDES+=("emailProviderMode=$EMAIL_PROVIDER_MODE")
+fi
+
+if [[ -n "$EMAIL_FROM_ADDRESS" ]]; then
+  PARAM_OVERRIDES+=("emailFromAddress=$EMAIL_FROM_ADDRESS")
+fi
+
+if [[ -n "$EMAIL_FROM_NAME" ]]; then
+  PARAM_OVERRIDES+=("emailFromName=$EMAIL_FROM_NAME")
+fi
+
+if [[ -n "$SMTP_HOST" ]]; then
+  PARAM_OVERRIDES+=("smtpHost=$SMTP_HOST")
+fi
+
+if [[ -n "$SMTP_PORT" ]]; then
+  PARAM_OVERRIDES+=("smtpPort=$SMTP_PORT")
+fi
+
+if [[ -n "$SMTP_STARTTLS" ]]; then
+  PARAM_OVERRIDES+=("smtpStartTls=${SMTP_STARTTLS,,}")
+fi
+
+if [[ -n "$SMTP_USERNAME" ]]; then
+  PARAM_OVERRIDES+=("smtpUsername=$SMTP_USERNAME")
+fi
+
+if [[ -n "$SMTP_PASSWORD" ]]; then
+  PARAM_OVERRIDES+=("smtpPassword=$SMTP_PASSWORD")
 fi
 
 if ! az account show >/dev/null 2>&1; then
