@@ -53,7 +53,7 @@ on:
       email_provider_mode:
         description: Email provider mode for CSS notifications (none or smtp)
         required: false
-        default: none
+        default: smtp
         type: choice
         options:
           - none
@@ -61,6 +61,7 @@ on:
       email_from_address:
         description: From email address for CSS auth/security notifications
         required: false
+        default: admin@nodezero.social
         type: string
       email_from_name:
         description: From display name for CSS auth/security notifications

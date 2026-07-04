@@ -6,9 +6,10 @@
 // ingress domain (required for Solid-OIDC / DPoP).
 //
 // Scope: testnet/staging-testnet only. Minimal by design (no Front Door/WAF,
-// no email service, no production stack). Account creation is open and email
-// verification is disabled via the default CSS file config — fine for a private
-// demo, NOT for production. The base URL is derived from the ACA environment
+// no production stack). SMTP-backed auth/security email is supported (forgot
+// password and related notifications) when emailProviderMode=smtp. Account
+// creation is open and email verification is disabled via the default CSS file
+// config — fine for a private demo, NOT for production. The base URL is derived from the ACA environment
 // default domain so OIDC issuer + WebID URLs are correct on first deploy.
 // ─────────────────────────────────────────────────────────────────────────────
 

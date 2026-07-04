@@ -136,8 +136,13 @@ export default function SettingsScreen(): JSX.Element {
             setIsDeleting(true)
             setDataActionStatus(null)
             void deleteNodeData({ unlinkIdentity: true, clearAllLocalCache: true })
-              .then(async ({ unlinkedIdentity }) => {
-                setDataActionStatus(unlinkedIdentity ? 'Node deleted and identity unlinked.' : 'Node deleted (local unlink only).')
+              .then(async ({ unlinkedIdentity, walletDestroyed, localStateCleared, warnings }) => {
+                const status =
+                  walletDestroyed && localStateCleared
+                    ? (unlinkedIdentity ? 'Node deleted and identity unlinked.' : 'Node deleted (local unlink only).')
+                    : 'Node delete completed with partial cleanup.'
+                const warningSuffix = warnings.length > 0 ? ` Warning: ${warnings.join(' ')}` : ''
+                setDataActionStatus(`${status}${warningSuffix}`)
                 await signOut()
                 router.replace('/')
               })

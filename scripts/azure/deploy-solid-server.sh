@@ -105,6 +105,10 @@ if [[ "$EFFECTIVE_EMAIL_MODE" != "none" && "$EFFECTIVE_EMAIL_MODE" != "smtp" ]];
 fi
 
 if [[ "$EFFECTIVE_EMAIL_MODE" == "smtp" ]]; then
+  if [[ -z "$EMAIL_FROM_ADDRESS" ]]; then
+    echo "SMTP mode requires AZURE_SOLID_EMAIL_FROM_ADDRESS to be set (or provided in the parameters file)."
+    exit 1
+  fi
   if [[ -z "$SMTP_USERNAME" || -z "$SMTP_PASSWORD" ]]; then
     echo "SMTP mode requires AZURE_SOLID_SMTP_USERNAME and AZURE_SOLID_SMTP_PASSWORD to be set."
     exit 1

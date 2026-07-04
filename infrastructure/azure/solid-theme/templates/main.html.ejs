@@ -24,6 +24,182 @@
   <footer class="nz-footer">
     <p>Powered by Community Solid Server for NodeZero.</p>
   </footer>
+  <script>
+    (() => {
+      const loadingButtons = new Set();
+      const buttonLoadingTextById = {
+        authorize: 'Authorizing...',
+        cancel: 'Cancelling...',
+        'edit-account': 'Opening...',
+        'switch-account': 'Signing out...',
+      };
+
+      const knownActionButtonIds = new Set(Object.keys(buttonLoadingTextById));
+      const nativeFetch = window.fetch ? window.fetch.bind(window) : null;
+      let pendingFetchCount = 0;
+
+      function escapeHtml(value) {
+        return String(value)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/\"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      function resolveLoadingText(button) {
+        const customText = button.getAttribute('data-nz-loading-text');
+        if (customText && customText.trim()) {
+          return customText.trim();
+        }
+
+        if (button.id && buttonLoadingTextById[button.id]) {
+          return buttonLoadingTextById[button.id];
+        }
+
+        if ((button.type || '').toLowerCase() === 'submit') {
+          return 'Working...';
+        }
+
+        return 'Processing...';
+      }
+
+      function shouldTrackButton(button) {
+        if (!(button instanceof HTMLButtonElement)) {
+          return false;
+        }
+
+        if (button.getAttribute('data-nz-no-loading') === 'true') {
+          return false;
+        }
+
+        if ((button.type || '').toLowerCase() === 'submit') {
+          return true;
+        }
+
+        if (button.id && knownActionButtonIds.has(button.id)) {
+          return true;
+        }
+
+        return button.hasAttribute('data-nz-loading-text');
+      }
+
+      function setButtonLoading(button, isLoading) {
+        if (!shouldTrackButton(button)) {
+          return;
+        }
+
+        if (isLoading) {
+          if (loadingButtons.has(button)) {
+            return;
+          }
+
+          if (!button.dataset.nzOriginalHtml) {
+            button.dataset.nzOriginalHtml = button.innerHTML;
+          }
+
+          const loadingText = resolveLoadingText(button);
+          button.innerHTML = '<span class="nz-btn-label">' + escapeHtml(loadingText) + '</span><span class="nz-btn-spinner" aria-hidden="true"></span>';
+          button.classList.add('nz-btn-loading');
+          button.disabled = true;
+          button.setAttribute('aria-busy', 'true');
+          loadingButtons.add(button);
+          return;
+        }
+
+        if (!loadingButtons.has(button)) {
+          return;
+        }
+
+        if (button.dataset.nzOriginalHtml) {
+          button.innerHTML = button.dataset.nzOriginalHtml;
+        }
+        button.classList.remove('nz-btn-loading');
+        button.disabled = false;
+        button.removeAttribute('aria-busy');
+        loadingButtons.delete(button);
+      }
+
+      function clearAllLoadingButtons() {
+        for (const button of Array.from(loadingButtons)) {
+          setButtonLoading(button, false);
+        }
+      }
+
+      document.addEventListener('submit', (event) => {
+        if (!(event.target instanceof HTMLFormElement)) {
+          return;
+        }
+
+        const submitter = event.submitter instanceof HTMLButtonElement
+          ? event.submitter
+          : event.target.querySelector('button[type="submit"]');
+
+        if (submitter instanceof HTMLButtonElement) {
+          setButtonLoading(submitter, true);
+        }
+      }, true);
+
+      document.addEventListener('click', (event) => {
+        const target = event.target instanceof Element ? event.target : null;
+        if (!target) {
+          return;
+        }
+
+        const button = target.closest('button');
+        if (!(button instanceof HTMLButtonElement)) {
+          return;
+        }
+
+        if (button.disabled) {
+          event.preventDefault();
+          return;
+        }
+
+        if (!shouldTrackButton(button)) {
+          return;
+        }
+
+        if ((button.type || '').toLowerCase() === 'submit') {
+          return;
+        }
+
+        setButtonLoading(button, true);
+      }, true);
+
+      if (nativeFetch) {
+        window.fetch = async (...args) => {
+          pendingFetchCount += 1;
+          try {
+            return await nativeFetch(...args);
+          } finally {
+            pendingFetchCount = Math.max(0, pendingFetchCount - 1);
+            if (pendingFetchCount === 0) {
+              setTimeout(() => {
+                if (document.visibilityState === 'visible') {
+                  clearAllLoadingButtons();
+                }
+              }, 0);
+            }
+          }
+        };
+      }
+
+      const errorElement = document.getElementById('error');
+      if (errorElement) {
+        const observer = new MutationObserver(() => {
+          if ((errorElement.textContent || '').trim().length > 0) {
+            clearAllLoadingButtons();
+          }
+        });
+        observer.observe(errorElement, { childList: true, subtree: true, characterData: true });
+      }
+
+      window.addEventListener('pageshow', () => {
+        clearAllLoadingButtons();
+      });
+    })();
+  </script>
 </body>
 </html>
 

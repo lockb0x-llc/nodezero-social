@@ -10,12 +10,12 @@ const STATUS_TEXT: Record<string, string> = {
   idle: 'Preparing your attestation checks...',
   verifying: 'Verifying your Solid-WebID and Stellar Lockb0x pairing...',
   verified: 'Pairing verified. Redirecting you to your feed...',
-  unlinked: 'Pairing is not linked yet. Continue to Settings to relink your identity.',
-  error: 'Attestation validation failed. Continue to Settings for details.',
+  unlinked: 'Your pairing is no longer valid. Sign in again to recover access.',
+  error: 'Attestation validation failed. Sign in again to retry secure recovery.',
 }
 
 export default function OnboardingScreen(): JSX.Element {
-  const { isLoggedIn, isRestoring, nodeSession } = useSolid()
+  const { isLoggedIn, isRestoring, nodeSession, signOut } = useSolid()
   const { attestationStatus, attestationMessage, verificationSteps } = useWallet()
   const router = useRouter()
 
@@ -52,11 +52,13 @@ export default function OnboardingScreen(): JSX.Element {
       {(attestationStatus === 'unlinked' || attestationStatus === 'error') ? (
         <TouchableOpacity
           style={styles.button}
-          onPress={() => router.push('/settings')}
+          onPress={() => {
+            void signOut().finally(() => router.replace('/'))
+          }}
           accessibilityRole="button"
-          accessibilityLabel="Open settings to resolve pairing"
+          accessibilityLabel="Sign in again to recover access"
         >
-          <Text style={styles.buttonText}>Open Settings</Text>
+          <Text style={styles.buttonText}>Sign In Again</Text>
         </TouchableOpacity>
       ) : null}
     </View>

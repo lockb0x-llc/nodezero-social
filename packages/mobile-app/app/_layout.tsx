@@ -12,20 +12,81 @@
 
 import { SolidProvider, useSolid } from '../src/contexts/SolidContext'
 import { DiscoveryProvider } from '../src/contexts/DiscoveryContext'
-import { WalletProvider } from '../src/contexts/WalletContext'
-import { Stack, Link, usePathname } from 'expo-router'
+import { WalletProvider, useWallet } from '../src/contexts/WalletContext'
+import { Stack, Link, usePathname, useRouter } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { View, Text, StyleSheet, Platform, ScrollView } from 'react-native'
 import React from 'react'
 import { aesthetic } from '../src/theme/aesthetic'
 
+const PUBLIC_ROUTES = new Set(['/'])
+const TRANSITION_ROUTES = new Set(['/onboarding'])
+
+function normalizeRoute(pathname: string): string {
+  if (!pathname) return '/'
+  return pathname.split('?')[0] ?? pathname
+}
+
+/**
+ * Global auth gate: authenticated users must also have a verified pairing
+ * before entering protected surfaces.
+ */
+function RouteGuard(): null {
+  const { isLoggedIn, isRestoring, nodeSession, signOut } = useSolid()
+  const { attestationStatus } = useWallet()
+  const pathname = usePathname()
+  const router = useRouter()
+  const isSignOutInFlightRef = React.useRef(false)
+
+  React.useEffect(() => {
+    if (isRestoring) return
+
+    const route = normalizeRoute(pathname)
+
+    if (!isLoggedIn) {
+      isSignOutInFlightRef.current = false
+      if (!PUBLIC_ROUTES.has(route)) {
+        router.replace('/')
+      }
+      return
+    }
+
+    if (attestationStatus === 'verified') {
+      isSignOutInFlightRef.current = false
+      if (PUBLIC_ROUTES.has(route) || TRANSITION_ROUTES.has(route)) {
+        router.replace(nodeSession ? '/local' : '/feed')
+      }
+      return
+    }
+
+    if (attestationStatus === 'unlinked' || attestationStatus === 'error') {
+      if (!isSignOutInFlightRef.current) {
+        isSignOutInFlightRef.current = true
+        void signOut().finally(() => {
+          router.replace('/')
+          isSignOutInFlightRef.current = false
+        })
+      }
+      return
+    }
+
+    // Logged in but not yet verified: only onboarding is allowed.
+    if (!TRANSITION_ROUTES.has(route)) {
+      router.replace('/onboarding')
+    }
+  }, [attestationStatus, isLoggedIn, isRestoring, nodeSession, pathname, router, signOut])
+
+  return null
+}
+
 /** Navigation bar rendered at the bottom of the screen on web only. */
 function WebNavBar(): JSX.Element | null {
   const { isLoggedIn } = useSolid()
+  const { attestationStatus } = useWallet()
   const pathname = usePathname()
 
   // Only render on web and only when the user is authenticated.
-  if (Platform.OS !== 'web' || !isLoggedIn) return null
+  if (Platform.OS !== 'web' || !isLoggedIn || attestationStatus !== 'verified') return null
 
   // Settings is intentionally excluded: it is accessed via the gear icon
   // on the Profile screen, keeping the nav bar to 6 items and ensuring
@@ -110,6 +171,7 @@ export default function RootLayout(): JSX.Element {
     <SolidProvider>
       <DiscoveryProvider>
         <WalletProvider>
+          <RouteGuard />
           <StatusBar style="light" />
           <Stack
             screenOptions={{

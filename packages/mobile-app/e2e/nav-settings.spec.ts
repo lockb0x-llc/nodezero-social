@@ -16,16 +16,14 @@
 
 import { test, expect } from '@playwright/test'
 
-// ─── T1: /settings route is still reachable via direct URL ──────────────────
-// The Settings tab was removed from the nav bar but the /settings route must
-// remain accessible for deep-links and bookmarks.
-test('T1: /settings route returns the app shell', async ({ page }) => {
+// ─── T1: /settings is auth-gated pre-verification ───────────────────────────
+// Unauthenticated users must not access protected surfaces.
+test('T1: unauthenticated /settings navigation is redirected to landing', async ({ page }) => {
   await page.goto('/settings')
-  // SPA shell: Expo root element must be present.
+  await page.waitForLoadState('networkidle')
+  expect(page.url()).toMatch(/\/$/)
   await expect(page.locator('#root')).toBeAttached()
-  // Brand marker must be present in the document.
-  const html = await page.content()
-  expect(html).toContain('NodeZero')
+  await expect(page.getByText('Sign in with your Solid Pod')).toBeVisible()
 })
 
 // ─── T2: Nav bar contains no Settings anchor when unauthenticated ────────────
@@ -34,6 +32,7 @@ test('T1: /settings route returns the app shell', async ({ page }) => {
 test('T2: unauthenticated page has no nav Settings link', async ({ page }) => {
   await page.goto('/feed')
   await page.waitForLoadState('networkidle')
+  expect(page.url()).toMatch(/\/$/)
   // Check that no anchor pointing to /settings exists in the nav bar.
   // The nav bar renders only for authenticated users; this asserts the
   // unauthenticated state is safe and correct.
@@ -64,6 +63,7 @@ test('T5: /profile renders app shell at 375px without overflow', async ({ page }
   await page.setViewportSize({ width: 375, height: 812 })
   await page.goto('/profile')
   await page.waitForLoadState('networkidle')
+  expect(page.url()).toMatch(/\/$/)
   await expect(page.locator('#root')).toBeAttached()
   const scrollWidth = await page.evaluate(() => document.body.scrollWidth)
   expect(scrollWidth).toBeLessThanOrEqual(375)
@@ -103,22 +103,24 @@ test('T8: landing no longer renders legacy hero toggle buttons', async ({ page }
   await expect(page.getByText('Already have a Pod? Sign In')).toHaveCount(0)
 })
 
-// ─── T9: Settings exposes lockbox lifecycle metadata rows ───────────────────
-test('T9: settings includes lockbox metadata rows', async ({ page }) => {
+// ─── T9: unauthenticated /settings hides protected wallet metadata ──────────
+test('T9: unauthenticated /settings does not expose protected wallet rows', async ({ page }) => {
   await page.goto('/settings')
   await page.waitForLoadState('networkidle')
+  expect(page.url()).toMatch(/\/$/)
 
-  await expect(page.getByText('Lockb0x Factory')).toBeVisible()
-  await expect(page.getByText('User Lockb0x')).toBeVisible()
-  await expect(page.getByText('Lockb0x Idempotency')).toBeVisible()
+  await expect(page.getByText('Lockb0x Factory')).toHaveCount(0)
+  await expect(page.getByText('User Lockb0x')).toHaveCount(0)
+  await expect(page.getByText('Lockb0x Idempotency')).toHaveCount(0)
 })
 
-// ─── T10: Settings exposes Export and Delete data-management actions ─────────
-test('T10: settings includes export and delete node-data actions', async ({ page }) => {
+// ─── T10: unauthenticated /settings hides protected data-management actions ──
+test('T10: unauthenticated /settings does not expose node-data actions', async ({ page }) => {
   await page.goto('/settings')
   await page.waitForLoadState('networkidle')
+  expect(page.url()).toMatch(/\/$/)
 
-  await expect(page.getByText('Export Recovery Bundle')).toBeVisible()
-  await expect(page.getByText('Delete Node Data')).toBeVisible()
-  await expect(page.getByText('Clear Local Cache')).toBeVisible()
+  await expect(page.getByText('Export Recovery Bundle')).toHaveCount(0)
+  await expect(page.getByText('Delete Node Data')).toHaveCount(0)
+  await expect(page.getByText('Clear Local Cache')).toHaveCount(0)
 })

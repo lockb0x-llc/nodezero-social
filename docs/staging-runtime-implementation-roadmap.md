@@ -224,6 +224,7 @@ Each row is a discrete unit of work. Mark ✅ when complete with evidence.
 | SOLID-08 | Social graph follow/unfollow (`SocialGraph`) wired to staging pods | ⬜ To Do | Code implemented (B1/B2 in-progress) |
 | SOLID-09 | **NSFW scanner annotating Pod dataset correctly** | ⬜ To Do | Unit tests pass; no staging evidence |
 | SOLID-10 | **ACL toggle (`updateWebACL`) tested against CSS WAC** | ⬜ To Do | CSS WAC must be enabled; behavior may differ from solidcommunity.net |
+| SOLID-11 | CSS password-reset email recovery enabled for random-password seamless accounts | ✅ Done | `solid-server.parameters.staging-testnet.json` now sets `emailProviderMode=smtp` and sender defaults; deploy script fails fast if SMTP mode lacks sender/credentials |
 
 ### 6.4 Stellar / ZK Layer
 
@@ -276,6 +277,7 @@ Each row is a discrete unit of work. Mark ✅ when complete with evidence.
 | G6 | Auth mode chip in Feed/Local hardcoded to `OIDC Redirect` — misleading for node sessions | **Low** | Use `nodeSession !== null` to conditionally set chip label (APP-13) |
 | G7 | B1/B2 (real feed/social graph from Solid) still placeholder | **Low (current milestone)** | Post-hackathon scope; document as known gap |
 | G8 | ZK artifact checksum verification not in CI | **Low** | Wire `pnpm verify:checksums:testnet` into CI gate (ZK-08) |
+| G9 | CSS recovery mail can be misconfigured if SMTP secrets are absent in GitHub environment | **High** | Ensure `SOLID_SMTP_USERNAME` and `SOLID_SMTP_PASSWORD` are populated before redeploy; verify forgot-password smoke after each Solid redeploy |
 
 ---
 
@@ -340,6 +342,10 @@ Items marked ⬜ are not yet started; ✅ items are already structured to suppor
 ```bash
 # Validate environment isolation policy
 corepack pnpm policy:validate-env
+
+# Redeploy Solid server with SMTP recovery defaults
+# (requires GitHub environment secrets SOLID_SMTP_USERNAME/SOLID_SMTP_PASSWORD)
+# gh workflow run redeploy-solid-server.yml -f environment_name=staging-testnet
 
 # Run automated staging smoke gate
 STAGING_BASE_URL=https://staging.nodezero.social bash scripts/qa/staging-smoke.sh

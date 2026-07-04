@@ -65,6 +65,7 @@ interface SolidContextValue {
 const SolidContext = createContext<SolidContextValue | null>(null)
 
 const SOLID_WEBID_STORAGE_KEY = 'solid.webId.v1'
+const PAIRING_ATTESTATION_STORAGE_KEY = 'attestation.pairing.v1'
 
 /** Environment profiles that the Solid auth flow supports. */
 const KNOWN_ENV_PROFILES = ['local', 'staging-testnet', 'production-mainnet'] as const
@@ -267,6 +268,8 @@ export function SolidProvider({ children }: { children: ReactNode }): JSX.Elemen
       // Ignore: node sessions have no Inrupt session to tear down.
     }
     await AsyncStorage.removeItem(SOLID_WEBID_STORAGE_KEY)
+    await AsyncStorage.removeItem(PAIRING_ATTESTATION_STORAGE_KEY)
+    await clearSignupIntent()
     await clearNodeSession()
     setNodeSession(null)
     setIsLoggedIn(false)

@@ -20,6 +20,8 @@ import { Platform } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { EnclaveAdapter, WalletService, type WalletInfo } from '@nodezero/embedded-wallet'
 import { produceSeamlessAttestation, type SeamlessAttestation } from '../onboarding/attestation'
+import { clearSignupIntent } from '../onboarding/signupBridge'
+import { clearNodeSession } from '../onboarding/nodeSession'
 import { resolvePodOwnershipArtifacts } from '../onboarding/zkArtifacts'
 import type { ProgressStep } from '../components/ProgressStepLadder'
 import type { PodOwnershipClaim } from '@nodezero/zk-crypto/pod-ownership'
@@ -68,6 +70,14 @@ interface PairingAttestationRecord {
 }
 
 const PAIRING_ATTESTATION_STORAGE_KEY = 'attestation.pairing.v1'
+const SOLID_WEBID_STORAGE_KEY = 'solid.webId.v1'
+
+interface DeleteNodeDataResult {
+  unlinkedIdentity: boolean
+  walletDestroyed: boolean
+  localStateCleared: boolean
+  warnings: string[]
+}
 
 interface PairingProofInputs {
   webId: string
@@ -381,7 +391,7 @@ interface WalletContextValue {
   deleteNodeData: (options?: {
     unlinkIdentity?: boolean
     clearAllLocalCache?: boolean
-  }) => Promise<{ unlinkedIdentity: boolean }>
+  }) => Promise<DeleteNodeDataResult>
 }
 
 const WalletContext = createContext<WalletContextValue | null>(null)
@@ -660,6 +670,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
       const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
       const identityContractId = appExtra?.identityContractId ?? ''
       const lockboxContractId = appExtra?.lockboxContractId ?? ''
+      const lockboxFactoryContractIdFromConfig = appExtra?.lockboxFactoryContractId ?? ''
       const provisionerUrl = appExtra?.jssProvisionerUrl ?? ''
 
       if (!identityContractId || !lockboxContractId) {
@@ -694,29 +705,36 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
       ])
 
       try {
-        let mappedWebId = await service.getRegisteredWebId(identityContractId)
+        const mappedBeforeRegistration = await service.getRegisteredWebId(identityContractId)
+        let mappedWebId = mappedBeforeRegistration
         const priorRecord = await loadPairingRecord()
-        const isReturningSignIn =
+        const hasPriorForPrincipal =
           priorRecord?.webId === webId &&
           priorRecord.stellarPublicKey === info.publicKey &&
-          priorRecord.identityContractId === identityContractId &&
-          priorRecord.lockboxContractId === lockboxContractId
+          priorRecord.identityContractId === identityContractId
 
         let registerTxHash = ''
         let custodyReceipt = priorRecord?.custodyReceipt
-        let lockboxFactoryContractId = priorRecord?.lockboxFactoryContractId
+        let lockboxFactoryContractId = priorRecord?.lockboxFactoryContractId ?? lockboxFactoryContractIdFromConfig
         let userLockboxContractId = priorRecord?.userLockboxContractId
         let lockboxIdempotencyKey = priorRecord?.lockboxIdempotencyKey
         let proofHashHex = priorRecord?.proofHashHex ?? priorRecord?.custodyReceipt?.proofHashHex
         let proofRootHex = priorRecord?.proofRootHex ?? priorRecord?.custodyReceipt?.proofRootHex
+        let didProvisionThisSession = false
+        const didRegisterIdentityThisSession = mappedBeforeRegistration !== webId
 
-        if (!isReturningSignIn && mappedWebId !== webId) {
+        if (mappedWebId !== webId) {
           registerTxHash = await registerIdentity(webId, identityContractId)
           mappedWebId = await service.getRegisteredWebId(identityContractId)
         }
         advanceVerificationStep('registration')
 
-        if (!isReturningSignIn && provisionerUrl) {
+        if (!userLockboxContractId && lockboxFactoryContractId) {
+          const factoryMappedLockbox = await service.getFactoryUserLockbox(lockboxFactoryContractId, info.publicKey)
+          userLockboxContractId = factoryMappedLockbox ?? undefined
+        }
+
+        if (!userLockboxContractId && provisionerUrl) {
           const provisioning = await runCustodyProvisioning({
             provisionerUrl,
             webId,
@@ -724,9 +742,12 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
             wallet: service,
             appExtra,
           })
+          didProvisionThisSession = true
           custodyReceipt = provisioning.custodyReceipt
-          lockboxFactoryContractId = provisioning.lockbox?.factoryContractId ?? undefined
-          userLockboxContractId = provisioning.lockbox?.userLockboxContractId ?? undefined
+          const provisionedFactoryContractId = provisioning.lockbox?.factoryContractId
+          const provisionedUserLockboxContractId = provisioning.lockbox?.userLockboxContractId
+          lockboxFactoryContractId = provisionedFactoryContractId ?? lockboxFactoryContractId
+          userLockboxContractId = provisionedUserLockboxContractId ?? undefined
           lockboxIdempotencyKey = provisioning.lockbox?.idempotencyKey ?? undefined
           proofHashHex = provisioning.custodyReceipt.proofHashHex
           proofRootHex = provisioning.custodyReceipt.proofRootHex
@@ -772,7 +793,13 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
           return
         }
 
-        if (proofRootHex && lockboxRoot && lockboxRoot.toLowerCase() !== proofRootHex.toLowerCase()) {
+        const shouldEnforceFreshProofRoot = didProvisionThisSession && didRegisterIdentityThisSession
+        if (
+          shouldEnforceFreshProofRoot &&
+          proofRootHex &&
+          lockboxRoot &&
+          lockboxRoot.toLowerCase() !== proofRootHex.toLowerCase()
+        ) {
           setAttestationStatus('unlinked')
           setAttestationMessage('User lockbox root does not match the browser-generated proof root. Relink required.')
           setAttestationDetails({
@@ -817,7 +844,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
         }
         advanceVerificationStep('root')
 
-        if (isReturningSignIn && priorRecord && !hasMatchingProof(priorRecord, proofInputs)) {
+        if (hasPriorForPrincipal && priorRecord && !hasMatchingProof(priorRecord, proofInputs)) {
           setAttestationStatus('unlinked')
           setAttestationMessage('Stored pairing proof no longer matches the current lockbox root. Relink required.')
           setAttestationDetails({
@@ -880,8 +907,10 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
           proofRootHex: proofRootHex ?? null,
         })
         setAttestationMessage(
-          isReturningSignIn
+          hasPriorForPrincipal
             ? 'Returning sign-in proof verified against current lockbox root.'
+            : mappedBeforeRegistration === webId
+              ? 'Recovered pairing from your existing on-chain lockbox root.'
             : 'Pairing attestation verified against current lockbox root.'
         )
       } catch (err) {
@@ -932,34 +961,45 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
   }, [attestationDetails, walletInfo, webId])
 
   const deleteNodeData = useCallback(
-    async (options?: { unlinkIdentity?: boolean; clearAllLocalCache?: boolean }): Promise<{ unlinkedIdentity: boolean }> => {
+    async (options?: { unlinkIdentity?: boolean; clearAllLocalCache?: boolean }): Promise<DeleteNodeDataResult> => {
       const unlinkIdentity = options?.unlinkIdentity ?? false
       const clearAllLocalCache = options?.clearAllLocalCache ?? false
       const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
       const identityContractId = appExtra?.identityContractId ?? ''
       let unlinkedIdentity = false
+      let walletDestroyed = false
+      let localStateCleared = false
+      const warnings: string[] = []
 
       if (unlinkIdentity && identityContractId) {
         try {
           await getWalletService().removeIdentityOnChain(identityContractId)
           unlinkedIdentity = true
         } catch (err) {
+          const warning = err instanceof Error ? err.message : 'On-chain identity unlink failed.'
+          warnings.push(warning)
           console.warn('[WalletContext] On-chain identity unlink failed; continuing local delete:', err)
         }
       }
 
       await getWalletService().destroyWallet()
+      walletDestroyed = true
 
       if (clearAllLocalCache) {
-        await AsyncStorage.clear()
+        await AsyncStorage.removeItem(PAIRING_ATTESTATION_STORAGE_KEY)
+        await AsyncStorage.removeItem(SOLID_WEBID_STORAGE_KEY)
+        await clearSignupIntent()
+        await clearNodeSession()
       } else {
         await AsyncStorage.removeItem(PAIRING_ATTESTATION_STORAGE_KEY)
       }
+      localStateCleared = true
 
       lastCheckedKeyRef.current = null
       setWalletInfo(null)
       setAttestationStatus('idle')
       setAttestationMessage(null)
+      setVerificationSteps([])
       setAttestationDetails({
         registeredWebId: null,
         lockboxStateRoot: null,
@@ -973,7 +1013,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
         proofRootHex: null,
       })
 
-      return { unlinkedIdentity }
+      return { unlinkedIdentity, walletDestroyed, localStateCleared, warnings }
     },
     []
   )

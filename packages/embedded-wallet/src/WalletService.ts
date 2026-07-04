@@ -90,6 +90,31 @@ function isScVal(value: unknown): value is xdr.ScVal {
   )
 }
 
+function toContractAddress(value: unknown): string | null {
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    return /^C[A-Z0-9]{55}$/.test(trimmed) ? trimmed : null
+  }
+
+  if (Array.isArray(value) && value.length > 0) {
+    return toContractAddress(value[0])
+  }
+
+  if (value && typeof value === 'object') {
+    const maybeAddress = value as { toString?: () => string }
+    try {
+      const rendered = maybeAddress.toString?.()
+      if (rendered && /^C[A-Z0-9]{55}$/.test(rendered.trim())) {
+        return rendered.trim()
+      }
+    } catch {
+      // Ignore and fall through.
+    }
+  }
+
+  return null
+}
+
 /**
  * Provides Stellar wallet operations backed by an {@link EnclaveAdapter}.
  *
@@ -332,6 +357,19 @@ export class WalletService {
       return bytesLikeToHex(inner)
     }
     return bytesLikeToHex(value)
+  }
+
+  /**
+   * Reads `Lockb0xFactory.get_user_lockbox(user)` and returns the mapped lockbox
+   * contract ID, or `null` when no mapping exists.
+   */
+  async getFactoryUserLockbox(factoryContractId: string, userPublicKey: string): Promise<string | null> {
+    const value = await this.simulateContractCall(factoryContractId, 'get_user_lockbox', [
+      new Address(userPublicKey).toScVal(),
+    ])
+
+    if (value == null) return null
+    return toContractAddress(value)
   }
 
   private async simulateContractCall(
