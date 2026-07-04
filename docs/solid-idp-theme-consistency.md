@@ -82,6 +82,8 @@ In your custom identity template, include `custom.css` and keep existing form bi
 - Runtime template verification from active container:
   - `grep -n webIdUrl /community-server/templates/identity/oidc/consent.html.ejs`
   - Verified guard lines are present in active revision.
+- Package source-control reference:
+  - `solid-nodezero-auth-ui@0e1b40c` (`fix(consent): guard missing control endpoints on direct route loads`)
 - Functional verification on `https://solid.nodezero.social/.account/oidc/consent/`:
   - Page renders NodeZero-styled consent surface.
   - No `TypeError` page error reported in browser snapshot after rollout.
