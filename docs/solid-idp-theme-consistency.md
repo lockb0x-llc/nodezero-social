@@ -68,3 +68,20 @@ In your custom identity template, include `custom.css` and keep existing form bi
 
 - Keep customizations minimal to reduce upgrade friction when updating Community Solid Server versions.
 - Reapply and retest overrides after any Community Solid Server image version bump.
+
+## Latest staging evidence (2026-07-04)
+
+- Built and pushed image:
+  - `nzsolidui77938.azurecr.io/solid/community-server-nodezero-auth-ui:staging-20260704-consentfix2`
+  - Digest: `sha256:8db7c381fb34220ec8e56347e68c44b2fb1fb1ea38d1bafa0c2d98d95ce793cf`
+- Live Container App state:
+  - App: `nz-staging-testnet-solid`
+  - Latest revision: `nz-staging-testnet-solid--0000029`
+  - Latest ready revision: `nz-staging-testnet-solid--0000029`
+  - Runtime image: `nzsolidui77938.azurecr.io/solid/community-server-nodezero-auth-ui:staging-20260704-consentfix2`
+- Runtime template verification from active container:
+  - `grep -n webIdUrl /community-server/templates/identity/oidc/consent.html.ejs`
+  - Verified guard lines are present in active revision.
+- Functional verification on `https://solid.nodezero.social/.account/oidc/consent/`:
+  - Page renders NodeZero-styled consent surface.
+  - No `TypeError` page error reported in browser snapshot after rollout.
