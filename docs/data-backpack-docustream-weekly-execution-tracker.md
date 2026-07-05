@@ -73,6 +73,7 @@ This tracker operationalizes the foundation runbook into weekly execution slices
 | 2026-07-05 | Layer 5 focused runtime proof completed: `qa:smoke:mashlib-runtime` now verifies staging flag resolution and adapter tests assert docustream bound panes include populated labels | Adapter and experience owner | 2026-09-06 |
 | 2026-07-05 | Layer 5 module-id proof hardened: focused runtime proof now requires explicit `mashlibModuleId=nodezero:mashlib-pane-provider` resolution, ensuring staging evidence exercises module-id path instead of empty fallback | Adapter and experience owner | 2026-09-06 |
 | 2026-07-05 | Layer 5 deployed-artifact proof added (`qa:smoke:mashlib-deployed`) and wired into staging workflow; local staging-profile web artifact passes module-id/pane marker checks, while live `staging.nodezero.social` currently fails sentinel check pending rollout of updated deploy artifact | Adapter and experience owner | 2026-09-06 |
+| 2026-07-05 | Layer 5 deployed-artifact proof closed: staging-profile artifact manually deployed via SWA CLI (`DeploymentId: eac2bdbb-0e20-4d2f-807e-0380a1ed223c`) and `qa:smoke:mashlib-deployed` now passes against `https://staging.nodezero.social` | Adapter and experience owner | 2026-09-06 |
 
 ## Linked artifacts
 
