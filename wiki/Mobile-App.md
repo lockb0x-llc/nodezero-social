@@ -11,7 +11,7 @@ The mobile app package hosts the main user experience via Expo Router.
 | Feed | `/feed` | Yes | "Please sign in to view your feed." |
 | Local Node | `/local` | Yes | "Sign in to join your Local Node." |
 | Broadcast | `/compose` | Yes | Requires active session |
-| Stream | `/docustream` | Yes | Requires active session for Pod-backed stream load/save |
+| Stream | `/docustream` | Yes | Requires active session for Pod-backed source management and stream ingest |
 | Backpack | `/backpack` | Yes | Requires active session for ACL updates |
 | Profile | `/profile` | Yes | "Please sign in to view your profile." |
 | Settings | `/settings` | No (partial) | Shows pod/wallet/prefs with signed-out state |
@@ -71,6 +71,9 @@ The landing page renders without authentication and includes:
 - **Purpose**: aggregated downstream stream with filtering and save action.
 - **How it is used**: user filters by source and saves selected items to Pod.
 - **Data handling**:
+	- supports RSS source registry actions (add source, enable/disable, delete source).
+	- source configuration is persisted to the user's Pod and loaded on session resume.
+	- enabled RSS sources are ingested into the stream pipeline.
 	- loads Pod-backed stream entries when available, with mock fallback content.
 	- save action appends item payload as JSON-LD into public docustream container in the user Pod.
 
@@ -114,7 +117,7 @@ Settings is partially accessible without authentication:
 | Embedded Wallet | Stellar public key + network status | Provisioning on load |
 | Data Management | "Export & Erase Local Cache" button | Always visible |
 | Account | "Sign Out" button | Always visible |
-| Version | "NodeZero.social v0.0.1" | Always visible |
+| Version | "NodeZero.social v0.0.2" | Always visible |
 
 ## Notes on data ownership model
 
@@ -137,6 +140,7 @@ Settings is partially accessible without authentication:
 - Route guards protect authenticated surfaces including feed, local, profile, and tab-only experiences.
 - Feed screen now aggregates connections from Solid social graph and orders posts chronologically.
 - Local Node screen uses relay-backed P2P signaling and supports target selection from known peers.
+- Docustream screen supports RSS source add/toggle/delete and ingest into stream results.
 - Settings renders wallet state, NSFW toggle, and account controls for signed-in and signed-out users.
 
 ## Known gaps and resolution status

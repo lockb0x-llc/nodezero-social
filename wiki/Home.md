@@ -2,6 +2,13 @@
 
 NodeZero Social is a decentralized social platform built as a monorepo with mobile, relay, data sync, wallet, and infrastructure packages.
 
+## Release snapshot (v0.0.2, 2026-07-05)
+
+- Staging is live at `https://staging.nodezero.social` with a defined hardening backlog.
+- TestNet lockbox factory is `CA5MASVC7CH646QUZM6HFC3JAYIG4TCRHJDSBDOBFP66IW7TXYYHFUVB`.
+- Current lockbox factory wasm hash is `55bcb3a4c05ff935a421f10d1a72bdeb6e4573de8954e4fbd263f7ac88a8fbd9`.
+- Docustream RSS source management (add/toggle/delete + ingest) is live in the app.
+
 ## Quick links
 
 - [Architecture](Architecture)
@@ -37,8 +44,10 @@ flowchart LR
 ## Source references
 
 - Monorepo overview: ../README.md
+- Changelog: ../CHANGELOG.md
 - Staging release requirements: ../docs/testnet-azure-release-requirements.md
 - Staging UAT checklist: ../docs/staging-uat-checklist.md
+- Runtime status and evidence: ../docs/staging-runtime-implementation-roadmap.md
 
 ## Walkthrough evidence
 

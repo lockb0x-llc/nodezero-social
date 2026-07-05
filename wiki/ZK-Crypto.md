@@ -16,6 +16,12 @@ Future scope:
 - `packages/zk-crypto/circuits/nullifier.circom`
 - `packages/zk-crypto/circuits/poh.circom`
 
+## Current testnet artifact evidence
+
+- Artifact manifest: `deployments/zk-testnet-artifacts.json`
+- `pod_ownership_vk.json` sha256: `8dae27b8db44d21020d3c4792e1314a8bd9ada1d2bd8d3c06d6550db29cdb68f`
+- Current attestation chain target uses lockbox factory wasm hash `55bcb3a4c05ff935a421f10d1a72bdeb6e4573de8954e4fbd263f7ac88a8fbd9`.
+
 ## Scripts
 
 - `scripts/zk/prepare-artifacts.mjs`
@@ -26,3 +32,4 @@ Future scope:
 - Keep proof artifacts deterministic across environments.
 - Use release policy checks before publishing artifacts to staging.
 - Keep release gates aligned to current attestation scope to avoid PoH drift.
+- Treat `deployments/zk-testnet-artifacts.json` as canonical for release docs and checklist updates.

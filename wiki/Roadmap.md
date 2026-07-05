@@ -1,18 +1,21 @@
 # Roadmap
 
-## Milestone status
+## Current status (2026-07-05)
 
-- A: DONE
-- B: IN_PROGRESS
-- C: IN_PROGRESS
-- D: IN_PROGRESS
-- E: IN_PROGRESS
-- F: DONE
-- G: IN_PROGRESS
+- Staging/TestNet is live and operational.
+- Release-close cleanup for v0.0.2 is complete.
+- Remaining work is hardening and production-mainnet promotion separation.
 
-## Public beta priorities
+## Current priorities
 
-- Complete B1/B2 feature work.
-- Close D1/D3 operational readiness gaps.
-- Finish E2 release sign-off.
-- Complete G3 visual documentation artifacts.
+- Codify relay lifecycle and recovery in IaC/workflow.
+- Move provisioner `JSS_*` runtime settings into deterministic workflow steps.
+- Add gated drift-detection and config consistency checks.
+- Expand larger-data social graph/feed validation evidence.
+- Complete production-mainnet workflow guardrails and approval gates.
+
+## Source of truth
+
+- ../docs/staging-runtime-implementation-roadmap.md
+- ../docs/staging-readiness-and-agent-plan.md
+- ../docs/staging-deployment-blueprint.md
