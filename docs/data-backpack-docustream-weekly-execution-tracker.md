@@ -39,7 +39,7 @@ This tracker operationalizes the foundation runbook into weekly execution slices
 | Phase 1 | Contract tests pass and schema blockers closed | Contracts and semantics owner | 2026-08-02 | In progress |
 | Phase 2 | Policy tests pass, no critical leakage findings | Persistence and policy owner | 2026-08-16 | Not started |
 | Phase 3 | Retrieval/sync criteria pass, baseline metrics accepted | Sync and events owner | 2026-08-30 | In progress |
-| Phase 4 | Adapter plan approved and implementation-ready | Adapter and experience owner | 2026-09-06 | Not started |
+| Phase 4 | Adapter plan approved and implementation-ready | Adapter and experience owner | 2026-09-06 | In progress |
 
 ## Weekly operating checklist
 
@@ -62,6 +62,9 @@ This tracker operationalizes the foundation runbook into weekly execution slices
 | 2026-07-05 | Layer 3 skeleton shipped in `packages/solid-pod-sync/src/QueryApi.ts` with tests in `src/__tests__/QueryApi.test.ts`; full package checks passed | Query and retrieval owner | 2026-08-23 |
 | 2026-07-05 | Layer 4 baseline shipped in `packages/solid-pod-sync/src/SyncEngine.ts` with dedupe/conflict tests in `src/__tests__/SyncEngine.test.ts`; full package checks passed | Sync and events owner | 2026-08-30 |
 | 2026-07-05 | Focused staging verification pass completed: `NZ_SOLID_BOOTSTRAP_ENABLED=true` resolved in `app.config.js` (staging profile), targeted bootstrap/policy tests passed, and `pnpm policy:validate-env` passed | Persistence and policy owner | 2026-07-05 |
+| 2026-07-05 | Layer 3/4 integration advanced from skeleton to retrieval baseline: added `DocustreamAggregation` merge path composing query + sync, integrated feed retrieval dedupe/merge and query-driven docustream filtering, with targeted query/sync/aggregation tests passing | Query and retrieval owner | 2026-08-30 |
+| 2026-07-05 | Layer 4 persistence baseline completed for feed path: added sync state serialization API in `SyncEngine`, AsyncStorage-backed checkpoint store in mobile app, and feed restore/save lifecycle so dedupe survives restart; targeted sync tests and package type-checks passed | Sync and events owner | 2026-08-30 |
+| 2026-07-05 | Layer 5 moved from not-started to baseline scaffold: added web-only mashlib adapter boundary (`createMashlibWebAdapter`) with runtime guardrails and unit tests enforcing ADR-004 boundary behavior | Adapter and experience owner | 2026-09-06 |
 
 ## Linked artifacts
 

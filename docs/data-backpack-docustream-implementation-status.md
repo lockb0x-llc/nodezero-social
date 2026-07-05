@@ -8,8 +8,8 @@ Environment focus: staging-testnet
 This document captures implementation progress and verification evidence for:
 
 1. Phase 0 ADR closure
-2. Layer 3 query API skeleton
-3. Layer 4 sync/dedupe baseline
+2. Layer 3 query API implementation and retrieval-path integration
+3. Layer 4 sync/dedupe baseline and feed merge integration
 4. Focused staging verification for bootstrap flag and policy behavior
 
 ## Phase status snapshot
@@ -19,9 +19,9 @@ This document captures implementation progress and verification evidence for:
 | Phase 0 (ADR closure) | Completed | ADR-001..005 accepted under `docs/adrs/data-backpack-docustream/` |
 | Layer 1 (contracts) | In progress (code-complete baseline) | Contract validators + conformance tests in `packages/solid-pod-sync/src/contracts/` and `src/__tests__/contract-conformance.test.ts` |
 | Layer 2 (persistence + policy) | In progress (implemented baseline + app adoption) | `PodLayoutManager`, manager bootstrap hooks, shared factory + mobile app integration |
-| Layer 3 (query) | In progress (skeleton implemented) | `packages/solid-pod-sync/src/QueryApi.ts` + `src/__tests__/QueryApi.test.ts` |
-| Layer 4 (sync) | In progress (baseline implemented) | `packages/solid-pod-sync/src/SyncEngine.ts` + `src/__tests__/SyncEngine.test.ts` |
-| Layer 5 (adapters) | Not started | Pending |
+| Layer 3 (query) | In progress (integrated baseline) | `packages/solid-pod-sync/src/QueryApi.ts`, `src/DocustreamAggregation.ts`, `src/__tests__/QueryApi.test.ts` |
+| Layer 4 (sync) | In progress (integrated + checkpoint persistence baseline) | `packages/solid-pod-sync/src/SyncEngine.ts`, `src/DocustreamAggregation.ts`, `src/__tests__/SyncEngine.test.ts`, `src/__tests__/DocustreamAggregation.test.ts`, mobile checkpoint store |
+| Layer 5 (adapters) | In progress (boundary scaffold) | `packages/solid-pod-sync/src/adapters/MashlibWebAdapter.ts` + `src/__tests__/MashlibWebAdapter.test.ts` |
 
 ## Step 1: ADR closure evidence
 
@@ -43,9 +43,16 @@ Implemented files:
 
 - `packages/solid-pod-sync/src/QueryApi.ts`
 - `packages/solid-pod-sync/src/SyncEngine.ts`
+- `packages/solid-pod-sync/src/DocustreamAggregation.ts`
 - `packages/solid-pod-sync/src/__tests__/QueryApi.test.ts`
 - `packages/solid-pod-sync/src/__tests__/SyncEngine.test.ts`
+- `packages/solid-pod-sync/src/__tests__/DocustreamAggregation.test.ts`
 - `packages/solid-pod-sync/src/index.ts` (exports)
+- `packages/mobile-app/app/feed.tsx` (retrieval merge + dedupe integration)
+- `packages/mobile-app/app/docustream.tsx` (query-driven source filtering)
+- `packages/mobile-app/src/solid/syncCheckpointStore.ts` (AsyncStorage checkpoint persistence)
+- `packages/solid-pod-sync/src/adapters/MashlibWebAdapter.ts` (web-only adapter boundary scaffold)
+- `packages/solid-pod-sync/src/__tests__/MashlibWebAdapter.test.ts` (boundary behavior tests)
 
 Verification commands and outcomes:
 
@@ -58,6 +65,18 @@ Verification commands and outcomes:
 
 3. `corepack pnpm --filter @nodezero/mobile-app type-check`
 - Outcome: PASS
+
+4. `corepack pnpm --filter @nodezero/solid-pod-sync test -- DocustreamAggregation.test.ts QueryApi.test.ts SyncEngine.test.ts`
+- Outcome: PASS
+- Evidence summary: 3 suites passed, 9 tests passed
+
+5. `corepack pnpm --filter @nodezero/solid-pod-sync test -- SyncEngine.test.ts DocustreamAggregation.test.ts`
+- Outcome: PASS
+- Evidence summary: 2 suites passed, 7 tests passed
+
+6. `corepack pnpm --filter @nodezero/solid-pod-sync test -- MashlibWebAdapter.test.ts SyncEngine.test.ts`
+- Outcome: PASS
+- Evidence summary: 2 suites passed, 8 tests passed
 
 ## Step 4: focused staging verification evidence
 
@@ -102,13 +121,12 @@ Outcome:
 
 ## Remaining implementation gaps
 
-1. Layer 3 is a skeleton and needs integration into feed/docustream retrieval paths.
-2. Layer 4 needs integration with real ingestion/update flow and persistence strategy for sync state.
-3. Layer 5 adapter work remains pending.
-4. Staging runtime verification should be expanded from command/test checks to a scripted end-to-end smoke flow.
+1. Sync checkpoint persistence is now in place for feed path, but broader ingestion/replay persistence strategy remains to be generalized across all retrieval surfaces.
+2. Layer 5 adapter work is now scaffolded and guardrailed, but concrete mashlib capability wiring is still pending.
+3. Staging runtime verification should be expanded from command/test checks to a scripted end-to-end smoke flow.
 
 ## Next execution slice
 
-1. Integrate `QueryApi` into existing feed/docustream retrieval call paths behind a feature gate.
-2. Integrate `SyncEngine` into ingestion pathway with deterministic event-id generation and replay handling.
+1. Generalize checkpoint/replay handling beyond feed into any additional query surfaces that adopt Layer 4 state.
+2. Implement concrete mashlib pane/resource bindings behind the new web-only adapter boundary.
 3. Add one staging smoke script that toggles bootstrap and verifies container + ACL outcomes against a test Pod.

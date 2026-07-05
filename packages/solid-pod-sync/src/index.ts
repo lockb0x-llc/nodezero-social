@@ -17,8 +17,15 @@ export { SocialGraph } from './SocialGraph.js'
 export { NsfwScanner, NSFW_DOMAINS } from './NsfwScanner.js'
 export { DocustreamManager } from './DocustreamManager.js'
 export { createSolidPodSyncManagers } from './createSolidPodSyncManagers.js'
+export { mergeAndQueryActivities } from './DocustreamAggregation.js'
 export { buildQueryIndex, queryStreamItems } from './QueryApi.js'
-export { createSyncState, buildSyncEventId, applySyncBatch } from './SyncEngine.js'
+export {
+	createSyncState,
+	buildSyncEventId,
+	applySyncBatch,
+	serializeSyncState,
+	deserializeSyncState,
+} from './SyncEngine.js'
 export {
 	PodLayoutManager,
 	buildPodContainerLayout,
@@ -26,6 +33,7 @@ export {
 	deriveOwnerWebId,
 	DEFAULT_POLICY_MATRIX,
 } from './PodLayoutManager.js'
+export { createMashlibWebAdapter } from './adapters/MashlibWebAdapter.js'
 export {
 	DOCUSTREAM_ALLOWED_SOURCES,
 	assertValidStreamItem,
@@ -54,6 +62,12 @@ export type {
 	SolidPodSyncFactoryOptions,
 } from './createSolidPodSyncManagers.js'
 export type {
+	ActivitySourceBatch,
+	EnrichedStreamItem,
+	MergeAndQueryOptions,
+	MergeAndQueryResult,
+} from './DocustreamAggregation.js'
+export type {
 	QueryableStreamItem,
 	QueryAudience,
 	StreamQuery,
@@ -63,9 +77,15 @@ export type {
 	SyncEnvelope,
 	SyncState,
 	SyncBatchResult,
+	SerializedSyncState,
 } from './SyncEngine.js'
 export type {
 	PodContainerLayout,
 	PodPolicyMatrix,
 	ContainerVisibility,
 } from './PodLayoutManager.js'
+export type {
+	MashlibPaneDescriptor,
+	MashlibWebAdapter,
+	MashlibWebAdapterOptions,
+} from './adapters/MashlibWebAdapter.js'

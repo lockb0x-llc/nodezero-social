@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSolid } from '../src/contexts/SolidContext';
-import type { StreamItem } from '@nodezero/solid-pod-sync';
+import { queryStreamItems, type QueryableStreamItem, type StreamItem } from '@nodezero/solid-pod-sync';
 import { getSolidPodSyncManagers } from '../src/solid/podSyncManagers';
 import { aesthetic } from '../src/theme/aesthetic';
 
@@ -25,7 +25,7 @@ const MOCK_DOCUSTREAM: StreamItem[] = [
     title: 'New Community Solid Server v7.0 Released',
     content:
       'The CSS team just pushed a massive update adding better support for nested LDP containers and WebSockets.',
-    timestamp: '10 mins ago',
+    timestamp: '2026-07-05T13:50:00.000Z',
   },
   {
     id: '2',
@@ -33,14 +33,14 @@ const MOCK_DOCUSTREAM: StreamItem[] = [
     author: '@NodeZeroApp',
     content:
       'Just deployed the new Zero-Knowledge Proof verifiers to the Soroban Testnet! Privacy is a human right. #Web3 #Stellar',
-    timestamp: '2 hours ago',
+    timestamp: '2026-07-05T12:00:00.000Z',
   },
   {
     id: '3',
     source: 'nodezero',
     author: 'Local Node System',
     content: 'You crossed paths with 3 verified humans in the H3 Grid today.',
-    timestamp: '5 hours ago',
+    timestamp: '2026-07-05T09:00:00.000Z',
   },
   {
     id: '4',
@@ -49,7 +49,7 @@ const MOCK_DOCUSTREAM: StreamItem[] = [
     title: 'The Paradigm Shift of Data Ownership',
     content:
       'We are reaching a tipping point where users are demanding the keys to their own digital backpacks...',
-    timestamp: '1 day ago',
+    timestamp: '2026-07-04T14:00:00.000Z',
   },
 ];
 
@@ -73,7 +73,7 @@ const FILTERS: FilterType[] = ['all', 'reddit', 'x', 'rss'];
 export default function DocustreamScreen() {
   const { isLoggedIn, webId, session } = useSolid();
   const [filter, setFilter] = useState<FilterType>('all');
-  const [items, setItems] = useState<StreamItem[]>(MOCK_DOCUSTREAM);
+  const [items, setItems] = useState<QueryableStreamItem[]>(MOCK_DOCUSTREAM);
   const [savingItemId, setSavingItemId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -83,15 +83,15 @@ export default function DocustreamScreen() {
     manager
       .listActivities(podRoot)
       .then((podItems) => {
-        if (podItems.length > 0) setItems(podItems);
+        if (podItems.length > 0) setItems(podItems.map((item) => ({ ...item, authorWebId: webId })));
       })
       .catch(() => {
         // Keep mock fallback on error
       });
-  }, [isLoggedIn, webId]);
+  }, [isLoggedIn, session, webId]);
 
   const filteredStream =
-    filter === 'all' ? items : items.filter(item => item.source === filter);
+    filter === 'all' ? items : queryStreamItems(items, { sources: [filter] });
 
   const handleSaveToPod = async (item: StreamItem): Promise<void> => {
     if (!isLoggedIn || !webId) {
@@ -157,7 +157,7 @@ export default function DocustreamScreen() {
                 {getSourceIcon(item.source)}
                 <Text style={styles.cardAuthor}>{item.author}</Text>
               </View>
-              <Text style={styles.cardTimestamp}>{item.timestamp}</Text>
+              <Text style={styles.cardTimestamp}>{formatTimestamp(item.timestamp)}</Text>
             </View>
 
             {item.title ? <Text style={styles.cardTitle}>{item.title}</Text> : null}
@@ -188,6 +188,12 @@ export default function DocustreamScreen() {
       </ScrollView>
     </SafeAreaView>
   );
+}
+
+function formatTimestamp(timestamp: string): string {
+  const parsed = Date.parse(timestamp)
+  if (Number.isNaN(parsed)) return timestamp
+  return new Date(parsed).toLocaleString()
 }
 
 const styles = StyleSheet.create({

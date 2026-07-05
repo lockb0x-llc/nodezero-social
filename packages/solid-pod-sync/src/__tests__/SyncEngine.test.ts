@@ -2,6 +2,8 @@ import {
   applySyncBatch,
   buildSyncEventId,
   createSyncState,
+  deserializeSyncState,
+  serializeSyncState,
   type SyncEnvelope,
 } from '../SyncEngine.js'
 
@@ -64,5 +66,27 @@ describe('applySyncBatch', () => {
 
     const record = second.nextState.records.get('https://alice.example/profile/card#me::evt-1')
     expect(record?.eventId).toBe('z')
+  })
+})
+
+describe('sync state serialization', () => {
+  it('round-trips sync state through serialized format', () => {
+    const sourceWebId = 'https://alice.example/profile/card#me'
+    const state = createSyncState()
+    const event = makeEnvelope(sourceWebId, 'evt-1', '2026-07-05T12:00:00.000Z')
+    const merged = applySyncBatch(state, [event]).nextState
+
+    const serialized = serializeSyncState(merged)
+    const restored = deserializeSyncState(serialized)
+
+    expect(restored.seenEventIds.has(event.eventId)).toBe(true)
+    expect(restored.records.get(`${sourceWebId}::evt-1`)?.eventId).toBe(event.eventId)
+  })
+
+  it('returns empty state for missing serialized payload', () => {
+    const restored = deserializeSyncState(undefined)
+
+    expect(restored.seenEventIds.size).toBe(0)
+    expect(restored.records.size).toBe(0)
   })
 })

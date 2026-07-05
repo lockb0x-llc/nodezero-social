@@ -20,6 +20,11 @@ export interface SyncBatchResult {
   conflicts: number
 }
 
+export interface SerializedSyncState {
+  seenEventIds: string[]
+  records: SyncEnvelope[]
+}
+
 export function createSyncState(): SyncState {
   return {
     seenEventIds: new Set(),
@@ -33,6 +38,35 @@ export function buildSyncEventId(sourceWebId: string, item: StreamItem): string 
 
 function resourceKey(envelope: SyncEnvelope): string {
   return `${envelope.sourceWebId}::${envelope.resourceId}`
+}
+
+export function serializeSyncState(state: SyncState): SerializedSyncState {
+  return {
+    seenEventIds: Array.from(state.seenEventIds),
+    records: Array.from(state.records.values()),
+  }
+}
+
+export function deserializeSyncState(serialized?: SerializedSyncState | null): SyncState {
+  if (!serialized) {
+    return createSyncState()
+  }
+
+  const nextState = createSyncState()
+
+  for (const eventId of serialized.seenEventIds ?? []) {
+    if (typeof eventId === 'string' && eventId.length > 0) {
+      nextState.seenEventIds.add(eventId)
+    }
+  }
+
+  for (const record of serialized.records ?? []) {
+    if (!record || typeof record.eventId !== 'string') continue
+    if (typeof record.sourceWebId !== 'string' || typeof record.resourceId !== 'string') continue
+    nextState.records.set(resourceKey(record), record)
+  }
+
+  return nextState
 }
 
 function shouldReplace(existing: SyncEnvelope, incoming: SyncEnvelope): boolean {

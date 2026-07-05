@@ -7,7 +7,7 @@
  * NodeZero principle: no engagement-farming algorithm. Newest first. Period.
  */
 
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
   View,
   Text,
@@ -24,8 +24,9 @@ import Slider from '@react-native-community/slider'
 import { useSolid } from '../src/contexts/SolidContext'
 import { useWallet } from '../src/contexts/WalletContext'
 import { useRouter } from 'expo-router'
-import type { StreamItem } from '@nodezero/solid-pod-sync'
+import { createSyncState, mergeAndQueryActivities, type QueryableStreamItem, type StreamItem } from '@nodezero/solid-pod-sync'
 import { getSolidPodSyncManagers } from '../src/solid/podSyncManagers'
+import { loadFeedSyncCheckpoint, saveFeedSyncCheckpoint } from '../src/solid/syncCheckpointStore'
 import { aesthetic } from '../src/theme/aesthetic'
 
 interface FeedPost {
@@ -51,14 +52,53 @@ export default function GlobalFeedScreen(): JSX.Element {
   const [deepTies, setDeepTies] = useState(50)
   const [sfwMode, setSfwMode] = useState(true)
   const [showAuthModeHint, setShowAuthModeHint] = useState(false)
+  const [isSyncCheckpointReady, setIsSyncCheckpointReady] = useState(false)
+  const syncStateRef = useRef(createSyncState())
+
+  useEffect(() => {
+    let active = true
+    syncStateRef.current = createSyncState()
+    setIsSyncCheckpointReady(false)
+
+    if (!webId) {
+      setIsSyncCheckpointReady(true)
+      return () => {
+        active = false
+      }
+    }
+
+    void loadFeedSyncCheckpoint(webId)
+      .then((restored) => {
+        if (!active) return
+        syncStateRef.current = restored
+      })
+      .catch(() => {
+        if (!active) return
+        syncStateRef.current = createSyncState()
+      })
+      .finally(() => {
+        if (!active) return
+        setIsSyncCheckpointReady(true)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [webId])
 
   const fetchFeed = useCallback(async () => {
-    if (!isLoggedIn || !webId) return
+    if (!isLoggedIn || !webId || !isSyncCheckpointReady) return
 
     try {
       const podRoot = webId.split('/profile/')[0] + '/'
       const { socialGraph, profileManager, docustreamManager } = getSolidPodSyncManagers(session)
       const connections = await socialGraph.listConnections(podRoot)
+
+      const authorNames = new Map<string, string>()
+      const activityBatches: Array<{
+        sourceWebId: string
+        items: Array<StreamItem & { authorWebId: string }>
+      }> = []
 
       const connectionPosts = await Promise.all(
         connections.map(async (connection, index) => {
@@ -66,12 +106,15 @@ export default function GlobalFeedScreen(): JSX.Element {
             const peerPodRoot = connection.webId.split('/profile/')[0] + '/'
             const profile = await profileManager.readProfile(connection.webId)
             const displayName = profile?.displayName?.trim() || deriveNameFromWebId(connection.webId)
+            authorNames.set(connection.webId, displayName)
             const streamItems = await docustreamManager.listActivities(peerPodRoot)
 
             if (streamItems.length > 0) {
-              return streamItems.map((item) =>
-                streamItemToFeedPost(item, connection.webId, displayName)
-              )
+              activityBatches.push({
+                sourceWebId: connection.webId,
+                items: streamItems.map((item) => ({ ...item, authorWebId: connection.webId })),
+              })
+              return [] as FeedPost[]
             }
 
             const bio = profile?.bio?.trim() || 'Shared a profile update.'
@@ -100,19 +143,45 @@ export default function GlobalFeedScreen(): JSX.Element {
         })
       )
 
+      const merged = mergeAndQueryActivities(activityBatches, {
+        state: syncStateRef.current,
+        query: {
+          limit: 500,
+        },
+      })
+      syncStateRef.current = merged.sync.nextState
+      try {
+        await saveFeedSyncCheckpoint(webId, syncStateRef.current)
+      } catch {
+        // Keep rendering feed even when local checkpoint persistence fails.
+      }
+
+      const mergedPosts = merged.items.map((item) => {
+        const authorWebId = item.authorWebId ?? webId
+        const authorName =
+          (authorWebId ? authorNames.get(authorWebId) : undefined) ??
+          deriveNameFromWebId(authorWebId ?? 'unknown')
+        return streamItemToFeedPost(item, authorWebId ?? 'unknown', authorName)
+      })
+
       setPosts(
-        connectionPosts
+        [...mergedPosts, ...connectionPosts.flat()]
           .flat()
           .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
       )
     } catch (err) {
       console.error('[GlobalFeedScreen] fetchFeed error:', err)
     }
-  }, [isLoggedIn, session, webId])
+  }, [isLoggedIn, isSyncCheckpointReady, session, webId])
 
   useEffect(() => {
+    if (!isSyncCheckpointReady) {
+      setLoading(true)
+      return
+    }
+
     void fetchFeed().finally(() => setLoading(false))
-  }, [fetchFeed])
+  }, [fetchFeed, isSyncCheckpointReady])
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true)
@@ -299,7 +368,7 @@ function deriveNameFromWebId(inputWebId: string): string {
   }
 }
 
-function streamItemToFeedPost(item: StreamItem, authorWebId: string, authorName: string): FeedPost {
+function streamItemToFeedPost(item: StreamItem | QueryableStreamItem, authorWebId: string, authorName: string): FeedPost {
   return {
     id: `${authorWebId}-${item.id}`,
     authorWebId,
