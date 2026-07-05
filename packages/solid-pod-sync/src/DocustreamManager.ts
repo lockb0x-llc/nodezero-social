@@ -9,23 +9,13 @@
  * comprehensive error recovery will be added in a subsequent phase.
  */
 
+import {
+  assertValidStreamItem,
+  type StreamItem,
+} from './contracts/DocustreamContract.js'
+
 /** The origin source of a stream item. */
-export interface StreamItem {
-  /** Stable identifier for this item (used as the filename `<id>.jsonld`). */
-  id: string
-  /** Platform the item originated from. */
-  source: 'reddit' | 'x' | 'nodezero' | 'rss'
-  /** Display name / handle of the content author. */
-  author: string
-  /** Optional title (present for RSS articles, Reddit posts, etc.). */
-  title?: string
-  /** Main text body of the item. */
-  content: string
-  /** ISO-8601 timestamp string. */
-  timestamp: string
-  /** Canonical URL of the original content, if available. */
-  url?: string
-}
+export type { StreamItem } from './contracts/DocustreamContract.js'
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
@@ -63,7 +53,7 @@ function fromJsonLd(text: string): StreamItem | null {
     const doc = JSON.parse(text) as Record<string, unknown>
     const id = String(doc['@id'] ?? '').replace(/^.*\//, '')
     if (!id) return null
-    return {
+    const item: StreamItem = {
       id,
       source: (doc['source'] as StreamItem['source']) ?? 'nodezero',
       author: String(doc['author'] ?? ''),
@@ -72,6 +62,9 @@ function fromJsonLd(text: string): StreamItem | null {
       timestamp: String(doc['timestamp'] ?? new Date().toISOString()),
       ...(doc['url'] !== undefined ? { url: String(doc['url']) } : {}),
     }
+
+    assertValidStreamItem(item)
+    return item
   } catch {
     return null
   }
@@ -108,6 +101,8 @@ export class DocustreamManager {
    * @param item - The activity item to persist.
    */
   async appendActivity(podRoot: string, item: StreamItem): Promise<void> {
+    assertValidStreamItem(item)
+
     const base = podRoot.replace(/\/$/, '')
     const resourceUrl = `${base}/public/docustream/${item.id}.jsonld`
     const body = toJsonLd(item)

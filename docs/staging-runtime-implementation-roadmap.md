@@ -263,6 +263,15 @@ Each row is a discrete unit of work. Mark ✅ when complete with evidence.
 | APP-13 | **Auth chip label accurate for node sessions** (currently hardcoded `OIDC Redirect`) | ⬜ To Do | Feed shows wrong label for seamless-node sessions |
 | APP-14 | **Semantic overlap (`findSemanticOverlap`) against staging pods** | ⬜ To Do | Code in profile.tsx; requires pods with real interests data |
 
+### 6.6 Planning and governance (Data Backpack + DocuStream foundation)
+
+| ID | Item | Status | Evidence / Notes |
+|---|---|---|---|
+| PLAN-01 | Foundation runbook published and linked to runtime roadmap | ✅ Done | [data-backpack-docustream-foundation-runbook.md](data-backpack-docustream-foundation-runbook.md) (created 2026-07-04) |
+| PLAN-02 | ADR template pack created for five Phase 0 blocker decisions | ✅ Done | [adrs/data-backpack-docustream/README.md](adrs/data-backpack-docustream/README.md) + ADR-001..005 templates |
+| PLAN-03 | Week-by-week execution tracker created with phase-aligned schedule | ✅ Done | [data-backpack-docustream-weekly-execution-tracker.md](data-backpack-docustream-weekly-execution-tracker.md) |
+| PLAN-04 | Assign named owners and target dates across tracker + ADR pack | ✅ Done | Owner/date fields prefilled in [data-backpack-docustream-weekly-execution-tracker.md](data-backpack-docustream-weekly-execution-tracker.md) and ADR-001..005 (2026-07-04) |
+
 ---
 
 ## 7. Open Gaps and Risk Register
