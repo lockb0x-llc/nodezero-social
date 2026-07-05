@@ -21,6 +21,7 @@
     "qa:smoke:gate": "bash ./scripts/qa/staging-smoke.sh && bash ./scripts/qa/staging-solid-bootstrap-policy-smoke.sh",
     "qa:smoke:mashlib-runtime": "bash ./scripts/qa/staging-mashlib-runtime-proof.sh",
     "qa:smoke:mashlib-deployed": "bash ./scripts/qa/staging-mashlib-deployed-proof.sh",
+    "qa:smoke:docustream-pane": "node ./scripts/qa/staging-docustream-pane-evidence.mjs",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
     "pm:dispatch": "pwsh -NoProfile -File ./scripts/agents/dispatch-parallel.ps1",

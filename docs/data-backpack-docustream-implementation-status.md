@@ -114,6 +114,10 @@ Verification commands and outcomes:
 - Outcome: PASS
 - Evidence summary: manual SWA deployment completed successfully (deployment id `eac2bdbb-0e20-4d2f-807e-0380a1ed223c`) and live staging proof immediately passed
 
+15. `corepack pnpm qa:smoke:docustream-pane` (seeded-session deterministic mode)
+- Outcome: FAIL
+- Evidence summary: runtime app config loaded on staging reports `envProfile: staging-testnet` but `mashlibExplorerEnabled` and `mashlibModuleId` are `null`, so web adapter pane hints cannot render on docustream despite bundle marker presence
+
 ## Step 4: focused staging verification evidence
 
 ### Bootstrap flag resolution check
@@ -158,11 +162,11 @@ Outcome:
 ## Remaining implementation gaps
 
 1. Sync checkpoint persistence is now in place for feed and docustream retrieval paths, but broader ingestion/replay persistence strategy remains to be generalized across all retrieval surfaces.
-2. Layer 5 adapter now includes concrete resource-type inference, pane binding normalization, runtime module-resolution bridge, first-party web payload injection, focused runtime proof checks, and deployed-artifact proof script with live staging PASS evidence.
-3. Staging runtime verification should be expanded from command/test and artifact checks to a scripted authenticated end-to-end smoke flow.
+2. Layer 5 adapter now includes concrete resource-type inference, pane binding normalization, runtime module-resolution bridge, first-party web payload injection, focused runtime proof checks, and deployed-artifact proof script with live staging bundle-marker PASS evidence.
+3. Authenticated UI-level pane evidence is currently blocked in staging because deployed runtime config is missing `mashlibExplorerEnabled`/`mashlibModuleId` at runtime; a fresh deploy with those flags active is required.
 
 ## Next execution slice
 
 1. Generalize checkpoint/replay handling beyond feed/docustream into any additional query surfaces that adopt Layer 4 state.
-2. Capture authenticated UI-level pane-resolution evidence on `docustream` route against live pod resources (beyond artifact/content-marker proof).
+2. Re-deploy staging web artifact from workflow/build path that emits `extra.mashlibExplorerEnabled=true` and `extra.mashlibModuleId=nodezero:mashlib-pane-provider`, then re-run `qa:smoke:docustream-pane`.
 3. Add one staging smoke script that toggles bootstrap and verifies container + ACL outcomes against a test Pod.
