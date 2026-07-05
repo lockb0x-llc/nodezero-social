@@ -1,6 +1,6 @@
 # NodeZero Staging Deployment Blueprint
 
-Date: 2026-06-24
+Date: 2026-07-05
 Target URL: staging.nodezero.social
 Network: Stellar TestNet
 Cloud: Azure
@@ -75,46 +75,38 @@ Cloud platform:
 ## 4. Readiness scoreboard
 
 Current maturity estimates:
-- Build tooling and monorepo structure: 60%
-- Smart contract deployment scripting: 70%
-- ZK artifact pipeline: 75%
-- App functional completeness: 40%
-- P2P runtime operability in staging: 20%
-- Azure IaC baseline provisioning: 65%
-- CI/CD release governance: 25%
-- Staging domain readiness: 20%
+- Build tooling and monorepo structure: 85%
+- Smart contract deployment scripting: 90%
+- ZK artifact pipeline: 90%
+- App functional completeness: 78%
+- P2P runtime operability in staging: 80%
+- Azure IaC baseline provisioning: 82%
+- CI/CD release governance: 72%
+- Staging domain readiness: 90%
 
-Overall release readiness for staging: 43% (not launchable yet).
+Overall release readiness for staging: 83% (live, with defined hardening backlog).
 
-## 5. Blocking gaps and acceptance criteria
+## 5. Remaining gaps and acceptance criteria
 
-G1: Feed implementation is placeholder
-- Required outcome: feed renders aggregated posts from followed WebIDs in chronological order.
+G1: Feed/social graph depth still partial
+- Required outcome: production-grade FOAF-connected feed with broader social graph coverage.
 - Acceptance: test account with >=3 follows shows merged and sorted feed from Solid Pod sources.
 
-G2: Local node messaging is optimistic local state only
-- Required outcome: messages flow between two clients through real relay and WebRTC path.
-- Acceptance: two-device test can exchange messages and recover after reconnect.
+G2: Relay lifecycle not codified in IaC/workflow
+- Required outcome: relay service deployment and health checks integrated into CI/CD lifecycle.
+- Acceptance: full relay deploy + health gate runs from automated workflow.
 
-G3: Relay backend missing
-- Required outcome: deployable relay service with secure WebSocket endpoint and protocol compatibility.
-- Acceptance: relay smoke script verifies offer/answer/ice routing and error handling.
+G3: Provisioner settings drift risk
+- Required outcome: required `JSS_*` runtime settings are applied by workflow, not ad hoc commands.
+- Acceptance: staging deploy applies and verifies provisioner settings deterministically.
 
-G4: Solid profile interests parsing is lossy
-- Required outcome: profile reader returns complete interests array.
-- Acceptance: write multi-interest profile, readback exact list order-insensitive.
+G4: Drift detection not yet enforced
+- Required outcome: config drift check (`verify-staging-drift.mjs`) is scheduled or gated in CI.
+- Acceptance: deployment pipeline fails when runtime config diverges from intended state.
 
-G5: Build/test governance inconsistent
-- Required outcome: all packages either define test script or workspace runner tolerates missing tests.
-- Acceptance: CI pipeline completes build/lint/type-check/test contracts with deterministic results.
-
-G6: Azure staging hardening incomplete
-- Required outcome: custom domain and TLS configured with publish workflow and rollback steps.
-- Acceptance: successful blue/green or atomic publish to staging.nodezero.social with smoke pass.
-
-G7: Contract/toolchain compatibility risk
-- Required outcome: explicit protocol and SDK compatibility matrix documented and validated.
-- Acceptance: deploy script, contract build, and testnet invocation validated on pinned versions.
+G5: Production-mainnet promotion guardrails incomplete
+- Required outcome: separate production workflow, approvals, identity, and promotion checklist.
+- Acceptance: no production deployment path reuses staging scripts or identities.
 
 ## 6. End-to-end staged roadmap
 
@@ -128,11 +120,11 @@ Gate:
 
 ### Stage B: Product completion (Day 3-6)
 Deliverables:
-- Real feed aggregation from Solid graph and post containers.
+- RSS-backed Docustream source ingestion + source management in app.
 - Real local chat wiring via P2P channel and signaling relay.
 - Platform-safe Solid auth behavior across web/native.
 Gate:
-- Functional smoke tests pass on web and one native target.
+- Functional smoke tests pass on web and one native target; source add/toggle/ingest flow verified.
 
 ### Stage C: Chain and ZK operational reliability (Day 5-7)
 Deliverables:

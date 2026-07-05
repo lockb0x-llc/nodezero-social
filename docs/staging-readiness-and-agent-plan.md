@@ -1,6 +1,6 @@
 # NodeZero Staging Readiness Review and Agent Operating Plan
 
-Date: 2026-06-24
+Date: 2026-07-05
 Target: staging.nodezero.social on Stellar TestNet and Azure
 
 ## 1) Repository purpose and product shape
@@ -50,24 +50,21 @@ NodeZero is a decentralized social application that combines:
 
 ## 4) Deployment readiness summary
 
-Status: Not ready for staging release yet.
+Status: Staging is live and operational, with a defined hardening backlog.
 
 Readiness by area:
-- Smart contracts and artifact pipeline: Partially ready.
-- Mobile/web application functionality: Partially ready with major placeholders.
-- Azure infrastructure provisioning: Basic ready, missing staging-grade controls and publishing automation.
-- CI/CD and release governance: Not ready.
+- Smart contracts and artifact pipeline: Ready and deployed (TestNet live manifests).
+- Mobile/web application functionality: Mostly ready; key flows (auth, onboarding, wallet, local relay, Docustream RSS sources) are active.
+- Azure infrastructure provisioning: Ready baseline with custom domains and telemetry; some lifecycle codification remains.
+- CI/CD and release governance: Partially ready; key deployment workflow is active, drift controls still being codified.
 
-## 5) Key gaps to close before staging
+## 5) Key gaps to close after staging bring-up
 
-1. Feed and local-node messaging are placeholders in mobile UI.
-2. Solid profile interests handling reads only one value, not a full list.
-3. Solid auth path in mobile uses browser redirect assumptions that are not mobile-safe without platform-specific handling.
-4. No relay server implementation in this repo for SignalRelay WebSocket endpoint.
-5. No CI/CD workflows present for repeatable build/test/deploy gates.
-6. Azure IaC does not include custom domain wiring and production-grade hardening controls.
-7. Root workspace test script can fail because some packages do not define test scripts.
-8. Package manifest issue in solid-pod-sync (duplicate peerDependencies key with overwrite risk).
+1. Codify relay lifecycle in IaC/workflow to eliminate manual recovery steps.
+2. Move provisioner `JSS_*` runtime settings into repeatable CI/CD steps.
+3. Add scheduled/gated drift detection and contract/key-vault consistency checks.
+4. Expand feed/social graph depth evidence for larger real-pod datasets.
+5. Complete production-mainnet promotion guardrails and separation workflow.
 
 ## 6) Roadmap to staging.nodezero.social (Stellar TestNet + Azure)
 
@@ -77,10 +74,10 @@ Readiness by area:
 - Add release checklist and environment variable contract.
 
 ### Phase 1: Complete core product behaviors (3-5 days)
-- Implement real feed aggregation from social graph + Pod post containers.
-- Implement P2P local broadcast with actual channel lifecycle.
-- Add relay service deployment target (Azure Container Apps/App Service).
-- Make Solid auth flow platform-aware for Expo web and native.
+- Maintain real feed aggregation and Docustream source ingestion quality.
+- Keep P2P local broadcast healthy with relay uptime instrumentation.
+- Codify relay service deployment target (Azure App Service).
+- Continue platform-safe Solid auth hardening for Expo web/native parity.
 
 ### Phase 2: Chain + ZK deployment hardening (2-3 days)
 - Add idempotent contract deployment with explicit init/config actions.
@@ -95,7 +92,7 @@ Readiness by area:
 ### Phase 4: Staging validation and go-live (2-3 days)
 - End-to-end smoke tests (auth, profile save/load, feed, local node, wallet registration).
 - Synthetic monitoring and health dashboard.
-- Sign-off and launch staging.nodezero.social.
+- Sign-off and maintain staged release cadence for `staging.nodezero.social`.
 
 ## 7) Agent operating model
 

@@ -158,6 +158,7 @@ enforces that staging and production values never mix. See
 | On-chain attestation (`set_attestation`) | ✅ Live — `accountCommitment` + `attestationCiphertext` on TestNet |
 | WebID profile-card anchor (`nz:` triples) | ✅ Live |
 | On-return fail-closed attestation check | ✅ Live |
+| Docustream RSS sources (add/toggle/delete + ingest) | ✅ Live — Pod-backed source registry and feed ingestion |
 | Local peer messaging (P2P relay) | ✅ Live — staging relay healthy |
 | Feed / social graph (FOAF) | 🔶 Shell renders; real Pod-connected graph is post-MVP |
 | Proof-of-Humanity (poh.circom + PoHVerifier) | ⚪ Contract deployed; not wired into onboarding yet |

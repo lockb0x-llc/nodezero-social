@@ -8,6 +8,19 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- No entries yet.
+
+---
+
+## [0.0.2] — 2026-07-05
+
+### Changed
+
+- Removed generated runtime artifacts from version control (Playwright reports/results, provisioner log downloads/live captures, and local deployment zip bundles).
+- Hardened `.gitignore` to keep generated web bundles, Playwright artifacts, and provisioner log archives out of future commits.
+- Synced staging/testnet documentation to the current deployed state, including contract IDs, lockbox factory wasm hash, and ZK artifact verification references.
+- Updated public deployment metadata in `deployments/treasury-deployer.public.json` to match current factory wasm references.
+
 ---
 
 ## [0.1.0-testnet] — 2026-07-01
@@ -76,4 +89,5 @@ proven end-to-end on live staging at `staging.nodezero.social`.
   `extraNodeModules.buffer` alias + boot-time polyfill.
 
 [0.1.0-testnet]: https://github.com/lockb0x-llc/nodezero-social/releases/tag/v0.1.0-testnet
-[Unreleased]: https://github.com/lockb0x-llc/nodezero-social/compare/v0.1.0-testnet...HEAD
+[0.0.2]: https://github.com/lockb0x-llc/nodezero-social/releases/tag/v0.0.2
+[Unreleased]: https://github.com/lockb0x-llc/nodezero-social/compare/v0.0.2...HEAD

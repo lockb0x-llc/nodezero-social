@@ -17,10 +17,11 @@
     "alias": "nodezero-lockbox-factory-testnet-v2",
     "id": "CA5MASVC7CH646QUZM6HFC3JAYIG4TCRHJDSBDOBFP66IW7TXYYHFUVB",
     "operator": "GDMJ3GFM2RPB5FRX5DS2IRRSVF6RFYILXZ2WIUIJQJJOHXJTQXOQVBHR",
-    "lockboxWasmHash": "795157cc49e66f79d2ce06049687d5ad20d625d38c772035dbb4e9463360885f",
+    "lockboxWasmHash": "55bcb3a4c05ff935a421f10d1a72bdeb6e4573de8954e4fbd263f7ac88a8fbd9",
     "initTx": "b8ad8700f1717519b42f64677106ac54b0ba031018b4d9197795fa834d9e57fd",
     "storageEntries": 3,
-    "previousFactoryId": "CBV5KWYWK4O44JX4JK57IDGPA2IZSKJR2SC2UNYV65RU4S7MSK66F2WA"
+    "previousFactoryId": "CBV5KWYWK4O44JX4JK57IDGPA2IZSKJR2SC2UNYV65RU4S7MSK66F2WA",
+    "wasmNote": "Current factory wasm includes Lockb0x.set_attestation (ZK identity commitment + AES-256-GCM encrypted claim). Previous 795157cc hash was pre-attestation lockb0x wasm."
   },
   "evidence": {
     "testLockbox": {

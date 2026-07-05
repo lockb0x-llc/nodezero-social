@@ -40,14 +40,14 @@ The following are non-optional guardrails for every deployment:
 
 1. Prepare ZK attestation artifacts and manifest:
    - `pnpm prepare:zk:testnet`
-   - Output: `/home/runner/work/nodezero-social/nodezero-social/deployments/zk-testnet-artifacts.json`
+   - Output: `deployments/zk-testnet-artifacts.json`
 2. Deploy Soroban contracts to Stellar TestNet:
    - `STELLAR_SOURCE_ACCOUNT=<alias> pnpm deploy:stellar:testnet`
-   - Output: `/home/runner/work/nodezero-social/nodezero-social/deployments/stellar-testnet.contracts.json`
+   - Output: `deployments/stellar-testnet.contracts.json`
    - Manifest now includes per-contract `deploymentMode` (`created` or `reused`) to support idempotency auditing.
 3. Generate and verify deployment artifact checksums:
    - `pnpm prepare:checksums:testnet`
-   - Output: `/home/runner/work/nodezero-social/nodezero-social/deployments/testnet-artifact-checksums.sha256`
+   - Output: `deployments/testnet-artifact-checksums.sha256`
    - Verification: `pnpm verify:checksums:testnet`
    - Required before publishing values to app configuration or Azure parameters.
 4. Update app deployment variables with new values:
@@ -87,21 +87,32 @@ Attestation requirement for app runtime:
 - On returning sign-in, app must validate pairing against the per-user lockbox root when `userLockboxContractId` exists.
 - Pairing verification must fail closed (prompt relink/re-attest) when mapping or proof checks fail.
 
-## Current deployed contract references (staging-testnet)
+## Current deployed references (staging-testnet)
 
 Current deployment manifest:
 
 - `deployments/stellar-testnet.contracts.json`
 
-As of 2026-06-26, deployed contract IDs are:
+As of 2026-07-01, deployed contract IDs are:
 
 - `NZ_IDENTITY_CONTRACT_ID = CCHFYOKLGVTXEYYHWEFPI22FR26VRGG2CBBUTP6XPW3ZSIWIKEVQQ44K`
 - `NZ_LOCKBOX_CONTRACT_ID = CB36LY5WZLJNMY4DHRXQER6LU3L4E5MGFYT2XSJG7ZJZV5SIIOKODT2H`
+- `NZ_LOCKBOX_FACTORY_CONTRACT_ID = CA5MASVC7CH646QUZM6HFC3JAYIG4TCRHJDSBDOBFP66IW7TXYYHFUVB`
+
+Current lockbox factory wasm hash (`deployments/stellar-testnet.contracts.json`):
+
+- `55bcb3a4c05ff935a421f10d1a72bdeb6e4573de8954e4fbd263f7ac88a8fbd9`
+
+Current ZK artifact evidence (`deployments/zk-testnet-artifacts.json`):
+
+- `pod_ownership_vk.json` sha256: `8dae27b8db44d21020d3c4792e1314a8bd9ada1d2bd8d3c06d6550db29cdb68f`
 
 These are mapped in Azure Key Vault `nodezerosocialstagingtes` as:
 
 - `stellar-identity-contract-id`
 - `stellar-lockbox-contract-id`
+
+The app build for staging consumes these via workflow environment variables in `.github/workflows/staging-deploy.yml` when generating the Expo web bundle.
 
 RBAC requirement for updates:
 

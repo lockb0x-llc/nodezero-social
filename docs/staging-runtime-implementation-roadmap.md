@@ -6,7 +6,7 @@
 **Public URL:** `https://staging.nodezero.social`
 **Chain:** Stellar TestNet (`Test SDF Network ; September 2015`)
 **Document status:** Living — update status column and date after each change.
-**Last verified:** 2026-07-01 (live Playwright + stellar.expert validation; ZK attestation E2E confirmed)
+**Last verified:** 2026-07-05 (live Playwright + stellar.expert validation; ZK attestation E2E confirmed)
 
 > **Operator note:** Azure Subscription ID, Tenant ID, service principal Client ID, and generated storage/ACA hostnames are stored in the gitignored internal reference file [`docs/dev-only/azure-identity.md`](dev-only/azure-identity.md). That file must never be committed. Runtime secrets are managed via GitHub environment secrets and Azure Key Vault.
 
@@ -89,7 +89,7 @@ Full resource count: **14 resources**.
 |---|---|---|---|
 | `NodeZeroIdentity` | `CCHFYOKLGVTXEYYHWEFPI22FR26VRGG2CBBUTP6XPW3ZSIWIKEVQQ44K` | `GBMXG2UIWFBHPKRBDQCEFNIDR3WHJAPVVGBCIOD5SGKZYZQISENZKD5O` | ✅ Live — TestNet |
 | `Lockb0x` | `CB36LY5WZLJNMY4DHRXQER6LU3L4E5MGFYT2XSJG7ZJZV5SIIOKODT2H` | (demo-init) | ✅ Live — TestNet |
-| `Lockb0xFactory` (v2) | `CA5MASVC7CH646QUZM6HFC3JAYIG4TCRHJDSBDOBFP66IW7TXYYHFUVB` | Deployer `GDMJ3GFM…` | ✅ Live — wasmHash `795157cc…`; replaces v1 `CBV5KWYW…` |
+| `Lockb0xFactory` (v2) | `CA5MASVC7CH646QUZM6HFC3JAYIG4TCRHJDSBDOBFP66IW7TXYYHFUVB` | Deployer `GDMJ3GFM…` | ✅ Live — wasmHash `55bcb3a4…`; replaces v1 `CBV5KWYW…` |
 
 Key Vault mirrors (RBAC: Key Vault Secrets Officer required to write):
 - `stellar-identity-contract-id` → `CCHFYOKLGVTXEYYHWEFPI22FR26VRGG2CBBUTP6XPW3ZSIWIKEVQQ44K`
@@ -167,7 +167,7 @@ staging deploy workflow. They are the main source of config drift between CI/CD 
 | `JSS_INTERNAL_API_KEY` | Enables + authenticates `POST /v1/create-account` (fail-closed when unset) | unset (endpoint disabled) | Endpoint returns 503; onboarding auto-fund still works |
 | `JSS_MEMBER_STARTING_XLM` | Sponsored starting balance for new member accounts (capped by `JSS_MEMBER_STARTING_MAX_XLM`, default 2) | `1` | Defaults to 1 XLM |
 | `JSS_LOCKBOX_FACTORY_OPERATOR_ADDRESS` | Operator public key for factory | Derived from source account at startup | Factory initialize fails if mismatched |
-| `JSS_LOCKBOX_WASM_HASH` | Pinned wasm hash for direct lockbox deploy fallback | `795157cc49e66f79d2ce06049687d5ad20d625d38c772035dbb4e9463360885f` | Direct deploy fallback resolves dynamically (latency) |
+| `JSS_LOCKBOX_WASM_HASH` | Pinned wasm hash for direct lockbox deploy fallback | `55bcb3a4c05ff935a421f10d1a72bdeb6e4573de8954e4fbd263f7ac88a8fbd9` | Direct deploy fallback resolves dynamically (latency) |
 | `JSS_STELLAR_RPC_URL` | Soroban RPC for contract invocations | `https://soroban-testnet.stellar.org` | Falls back to default (safe but unverified) |
 | `JSS_STELLAR_NETWORK_PASSPHRASE` | Network passphrase guard | `Test SDF Network ; September 2015` | Falls back to hardcoded default (environment boundary risk) |
 | `NZ_ENV_PROFILE` | Environment isolation tag in provisioner responses | `staging-testnet` | Health endpoint returns wrong profile |
@@ -259,6 +259,7 @@ Each row is a discrete unit of work. Mark ✅ when complete with evidence.
 | APP-09 | Local Node — two-client message exchange E2E | ✅ Done | UAT LM2 PASS 2026-06-28 (QA identities) |
 | APP-10 | Profile write+read against real staging pod | ⬜ To Do | Pending B1/B2 |
 | APP-11 | Docustream list+save against real staging pod | ✅ Done | QA L7 evidence PASS |
+| APP-11b | Docustream source management + RSS ingest (add/toggle/delete + pull) | ✅ Done | Implemented in `app/docustream.tsx` + `DocustreamSourceManager`; sources persist in Pod and enabled feeds ingest into stream |
 | APP-12 | Backpack ACL toggle against CSS WAC | ⬜ To Do | Depends on SOLID-10 |
 | APP-13 | **Auth chip label accurate for node sessions** (currently hardcoded `OIDC Redirect`) | ⬜ To Do | Feed shows wrong label for seamless-node sessions |
 | APP-14 | **Semantic overlap (`findSemanticOverlap`) against staging pods** | ⬜ To Do | Code in profile.tsx; requires pods with real interests data |
@@ -373,14 +374,14 @@ node scripts/qa/relay-signal-e2e.mjs
 
 # Soroban provision smoke
 JSS_PROVISIONER_URL=https://nodezero-social-staging-testnet-provisioner.azurewebsites.net \
-NZ_LOCKBOX_FACTORY_CONTRACT_ID=CBV5KWYWK4O44JX4JK57IDGPA2IZSKJR2SC2UNYV65RU4S7MSK66F2WA \
+NZ_LOCKBOX_FACTORY_CONTRACT_ID=CA5MASVC7CH646QUZM6HFC3JAYIG4TCRHJDSBDOBFP66IW7TXYYHFUVB \
 node scripts/qa/soroban-provision-smoke.mjs
 
 # Download provisioner runtime logs
 az webapp log download \
   --resource-group rg-nodezero-social-staging-testnet \
   --name nodezero-social-staging-testnet-provisioner \
-  --log-file provisioner-logs-latest.zip
+  --log-file provisioner-logs/latest.zip
 
 # View current provisioner app settings
 az webapp config appsettings list \

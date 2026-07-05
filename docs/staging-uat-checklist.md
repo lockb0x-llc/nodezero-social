@@ -255,7 +255,7 @@ Validation snapshot:
 
 Execution evidence captured:
 
-- OIDC build exported (`expo export`) and deployed to SWA production with `@azure/static-web-apps-cli@2.0.7`; deploy returned success for `https://mango-glacier-0abee9e0f.7.azurestaticapps.net`.
+- OIDC build exported (`expo export --clear`) and deployed to SWA production with `@azure/static-web-apps-cli@2.0.7`; deploy returned success for `https://mango-glacier-0abee9e0f.7.azurestaticapps.net`.
 - Headed browser validation on `https://staging.nodezero.social` confirms OIDC landing copy and controls are live (`Create a real Solid account...`, `Sign In`, no JSS-mode wording).
 - Headed AU1 validation confirms redirect initiation to Solid CSS login UI at `https://solidcommunity.net/.account/login/password/`.
 - Staging landing route copy and controls align to real Pod signup plus OIDC sign-in.
