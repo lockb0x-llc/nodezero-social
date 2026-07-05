@@ -14,12 +14,57 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [0.0.2] — 2026-07-05
 
+Release-close and documentation truth-sync for the live staging-testnet baseline.
+
+### Added
+
+- **Formal implementation + attribution register** in
+  `docs/feature-implementation-attribution.md` covering:
+  - Solid OIDC and Pod sync implementation references
+  - Mashlib boundary rationale and current adapter state
+  - Upstream project/library attributions and justification links
+- **Wiki credits blocks** added to subsystem pages:
+  - `wiki/Smart-Contracts.md`
+  - `wiki/Solid-Pod-Sync.md`
+- **Cross-links for attribution discoverability** from:
+  - `README.md`
+  - `wiki/Home.md`
+  - `wiki/FAQ.md`
+
 ### Changed
 
-- Removed generated runtime artifacts from version control (Playwright reports/results, provisioner log downloads/live captures, and local deployment zip bundles).
-- Hardened `.gitignore` to keep generated web bundles, Playwright artifacts, and provisioner log archives out of future commits.
-- Synced staging/testnet documentation to the current deployed state, including contract IDs, lockbox factory wasm hash, and ZK artifact verification references.
-- Updated public deployment metadata in `deployments/treasury-deployer.public.json` to match current factory wasm references.
+- **Version bump:** root package version updated from `0.0.1` to `0.0.2`.
+- **Detailed release/docs alignment** to current live implementation state, including:
+  - Docustream RSS source management status (add/toggle/delete + ingest)
+  - Staging readiness posture update (live with hardening backlog)
+  - Runtime roadmap updates for current lockbox factory and app feature matrix
+- **Deployment metadata and public references synchronized** across repo docs and manifests:
+  - lockbox factory contract id: `CA5MASVC7CH646QUZM6HFC3JAYIG4TCRHJDSBDOBFP66IW7TXYYHFUVB`
+  - lockbox factory wasm hash: `55bcb3a4c05ff935a421f10d1a72bdeb6e4573de8954e4fbd263f7ac88a8fbd9`
+  - ZK verification artifact reference (`pod_ownership_vk.json` sha256)
+- **Wiki refresh pass** to align platform pages (`Home`, `Roadmap`, `Mobile App`,
+  `Smart Contracts`, `ZK Crypto`, `Azure Platform`) with the current v0.0.2
+  runtime/deployment state.
+
+### Fixed
+
+- Corrected stale lockbox factory wasm hash references that still pointed to
+  pre-attestation hash `795157cc...` in release-facing metadata/docs.
+- Corrected stale contract-id references in release/runbook snippets where v1
+  factory id values were still present.
+
+### Removed
+
+- Generated runtime artifacts from version control, including:
+  - Playwright report/result payloads
+  - Provisioner log download trees (`provisioner-logs*`)
+  - Local deployment/export zip artifacts (`deploy.zip`, `dist.zip`)
+
+### Security
+
+- Strengthened repository hygiene by expanding `.gitignore` coverage for generated
+  web bundles, logs, and test artifacts to reduce accidental inclusion of
+  operational/debug outputs in future commits.
 
 ---
 
