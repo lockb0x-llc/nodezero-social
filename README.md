@@ -14,6 +14,9 @@ identity and content. It combines three open protocols into one coherent identit
 The live staging environment is at **[https://staging.nodezero.social](https://staging.nodezero.social)**
 (Stellar TestNet; no real assets at risk).
 
+During active development, **`testnet` is the release branch** for staging/TestNet readiness.
+The repository default branch remains **`main`** for governance and stable entrypoint workflows.
+
 ---
 
 ## Architecture
