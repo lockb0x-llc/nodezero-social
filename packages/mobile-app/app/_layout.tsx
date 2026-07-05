@@ -16,8 +16,10 @@ import { WalletProvider, useWallet } from '../src/contexts/WalletContext'
 import { Stack, Link, usePathname, useRouter } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { View, Text, StyleSheet, Platform, ScrollView } from 'react-native'
+import Constants from 'expo-constants'
 import React from 'react'
 import { aesthetic } from '../src/theme/aesthetic'
+import * as mashlibPaneProvider from '../src/solid/mashlibPaneProvider'
 
 const PUBLIC_ROUTES = new Set(['/'])
 const TRANSITION_ROUTES = new Set(['/onboarding'])
@@ -167,6 +169,22 @@ const styles = StyleSheet.create({
 })
 
 export default function RootLayout(): JSX.Element {
+  React.useEffect(() => {
+    if (Platform.OS !== 'web') return
+
+    const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
+    const enabledRaw = (appExtra?.mashlibExplorerEnabled ?? 'false').toLowerCase().trim()
+    const isEnabled = enabledRaw === '1' || enabledRaw === 'true' || enabledRaw === 'yes'
+    if (!isEnabled) return
+
+    const root = globalThis as unknown as Record<string, unknown>
+    if (!root.__NZ_MASHLIB__) {
+      root.__NZ_MASHLIB__ = {
+        listPanes: mashlibPaneProvider.listPanes,
+      }
+    }
+  }, [])
+
   return (
     <SolidProvider>
       <DiscoveryProvider>

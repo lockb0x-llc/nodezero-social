@@ -63,6 +63,8 @@ export NZ_SOLID_OIDC_ISSUER_URL="${NZ_SOLID_OIDC_ISSUER_URL:-https://solid.nodez
 export NZ_SOLID_SIGNUP_URL="${NZ_SOLID_SIGNUP_URL:-https://solid.nodezero.social/idp/register/}"
 export NZ_NODEZERO_ISSUER_URL="${NZ_NODEZERO_ISSUER_URL:-https://solid.nodezero.social/}"
 export NZ_SOLID_BOOTSTRAP_ENABLED="${NZ_SOLID_BOOTSTRAP_ENABLED:-true}"
+export NZ_MASHLIB_EXPLORER_ENABLED="${NZ_MASHLIB_EXPLORER_ENABLED:-false}"
+export NZ_MASHLIB_MODULE_ID="${NZ_MASHLIB_MODULE_ID:-}"
 
 if [[ "$NZ_ENV_PROFILE" != "staging-testnet" ]]; then
   fail "NZ_ENV_PROFILE must be staging-testnet for this smoke script (got '$NZ_ENV_PROFILE')."
@@ -70,12 +72,14 @@ fi
 
 pushd "$ROOT_DIR" >/dev/null
 
-CONFIG_JSON="$(node -e "const cfg=require('./packages/mobile-app/app.config.js'); console.log(JSON.stringify({envProfile:cfg.extra.envProfile,solidBootstrapEnabled:cfg.extra.solidBootstrapEnabled,nodeZeroIssuerUrl:cfg.extra.nodeZeroIssuerUrl,relayUrl:cfg.extra.relayUrl}))")"
+CONFIG_JSON="$(node -e "const cfg=require('./packages/mobile-app/app.config.js'); console.log(JSON.stringify({envProfile:cfg.extra.envProfile,solidBootstrapEnabled:cfg.extra.solidBootstrapEnabled,nodeZeroIssuerUrl:cfg.extra.nodeZeroIssuerUrl,relayUrl:cfg.extra.relayUrl,mashlibExplorerEnabled:cfg.extra.mashlibExplorerEnabled,mashlibModuleId:cfg.extra.mashlibModuleId}))")"
 echo "[solid-bootstrap-smoke] app.config resolved: $CONFIG_JSON"
 
 echo "$CONFIG_JSON" | grep -q '"envProfile":"staging-testnet"' || fail "app.config envProfile did not resolve to staging-testnet."
 echo "$CONFIG_JSON" | grep -q '"solidBootstrapEnabled":"true"' || fail "app.config solidBootstrapEnabled did not resolve to true."
 echo "$CONFIG_JSON" | grep -q '"nodeZeroIssuerUrl":"https://solid.nodezero.social/"' || fail "app.config nodeZeroIssuerUrl does not match Node Zero Community Server."
+echo "$CONFIG_JSON" | grep -q '"mashlibExplorerEnabled":"' || fail "app.config mashlibExplorerEnabled field missing."
+echo "$CONFIG_JSON" | grep -q '"mashlibModuleId":"' || fail "app.config mashlibModuleId field missing."
 pass "app.config staging bootstrap resolution checks."
 
 run_pnpm policy:validate-env

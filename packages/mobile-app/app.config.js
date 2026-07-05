@@ -80,6 +80,7 @@ const qaLocalOverridesEnabled = process.env.NZ_QA_LOCAL_OVERRIDES_ENABLED ?? 'fa
 const seamlessOnboardingEnabled = process.env.NZ_SEAMLESS_ONBOARDING_ENABLED ?? 'false'
 const solidBootstrapEnabled = process.env.NZ_SOLID_BOOTSTRAP_ENABLED ?? 'false'
 const mashlibExplorerEnabled = process.env.NZ_MASHLIB_EXPLORER_ENABLED ?? 'false'
+const mashlibModuleId = process.env.NZ_MASHLIB_MODULE_ID ?? ''
 
 if (profile.enforceStrictVariables) {
   if (!relayUrl) {
@@ -175,6 +176,7 @@ module.exports = {
     seamlessOnboardingEnabled,
     solidBootstrapEnabled,
     mashlibExplorerEnabled,
+    mashlibModuleId,
     primaryColor: process.env.NZ_PRIMARY_COLOR ?? '#6C63FF',
     backgroundColor: process.env.NZ_BACKGROUND_COLOR ?? '#0D0D0D',
     relayUrl,

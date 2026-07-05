@@ -54,7 +54,9 @@ Implemented files:
 - `packages/solid-pod-sync/src/adapters/MashlibWebAdapter.ts` (web-only adapter boundary scaffold)
 - `packages/solid-pod-sync/src/__tests__/MashlibWebAdapter.test.ts` (boundary behavior tests)
 - `packages/mobile-app/src/solid/mashlibWebAdapter.ts` (feature-gated web runtime adapter bridge)
-- `packages/mobile-app/app.config.js` (`NZ_MASHLIB_EXPLORER_ENABLED` runtime flag)
+- `packages/mobile-app/src/solid/mashlibPaneProvider.ts` (first-party pane runtime payload for web bridge)
+- `packages/mobile-app/app.config.js` (`NZ_MASHLIB_EXPLORER_ENABLED` and `NZ_MASHLIB_MODULE_ID` runtime flags)
+- `packages/mobile-app/app/_layout.tsx` (web runtime injection of `__NZ_MASHLIB__` when explorer enabled)
 
 Verification commands and outcomes:
 
@@ -87,6 +89,14 @@ Verification commands and outcomes:
 8. `corepack pnpm --filter @nodezero/mobile-app type-check`
 - Outcome: PASS
 - Evidence summary: mashlib web adapter bridge integration compiles cleanly
+
+9. `corepack pnpm qa:smoke:solid-bootstrap` (config resolution stage)
+- Outcome: PASS for app.config verification stage
+- Evidence summary: staging profile resolves `mashlibExplorerEnabled` and `mashlibModuleId` fields in addition to bootstrap/issuer checks
+
+10. `node -e "const cfg=require('./packages/mobile-app/app.config.js'); ..."` with `NZ_MASHLIB_EXPLORER_ENABLED=true`
+- Outcome: PASS
+- Evidence summary: staging config resolves `mashlibExplorerEnabled: true` with module-id field present, enabling web runtime payload injection path
 
 ## Step 4: focused staging verification evidence
 
@@ -132,7 +142,7 @@ Outcome:
 ## Remaining implementation gaps
 
 1. Sync checkpoint persistence is now in place for feed and docustream retrieval paths, but broader ingestion/replay persistence strategy remains to be generalized across all retrieval surfaces.
-2. Layer 5 adapter now includes concrete resource-type inference and pane binding normalization with a web runtime bridge in app surfaces, but real mashlib pane-package loading in staging remains pending.
+2. Layer 5 adapter now includes concrete resource-type inference, pane binding normalization, runtime module-resolution bridge, and first-party web payload injection; external mashlib package validation in staging remains pending.
 3. Staging runtime verification should be expanded from command/test checks to a scripted end-to-end smoke flow.
 
 ## Next execution slice
