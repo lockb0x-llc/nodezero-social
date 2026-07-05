@@ -17,6 +17,13 @@ export { SocialGraph } from './SocialGraph.js'
 export { NsfwScanner, NSFW_DOMAINS } from './NsfwScanner.js'
 export { DocustreamManager } from './DocustreamManager.js'
 export {
+	PodLayoutManager,
+	buildPodContainerLayout,
+	buildAclDocument,
+	deriveOwnerWebId,
+	DEFAULT_POLICY_MATRIX,
+} from './PodLayoutManager.js'
+export {
 	DOCUSTREAM_ALLOWED_SOURCES,
 	assertValidStreamItem,
 	validateStreamItem,
@@ -36,3 +43,8 @@ export type { StreamItem } from './DocustreamManager.js'
 export type { ContractValidationIssue, StreamSource } from './contracts/DocustreamContract.js'
 export type { DataBackpackProfile } from './contracts/DataBackpackContract.js'
 export type { ConnectionRecord } from './contracts/SocialGraphContract.js'
+export type {
+	PodContainerLayout,
+	PodPolicyMatrix,
+	ContainerVisibility,
+} from './PodLayoutManager.js'
