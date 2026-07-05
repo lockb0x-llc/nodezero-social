@@ -47,6 +47,7 @@ describe('createMashlibWebAdapter', () => {
     expect(panes.map((pane) => pane.id)).toEqual(['tripledoc', 'activity', 'timeline'])
     expect(bound.resourceType).toBe('docustream')
     expect(bound.panes.map((pane) => pane.id)).toEqual(['activity', 'stream', 'timeline', 'tripledoc'])
+    expect(bound.panes.every((pane) => pane.label.trim().length > 0)).toBe(true)
   })
 })
 

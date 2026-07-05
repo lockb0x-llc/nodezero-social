@@ -4,6 +4,7 @@ import {
   createMashlibWebAdapter,
   type MashlibWebAdapter,
 } from '@nodezero/solid-pod-sync'
+import * as mashlibPaneProvider from './mashlibPaneProvider'
 
 type MashlibLikeModule = {
   listPanes?: (resourceUrl: string) => unknown[] | Promise<unknown[]>
@@ -43,30 +44,36 @@ async function loadModuleById(moduleId: string): Promise<unknown> {
 async function resolveMashlibRuntimeModule(): Promise<MashlibLikeModule> {
   const root = globalThis as unknown as Record<string, unknown>
 
-  // 1) Explicit NodeZero runtime bridge injected by hosting shell.
+  // 1) Module-id path (preferred) for explicit runtime provider selection.
+  const moduleId = mashlibModuleId()
+  if (moduleId) {
+    if (moduleId === 'nodezero:mashlib-pane-provider') {
+      return {
+        listPanes: mashlibPaneProvider.listPanes,
+      }
+    }
+
+    try {
+      const imported = await loadModuleById(moduleId)
+      const direct = normalizePaneListProvider(imported)
+      if (direct) return direct
+
+      const withDefault = normalizePaneListProvider((imported as Record<string, unknown>)?.default)
+      if (withDefault) return withDefault
+    } catch {
+      // Continue to fallback runtime bridges below.
+    }
+  }
+
+  // 2) Explicit NodeZero runtime bridge injected by hosting shell.
   const nodeZeroBridge = normalizePaneListProvider(root.__NZ_MASHLIB__)
   if (nodeZeroBridge) return nodeZeroBridge
 
-  // 2) Common mashlib globals (e.g., panes registry on window/global).
+  // 3) Common mashlib globals (e.g., panes registry on window/global).
   const mashlibGlobal = normalizePaneListProvider(root.mashlib)
   if (mashlibGlobal) return mashlibGlobal
   const panesGlobal = normalizePaneListProvider({ panes: root.panes })
   if (panesGlobal) return panesGlobal
-
-  // 3) Optional dynamic ESM runtime module load.
-  const moduleId = mashlibModuleId()
-  if (!moduleId) return {}
-
-  try {
-    const imported = await loadModuleById(moduleId)
-    const direct = normalizePaneListProvider(imported)
-    if (direct) return direct
-
-    const withDefault = normalizePaneListProvider((imported as Record<string, unknown>)?.default)
-    if (withDefault) return withDefault
-  } catch {
-    return {}
-  }
 
   return {}
 }

@@ -133,6 +133,8 @@ jobs:
           NZ_SOLID_ACCOUNT_PORTAL_URL: https://solidcommunity.net/
           NZ_SEAMLESS_ONBOARDING_ENABLED: 'true'
           NZ_JSS_PROVISIONER_URL: https://nodezero-social-staging-testnet-provisioner.azurewebsites.net
+          NZ_MASHLIB_EXPLORER_ENABLED: 'true'
+          NZ_MASHLIB_MODULE_ID: nodezero:mashlib-pane-provider
         run: pnpm --filter @nodezero/mobile-app build:web
 
       - name: Write staging deploy marker
@@ -188,6 +190,27 @@ jobs:
         env:
           STAGING_BASE_URL: https://${{ steps.hostname.outputs.hostname }}
         run: pnpm qa:smoke
+
+      - name: Run focused mashlib runtime proof
+        env:
+          NZ_ENV_PROFILE: staging-testnet
+          NZ_RELAY_URL: wss://nodezero-social-staging-testnet-relay.azurewebsites.net
+          NZ_IDENTITY_CONTRACT_ID: CCHFYOKLGVTXEYYHWEFPI22FR26VRGG2CBBUTP6XPW3ZSIWIKEVQQ44K
+          NZ_LOCKBOX_CONTRACT_ID: CB36LY5WZLJNMY4DHRXQER6LU3L4E5MGFYT2XSJG7ZJZV5SIIOKODT2H
+          NZ_ZK_ARTIFACTS_URL: https://stki7yquyjmnskg.blob.core.windows.net/zk-artifacts/
+          NZ_ZK_MANIFEST_URL: https://stki7yquyjmnskg.blob.core.windows.net/zk-artifacts/zk-testnet-artifacts.json
+          NZ_SOLID_OIDC_ISSUER_URL: https://solidcommunity.net/
+          NZ_SOLID_SIGNUP_URL: https://solidcommunity.net/register
+          NZ_NODEZERO_ISSUER_URL: https://solid.nodezero.social/
+          NZ_SOLID_BOOTSTRAP_ENABLED: 'true'
+          NZ_MASHLIB_EXPLORER_ENABLED: 'true'
+          NZ_MASHLIB_MODULE_ID: nodezero:mashlib-pane-provider
+        run: pnpm qa:smoke:mashlib-runtime
+
+      - name: Run deployed mashlib bundle proof
+        env:
+          STAGING_BASE_URL: https://${{ steps.hostname.outputs.hostname }}
+        run: pnpm qa:smoke:mashlib-deployed
 
       - name: Staging deployment summary
         run: echo "Staging infrastructure deployment, Expo web publish, and smoke suite completed."

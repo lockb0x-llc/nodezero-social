@@ -175,7 +175,12 @@ export default function RootLayout(): JSX.Element {
     const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
     const enabledRaw = (appExtra?.mashlibExplorerEnabled ?? 'false').toLowerCase().trim()
     const isEnabled = enabledRaw === '1' || enabledRaw === 'true' || enabledRaw === 'yes'
+    const moduleId = (appExtra?.mashlibModuleId ?? '').trim()
     if (!isEnabled) return
+
+    // When an explicit module-id is configured, the adapter bridge resolves the
+    // runtime provider directly and we should not inject fallback globals.
+    if (moduleId) return
 
     const root = globalThis as unknown as Record<string, unknown>
     if (!root.__NZ_MASHLIB__) {

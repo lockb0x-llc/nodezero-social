@@ -98,6 +98,18 @@ Verification commands and outcomes:
 - Outcome: PASS
 - Evidence summary: staging config resolves `mashlibExplorerEnabled: true` with module-id field present, enabling web runtime payload injection path
 
+11. `corepack pnpm qa:smoke:mashlib-runtime`
+- Outcome: PASS
+- Evidence summary: focused runtime proof confirms staging config resolves `mashlibModuleId: nodezero:mashlib-pane-provider` with explorer enabled, and adapter test verifies bound pane labels are populated for docustream resources
+
+12. `corepack pnpm qa:smoke:mashlib-deployed`
+- Outcome: FAIL (against current `https://staging.nodezero.social` deployment)
+- Evidence summary: deployed bundle does not yet include `nodezero:mashlib-pane-provider` sentinel, indicating staging is still serving an older artifact and needs the updated workflow/build deployment
+
+13. `bash ./scripts/qa/staging-mashlib-deployed-proof.sh --bundle-file /mnt/c/Users/standarduser/Code/nodezero-social/packages/mobile-app/dist/_expo/static/js/web/index-21303f0b828e796f8a81333b2a02de28.js`
+- Outcome: PASS
+- Evidence summary: locally exported web artifact (built with `NZ_ENV_PROFILE=staging-testnet`, `NZ_MASHLIB_EXPLORER_ENABLED=true`, `NZ_MASHLIB_MODULE_ID=nodezero:mashlib-pane-provider`) contains module-id sentinel and pane label/render markers (`Activity Stream`, `Timeline View`, `Web explorer panes`)
+
 ## Step 4: focused staging verification evidence
 
 ### Bootstrap flag resolution check
@@ -142,11 +154,11 @@ Outcome:
 ## Remaining implementation gaps
 
 1. Sync checkpoint persistence is now in place for feed and docustream retrieval paths, but broader ingestion/replay persistence strategy remains to be generalized across all retrieval surfaces.
-2. Layer 5 adapter now includes concrete resource-type inference, pane binding normalization, runtime module-resolution bridge, and first-party web payload injection; external mashlib package validation in staging remains pending.
-3. Staging runtime verification should be expanded from command/test checks to a scripted end-to-end smoke flow.
+2. Layer 5 adapter now includes concrete resource-type inference, pane binding normalization, runtime module-resolution bridge, first-party web payload injection, focused runtime proof checks, and deployed-artifact proof script; live staging host still needs the updated artifact rollout before remote proof turns green.
+3. Staging runtime verification should be expanded from command/test and artifact checks to a scripted authenticated end-to-end smoke flow.
 
 ## Next execution slice
 
 1. Generalize checkpoint/replay handling beyond feed/docustream into any additional query surfaces that adopt Layer 4 state.
-2. Validate real mashlib pane-package loading in staging web (beyond the current global runtime bridge) and confirm pane availability against live pod resources.
+2. Re-run `qa:smoke:mashlib-deployed` after next staging deployment and capture PASS evidence from `https://staging.nodezero.social`.
 3. Add one staging smoke script that toggles bootstrap and verifies container + ACL outcomes against a test Pod.
