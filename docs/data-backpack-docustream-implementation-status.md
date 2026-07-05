@@ -50,7 +50,7 @@ Implemented files:
 - `packages/solid-pod-sync/src/index.ts` (exports)
 - `packages/mobile-app/app/feed.tsx` (retrieval merge + dedupe integration)
 - `packages/mobile-app/app/docustream.tsx` (query-driven source filtering)
-- `packages/mobile-app/src/solid/syncCheckpointStore.ts` (AsyncStorage checkpoint persistence)
+- `packages/mobile-app/src/solid/syncCheckpointStore.ts` (AsyncStorage checkpoint persistence with multi-surface scope keys)
 - `packages/solid-pod-sync/src/adapters/MashlibWebAdapter.ts` (web-only adapter boundary scaffold)
 - `packages/solid-pod-sync/src/__tests__/MashlibWebAdapter.test.ts` (boundary behavior tests)
 
@@ -121,12 +121,12 @@ Outcome:
 
 ## Remaining implementation gaps
 
-1. Sync checkpoint persistence is now in place for feed path, but broader ingestion/replay persistence strategy remains to be generalized across all retrieval surfaces.
+1. Sync checkpoint persistence is now in place for feed and docustream retrieval paths, but broader ingestion/replay persistence strategy remains to be generalized across all retrieval surfaces.
 2. Layer 5 adapter work is now scaffolded and guardrailed, but concrete mashlib capability wiring is still pending.
 3. Staging runtime verification should be expanded from command/test checks to a scripted end-to-end smoke flow.
 
 ## Next execution slice
 
-1. Generalize checkpoint/replay handling beyond feed into any additional query surfaces that adopt Layer 4 state.
+1. Generalize checkpoint/replay handling beyond feed/docustream into any additional query surfaces that adopt Layer 4 state.
 2. Implement concrete mashlib pane/resource bindings behind the new web-only adapter boundary.
 3. Add one staging smoke script that toggles bootstrap and verifies container + ACL outcomes against a test Pod.

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -10,8 +10,15 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSolid } from '../src/contexts/SolidContext';
-import { queryStreamItems, type QueryableStreamItem, type StreamItem } from '@nodezero/solid-pod-sync';
+import {
+  createSyncState,
+  mergeAndQueryActivities,
+  queryStreamItems,
+  type QueryableStreamItem,
+  type StreamItem,
+} from '@nodezero/solid-pod-sync';
 import { getSolidPodSyncManagers } from '../src/solid/podSyncManagers';
+import { loadSyncCheckpoint, saveSyncCheckpoint } from '../src/solid/syncCheckpointStore';
 import { aesthetic } from '../src/theme/aesthetic';
 
 type StreamSource = 'reddit' | 'x' | 'nodezero' | 'rss';
@@ -75,20 +82,72 @@ export default function DocustreamScreen() {
   const [filter, setFilter] = useState<FilterType>('all');
   const [items, setItems] = useState<QueryableStreamItem[]>(MOCK_DOCUSTREAM);
   const [savingItemId, setSavingItemId] = useState<string | null>(null);
+  const [isSyncCheckpointReady, setIsSyncCheckpointReady] = useState(false)
+  const syncStateRef = useRef(createSyncState())
 
   useEffect(() => {
-    if (!isLoggedIn || !webId) return;
+    let active = true
+    syncStateRef.current = createSyncState()
+    setIsSyncCheckpointReady(false)
+
+    if (!webId) {
+      setIsSyncCheckpointReady(true)
+      return () => {
+        active = false
+      }
+    }
+
+    void loadSyncCheckpoint(webId, 'docustream')
+      .then((restored) => {
+        if (!active) return
+        syncStateRef.current = restored
+      })
+      .catch(() => {
+        if (!active) return
+        syncStateRef.current = createSyncState()
+      })
+      .finally(() => {
+        if (!active) return
+        setIsSyncCheckpointReady(true)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [webId])
+
+  useEffect(() => {
+    if (!isLoggedIn || !webId || !isSyncCheckpointReady) return;
     const podRoot = webId.split('/profile/')[0] + '/';
     const { docustreamManager: manager } = getSolidPodSyncManagers(session);
     manager
       .listActivities(podRoot)
       .then((podItems) => {
-        if (podItems.length > 0) setItems(podItems.map((item) => ({ ...item, authorWebId: webId })));
+        if (podItems.length === 0) return
+
+        const merged = mergeAndQueryActivities(
+          [
+            {
+              sourceWebId: webId,
+              items: podItems.map((item) => ({ ...item, authorWebId: webId })),
+            },
+          ],
+          {
+            state: syncStateRef.current,
+            query: {
+              limit: 500,
+            },
+          }
+        )
+
+        syncStateRef.current = merged.sync.nextState
+        void saveSyncCheckpoint(webId, 'docustream', syncStateRef.current)
+        setItems(merged.items)
       })
       .catch(() => {
         // Keep mock fallback on error
       });
-  }, [isLoggedIn, session, webId]);
+  }, [isLoggedIn, isSyncCheckpointReady, session, webId]);
 
   const filteredStream =
     filter === 'all' ? items : queryStreamItems(items, { sources: [filter] });
