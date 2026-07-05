@@ -67,6 +67,7 @@ This tracker operationalizes the foundation runbook into weekly execution slices
 | 2026-07-05 | Layer 5 moved from not-started to baseline scaffold: added web-only mashlib adapter boundary (`createMashlibWebAdapter`) with runtime guardrails and unit tests enforcing ADR-004 boundary behavior | Adapter and experience owner | 2026-09-06 |
 | 2026-07-05 | Layer 4 persistence generalized beyond feed: checkpoint store refactored to scoped keys and docustream retrieval now restores/saves sync replay state using the same merge/dedupe pipeline | Sync and events owner | 2026-08-30 |
 | 2026-07-05 | Layer 5 adapter advanced from scaffold to concrete binding baseline: mashlib adapter now infers resource type from URL patterns and returns normalized bound pane descriptors with defaults + dedupe, with targeted adapter tests passing | Adapter and experience owner | 2026-09-06 |
+| 2026-07-05 | Layer 5 web integration baseline added: mobile web docustream surface now uses a feature-gated runtime adapter bridge (`NZ_MASHLIB_EXPLORER_ENABLED`) to resolve bound pane labels for web explorer previews | Adapter and experience owner | 2026-09-06 |
 
 ## Linked artifacts
 

@@ -53,6 +53,8 @@ Implemented files:
 - `packages/mobile-app/src/solid/syncCheckpointStore.ts` (AsyncStorage checkpoint persistence with multi-surface scope keys)
 - `packages/solid-pod-sync/src/adapters/MashlibWebAdapter.ts` (web-only adapter boundary scaffold)
 - `packages/solid-pod-sync/src/__tests__/MashlibWebAdapter.test.ts` (boundary behavior tests)
+- `packages/mobile-app/src/solid/mashlibWebAdapter.ts` (feature-gated web runtime adapter bridge)
+- `packages/mobile-app/app.config.js` (`NZ_MASHLIB_EXPLORER_ENABLED` runtime flag)
 
 Verification commands and outcomes:
 
@@ -81,6 +83,10 @@ Verification commands and outcomes:
 7. `corepack pnpm --filter @nodezero/solid-pod-sync test -- MashlibWebAdapter.test.ts`
 - Outcome: PASS
 - Evidence summary: 1 suite passed, 4 tests passed
+
+8. `corepack pnpm --filter @nodezero/mobile-app type-check`
+- Outcome: PASS
+- Evidence summary: mashlib web adapter bridge integration compiles cleanly
 
 ## Step 4: focused staging verification evidence
 
@@ -126,11 +132,11 @@ Outcome:
 ## Remaining implementation gaps
 
 1. Sync checkpoint persistence is now in place for feed and docustream retrieval paths, but broader ingestion/replay persistence strategy remains to be generalized across all retrieval surfaces.
-2. Layer 5 adapter now includes concrete resource-type inference and pane binding normalization, but real mashlib runtime/pane-package integration remains pending.
+2. Layer 5 adapter now includes concrete resource-type inference and pane binding normalization with a web runtime bridge in app surfaces, but real mashlib pane-package loading in staging remains pending.
 3. Staging runtime verification should be expanded from command/test checks to a scripted end-to-end smoke flow.
 
 ## Next execution slice
 
 1. Generalize checkpoint/replay handling beyond feed/docustream into any additional query surfaces that adopt Layer 4 state.
-2. Integrate the adapter with real mashlib runtime loading in web app surfaces and validate pane availability in staging web.
+2. Validate real mashlib pane-package loading in staging web (beyond the current global runtime bridge) and confirm pane availability against live pod resources.
 3. Add one staging smoke script that toggles bootstrap and verifies container + ACL outcomes against a test Pod.

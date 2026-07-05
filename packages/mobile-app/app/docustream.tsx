@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   SafeAreaView,
   Alert,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSolid } from '../src/contexts/SolidContext';
@@ -18,6 +19,7 @@ import {
   type StreamItem,
 } from '@nodezero/solid-pod-sync';
 import { getSolidPodSyncManagers } from '../src/solid/podSyncManagers';
+import { getMashlibWebAdapter } from '../src/solid/mashlibWebAdapter';
 import { loadSyncCheckpoint, saveSyncCheckpoint } from '../src/solid/syncCheckpointStore';
 import { aesthetic } from '../src/theme/aesthetic';
 
@@ -82,6 +84,7 @@ export default function DocustreamScreen() {
   const [filter, setFilter] = useState<FilterType>('all');
   const [items, setItems] = useState<QueryableStreamItem[]>(MOCK_DOCUSTREAM);
   const [savingItemId, setSavingItemId] = useState<string | null>(null);
+  const [adapterPaneLabels, setAdapterPaneLabels] = useState<string[]>([])
   const [isSyncCheckpointReady, setIsSyncCheckpointReady] = useState(false)
   const syncStateRef = useRef(createSyncState())
 
@@ -115,6 +118,26 @@ export default function DocustreamScreen() {
       active = false
     }
   }, [webId])
+
+  useEffect(() => {
+    if (!isLoggedIn || !webId || Platform.OS !== 'web') return
+
+    const adapter = getMashlibWebAdapter()
+    if (!adapter.isSupported) {
+      setAdapterPaneLabels([])
+      return
+    }
+
+    const resourceUrl = `${webId.split('/profile/')[0]}/public/docustream/`
+    void adapter
+      .listBoundPanes(resourceUrl)
+      .then((binding) => {
+        setAdapterPaneLabels(binding.panes.map((pane) => pane.label))
+      })
+      .catch(() => {
+        setAdapterPaneLabels([])
+      })
+  }, [isLoggedIn, webId])
 
   useEffect(() => {
     if (!isLoggedIn || !webId || !isSyncCheckpointReady) return;
@@ -206,6 +229,14 @@ export default function DocustreamScreen() {
         </ScrollView>
       </View>
 
+      {adapterPaneLabels.length > 0 ? (
+        <View style={styles.adapterHint}>
+          <Text style={styles.adapterHintText}>
+            Web explorer panes: {adapterPaneLabels.join(', ')}
+          </Text>
+        </View>
+      ) : null}
+
       {/* Timeline */}
       <ScrollView style={styles.timeline} contentContainerStyle={styles.timelineContent}>
         {filteredStream.map(item => (
@@ -288,6 +319,17 @@ const styles = StyleSheet.create({
     backgroundColor: aesthetic.color.surface,
     borderBottomWidth: 1,
     borderBottomColor: aesthetic.color.border,
+  },
+  adapterHint: {
+    backgroundColor: aesthetic.color.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: aesthetic.color.border,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+  },
+  adapterHintText: {
+    color: aesthetic.color.textLow,
+    fontSize: 12,
   },
   filterContent: {
     paddingHorizontal: 16,
