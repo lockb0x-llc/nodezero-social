@@ -23,7 +23,8 @@ import {
 } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useSolid } from '../src/contexts/SolidContext'
-import { ProfileManager, SocialGraph, type UserProfile } from '@nodezero/solid-pod-sync'
+import type { ProfileManager, UserProfile } from '@nodezero/solid-pod-sync'
+import { getSolidPodSyncManagers } from '../src/solid/podSyncManagers'
 import { Ionicons } from '@expo/vector-icons'
 import { aesthetic } from '../src/theme/aesthetic'
 
@@ -54,7 +55,8 @@ export default function ProfileScreen(): JSX.Element {
   // Peer view: load semantic overlap when viewing another user's profile.
   useEffect(() => {
     if (!peerWebId || !isLoggedIn) return
-    new SocialGraph(session)
+    getSolidPodSyncManagers(session)
+      .socialGraph
       .findSemanticOverlap(peerWebId, profile.interests)
       .then((threads) => {
         setSharedThreads(threads)
@@ -67,7 +69,7 @@ export default function ProfileScreen(): JSX.Element {
   // Initialise ProfileManager once session is available.
   useEffect(() => {
     if (isLoggedIn) {
-      managerRef.current = new ProfileManager(session)
+      managerRef.current = getSolidPodSyncManagers(session).profileManager
     }
   }, [isLoggedIn, session])
 

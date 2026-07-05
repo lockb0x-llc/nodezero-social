@@ -1,7 +1,7 @@
 # ADR-001: DocuStream Model Stance
 
-Status: Proposed
-Date: 2026-07-04
+Status: Accepted
+Date: 2026-07-05
 Owners: Contracts and semantics owner
 Target decision date: 2026-07-19
 Decision drivers:
@@ -20,27 +20,31 @@ The selected stance impacts identity rules, sync complexity, retention behavior,
 
 ## Decision
 
-TBD
+Adopt an event-log-first DocuStream model for v1.
+
+DocuStream records are immutable append events with stable event identity.
+Updates are represented by new events rather than in-place mutation.
 
 ## Rationale
 
-TBD
+This model gives deterministic ordering, simplifies replay safety, and aligns with
+dedupe and sync goals in Layer 4.
 
 ## Consequences
 
 Positive:
-- TBD
+- Deterministic timeline reconstruction from append-only events.
+- Cleaner dedupe semantics (event ID is authoritative).
+- Lower risk of silent overwrite conflicts across clients.
 
 Negative:
-- TBD
+- Storage growth over time requires retention and compaction policy.
+- Consumers must resolve latest state from event streams when needed.
 
 ## Rejected alternatives
 
-1. Event-log-first
-- Reason rejected: TBD
-
-2. Mutable-document-first
-- Reason rejected: TBD
+1. Mutable-document-first
+- Reason rejected: Higher conflict risk and weaker replay/audit guarantees.
 
 ## Validation plan
 

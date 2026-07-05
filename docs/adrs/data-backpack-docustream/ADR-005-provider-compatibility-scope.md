@@ -1,7 +1,7 @@
 # ADR-005: Solid Provider Compatibility Scope (v1)
 
-Status: Proposed
-Date: 2026-07-04
+Status: Accepted
+Date: 2026-07-05
 Owners: Program lead, Persistence and policy owner
 Target decision date: 2026-07-19
 Decision drivers:
@@ -20,27 +20,31 @@ The v1 decision defines how broad compatibility must be at launch:
 
 ## Decision
 
-TBD
+Adopt a validated-subset compatibility scope for v1.
+
+v1 is explicitly validated first on NodeZero-hosted CSS and a documented subset of
+external provider capabilities. Unsupported capabilities use documented fallbacks.
 
 ## Rationale
 
-TBD
+This keeps delivery risk controlled while preserving an extension path for broader
+provider compatibility in later phases.
 
 ## Consequences
 
 Positive:
-- TBD
+- Predictable support expectations for launch.
+- Lower operational risk for ACL and query semantics.
+- Clear capability matrix for staged expansion.
 
 Negative:
-- TBD
+- Some external providers will operate in reduced mode initially.
+- Requires transparent communication of capability limits.
 
 ## Rejected alternatives
 
-1. Strict validated subset
-- Reason rejected: TBD
-
-2. Broad best-effort support
-- Reason rejected: TBD
+1. Broad best-effort support
+- Reason rejected: High behavioral variance and support burden for v1 timeline.
 
 ## Validation plan
 

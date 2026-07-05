@@ -10,8 +10,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSolid } from '../src/contexts/SolidContext';
-import { DocustreamManager } from '@nodezero/solid-pod-sync';
 import type { StreamItem } from '@nodezero/solid-pod-sync';
+import { getSolidPodSyncManagers } from '../src/solid/podSyncManagers';
 import { aesthetic } from '../src/theme/aesthetic';
 
 type StreamSource = 'reddit' | 'x' | 'nodezero' | 'rss';
@@ -79,7 +79,7 @@ export default function DocustreamScreen() {
   useEffect(() => {
     if (!isLoggedIn || !webId) return;
     const podRoot = webId.split('/profile/')[0] + '/';
-    const manager = new DocustreamManager(session);
+    const { docustreamManager: manager } = getSolidPodSyncManagers(session);
     manager
       .listActivities(podRoot)
       .then((podItems) => {
@@ -100,7 +100,7 @@ export default function DocustreamScreen() {
     }
 
     const podRoot = webId.split('/profile/')[0] + '/';
-    const manager = new DocustreamManager(session);
+  const { docustreamManager: manager } = getSolidPodSyncManagers(session);
 
     setSavingItemId(item.id);
     try {

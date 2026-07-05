@@ -16,7 +16,7 @@ import { useSolid } from '../src/contexts/SolidContext';
 import { useDiscovery } from '../src/contexts/DiscoveryContext';
 import { useWallet } from '../src/contexts/WalletContext';
 import { P2PChannel } from '@nodezero/p2p-comms';
-import { SocialGraph } from '@nodezero/solid-pod-sync';
+import { getSolidPodSyncManagers } from '../src/solid/podSyncManagers';
 import { aesthetic } from '../src/theme/aesthetic';
 
 type AudienceType = 'foaf' | 'verified' | 'local';
@@ -53,7 +53,7 @@ export default function ComposeScreen() {
       } else if (audience === 'foaf') {
         // Write payload to Pod /outbox/ container via session.fetch
         const podRoot = (webId ?? '').split('/profile/')[0] + '/';
-        const graph = new SocialGraph(session);
+        const { socialGraph: graph } = getSolidPodSyncManagers(session);
         const connections = await graph.listConnections(podRoot).catch(() => []);
         const payload = JSON.stringify({ text: postText, audience, ts: Date.now() });
         await Promise.allSettled(
@@ -76,7 +76,7 @@ export default function ComposeScreen() {
       } else if (audience === 'verified') {
         // Same as foaf but guard each recipient with verifyPoH check
         const podRoot = (webId ?? '').split('/profile/')[0] + '/';
-        const graph = new SocialGraph(session);
+        const { socialGraph: graph } = getSolidPodSyncManagers(session);
         const connections = await graph.listConnections(podRoot).catch(() => []);
         const payload = JSON.stringify({ text: postText, audience, ts: Date.now() });
         await Promise.allSettled(

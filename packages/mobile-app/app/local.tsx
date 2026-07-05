@@ -27,7 +27,7 @@ import { useDiscovery } from '../src/contexts/DiscoveryContext'
 import { useSolid } from '../src/contexts/SolidContext'
 import { useWallet } from '../src/contexts/WalletContext'
 import { P2PChannel, SignalRelay, type SignalMessage } from '@nodezero/p2p-comms'
-import { SocialGraph } from '@nodezero/solid-pod-sync'
+import { getSolidPodSyncManagers } from '../src/solid/podSyncManagers'
 import { aesthetic } from '../src/theme/aesthetic'
 import { Ionicons } from '@expo/vector-icons'
 
@@ -202,7 +202,7 @@ export default function LocalNodeScreen(): JSX.Element {
       return
     }
 
-    const socialGraph = new SocialGraph(session)
+    const { socialGraph } = getSolidPodSyncManagers(session)
     const podRoot = webId.split('/profile/')[0] + '/'
 
     void socialGraph

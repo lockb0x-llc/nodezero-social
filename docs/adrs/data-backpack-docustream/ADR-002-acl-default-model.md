@@ -1,7 +1,7 @@
 # ADR-002: ACL Default Model
 
-Status: Proposed
-Date: 2026-07-04
+Status: Accepted
+Date: 2026-07-05
 Owners: Persistence and policy owner
 Target decision date: 2026-07-19
 Decision drivers:
@@ -20,27 +20,31 @@ This choice determines risk of accidental overexposure and policy maintenance bu
 
 ## Decision
 
-TBD
+Adopt strict container defaults as the v1 ACL model.
+
+Policy begins with container-level defaults and uses narrowly-scoped exceptions only
+when explicitly required by product behavior.
 
 ## Rationale
 
-TBD
+This minimizes accidental exposure, keeps policy reasoning simple, and supports
+idempotent bootstrap operations across environments.
 
 ## Consequences
 
 Positive:
-- TBD
+- Privacy-by-default posture is explicit and testable.
+- Lower operational complexity for bootstrap and verification.
+- Easier drift detection (container ACLs become source-of-truth baseline).
 
 Negative:
-- TBD
+- Some fine-grained sharing scenarios require explicit exception design.
+- Teams must avoid ad hoc per-resource ACL drift.
 
 ## Rejected alternatives
 
-1. Strict container defaults
-- Reason rejected: TBD
-
-2. Per-resource specialization
-- Reason rejected: TBD
+1. Per-resource specialization
+- Reason rejected: Increased policy drift and review complexity for v1.
 
 ## Validation plan
 

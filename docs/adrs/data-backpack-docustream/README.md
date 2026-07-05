@@ -1,13 +1,13 @@
 # Data Backpack + DocuStream ADR Pack
 
-Status: Draft templates
-Last updated: 2026-07-04
+Status: Active decisions
+Last updated: 2026-07-05
 
-This directory contains the Phase 0 Architecture Decision Record templates referenced by the foundation runbook.
+This directory contains the Phase 0 Architecture Decision Records referenced by the foundation runbook.
 
 ## Scope
 
-These ADRs cover the five blocker decisions required before implementation kickoff:
+These ADRs cover the five blocker decisions required before implementation kickoff and are now accepted:
 
 1. `ADR-001-docustream-model-stance.md`
 2. `ADR-002-acl-default-model.md`

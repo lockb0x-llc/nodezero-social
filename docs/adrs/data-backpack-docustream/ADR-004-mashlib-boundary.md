@@ -1,7 +1,7 @@
 # ADR-004: Mashlib Boundary and Integration Strategy
 
-Status: Proposed
-Date: 2026-07-04
+Status: Accepted
+Date: 2026-07-05
 Owners: Adapter and experience owner
 Target decision date: 2026-07-19
 Decision drivers:
@@ -20,27 +20,31 @@ The integration question is where mashlib sits in the architecture:
 
 ## Decision
 
-TBD
+Adopt a web-only adapter boundary for mashlib in v1.
+
+Core domain, contract, persistence, query, and sync layers remain mashlib-independent.
+Mashlib may power optional web exploration and pane experiences only.
 
 ## Rationale
 
-TBD
+This preserves cross-platform parity, keeps core runtime portable, and limits
+replacement risk if web adapter choices evolve.
 
 ## Consequences
 
 Positive:
-- TBD
+- Mobile and web share the same core semantics without library coupling.
+- Lower blast radius for adapter experimentation.
+- Clear separation of concerns between platform UI and core data behavior.
 
 Negative:
-- TBD
+- Some web-only capabilities require explicit adapter mapping work.
+- Teams must resist leaking adapter-specific concepts into core contracts.
 
 ## Rejected alternatives
 
-1. Web-only adapter boundary
-- Reason rejected: TBD
-
-2. Shared runtime coupling
-- Reason rejected: TBD
+1. Shared runtime coupling
+- Reason rejected: Cross-platform lock-in and elevated maintenance risk.
 
 ## Validation plan
 

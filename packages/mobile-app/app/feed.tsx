@@ -24,7 +24,8 @@ import Slider from '@react-native-community/slider'
 import { useSolid } from '../src/contexts/SolidContext'
 import { useWallet } from '../src/contexts/WalletContext'
 import { useRouter } from 'expo-router'
-import { SocialGraph, ProfileManager, DocustreamManager, type StreamItem } from '@nodezero/solid-pod-sync'
+import type { StreamItem } from '@nodezero/solid-pod-sync'
+import { getSolidPodSyncManagers } from '../src/solid/podSyncManagers'
 import { aesthetic } from '../src/theme/aesthetic'
 
 interface FeedPost {
@@ -56,9 +57,7 @@ export default function GlobalFeedScreen(): JSX.Element {
 
     try {
       const podRoot = webId.split('/profile/')[0] + '/'
-      const socialGraph = new SocialGraph(session)
-      const profileManager = new ProfileManager(session)
-      const docustreamManager = new DocustreamManager(session)
+      const { socialGraph, profileManager, docustreamManager } = getSolidPodSyncManagers(session)
       const connections = await socialGraph.listConnections(podRoot)
 
       const connectionPosts = await Promise.all(

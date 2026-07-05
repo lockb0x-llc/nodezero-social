@@ -78,6 +78,7 @@ const solidSignupSupportsReturn = process.env.NZ_SOLID_SIGNUP_SUPPORTS_RETURN ??
 const jssProvisionerUrl = process.env.NZ_JSS_PROVISIONER_URL ?? ''
 const qaLocalOverridesEnabled = process.env.NZ_QA_LOCAL_OVERRIDES_ENABLED ?? 'false'
 const seamlessOnboardingEnabled = process.env.NZ_SEAMLESS_ONBOARDING_ENABLED ?? 'false'
+const solidBootstrapEnabled = process.env.NZ_SOLID_BOOTSTRAP_ENABLED ?? 'false'
 
 if (profile.enforceStrictVariables) {
   if (!relayUrl) {
@@ -171,6 +172,7 @@ module.exports = {
     jssProvisionerUrl,
     qaLocalOverridesEnabled,
     seamlessOnboardingEnabled,
+    solidBootstrapEnabled,
     primaryColor: process.env.NZ_PRIMARY_COLOR ?? '#6C63FF',
     backgroundColor: process.env.NZ_BACKGROUND_COLOR ?? '#0D0D0D',
     relayUrl,

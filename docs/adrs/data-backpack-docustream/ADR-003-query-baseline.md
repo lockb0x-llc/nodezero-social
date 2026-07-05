@@ -1,7 +1,7 @@
 # ADR-003: Query Baseline for Data Backpack and DocuStream
 
-Status: Proposed
-Date: 2026-07-04
+Status: Accepted
+Date: 2026-07-05
 Owners: Query and retrieval owner
 Target decision date: 2026-07-19
 Decision drivers:
@@ -20,27 +20,31 @@ Choice impacts API shape, portability, and future feature velocity.
 
 ## Decision
 
-TBD
+Adopt a graph-query baseline for v1 behind a stable query API.
+
+Path-based reads remain as implementation detail for source ingestion, but feature
+retrieval surfaces through graph-aware filters and timeline semantics.
 
 ## Rationale
 
-TBD
+This keeps retrieval extensible for audience/topic/intent filters and avoids
+hard-coding UI behavior to file path conventions.
 
 ## Consequences
 
 Positive:
-- TBD
+- Query semantics are explicit and testable as API contracts.
+- Supports future linked-data expansion without API churn.
+- Reduces coupling between storage layout and user-facing retrieval logic.
 
 Negative:
-- TBD
+- Slightly higher initial implementation complexity than path-only reads.
+- Requires benchmark and correctness discipline early.
 
 ## Rejected alternatives
 
 1. Minimal path-based reads
-- Reason rejected: TBD
-
-2. Graph-query baseline
-- Reason rejected: TBD
+- Reason rejected: Too brittle for required intent/audience/topic filtering goals.
 
 ## Validation plan
 

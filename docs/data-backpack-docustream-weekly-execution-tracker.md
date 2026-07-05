@@ -1,7 +1,7 @@
 # Data Backpack + DocuStream Weekly Execution Tracker
 
-Status: Planning tracker (editable)
-Last updated: 2026-07-04
+Status: Execution in progress
+Last updated: 2026-07-05
 Primary environment: staging-testnet
 
 This tracker operationalizes the foundation runbook into weekly execution slices with clear owners, target dates, and evidence links.
@@ -21,8 +21,8 @@ This tracker operationalizes the foundation runbook into weekly execution slices
 
 | Week | Date window | Primary objective | Deliverables | Primary owner | Status | Evidence links |
 |---|---|---|---|---|---|---|
-| W0 | 2026-07-06 to 2026-07-12 | Phase 0 kickoff and decision framing | ADR scope finalized, owner roster confirmed, decision workshop scheduled | Program lead | In progress | Implementation kickoff: contract module + manager validation in `packages/solid-pod-sync/src/contracts/DocustreamContract.ts`; checks: `corepack pnpm --filter @nodezero/solid-pod-sync type-check` and `corepack pnpm --filter @nodezero/solid-pod-sync test` (pass on 2026-07-05) |
-| W1 | 2026-07-13 to 2026-07-19 | Phase 0 decision closure | ADR-001 to ADR-005 moved to accepted/rejected, layer boundaries ratified | Program lead | Not started | TBD |
+| W0 | 2026-07-06 to 2026-07-12 | Phase 0 kickoff and decision framing | ADR scope finalized, owner roster confirmed, decision workshop scheduled | Program lead | Completed | Kickoff artifacts completed early; contracts and policy implementation underway in `packages/solid-pod-sync` (validated 2026-07-05) |
+| W1 | 2026-07-13 to 2026-07-19 | Phase 0 decision closure | ADR-001 to ADR-005 moved to accepted/rejected, layer boundaries ratified | Program lead | Completed | ADR-001..005 set to Accepted on 2026-07-05 in `docs/adrs/data-backpack-docustream/` |
 | W2 | 2026-07-20 to 2026-07-26 | Phase 1 contract drafting | v1 contract spec draft, JSON-LD context draft, fixture pack draft | Contracts and semantics owner | Not started | TBD |
 | W3 | 2026-07-27 to 2026-08-02 | Phase 1 contract freeze | Contract conformance tests green, migration notes captured | Contracts and semantics owner | Not started | TBD |
 | W4 | 2026-08-03 to 2026-08-09 | Phase 2 persistence/policy baseline | Pod path map approved, ACL matrix draft complete | Persistence and policy owner | Not started | TBD |
@@ -35,10 +35,10 @@ This tracker operationalizes the foundation runbook into weekly execution slices
 
 | Phase | Gate criteria | Owner sign-off | Date | Status |
 |---|---|---|---|---|
-| Phase 0 | ADR set approved, execution roster finalized | Program lead | 2026-07-19 | Not started |
-| Phase 1 | Contract tests pass and schema blockers closed | Contracts and semantics owner | 2026-08-02 | Not started |
+| Phase 0 | ADR set approved, execution roster finalized | Program lead | 2026-07-05 | Completed |
+| Phase 1 | Contract tests pass and schema blockers closed | Contracts and semantics owner | 2026-08-02 | In progress |
 | Phase 2 | Policy tests pass, no critical leakage findings | Persistence and policy owner | 2026-08-16 | Not started |
-| Phase 3 | Retrieval/sync criteria pass, baseline metrics accepted | Sync and events owner | 2026-08-30 | Not started |
+| Phase 3 | Retrieval/sync criteria pass, baseline metrics accepted | Sync and events owner | 2026-08-30 | In progress |
 | Phase 4 | Adapter plan approved and implementation-ready | Adapter and experience owner | 2026-09-06 | Not started |
 
 ## Weekly operating checklist
@@ -57,9 +57,15 @@ This tracker operationalizes the foundation runbook into weekly execution slices
 | 2026-07-05 | Layer 2 kickoff started in `solid-pod-sync` with deterministic Pod layout bootstrap and idempotent ACL policy manager (`PodLayoutManager`) plus behavior tests; no blockers identified | Persistence and policy owner | 2026-08-09 |
 | 2026-07-05 | Layer 2 integration advanced: opt-in Pod bootstrap/policy hook wired into `DocustreamManager`, `ProfileManager`, and `SocialGraph` write paths with manager-level tests verifying enabled-only behavior; no blockers identified | Persistence and policy owner | 2026-08-09 |
 | 2026-07-05 | Layer 2 integration utility delivered: shared manager factory (`createSolidPodSyncManagers`) added so app code can enable bootstrap/policy config once across all managers; factory behavior covered by tests and package checks passed | Persistence and policy owner | 2026-08-09 |
+| 2026-07-05 | Layer 2 adoption advanced in mobile app: Solid manager call sites migrated to shared factory helper (`getSolidPodSyncManagers`) and gated by `NZ_SOLID_BOOTSTRAP_ENABLED` via Expo `extra.solidBootstrapEnabled`; mobile app type-check and solid-pod-sync tests passed | Persistence and policy owner | 2026-08-09 |
+| 2026-07-05 | Phase 0 closure completed: ADR-001..005 converted to Accepted with explicit decisions and rejected alternatives | Program lead | 2026-07-05 |
+| 2026-07-05 | Layer 3 skeleton shipped in `packages/solid-pod-sync/src/QueryApi.ts` with tests in `src/__tests__/QueryApi.test.ts`; full package checks passed | Query and retrieval owner | 2026-08-23 |
+| 2026-07-05 | Layer 4 baseline shipped in `packages/solid-pod-sync/src/SyncEngine.ts` with dedupe/conflict tests in `src/__tests__/SyncEngine.test.ts`; full package checks passed | Sync and events owner | 2026-08-30 |
+| 2026-07-05 | Focused staging verification pass completed: `NZ_SOLID_BOOTSTRAP_ENABLED=true` resolved in `app.config.js` (staging profile), targeted bootstrap/policy tests passed, and `pnpm policy:validate-env` passed | Persistence and policy owner | 2026-07-05 |
 
 ## Linked artifacts
 
 - Runbook: `docs/data-backpack-docustream-foundation-runbook.md`
 - ADR pack: `docs/adrs/data-backpack-docustream/README.md`
 - Runtime roadmap: `docs/staging-runtime-implementation-roadmap.md`
+- Implementation status: `docs/data-backpack-docustream-implementation-status.md`

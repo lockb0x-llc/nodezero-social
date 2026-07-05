@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSolid } from '../src/contexts/SolidContext';
-import { ProfileManager } from '@nodezero/solid-pod-sync';
+import { getSolidPodSyncManagers } from '../src/solid/podSyncManagers';
 import { aesthetic } from '../src/theme/aesthetic';
 
 const CONTAINER_PATHS: Record<string, string> = {
@@ -33,7 +33,7 @@ export default function BackpackScreen() {
     const newValue = !permissions[key];
     setPermissions(prev => ({ ...prev, [key]: newValue }));
     setUpdating(key);
-    const manager = new ProfileManager(session);
+    const { profileManager: manager } = getSolidPodSyncManagers(session);
     manager
       .updateWebACL(CONTAINER_PATHS[key], newValue)
       .catch(() => {

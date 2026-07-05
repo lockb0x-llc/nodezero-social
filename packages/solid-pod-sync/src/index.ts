@@ -17,6 +17,8 @@ export { SocialGraph } from './SocialGraph.js'
 export { NsfwScanner, NSFW_DOMAINS } from './NsfwScanner.js'
 export { DocustreamManager } from './DocustreamManager.js'
 export { createSolidPodSyncManagers } from './createSolidPodSyncManagers.js'
+export { buildQueryIndex, queryStreamItems } from './QueryApi.js'
+export { createSyncState, buildSyncEventId, applySyncBatch } from './SyncEngine.js'
 export {
 	PodLayoutManager,
 	buildPodContainerLayout,
@@ -51,6 +53,17 @@ export type {
 	SolidPodSyncManagers,
 	SolidPodSyncFactoryOptions,
 } from './createSolidPodSyncManagers.js'
+export type {
+	QueryableStreamItem,
+	QueryAudience,
+	StreamQuery,
+	QueryIndex,
+} from './QueryApi.js'
+export type {
+	SyncEnvelope,
+	SyncState,
+	SyncBatchResult,
+} from './SyncEngine.js'
 export type {
 	PodContainerLayout,
 	PodPolicyMatrix,
