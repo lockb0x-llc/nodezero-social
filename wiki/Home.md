@@ -45,6 +45,7 @@ flowchart LR
 
 - Monorepo overview: ../README.md
 - Changelog: ../CHANGELOG.md
+- Feature progress + upstream attribution: ../docs/feature-implementation-attribution.md
 - Staging release requirements: ../docs/testnet-azure-release-requirements.md
 - Staging UAT checklist: ../docs/staging-uat-checklist.md
 - Runtime status and evidence: ../docs/staging-runtime-implementation-roadmap.md

@@ -15,3 +15,7 @@ See `infrastructure/azure/README.md` and `docs/staging-deployment-blueprint.md`.
 ## Where is PM coordination tracked?
 
 Use `.agents/project-manager/todo.md` and `.agents/shared-inbox/inbox.md`.
+
+## Where is Solid/Mashlib attribution and integration rationale documented?
+
+See `docs/feature-implementation-attribution.md` for implementation status, upstream references, integration justifications, and contributor acknowledgements.

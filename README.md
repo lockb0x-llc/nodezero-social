@@ -174,6 +174,7 @@ enforces that staging and production values never mix. See
 - Two-account funding model (Treasury + Deployer): `packages/jss-provisioner/src/deployerTopup.ts`
 - Runtime implementation roadmap: `docs/staging-runtime-implementation-roadmap.md`
 - UAT checklist: `docs/staging-uat-checklist.md`
+- Feature progress + upstream attribution: `docs/feature-implementation-attribution.md`
 
 ---
 
