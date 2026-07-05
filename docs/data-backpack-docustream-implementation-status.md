@@ -21,7 +21,7 @@ This document captures implementation progress and verification evidence for:
 | Layer 2 (persistence + policy) | In progress (implemented baseline + app adoption) | `PodLayoutManager`, manager bootstrap hooks, shared factory + mobile app integration |
 | Layer 3 (query) | In progress (integrated baseline) | `packages/solid-pod-sync/src/QueryApi.ts`, `src/DocustreamAggregation.ts`, `src/__tests__/QueryApi.test.ts` |
 | Layer 4 (sync) | In progress (integrated + checkpoint persistence baseline) | `packages/solid-pod-sync/src/SyncEngine.ts`, `src/DocustreamAggregation.ts`, `src/__tests__/SyncEngine.test.ts`, `src/__tests__/DocustreamAggregation.test.ts`, mobile checkpoint store |
-| Layer 5 (adapters) | In progress (boundary scaffold) | `packages/solid-pod-sync/src/adapters/MashlibWebAdapter.ts` + `src/__tests__/MashlibWebAdapter.test.ts` |
+| Layer 5 (adapters) | In progress (concrete binding baseline) | `packages/solid-pod-sync/src/adapters/MashlibWebAdapter.ts` + `src/__tests__/MashlibWebAdapter.test.ts` |
 
 ## Step 1: ADR closure evidence
 
@@ -78,6 +78,10 @@ Verification commands and outcomes:
 - Outcome: PASS
 - Evidence summary: 2 suites passed, 8 tests passed
 
+7. `corepack pnpm --filter @nodezero/solid-pod-sync test -- MashlibWebAdapter.test.ts`
+- Outcome: PASS
+- Evidence summary: 1 suite passed, 4 tests passed
+
 ## Step 4: focused staging verification evidence
 
 ### Bootstrap flag resolution check
@@ -122,11 +126,11 @@ Outcome:
 ## Remaining implementation gaps
 
 1. Sync checkpoint persistence is now in place for feed and docustream retrieval paths, but broader ingestion/replay persistence strategy remains to be generalized across all retrieval surfaces.
-2. Layer 5 adapter work is now scaffolded and guardrailed, but concrete mashlib capability wiring is still pending.
+2. Layer 5 adapter now includes concrete resource-type inference and pane binding normalization, but real mashlib runtime/pane-package integration remains pending.
 3. Staging runtime verification should be expanded from command/test checks to a scripted end-to-end smoke flow.
 
 ## Next execution slice
 
 1. Generalize checkpoint/replay handling beyond feed/docustream into any additional query surfaces that adopt Layer 4 state.
-2. Implement concrete mashlib pane/resource bindings behind the new web-only adapter boundary.
+2. Integrate the adapter with real mashlib runtime loading in web app surfaces and validate pane availability in staging web.
 3. Add one staging smoke script that toggles bootstrap and verifies container + ACL outcomes against a test Pod.

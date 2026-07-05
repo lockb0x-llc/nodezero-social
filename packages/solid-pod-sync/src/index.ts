@@ -33,7 +33,10 @@ export {
 	deriveOwnerWebId,
 	DEFAULT_POLICY_MATRIX,
 } from './PodLayoutManager.js'
-export { createMashlibWebAdapter } from './adapters/MashlibWebAdapter.js'
+export {
+	createMashlibWebAdapter,
+	inferMashlibResourceType,
+} from './adapters/MashlibWebAdapter.js'
 export {
 	DOCUSTREAM_ALLOWED_SOURCES,
 	assertValidStreamItem,
@@ -86,6 +89,8 @@ export type {
 } from './PodLayoutManager.js'
 export type {
 	MashlibPaneDescriptor,
+	MashlibResourceBinding,
+	MashlibResourceType,
 	MashlibWebAdapter,
 	MashlibWebAdapterOptions,
 } from './adapters/MashlibWebAdapter.js'
