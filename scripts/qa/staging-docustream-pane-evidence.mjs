@@ -60,6 +60,52 @@ async function ensureDocustreamVisible(page, baseUrl) {
   fail(`Could not reach docustream view. Current URL: ${page.url()}. Page snippet: ${snippet}`)
 }
 
+async function waitForPaneHint(page, baseUrl, timeoutMs) {
+  const start = Date.now()
+  let attempts = 0
+
+  while (Date.now() - start < timeoutMs) {
+    attempts += 1
+    const state = await page.evaluate(() => {
+      const text = document.body?.innerText ?? ''
+      return {
+        path: window.location.pathname,
+        hasPaneHint: text.includes('Web explorer panes:'),
+      }
+    })
+
+    if (attempts === 1 || attempts % 10 === 0) {
+      console.log(
+        `[docustream-pane-evidence] pane wait attempt=${attempts} path=${state.path} hint=${state.hasPaneHint}`,
+      )
+    }
+
+    if (state.hasPaneHint) {
+      return
+    }
+
+    if (state.path !== '/docustream') {
+      const clicked = await page.evaluate(() => {
+        const nodes = Array.from(document.querySelectorAll('a, button, [role="button"], span, div'))
+        const streamNode = nodes.find((node) => (node.textContent || '').trim() === 'Stream')
+        if (!streamNode) return false
+        const target = streamNode.closest('a, button, [role="button"]') ?? streamNode
+        ;(target).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+        return true
+      })
+
+      if (!clicked) {
+        await page.goto(`${baseUrl}/docustream`, { waitUntil: 'domcontentloaded' })
+      }
+
+      await page.waitForTimeout(1200)
+      continue
+    }
+
+    await page.waitForTimeout(1200)
+  }
+}
+
 async function run() {
   if (!baseUrl.startsWith('https://')) {
     fail(`STAGING_BASE_URL must use https (got '${baseUrl}').`)
@@ -96,8 +142,13 @@ async function run() {
         localStorage.setItem('solid.webId.v1', webId)
         localStorage.setItem('node.session.v1', JSON.stringify(nodeSession))
       }, { webId: seededWebId, podUrl: seededPodUrl })
+
+      // Seeded node sessions still pass through async wallet attestation verification.
+      // During that window RouteGuard can force onboarding and then land on /local.
+      // Wait for the authenticated surface first, then navigate to docustream.
+      await page.goto(`${baseUrl}/onboarding`, { waitUntil: 'domcontentloaded' })
+      await page.waitForURL(/\/(local|feed)(\?.*)?$/, { timeout: redirectTimeoutMs })
       await page.goto(`${baseUrl}/docustream`, { waitUntil: 'domcontentloaded' })
-      await page.waitForURL(/\/docustream(\?.*)?$/, { timeout: redirectTimeoutMs })
       await ensureDocustreamVisible(page, baseUrl)
     } else {
       console.log('[docustream-pane-evidence] Opening landing page...')
@@ -202,9 +253,12 @@ async function run() {
     }
 
     console.log('[docustream-pane-evidence] Waiting for pane hint to render...')
-    await paneHint.waitFor({ state: 'visible', timeout: 60000 }).catch(async () => {
+    await waitForPaneHint(page, baseUrl, 60000)
+    await paneHint.waitFor({ state: 'visible', timeout: 10000 }).catch(async () => {
       const snippet = await pageTextSnippet(page)
-      fail(`Pane hint did not render. Page snippet: ${snippet}`)
+      fail(
+        `Pane hint did not render. Current URL: ${page.url()}. Runtime flags: ${JSON.stringify(runtimeFlags)}. Page snippet: ${snippet}`,
+      )
     })
     const paneText = (await paneHint.first().innerText()).trim()
 

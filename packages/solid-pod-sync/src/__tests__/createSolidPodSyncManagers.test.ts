@@ -7,7 +7,7 @@ describe('createSolidPodSyncManagers', () => {
     const ensureDefaultLayoutAndPolicies = jestGlobal.fn().mockResolvedValue(undefined)
     const fetch = jestGlobal.fn().mockResolvedValue(new Response('', { status: 200 }))
 
-    const { profileManager, docustreamManager, socialGraph } = createSolidPodSyncManagers(
+    const { profileManager, docustreamManager, docustreamSourceManager, socialGraph } = createSolidPodSyncManagers(
       { fetch },
       {
         enablePodBootstrap: true,
@@ -37,7 +37,13 @@ describe('createSolidPodSyncManagers', () => {
       'https://bob.example/profile/card#me'
     )
 
-    expect(ensureDefaultLayoutAndPolicies).toHaveBeenCalledTimes(3)
+    await docustreamSourceManager.upsertSource('https://alice.example/', {
+      type: 'rss',
+      url: 'https://feeds.example.com/main.xml',
+      title: 'Main Feed',
+    })
+
+    expect(ensureDefaultLayoutAndPolicies).toHaveBeenCalledTimes(4)
     expect(ensureDefaultLayoutAndPolicies).toHaveBeenNthCalledWith(
       1,
       'https://alice.example/',
@@ -50,6 +56,11 @@ describe('createSolidPodSyncManagers', () => {
     )
     expect(ensureDefaultLayoutAndPolicies).toHaveBeenNthCalledWith(
       3,
+      'https://alice.example/',
+      expect.any(Object)
+    )
+    expect(ensureDefaultLayoutAndPolicies).toHaveBeenNthCalledWith(
+      4,
       'https://alice.example/',
       expect.any(Object)
     )

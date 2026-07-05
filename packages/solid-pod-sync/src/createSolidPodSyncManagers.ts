@@ -1,4 +1,8 @@
 import { DocustreamManager, type DocustreamManagerOptions } from './DocustreamManager.js'
+import {
+  DocustreamSourceManager,
+  type DocustreamSourceManagerOptions,
+} from './DocustreamSourceManager.js'
 import { ProfileManager, type ProfileManagerOptions } from './ProfileManager.js'
 import { SocialGraph, type SocialGraphOptions } from './SocialGraph.js'
 import { NsfwScanner } from './NsfwScanner.js'
@@ -16,6 +20,7 @@ export interface SolidPodSyncManagers {
   profileManager: ProfileManager
   socialGraph: SocialGraph
   docustreamManager: DocustreamManager
+  docustreamSourceManager: DocustreamSourceManager
   podLayoutManager: Pick<PodLayoutManager, 'ensureDefaultLayoutAndPolicies'>
 }
 
@@ -34,7 +39,7 @@ export function createSolidPodSyncManagers(
     options.podLayoutManager ?? new PodLayoutManager({ fetch: session.fetch })
 
   const sharedBootstrapOptions: Pick<
-    DocustreamManagerOptions & ProfileManagerOptions & SocialGraphOptions,
+    DocustreamManagerOptions & ProfileManagerOptions & SocialGraphOptions & DocustreamSourceManagerOptions,
     'enablePodBootstrap' | 'policyMatrix' | 'podLayoutManager'
   > = {
     enablePodBootstrap: options.enablePodBootstrap ?? false,
@@ -50,6 +55,7 @@ export function createSolidPodSyncManagers(
     ),
     socialGraph: new SocialGraph(session, sharedBootstrapOptions),
     docustreamManager: new DocustreamManager(session, sharedBootstrapOptions),
+    docustreamSourceManager: new DocustreamSourceManager(session, sharedBootstrapOptions),
     podLayoutManager,
   }
 }

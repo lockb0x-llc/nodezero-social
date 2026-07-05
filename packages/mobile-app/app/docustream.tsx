@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   View,
   Text,
@@ -8,87 +8,235 @@ import {
   SafeAreaView,
   Alert,
   Platform,
-} from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { useSolid } from '../src/contexts/SolidContext';
+  Modal,
+  TextInput,
+  Switch,
+} from 'react-native'
+import { Ionicons } from '@expo/vector-icons'
+import * as rssParser from 'react-native-rss-parser'
+import { useSolid } from '../src/contexts/SolidContext'
 import {
   createSyncState,
   mergeAndQueryActivities,
   queryStreamItems,
+  type DocustreamSource,
   type QueryableStreamItem,
   type StreamItem,
-} from '@nodezero/solid-pod-sync';
-import { getSolidPodSyncManagers } from '../src/solid/podSyncManagers';
-import { getMashlibWebAdapter } from '../src/solid/mashlibWebAdapter';
-import { loadSyncCheckpoint, saveSyncCheckpoint } from '../src/solid/syncCheckpointStore';
-import { aesthetic } from '../src/theme/aesthetic';
+} from '@nodezero/solid-pod-sync'
+import { getSolidPodSyncManagers } from '../src/solid/podSyncManagers'
+import { getMashlibWebAdapter } from '../src/solid/mashlibWebAdapter'
+import { loadSyncCheckpoint, saveSyncCheckpoint } from '../src/solid/syncCheckpointStore'
+import { aesthetic } from '../src/theme/aesthetic'
 
-type StreamSource = 'reddit' | 'x' | 'nodezero' | 'rss';
-type FilterType = 'all' | 'reddit' | 'x' | 'rss';
+type FilterType = 'all' | 'reddit' | 'x' | 'rss'
 
-const MOCK_DOCUSTREAM: StreamItem[] = [
-  {
-    id: '1',
-    source: 'reddit',
-    author: 'r/solid',
-    title: 'New Community Solid Server v7.0 Released',
-    content:
-      'The CSS team just pushed a massive update adding better support for nested LDP containers and WebSockets.',
-    timestamp: '2026-07-05T13:50:00.000Z',
-  },
-  {
-    id: '2',
-    source: 'x',
-    author: '@NodeZeroApp',
-    content:
-      'Just deployed the new Zero-Knowledge Proof verifiers to the Soroban Testnet! Privacy is a human right. #Web3 #Stellar',
-    timestamp: '2026-07-05T12:00:00.000Z',
-  },
-  {
-    id: '3',
-    source: 'nodezero',
-    author: 'Local Node System',
-    content: 'You crossed paths with 3 verified humans in the H3 Grid today.',
-    timestamp: '2026-07-05T09:00:00.000Z',
-  },
-  {
-    id: '4',
-    source: 'rss',
-    author: 'Tim Berners-Lee Blog',
-    title: 'The Paradigm Shift of Data Ownership',
-    content:
-      'We are reaching a tipping point where users are demanding the keys to their own digital backpacks...',
-    timestamp: '2026-07-04T14:00:00.000Z',
-  },
-];
+const FILTERS: FilterType[] = ['all', 'reddit', 'x', 'rss']
 
-function getSourceIcon(source: StreamSource) {
+const DEFAULT_RSS_PRESETS: Array<{ title: string; url: string }> = [
+  {
+    title: 'W3C News',
+    url: 'https://www.w3.org/news/feed/',
+  },
+  {
+    title: 'Hacker News Front Page',
+    url: 'https://hnrss.org/frontpage',
+  },
+  {
+    title: 'The Verge RSS',
+    url: 'https://www.theverge.com/rss/index.xml',
+  },
+]
+
+function getSourceIcon(source: StreamItem['source']): JSX.Element {
   switch (source) {
     case 'reddit':
-      return <Ionicons name="chatbubble-ellipses" size={20} color="#F97316" />;
+      return <Ionicons name="chatbubble-ellipses" size={20} color="#F97316" />
     case 'x':
-      return <Ionicons name="logo-twitter" size={20} color="#60A5FA" />;
+      return <Ionicons name="logo-twitter" size={20} color="#60A5FA" />
     case 'rss':
-      return <Ionicons name="radio" size={20} color="#FB923C" />;
+      return <Ionicons name="radio" size={20} color="#FB923C" />
     case 'nodezero':
-      return <Ionicons name="globe" size={20} color="#6366F1" />;
     default:
-      return <Ionicons name="document-text" size={20} color="#6B7280" />;
+      return <Ionicons name="globe" size={20} color="#6366F1" />
   }
 }
 
-const FILTERS: FilterType[] = ['all', 'reddit', 'x', 'rss'];
+function normalizeToIsoTimestamp(raw: unknown): string {
+  const value = typeof raw === 'string' ? raw.trim() : ''
+  if (!value) return new Date().toISOString()
+  const parsed = Date.parse(value)
+  if (Number.isNaN(parsed)) return new Date().toISOString()
+  return new Date(parsed).toISOString()
+}
 
-export default function DocustreamScreen() {
-  const { isLoggedIn, webId, session } = useSolid();
-  const [filter, setFilter] = useState<FilterType>('all');
-  const [items, setItems] = useState<QueryableStreamItem[]>(MOCK_DOCUSTREAM);
-  const [savingItemId, setSavingItemId] = useState<string | null>(null);
+function normalizeContent(raw: unknown): string {
+  const value = typeof raw === 'string' ? raw.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() : ''
+  return value || 'No description provided.'
+}
+
+function extractRssLink(item: Record<string, unknown>): string | undefined {
+  const direct = typeof item.link === 'string' ? item.link.trim() : ''
+  if (direct) return direct
+
+  const links = Array.isArray(item.links) ? item.links : []
+  for (const candidate of links) {
+    if (!candidate || typeof candidate !== 'object') continue
+    const url = typeof (candidate as Record<string, unknown>).url === 'string'
+      ? ((candidate as Record<string, unknown>).url as string).trim()
+      : ''
+    if (url) return url
+  }
+
+  return undefined
+}
+
+function streamItemId(sourceId: string, item: Record<string, unknown>, index: number): string {
+  const link = extractRssLink(item) ?? ''
+  const title = typeof item.title === 'string' ? item.title : ''
+  const published = normalizeToIsoTimestamp(item.published ?? item.pubDate ?? item.isoDate)
+  const raw = `${sourceId}|${published}|${title}|${link}|${index}`
+
+  let hash = 2166136261
+  for (let i = 0; i < raw.length; i += 1) {
+    hash ^= raw.charCodeAt(i)
+    hash = Math.imul(hash, 16777619)
+  }
+
+  return `rss_${sourceId}_${(hash >>> 0).toString(36)}`
+}
+
+function sourceLabelFromUrl(url: string): string {
+  try {
+    return new URL(url).hostname
+  } catch {
+    return url
+  }
+}
+
+export default function DocustreamScreen(): JSX.Element {
+  const { isLoggedIn, webId, session } = useSolid()
+  const [filter, setFilter] = useState<FilterType>('all')
+  const [items, setItems] = useState<QueryableStreamItem[]>([])
+  const [savingItemId, setSavingItemId] = useState<string | null>(null)
   const [adapterPaneLabels, setAdapterPaneLabels] = useState<string[]>([])
   const [isSyncCheckpointReady, setIsSyncCheckpointReady] = useState(false)
+  const [sources, setSources] = useState<DocustreamSource[]>([])
+  const [isSourceModalOpen, setIsSourceModalOpen] = useState(false)
+  const [sourceUrlInput, setSourceUrlInput] = useState('')
+  const [isIngesting, setIsIngesting] = useState(false)
+  const [sourceOperationId, setSourceOperationId] = useState<string | null>(null)
+
   const syncStateRef = useRef(createSyncState())
 
-  useEffect(() => {
+  const podRoot = useMemo(() => {
+    if (!webId) return ''
+    return `${webId.split('/profile/')[0]}/`
+  }, [webId])
+
+  const loadSources = useCallback(async (): Promise<void> => {
+    if (!isLoggedIn || !podRoot) {
+      setSources([])
+      return
+    }
+
+    const { docustreamSourceManager } = getSolidPodSyncManagers(session)
+    const nextSources = await docustreamSourceManager.listSources(podRoot)
+    setSources(nextSources)
+  }, [isLoggedIn, podRoot, session])
+
+  const loadDocustreamItems = useCallback(async (): Promise<void> => {
+    if (!isLoggedIn || !podRoot || !isSyncCheckpointReady || !webId) {
+      setItems([])
+      return
+    }
+
+    const { docustreamManager } = getSolidPodSyncManagers(session)
+    const podItems = await docustreamManager.listActivities(podRoot)
+
+    const merged = mergeAndQueryActivities(
+      [
+        {
+          sourceWebId: webId,
+          items: podItems.map((item) => ({ ...item, authorWebId: webId })),
+        },
+      ],
+      {
+        state: syncStateRef.current,
+        query: {
+          limit: 500,
+        },
+      }
+    )
+
+    syncStateRef.current = merged.sync.nextState
+    await saveSyncCheckpoint(webId, 'docustream', syncStateRef.current)
+    setItems(merged.items)
+  }, [isLoggedIn, isSyncCheckpointReady, podRoot, session, webId])
+
+  const ingestOneSource = useCallback(async (source: DocustreamSource): Promise<void> => {
+    if (!podRoot || !source.enabled) return
+
+    const { docustreamManager, docustreamSourceManager } = getSolidPodSyncManagers(session)
+
+    try {
+      const response = await fetch(source.url, {
+        headers: { Accept: 'application/rss+xml, application/xml, text/xml;q=0.9, */*;q=0.8' },
+      })
+      if (!response.ok) {
+        throw new Error(`Fetch failed with HTTP ${response.status}`)
+      }
+
+      const xml = await response.text()
+      const parsed = await rssParser.parse(xml)
+      const feedItems = (Array.isArray(parsed.items) ? parsed.items : []).slice(0, 25)
+
+      for (let index = 0; index < feedItems.length; index += 1) {
+        const candidate = feedItems[index] as unknown as Record<string, unknown>
+        const streamItem: StreamItem = {
+          id: streamItemId(source.id, candidate, index),
+          source: 'rss',
+          author:
+            (typeof candidate.creator === 'string' && candidate.creator.trim()) ||
+            source.title ||
+            sourceLabelFromUrl(source.url),
+          title:
+            typeof candidate.title === 'string' && candidate.title.trim()
+              ? candidate.title.trim()
+              : undefined,
+          content: normalizeContent(candidate.description ?? candidate.content),
+          timestamp: normalizeToIsoTimestamp(candidate.published ?? candidate.pubDate ?? candidate.isoDate),
+          url: extractRssLink(candidate),
+        }
+
+        await docustreamManager.appendActivity(podRoot, streamItem)
+      }
+
+      await docustreamSourceManager.recordIngestionResult(podRoot, source.id)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown ingest error'
+      await docustreamSourceManager.recordIngestionResult(podRoot, source.id, message)
+    }
+  }, [podRoot, session])
+
+  const ingestEnabledSources = useCallback(async (): Promise<void> => {
+    if (!isLoggedIn || !podRoot) return
+
+    const enabled = sources.filter((source) => source.enabled)
+    if (enabled.length === 0) return
+
+    setIsIngesting(true)
+    try {
+      for (const source of enabled) {
+        await ingestOneSource(source)
+      }
+      await loadSources()
+      await loadDocustreamItems()
+    } finally {
+      setIsIngesting(false)
+    }
+  }, [ingestOneSource, isLoggedIn, loadDocustreamItems, loadSources, podRoot, sources])
+
+  useEffect((): (() => void) => {
     let active = true
     syncStateRef.current = createSyncState()
     setIsSyncCheckpointReady(false)
@@ -119,7 +267,20 @@ export default function DocustreamScreen() {
     }
   }, [webId])
 
-  useEffect(() => {
+  useEffect((): void => {
+    void loadSources()
+  }, [loadSources])
+
+  useEffect((): void => {
+    void loadDocustreamItems()
+  }, [loadDocustreamItems])
+
+  useEffect((): void => {
+    if (!isSyncCheckpointReady) return
+    void ingestEnabledSources()
+  }, [ingestEnabledSources, isSyncCheckpointReady])
+
+  useEffect((): void => {
     if (!isLoggedIn || !webId || Platform.OS !== 'web') return
 
     const adapter = getMashlibWebAdapter()
@@ -139,90 +300,138 @@ export default function DocustreamScreen() {
       })
   }, [isLoggedIn, webId])
 
-  useEffect(() => {
-    if (!isLoggedIn || !webId || !isSyncCheckpointReady) return;
-    const podRoot = webId.split('/profile/')[0] + '/';
-    const { docustreamManager: manager } = getSolidPodSyncManagers(session);
-    manager
-      .listActivities(podRoot)
-      .then((podItems) => {
-        if (podItems.length === 0) return
-
-        const merged = mergeAndQueryActivities(
-          [
-            {
-              sourceWebId: webId,
-              items: podItems.map((item) => ({ ...item, authorWebId: webId })),
-            },
-          ],
-          {
-            state: syncStateRef.current,
-            query: {
-              limit: 500,
-            },
-          }
-        )
-
-        syncStateRef.current = merged.sync.nextState
-        void saveSyncCheckpoint(webId, 'docustream', syncStateRef.current)
-        setItems(merged.items)
-      })
-      .catch(() => {
-        // Keep mock fallback on error
-      });
-  }, [isLoggedIn, isSyncCheckpointReady, session, webId]);
-
   const filteredStream =
-    filter === 'all' ? items : queryStreamItems(items, { sources: [filter] });
+    filter === 'all' ? items : queryStreamItems(items, { sources: [filter] })
 
   const handleSaveToPod = async (item: StreamItem): Promise<void> => {
-    if (!isLoggedIn || !webId) {
-      Alert.alert('Sign in required', 'Sign in to save Downstream items to your Pod.');
-      return;
+    if (!isLoggedIn || !webId || !podRoot) {
+      Alert.alert('Sign in required', 'Sign in to save Downstream items to your Pod.')
+      return
     }
 
-    const podRoot = webId.split('/profile/')[0] + '/';
-  const { docustreamManager: manager } = getSolidPodSyncManagers(session);
+    const { docustreamManager } = getSolidPodSyncManagers(session)
 
-    setSavingItemId(item.id);
+    setSavingItemId(item.id)
     try {
-      await manager.appendActivity(podRoot, item);
-      Alert.alert('Saved', 'This item was written to your Solid Pod.');
+      await docustreamManager.appendActivity(podRoot, item)
+      Alert.alert('Saved', 'This item was written to your Solid Pod.')
     } catch (err) {
-      console.error('[DocustreamScreen] handleSaveToPod error:', err);
-      Alert.alert('Save failed', 'Could not save this item to your Pod.');
+      console.error('[DocustreamScreen] handleSaveToPod error:', err)
+      Alert.alert('Save failed', 'Could not save this item to your Pod.')
     } finally {
-      setSavingItemId(null);
+      setSavingItemId(null)
     }
-  };
+  }
+
+  const handleAddSource = useCallback(async (url: string, title?: string): Promise<void> => {
+    if (!isLoggedIn || !podRoot) {
+      Alert.alert('Sign in required', 'Sign in to manage Docustream sources.')
+      return
+    }
+
+    setSourceOperationId('new-source')
+    try {
+      const { docustreamSourceManager } = getSolidPodSyncManagers(session)
+      await docustreamSourceManager.upsertSource(podRoot, {
+        type: 'rss',
+        url,
+        title,
+      })
+      setSourceUrlInput('')
+      await loadSources()
+      Alert.alert('Source added', 'RSS source saved. It will be ingested now.')
+      await ingestEnabledSources()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to add source.'
+      Alert.alert('Add source failed', message)
+    } finally {
+      setSourceOperationId(null)
+    }
+  }, [ingestEnabledSources, isLoggedIn, loadSources, podRoot, session])
+
+  const handleToggleSource = useCallback(async (source: DocustreamSource, nextEnabled: boolean): Promise<void> => {
+    if (!isLoggedIn || !podRoot) return
+
+    setSourceOperationId(source.id)
+    try {
+      const { docustreamSourceManager } = getSolidPodSyncManagers(session)
+      await docustreamSourceManager.setSourceEnabled(podRoot, source.id, nextEnabled)
+      await loadSources()
+      if (nextEnabled) {
+        await ingestEnabledSources()
+      }
+    } catch {
+      Alert.alert('Update failed', 'Could not update source state.')
+    } finally {
+      setSourceOperationId(null)
+    }
+  }, [ingestEnabledSources, isLoggedIn, loadSources, podRoot, session])
+
+  const handleRemoveSource = useCallback(async (source: DocustreamSource): Promise<void> => {
+    if (!isLoggedIn || !podRoot) return
+
+    setSourceOperationId(source.id)
+    try {
+      const { docustreamSourceManager } = getSolidPodSyncManagers(session)
+      await docustreamSourceManager.removeSource(podRoot, source.id)
+      await loadSources()
+      await loadDocustreamItems()
+    } catch {
+      Alert.alert('Remove failed', 'Could not remove source.')
+    } finally {
+      setSourceOperationId(null)
+    }
+  }, [isLoggedIn, loadDocustreamItems, loadSources, podRoot, session])
+
+  const handleIngestSingleSource = useCallback(async (source: DocustreamSource): Promise<void> => {
+    setSourceOperationId(source.id)
+    try {
+      await ingestOneSource(source)
+      await loadSources()
+      await loadDocustreamItems()
+    } finally {
+      setSourceOperationId(null)
+    }
+  }, [ingestOneSource, loadDocustreamItems, loadSources])
+
+  const emptyStateText = isLoggedIn
+    ? 'No Docustream items yet. Add an RSS source to start filling your stream.'
+    : 'Sign in to load your Docustream from your Pod.'
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      {/* Header */}
       <View style={styles.header}>
         <View>
           <Text style={styles.headerTitle}>Downstream</Text>
           <Text style={styles.headerSubtitle}>Your Aggregated Streams &amp; Curated in your Pod</Text>
         </View>
-        <TouchableOpacity
-          onPress={() => Alert.alert('Coming soon', 'Adding new Downstream sources will be enabled in a later phase.')}
-          style={styles.addButton}
-        >
-          <Ionicons name="add-circle" size={28} color="#2563EB" />
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            onPress={() => void ingestEnabledSources()}
+            style={styles.addButton}
+            disabled={isIngesting}
+          >
+            <Ionicons name="refresh" size={24} color={isIngesting ? aesthetic.color.textLow : aesthetic.color.accent} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setIsSourceModalOpen(true)}
+            style={styles.addButton}
+          >
+            <Ionicons name="add-circle" size={28} color="#2563EB" />
+          </TouchableOpacity>
+        </View>
       </View>
 
-      {/* Filter tabs */}
       <View style={styles.filterRow}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterContent}>
-          {FILTERS.map(f => (
+          {FILTERS.map((candidate) => (
             <TouchableOpacity
-              key={f}
-              onPress={() => setFilter(f)}
-              style={[styles.filterChip, filter === f && styles.filterChipActive]}
+              key={candidate}
+              onPress={() => setFilter(candidate)}
+              style={[styles.filterChip, filter === candidate && styles.filterChipActive]}
             >
-              <Text style={[styles.filterChipText, filter === f && styles.filterChipTextActive]}>
-                {f.toUpperCase()}
+              <Text style={[styles.filterChipText, filter === candidate && styles.filterChipTextActive]}>
+                {candidate.toUpperCase()}
               </Text>
             </TouchableOpacity>
           ))}
@@ -237,11 +446,15 @@ export default function DocustreamScreen() {
         </View>
       ) : null}
 
-      {/* Timeline */}
       <ScrollView style={styles.timeline} contentContainerStyle={styles.timelineContent}>
-        {filteredStream.map(item => (
+        {filteredStream.length === 0 ? (
+          <View style={styles.emptyStateCard}>
+            <Text style={styles.emptyStateText}>{emptyStateText}</Text>
+          </View>
+        ) : null}
+
+        {filteredStream.map((item) => (
           <View key={item.id} style={styles.card}>
-            {/* Card header: icon + author + timestamp */}
             <View style={styles.cardRow}>
               <View style={styles.cardAuthorRow}>
                 {getSourceIcon(item.source)}
@@ -253,7 +466,6 @@ export default function DocustreamScreen() {
             {item.title ? <Text style={styles.cardTitle}>{item.title}</Text> : null}
             <Text style={styles.cardContent}>{item.content}</Text>
 
-            {/* Action links */}
             <View style={styles.cardActions}>
               <TouchableOpacity
                 style={styles.actionLink}
@@ -276,8 +488,113 @@ export default function DocustreamScreen() {
           </View>
         ))}
       </ScrollView>
+
+      <Modal
+        animationType="slide"
+        transparent
+        visible={isSourceModalOpen}
+        onRequestClose={() => setIsSourceModalOpen(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setIsSourceModalOpen(false)}
+        >
+          <View style={styles.modalSheet} onStartShouldSetResponder={() => true}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>Docustream Sources</Text>
+            <Text style={styles.modalSubtitle}>Add and manage RSS sources for your Pod-backed stream.</Text>
+
+            <View style={styles.addSourceRow}>
+              <TextInput
+                style={styles.sourceInput}
+                placeholder="https://example.com/feed.xml"
+                placeholderTextColor={aesthetic.color.textLow}
+                value={sourceUrlInput}
+                onChangeText={setSourceUrlInput}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="url"
+              />
+              <TouchableOpacity
+                style={styles.addSourceButton}
+                disabled={!sourceUrlInput.trim() || sourceOperationId !== null}
+                onPress={() => void handleAddSource(sourceUrlInput)}
+              >
+                <Text style={styles.addSourceButtonText}>Add</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.presetLabel}>Suggested RSS sources</Text>
+            <View style={styles.presetGrid}>
+              {DEFAULT_RSS_PRESETS.map((preset) => (
+                <TouchableOpacity
+                  key={preset.url}
+                  style={styles.presetChip}
+                  onPress={() => void handleAddSource(preset.url, preset.title)}
+                  disabled={sourceOperationId !== null}
+                >
+                  <Text style={styles.presetChipText}>{preset.title}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={styles.sourceListLabel}>Your sources</Text>
+            <ScrollView style={styles.sourceList}>
+              {sources.length === 0 ? (
+                <Text style={styles.sourceEmptyText}>No sources yet.</Text>
+              ) : null}
+
+              {sources.map((source) => (
+                <View key={source.id} style={styles.sourceCard}>
+                  <View style={styles.sourceHeader}>
+                    <View style={styles.sourceHeaderTextWrap}>
+                      <Text style={styles.sourceTitle}>{source.title ?? sourceLabelFromUrl(source.url)}</Text>
+                      <Text style={styles.sourceUrl}>{source.url}</Text>
+                    </View>
+                    <Switch
+                      value={source.enabled}
+                      onValueChange={(nextEnabled) => void handleToggleSource(source, nextEnabled)}
+                      trackColor={{ false: '#333', true: '#6C63FF' }}
+                      thumbColor="#FFF"
+                      disabled={sourceOperationId === source.id}
+                    />
+                  </View>
+
+                  <View style={styles.sourceMetaRow}>
+                    <Text style={styles.sourceMetaText}>
+                      {source.lastError
+                        ? `Last error: ${source.lastError}`
+                        : source.lastIngestedAt
+                          ? `Last ingested: ${formatTimestamp(source.lastIngestedAt)}`
+                          : 'Not ingested yet'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.sourceActionsRow}>
+                    <TouchableOpacity
+                      style={styles.sourceActionButton}
+                      onPress={() => void handleIngestSingleSource(source)}
+                      disabled={sourceOperationId === source.id || isIngesting || !source.enabled}
+                    >
+                      <Text style={styles.sourceActionButtonText}>Ingest now</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.sourceActionButtonDanger}
+                      onPress={() => void handleRemoveSource(source)}
+                      disabled={sourceOperationId === source.id}
+                    >
+                      <Text style={styles.sourceActionButtonText}>Remove</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
-  );
+  )
 }
 
 function formatTimestamp(timestamp: string): string {
@@ -311,6 +628,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: aesthetic.color.textMid,
     marginTop: 2,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   addButton: {
     padding: 4,
@@ -361,6 +683,18 @@ const styles = StyleSheet.create({
   timelineContent: {
     padding: 16,
     gap: 16,
+  },
+  emptyStateCard: {
+    backgroundColor: aesthetic.color.surface,
+    borderWidth: 1,
+    borderColor: aesthetic.color.border,
+    borderRadius: 14,
+    padding: 16,
+  },
+  emptyStateText: {
+    color: aesthetic.color.textMid,
+    fontSize: 14,
+    lineHeight: 20,
   },
   card: {
     backgroundColor: aesthetic.color.surface,
@@ -427,4 +761,152 @@ const styles = StyleSheet.create({
     color: aesthetic.color.textLow,
     marginLeft: 4,
   },
-});
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: aesthetic.color.surface,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 22,
+    minHeight: 420,
+    maxHeight: '90%',
+  },
+  modalHandle: {
+    width: 48,
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: aesthetic.color.border,
+    alignSelf: 'center',
+    marginBottom: 10,
+  },
+  modalTitle: {
+    color: aesthetic.color.textHigh,
+    fontSize: 20,
+    fontWeight: '800',
+  },
+  modalSubtitle: {
+    color: aesthetic.color.textMid,
+    fontSize: 13,
+    marginTop: 4,
+    marginBottom: 12,
+  },
+  addSourceRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  sourceInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: aesthetic.color.border,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    color: aesthetic.color.textHigh,
+  },
+  addSourceButton: {
+    backgroundColor: aesthetic.color.accent,
+    borderRadius: 10,
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+  },
+  addSourceButtonText: {
+    color: '#FFF',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  presetLabel: {
+    color: aesthetic.color.textMid,
+    fontSize: 12,
+    marginBottom: 8,
+  },
+  presetGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 14,
+  },
+  presetChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 16,
+    backgroundColor: aesthetic.color.chip,
+  },
+  presetChipText: {
+    color: aesthetic.color.textHigh,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  sourceListLabel: {
+    color: aesthetic.color.textMid,
+    fontSize: 12,
+    marginBottom: 8,
+  },
+  sourceList: {
+    maxHeight: 340,
+  },
+  sourceEmptyText: {
+    color: aesthetic.color.textLow,
+    fontSize: 13,
+  },
+  sourceCard: {
+    borderWidth: 1,
+    borderColor: aesthetic.color.border,
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 10,
+  },
+  sourceHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  sourceHeaderTextWrap: {
+    flex: 1,
+  },
+  sourceTitle: {
+    color: aesthetic.color.textHigh,
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  sourceUrl: {
+    color: aesthetic.color.textLow,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  sourceMetaRow: {
+    marginTop: 8,
+  },
+  sourceMetaText: {
+    color: aesthetic.color.textLow,
+    fontSize: 11,
+  },
+  sourceActionsRow: {
+    marginTop: 8,
+    flexDirection: 'row',
+    gap: 8,
+  },
+  sourceActionButton: {
+    backgroundColor: aesthetic.color.accent,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  sourceActionButtonDanger: {
+    backgroundColor: '#6B1F1F',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  sourceActionButtonText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+})

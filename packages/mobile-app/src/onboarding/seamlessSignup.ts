@@ -51,11 +51,25 @@ export interface CreateNodeResult {
   } | null
 }
 
+function isStagingOnboardingHost(): boolean {
+  if (typeof window === 'undefined' || !window.location?.hostname) return false
+
+  const host = window.location.hostname.toLowerCase()
+  return host === 'staging.nodezero.social' || host === 'mango-glacier-0abee9e0f.7.azurestaticapps.net'
+}
+
 export function getSeamlessSignupConfig(): SeamlessSignupConfig {
   const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
+  const hostFallbackEnabled = isStagingOnboardingHost()
   const enabled = (appExtra?.seamlessOnboardingEnabled ?? '').trim().toLowerCase() === 'true'
   const provisionerUrl = (appExtra?.jssProvisionerUrl ?? '').trim().replace(/\/+$/, '')
-  return { enabled: enabled && provisionerUrl.length > 0, provisionerUrl }
+  const fallbackProvisionerUrl = hostFallbackEnabled
+    ? 'https://nodezero-social-staging-testnet-provisioner.azurewebsites.net'
+    : ''
+  return {
+    enabled: (enabled || hostFallbackEnabled) && (provisionerUrl.length > 0 || fallbackProvisionerUrl.length > 0),
+    provisionerUrl: provisionerUrl.length > 0 ? provisionerUrl : fallbackProvisionerUrl,
+  }
 }
 
 function generatePassword(): string {

@@ -16,6 +16,7 @@ export { ProfileManager } from './ProfileManager.js'
 export { SocialGraph } from './SocialGraph.js'
 export { NsfwScanner, NSFW_DOMAINS } from './NsfwScanner.js'
 export { DocustreamManager } from './DocustreamManager.js'
+export { DocustreamSourceManager } from './DocustreamSourceManager.js'
 export { createSolidPodSyncManagers } from './createSolidPodSyncManagers.js'
 export { mergeAndQueryActivities } from './DocustreamAggregation.js'
 export { buildQueryIndex, queryStreamItems } from './QueryApi.js'
@@ -43,6 +44,11 @@ export {
 	validateStreamItem,
 } from './contracts/DocustreamContract.js'
 export {
+	DOCUSTREAM_SOURCE_TYPES,
+	assertValidDocustreamSource,
+	validateDocustreamSource,
+} from './contracts/DocustreamSourceContract.js'
+export {
 	assertValidDataBackpackProfile,
 	validateDataBackpackProfile,
 } from './contracts/DataBackpackContract.js'
@@ -55,6 +61,15 @@ export type { Connection } from './SocialGraph.js'
 export type { NsfwScanResult } from './NsfwScanner.js'
 export type { StreamItem } from './DocustreamManager.js'
 export type { DocustreamManagerOptions } from './DocustreamManager.js'
+export type {
+	DocustreamSource,
+	DocustreamSourceType,
+	SourceValidationIssue,
+} from './contracts/DocustreamSourceContract.js'
+export type {
+	DocustreamSourceManagerOptions,
+	UpsertDocustreamSourceInput,
+} from './DocustreamSourceManager.js'
 export type { ProfileManagerOptions } from './ProfileManager.js'
 export type { SocialGraphOptions } from './SocialGraph.js'
 export type { ContractValidationIssue, StreamSource } from './contracts/DocustreamContract.js'

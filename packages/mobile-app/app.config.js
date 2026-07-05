@@ -75,12 +75,25 @@ const solidSignupReturnMode = process.env.NZ_SOLID_SIGNUP_RETURN_MODE ?? 'auto'
 const solidSignupReturnParam = process.env.NZ_SOLID_SIGNUP_RETURN_PARAM ?? 'returnTo'
 const solidSignupStateParam = process.env.NZ_SOLID_SIGNUP_STATE_PARAM ?? 'nzSignupState'
 const solidSignupSupportsReturn = process.env.NZ_SOLID_SIGNUP_SUPPORTS_RETURN ?? 'false'
-const jssProvisionerUrl = process.env.NZ_JSS_PROVISIONER_URL ?? ''
+const jssProvisionerUrl =
+  process.env.NZ_JSS_PROVISIONER_URL ??
+  (envProfile === 'staging-testnet' ? 'https://nodezero-social-staging-testnet-provisioner.azurewebsites.net' : '')
 const qaLocalOverridesEnabled = process.env.NZ_QA_LOCAL_OVERRIDES_ENABLED ?? 'false'
-const seamlessOnboardingEnabled = process.env.NZ_SEAMLESS_ONBOARDING_ENABLED ?? 'false'
+const seamlessOnboardingEnabled =
+  process.env.NZ_SEAMLESS_ONBOARDING_ENABLED ?? (envProfile === 'staging-testnet' ? 'true' : 'false')
 const solidBootstrapEnabled = process.env.NZ_SOLID_BOOTSTRAP_ENABLED ?? 'false'
-const mashlibExplorerEnabled = process.env.NZ_MASHLIB_EXPLORER_ENABLED ?? 'false'
-const mashlibModuleId = process.env.NZ_MASHLIB_MODULE_ID ?? ''
+function nonEmptyEnv(name) {
+  const value = process.env[name]
+  if (typeof value !== 'string') return undefined
+
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : undefined
+}
+
+const mashlibExplorerEnabled =
+  nonEmptyEnv('NZ_MASHLIB_EXPLORER_ENABLED') ?? (envProfile === 'staging-testnet' ? 'true' : 'false')
+const mashlibModuleId =
+  nonEmptyEnv('NZ_MASHLIB_MODULE_ID') ?? (envProfile === 'staging-testnet' ? 'nodezero:mashlib-pane-provider' : '')
 
 if (profile.enforceStrictVariables) {
   if (!relayUrl) {
