@@ -16,6 +16,7 @@ export { ProfileManager } from './ProfileManager.js'
 export { SocialGraph } from './SocialGraph.js'
 export { NsfwScanner, NSFW_DOMAINS } from './NsfwScanner.js'
 export { DocustreamManager } from './DocustreamManager.js'
+export { createSolidPodSyncManagers } from './createSolidPodSyncManagers.js'
 export {
 	PodLayoutManager,
 	buildPodContainerLayout,
@@ -40,9 +41,16 @@ export type { UserProfile, ProfileWriteOptions } from './ProfileManager.js'
 export type { Connection } from './SocialGraph.js'
 export type { NsfwScanResult } from './NsfwScanner.js'
 export type { StreamItem } from './DocustreamManager.js'
+export type { DocustreamManagerOptions } from './DocustreamManager.js'
+export type { ProfileManagerOptions } from './ProfileManager.js'
+export type { SocialGraphOptions } from './SocialGraph.js'
 export type { ContractValidationIssue, StreamSource } from './contracts/DocustreamContract.js'
 export type { DataBackpackProfile } from './contracts/DataBackpackContract.js'
 export type { ConnectionRecord } from './contracts/SocialGraphContract.js'
+export type {
+	SolidPodSyncManagers,
+	SolidPodSyncFactoryOptions,
+} from './createSolidPodSyncManagers.js'
 export type {
 	PodContainerLayout,
 	PodPolicyMatrix,

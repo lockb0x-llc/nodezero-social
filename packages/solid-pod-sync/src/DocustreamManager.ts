@@ -13,9 +13,20 @@ import {
   assertValidStreamItem,
   type StreamItem,
 } from './contracts/DocustreamContract.js'
+import {
+  DEFAULT_POLICY_MATRIX,
+  PodLayoutManager,
+  type PodPolicyMatrix,
+} from './PodLayoutManager.js'
 
 /** The origin source of a stream item. */
 export type { StreamItem } from './contracts/DocustreamContract.js'
+
+export interface DocustreamManagerOptions {
+  enablePodBootstrap?: boolean
+  policyMatrix?: PodPolicyMatrix
+  podLayoutManager?: Pick<PodLayoutManager, 'ensureDefaultLayoutAndPolicies'>
+}
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
@@ -91,7 +102,10 @@ function fromJsonLd(text: string): StreamItem | null {
  */
 export class DocustreamManager {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  constructor(private readonly session: any) {}
+  constructor(
+    private readonly session: any,
+    private readonly options: DocustreamManagerOptions = {}
+  ) {}
 
   /**
    * Writes a `StreamItem` as a JSON-LD document to `/public/docustream/<id>.jsonld`
@@ -102,6 +116,7 @@ export class DocustreamManager {
    */
   async appendActivity(podRoot: string, item: StreamItem): Promise<void> {
     assertValidStreamItem(item)
+    await this.ensurePodLayoutIfEnabled(podRoot)
 
     const base = podRoot.replace(/\/$/, '')
     const resourceUrl = `${base}/public/docustream/${item.id}.jsonld`
@@ -172,5 +187,17 @@ export class DocustreamManager {
     } catch {
       return []
     }
+  }
+
+  private async ensurePodLayoutIfEnabled(podRoot: string): Promise<void> {
+    if (!this.options.enablePodBootstrap) return
+
+    const podLayoutManager =
+      this.options.podLayoutManager ?? new PodLayoutManager({ fetch: this.session.fetch })
+
+    await podLayoutManager.ensureDefaultLayoutAndPolicies(
+      podRoot,
+      this.options.policyMatrix ?? DEFAULT_POLICY_MATRIX
+    )
   }
 }

@@ -83,6 +83,29 @@ describe('DocustreamManager', () => {
     expect(items).toHaveLength(1)
     expect(items[0]?.id).toBe('good1')
   })
+
+  it('runs pod bootstrap before write when enabled', async () => {
+    const ensureDefaultLayoutAndPolicies = jestGlobal.fn().mockResolvedValue(undefined)
+    const fetch = jestGlobal.fn().mockResolvedValue({ ok: true })
+    const manager = new DocustreamManager(
+      { fetch },
+      {
+        enablePodBootstrap: true,
+        podLayoutManager: { ensureDefaultLayoutAndPolicies },
+      }
+    )
+
+    await manager.appendActivity('https://alice.example/', {
+      id: 'abc123',
+      source: 'nodezero',
+      author: 'Alice',
+      content: 'Hello world',
+      timestamp: '2026-07-05T00:00:00.000Z',
+    })
+
+    expect(ensureDefaultLayoutAndPolicies).toHaveBeenCalledTimes(1)
+    expect(ensureDefaultLayoutAndPolicies).toHaveBeenCalledWith('https://alice.example/', expect.any(Object))
+  })
 })
 
 describe('intersectInterests', () => {
@@ -127,6 +150,32 @@ describe('ProfileManager.writeProfile', () => {
 
     expect(fetch).toHaveBeenCalledTimes(0)
   })
+
+  it('runs pod bootstrap before profile write when enabled', async () => {
+    const ensureDefaultLayoutAndPolicies = jestGlobal.fn().mockResolvedValue(undefined)
+    const fetch = jestGlobal.fn().mockResolvedValue({ ok: true })
+
+    const manager = new ProfileManager(
+      { fetch },
+      undefined,
+      {
+        enablePodBootstrap: true,
+        podLayoutManager: { ensureDefaultLayoutAndPolicies },
+      }
+    )
+
+    await expect(
+      manager.writeProfile('https://alice.example/', {
+        displayName: '',
+        bio: 'Hi',
+        interests: ['solid'],
+        isNsfw: false,
+      })
+    ).rejects.toThrow('Data Backpack contract validation failed')
+
+    expect(ensureDefaultLayoutAndPolicies).toHaveBeenCalledTimes(1)
+    expect(ensureDefaultLayoutAndPolicies).toHaveBeenCalledWith('https://alice.example/', expect.any(Object))
+  })
 })
 
 describe('SocialGraph.addConnection', () => {
@@ -139,5 +188,22 @@ describe('SocialGraph.addConnection', () => {
     ).rejects.toThrow('Social Graph contract validation failed')
 
     expect(fetch).toHaveBeenCalledTimes(0)
+  })
+
+  it('runs pod bootstrap before connection write when enabled', async () => {
+    const ensureDefaultLayoutAndPolicies = jestGlobal.fn().mockResolvedValue(undefined)
+    const fetch = jestGlobal.fn().mockResolvedValue(new Response('', { status: 200 }))
+    const graph = new SocialGraph(
+      { fetch },
+      {
+        enablePodBootstrap: true,
+        podLayoutManager: { ensureDefaultLayoutAndPolicies },
+      }
+    )
+
+    await graph.addConnection('https://alice.example/', 'https://bob.example/profile/card#me')
+
+    expect(ensureDefaultLayoutAndPolicies).toHaveBeenCalledTimes(1)
+    expect(ensureDefaultLayoutAndPolicies).toHaveBeenCalledWith('https://alice.example/', expect.any(Object))
   })
 })

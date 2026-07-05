@@ -25,6 +25,11 @@ import {
   type WithServerResourceInfo,
 } from '@inrupt/solid-client'
 import { assertValidConnectionRecord } from './contracts/SocialGraphContract.js'
+import {
+  DEFAULT_POLICY_MATRIX,
+  PodLayoutManager,
+  type PodPolicyMatrix,
+} from './PodLayoutManager.js'
 
 // ─── Session interface ────────────────────────────────────────────────────────
 /** Minimal authenticated session interface – structurally compatible with
@@ -49,6 +54,12 @@ export interface Connection {
   webId: string
 }
 
+export interface SocialGraphOptions {
+  enablePodBootstrap?: boolean
+  policyMatrix?: PodPolicyMatrix
+  podLayoutManager?: Pick<PodLayoutManager, 'ensureDefaultLayoutAndPolicies'>
+}
+
 /**
  * Manages follow/unfollow operations against the user's Solid Pod.
  *
@@ -68,9 +79,11 @@ export interface Connection {
  */
 export class SocialGraph {
   private readonly session: AuthenticatedSession
+  private readonly options: SocialGraphOptions
 
-  constructor(session: AuthenticatedSession) {
+  constructor(session: AuthenticatedSession, options: SocialGraphOptions = {}) {
     this.session = session
+    this.options = options
   }
 
   /**
@@ -109,6 +122,7 @@ export class SocialGraph {
    */
   async addConnection(podRootUrl: string, targetWebId: string): Promise<string> {
     assertValidConnectionRecord({ webId: targetWebId })
+    await this.ensurePodLayoutIfEnabled(podRootUrl)
 
     const datasetUrl = this.connectionsUrl(podRootUrl)
     const ownerWebId = `${datasetUrl}#me`
@@ -145,6 +159,7 @@ export class SocialGraph {
    */
   async removeConnection(podRootUrl: string, targetWebId: string): Promise<string> {
     assertValidConnectionRecord({ webId: targetWebId })
+    await this.ensurePodLayoutIfEnabled(podRootUrl)
 
     const datasetUrl = this.connectionsUrl(podRootUrl)
     const ownerWebId = `${datasetUrl}#me`
@@ -237,5 +252,17 @@ export class SocialGraph {
     } catch {
       return []
     }
+  }
+
+  private async ensurePodLayoutIfEnabled(podRoot: string): Promise<void> {
+    if (!this.options.enablePodBootstrap) return
+
+    const podLayoutManager =
+      this.options.podLayoutManager ?? new PodLayoutManager({ fetch: this.session.fetch })
+
+    await podLayoutManager.ensureDefaultLayoutAndPolicies(
+      podRoot,
+      this.options.policyMatrix ?? DEFAULT_POLICY_MATRIX
+    )
   }
 }

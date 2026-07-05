@@ -29,6 +29,11 @@ import {
 } from '@inrupt/solid-client'
 import { NsfwScanner } from './NsfwScanner.js'
 import { assertValidDataBackpackProfile } from './contracts/DataBackpackContract.js'
+import {
+  DEFAULT_POLICY_MATRIX,
+  PodLayoutManager,
+  type PodPolicyMatrix,
+} from './PodLayoutManager.js'
 
 // ─── Session interface ────────────────────────────────────────────────────────
 /** Minimal authenticated session interface – structurally compatible with
@@ -76,6 +81,12 @@ export interface ProfileWriteOptions {
   datasetPath?: string
 }
 
+export interface ProfileManagerOptions {
+  enablePodBootstrap?: boolean
+  policyMatrix?: PodPolicyMatrix
+  podLayoutManager?: Pick<PodLayoutManager, 'ensureDefaultLayoutAndPolicies'>
+}
+
 /**
  * Manages reading and writing user profiles to a Solid Pod.
  *
@@ -99,15 +110,21 @@ export interface ProfileWriteOptions {
 export class ProfileManager {
   private readonly session: AuthenticatedSession
   private readonly nsfwScanner: NsfwScanner
+  private readonly options: ProfileManagerOptions
 
   /**
    * @param session - An authenticated Inrupt Solid session.
    * @param nsfwScanner - Optional custom scanner instance. Defaults to a
    *   standard {@link NsfwScanner}.
    */
-  constructor(session: AuthenticatedSession, nsfwScanner?: NsfwScanner) {
+  constructor(
+    session: AuthenticatedSession,
+    nsfwScanner?: NsfwScanner,
+    options: ProfileManagerOptions = {}
+  ) {
     this.session = session
     this.nsfwScanner = nsfwScanner ?? new NsfwScanner()
+    this.options = options
   }
 
   /**
@@ -155,6 +172,8 @@ export class ProfileManager {
     profile: UserProfile,
     options: ProfileWriteOptions = {}
   ): Promise<string> {
+    await this.ensurePodLayoutIfEnabled(podRootUrl)
+
     const datasetPath = options.datasetPath ?? 'profile/card'
     const datasetUrl = `${podRootUrl.replace(/\/$/, '')}/${datasetPath}`
     const webId = `${datasetUrl}#me`
@@ -206,6 +225,18 @@ export class ProfileManager {
     await saveSolidDatasetAt(datasetUrl, dataset, { fetch: this.session.fetch })
 
     return datasetUrl
+  }
+
+  private async ensurePodLayoutIfEnabled(podRoot: string): Promise<void> {
+    if (!this.options.enablePodBootstrap) return
+
+    const podLayoutManager =
+      this.options.podLayoutManager ?? new PodLayoutManager({ fetch: this.session.fetch })
+
+    await podLayoutManager.ensureDefaultLayoutAndPolicies(
+      podRoot,
+      this.options.policyMatrix ?? DEFAULT_POLICY_MATRIX
+    )
   }
 
   /**
