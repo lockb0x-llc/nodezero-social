@@ -1,0 +1,22 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`DocuStream contract conformance keeps valid fixture set stable 1`] = `
+[
+  {
+    "author": "Alice",
+    "content": "Layer 1 implementation started.",
+    "id": "evt_20260705_001",
+    "source": "nodezero",
+    "timestamp": "2026-07-05T10:00:00.000Z",
+    "title": "Kickoff note",
+    "url": "https://staging.nodezero.social/feed/evt_20260705_001",
+  },
+  {
+    "author": "NodeZero Updates",
+    "content": "New roadmap update published.",
+    "id": "evt_20260705_002",
+    "source": "rss",
+    "timestamp": "2026-07-05T11:30:00Z",
+  },
+]
+`;

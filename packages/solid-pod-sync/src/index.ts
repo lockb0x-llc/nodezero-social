@@ -21,8 +21,18 @@ export {
 	assertValidStreamItem,
 	validateStreamItem,
 } from './contracts/DocustreamContract.js'
+export {
+	assertValidDataBackpackProfile,
+	validateDataBackpackProfile,
+} from './contracts/DataBackpackContract.js'
+export {
+	assertValidConnectionRecord,
+	validateConnectionRecord,
+} from './contracts/SocialGraphContract.js'
 export type { UserProfile, ProfileWriteOptions } from './ProfileManager.js'
 export type { Connection } from './SocialGraph.js'
 export type { NsfwScanResult } from './NsfwScanner.js'
 export type { StreamItem } from './DocustreamManager.js'
 export type { ContractValidationIssue, StreamSource } from './contracts/DocustreamContract.js'
+export type { DataBackpackProfile } from './contracts/DataBackpackContract.js'
+export type { ConnectionRecord } from './contracts/SocialGraphContract.js'

@@ -28,6 +28,7 @@ import {
   type WithServerResourceInfo,
 } from '@inrupt/solid-client'
 import { NsfwScanner } from './NsfwScanner.js'
+import { assertValidDataBackpackProfile } from './contracts/DataBackpackContract.js'
 
 // ─── Session interface ────────────────────────────────────────────────────────
 /** Minimal authenticated session interface – structurally compatible with
@@ -165,6 +166,11 @@ export class ProfileManager {
 
     const scanResult = this.nsfwScanner.scan(urlsToScan)
     const isNsfw = profile.isNsfw || scanResult.isNsfw
+
+    assertValidDataBackpackProfile({
+      ...profile,
+      isNsfw,
+    })
 
     // ── Build RDF Thing ────────────────────────────────────────────────────
     let thingBuilder = buildThing(createThing({ url: webId }))

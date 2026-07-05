@@ -1,5 +1,6 @@
 import { DocustreamManager } from '../DocustreamManager.js'
 import { ProfileManager } from '../ProfileManager.js'
+import { SocialGraph } from '../SocialGraph.js'
 import { intersectInterests } from '../SocialGraph.js'
 
 const jestGlobal = import.meta.jest
@@ -107,5 +108,36 @@ describe('ProfileManager.updateWebACL', () => {
     expect(String(options?.body)).toContain('acl:agent <https://alice.example/profile/card#me>')
     expect(String(options?.body)).toContain('acl:agentClass foaf:Agent')
     expect(String(options?.body)).toContain('acl:accessTo <https://alice.example/public/docustream>')
+  })
+})
+
+describe('ProfileManager.writeProfile', () => {
+  it('rejects invalid Data Backpack profile contract payloads', async () => {
+    const fetch = jestGlobal.fn().mockResolvedValue({ ok: true })
+    const manager = new ProfileManager({ fetch })
+
+    await expect(
+      manager.writeProfile('https://alice.example/', {
+        displayName: '',
+        bio: 'Missing display name',
+        interests: ['solid'],
+        isNsfw: false,
+      })
+    ).rejects.toThrow('Data Backpack contract validation failed')
+
+    expect(fetch).toHaveBeenCalledTimes(0)
+  })
+})
+
+describe('SocialGraph.addConnection', () => {
+  it('rejects invalid WebID values before writing', async () => {
+    const fetch = jestGlobal.fn().mockResolvedValue({ ok: true })
+    const graph = new SocialGraph({ fetch })
+
+    await expect(
+      graph.addConnection('https://alice.example/', 'https://bob.example/profile/card')
+    ).rejects.toThrow('Social Graph contract validation failed')
+
+    expect(fetch).toHaveBeenCalledTimes(0)
   })
 })

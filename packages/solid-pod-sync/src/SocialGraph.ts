@@ -24,6 +24,7 @@ import {
   type SolidDataset,
   type WithServerResourceInfo,
 } from '@inrupt/solid-client'
+import { assertValidConnectionRecord } from './contracts/SocialGraphContract.js'
 
 // ─── Session interface ────────────────────────────────────────────────────────
 /** Minimal authenticated session interface – structurally compatible with
@@ -107,6 +108,8 @@ export class SocialGraph {
    * @returns The URL of the updated dataset.
    */
   async addConnection(podRootUrl: string, targetWebId: string): Promise<string> {
+    assertValidConnectionRecord({ webId: targetWebId })
+
     const datasetUrl = this.connectionsUrl(podRootUrl)
     const ownerWebId = `${datasetUrl}#me`
 
@@ -141,6 +144,8 @@ export class SocialGraph {
    * @returns The URL of the updated dataset.
    */
   async removeConnection(podRootUrl: string, targetWebId: string): Promise<string> {
+    assertValidConnectionRecord({ webId: targetWebId })
+
     const datasetUrl = this.connectionsUrl(podRootUrl)
     const ownerWebId = `${datasetUrl}#me`
 
