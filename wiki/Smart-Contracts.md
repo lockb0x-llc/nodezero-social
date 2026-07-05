@@ -26,3 +26,11 @@ Contract source is maintained in the Rust package and deployed to Stellar TestNe
 
 - `docs/testnet-azure-release-requirements.md`
 - `docs/staging-runtime-implementation-roadmap.md`
+
+## Credits
+
+- Stellar Soroban platform and developer tooling underpin contract execution and deployment flows.
+- NodeZero contract logic and deployment guardrails are implemented in-repo by NodeZero contributors.
+- Upstream references:
+	- https://developers.stellar.org/docs/smart-contracts
+	- https://github.com/stellar/soroban-examples

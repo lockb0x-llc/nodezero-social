@@ -54,6 +54,17 @@ https://nodezero.solidcommunity.net/
 - Consumed by mobile app contexts and profile flows.
 - Works with release policy checks described in `docs/environment-isolation-matrix.md`.
 
+## Credits
+
+- Solid protocol standards make Pod portability and user-owned data flows possible.
+- Inrupt Solid client/auth libraries provide the core Solid OIDC + Pod data APIs used by this package.
+- Community Solid Server powers the NodeZero-hosted Solid server environment in staging.
+- NodeZero contributors implemented package-specific managers, contracts, and integration boundaries in-repo.
+- Upstream references:
+  - https://solidproject.org/
+  - https://github.com/inrupt/solid-client-js
+  - https://github.com/CommunitySolidServer/CommunitySolidServer
+
 ## Gaps (as of 2026-06-25)
 
 | Gap | Description | Status |
