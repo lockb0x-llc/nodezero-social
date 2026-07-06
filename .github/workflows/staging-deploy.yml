@@ -79,6 +79,15 @@ jobs:
             --linux-fx-version "NODE|22-lts" \
             --startup-file "bash startup.sh"
 
+          az webapp config appsettings set \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$JSS_PROVISIONER_APP_NAME" \
+            --settings \
+              JSS_ISSUER_URL="https://solid.nodezero.social" \
+              JSS_PUBLIC_PROVISIONER_BASE_URL="https://${JSS_PROVISIONER_APP_NAME}.azurewebsites.net" \
+              JSS_SOLID_CSS_BASE_URL="https://solid.nodezero.social" \
+              JSS_ALLOWED_ORIGINS="https://staging.nodezero.social,https://nodezero.social,https://www.nodezero.social,https://solid.nodezero.social,http://localhost:19006,http://localhost:8081"
+
       - name: Deploy JSS provisioner to App Service
         run: |
           az webapp deploy \

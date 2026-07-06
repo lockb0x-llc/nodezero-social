@@ -184,37 +184,52 @@ async function run() {
         })
 
       console.log('[docustream-pane-evidence] Submitting Create Your Node...')
-      const clicked = await page.evaluate(() => {
-        const nodes = Array.from(document.querySelectorAll('button, [role="button"], a, div, span'))
-        const match = nodes.find((node) => (node.textContent || '').includes('Create Your Node'))
-        if (!match) return false
-        const target = match.closest('button, [role="button"], a') ?? match
-        ;(target).scrollIntoView({ block: 'center', inline: 'nearest' })
-        ;(target).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
-        return true
-      })
+      let clicked = false
+      try {
+        const createButton = page.getByRole('button', { name: /create your node/i })
+        await createButton.first().click({ force: true, timeout: 15000 })
+        clicked = true
+      } catch {
+        // Fallback for RN-web surfaces where role mapping can differ during transitions.
+        clicked = await page.evaluate(() => {
+          const nodes = Array.from(document.querySelectorAll('button, [role="button"], a, div, span'))
+          const match = nodes.find((node) => (node.textContent || '').includes('Create Your Node'))
+          if (!match) return false
+          const target = match.closest('button, [role="button"], a') ?? match
+          ;(target).scrollIntoView({ block: 'center', inline: 'nearest' })
+          ;(target).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+          return true
+        })
+      }
       if (!clicked) {
         const snippet = await pageTextSnippet(page)
         fail(`Create button could not be clicked. Page snippet: ${snippet}`)
       }
 
-      await page
-        .waitForFunction(() => {
-          const bodyText = document.body?.innerText ?? ''
-          const path = window.location.pathname
-          return (
-            bodyText.includes('Generating your zero-knowledge proof') ||
-            bodyText.includes('Creating your Pod on the Node Zero Community Server') ||
-            bodyText.includes('Confirming your on-chain lockb0x anchor') ||
-            path === '/local' ||
-            path === '/feed'
-          )
-        }, { timeout: 20000 })
-        .catch(async () => {
-          const snippet = await pageTextSnippet(page)
-          fail(`Create flow did not start after submit. Page snippet: ${snippet}`)
-        })
+      console.log('[docustream-pane-evidence] Waiting for provisioning progress or auth redirect...')
+      const stage = await Promise.race([
+        page
+          .waitForURL(/https:\/\/solid\.nodezero\.social\//, { timeout: 45000 })
+          .then(() => 'solid-login'),
+        page
+          .waitForURL(/\/(local|feed)(\?.*)?$/, { timeout: 45000 })
+          .then(() => 'authenticated-route'),
+        page
+          .waitForFunction(() => {
+            const bodyText = document.body?.innerText ?? ''
+            return (
+              bodyText.includes('Generating your zero-knowledge proof') ||
+              bodyText.includes('Creating your Pod on the Node Zero Community Server') ||
+              bodyText.includes('Confirming your on-chain lockb0x anchor')
+            )
+          }, { timeout: 45000 })
+          .then(() => 'progress-text'),
+      ]).catch(async () => {
+        const snippet = await pageTextSnippet(page)
+        fail(`Create flow did not start after submit. URL=${page.url()}. Page snippet: ${snippet}`)
+      })
 
+      console.log(`[docustream-pane-evidence] Submit stage detected: ${stage}.`)
       console.log('[docustream-pane-evidence] Waiting for authenticated route redirect...')
       await page.waitForURL(/\/(local|feed)(\?.*)?$/, { timeout: redirectTimeoutMs })
       console.log(`[docustream-pane-evidence] Redirected to ${page.url()}.`)
