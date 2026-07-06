@@ -1,4 +1,6 @@
 import {
+  ACL_POLICY_RULES,
+  assertAclNamespacePolicy,
   PodLayoutManager,
   buildAclDocument,
   buildPodContainerLayout,
@@ -107,5 +109,20 @@ describe('deriveOwnerWebId', () => {
     expect(deriveOwnerWebId('https://solid.nodezero.social/public/docustream/')).toBe(
       'https://solid.nodezero.social/profile/card#me'
     )
+  })
+
+  it('throws owner mismatch rule when overridden owner leaves account namespace', () => {
+    expect(() =>
+      buildAclDocument(
+        'https://solid.nodezero.social/alice/public/docustream/',
+        'public-read',
+        'https://solid.nodezero.social/profile/card#me'
+      )
+    ).toThrow(ACL_POLICY_RULES.OWNER_MISMATCH)
+  })
+
+  it('throws malformed rule for invalid container URL', () => {
+    expect(() => assertAclNamespacePolicy('not-a-url', 'https://solid.nodezero.social/profile/card#me'))
+      .toThrow(ACL_POLICY_RULES.TARGET_MALFORMED)
   })
 })

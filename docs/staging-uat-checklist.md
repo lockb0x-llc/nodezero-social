@@ -122,6 +122,17 @@ Validate the nav bar overflow fix and the Settings access path change introduced
 - Reviewer: QA_RELEASE_AGENT + PM direct evidence (automated browser session, 2026-06-26)
 - Date: 2026-06-26
 
+## ACL Hardening Validation Addendum
+
+Use this addendum after ACL namespace hardening rollout in staging.
+
+| # | Step | Expected | Result | Notes |
+|---|---|---|---|---|
+| AH1 | Add DocuStream source with valid session | Save succeeds without ACL deny | — |  |
+| AH2 | Toggle DocuStream source active state | Update persists without ACL deny | — |  |
+| AH3 | Submit crafted invalid ACL payload | Write is rejected with expected `ruleId` | — |  |
+| AH4 | Run AU/profile standard flows post-cutover | No false-positive ACL denies observed | — |  |
+
 ### 2026-06-26 re-test evidence (post infra + web publish)
 
 - `pnpm qa:smoke` result: **PASS** for landing markers and route reachability on `https://staging.nodezero.social`.

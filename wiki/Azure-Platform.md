@@ -22,6 +22,31 @@ Infrastructure and deployment automation for staging environments are defined in
 - Environment mismatch rejection.
 - What-if preflight before deployment.
 
+## ACL Hardening Rollout Runbook (Staging)
+
+Rollout order:
+1. Build hardened Solid runtime image.
+2. Deploy staging in `shadow` mode.
+3. Review and triage deny candidates.
+4. Remediate legacy malformed ACL data.
+5. Promote staging to `enforce` mode.
+
+Commands:
+- `bash ./scripts/azure/build-solid-themed-image.sh`
+- `bash ./scripts/azure/deploy-solid-server.sh`
+- `corepack pnpm policy:validate-env`
+
+Required evidence:
+- Image reference and build timestamp.
+- Azure deployment operation ID(s).
+- Shadow start timestamp.
+- Enforce cutover timestamp.
+
+Rollback:
+1. Switch policy mode back to `shadow`.
+2. Keep telemetry capture enabled.
+3. Record incident with violating `ruleId` values and sample `correlationId`s.
+
 ## Runbooks
 
 - `docs/staging-deployment-blueprint.md`

@@ -20,7 +20,15 @@ NodeZero Social uses a pnpm workspace monorepo with modular packages.
 2. Identity and profile data sync through SOLID services (`packages/solid-pod-sync/src/`).
 3. Local messaging uses `p2p-comms` with `relay-service` for rendezvous.
 4. Wallet operations route through `embedded-wallet` and TestNet contracts.
-5. Deployment and environment policy are enforced via scripts and Azure templates.
+5. ACL writes are validated against namespace policy before persistence.
+6. Deployment and environment policy are enforced via scripts and Azure templates.
+
+## ACL Policy Enforcement Point
+
+- Evaluation point: ACL write path before persistence.
+- `shadow` mode: evaluate and emit telemetry without blocking writes.
+- `enforce` mode: reject violating writes with structured deny contract.
+- Decision telemetry is used by security and operations runbooks.
 
 ## Key references
 

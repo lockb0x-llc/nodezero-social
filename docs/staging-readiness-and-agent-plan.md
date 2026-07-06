@@ -107,3 +107,16 @@ Operating principles:
 - Specialists own implementation in domain boundaries.
 - Every task must produce acceptance evidence and inbox updates.
 - Cross-agent handoffs are mandatory before PM marks a todo as done.
+
+## 8) ACL Hardening Closure Evidence
+
+| Track | Status | Timestamp | Evidence | Notes |
+|---|---|---|---|---|
+| Testing | PASS | 2026-07-06 | `corepack pnpm --filter @nodezero/solid-pod-sync test -- PodLayoutManager.test.ts` (9/9), `corepack pnpm --filter @nodezero/solid-pod-sync type-check` | Added ACL policy assertion + rule-id tests for owner mismatch and malformed container URL. |
+| Deployment | PASS | 2026-07-06 | `az deployment group what-if/create` on `infrastructure/azure/solid-server.bicep` with `emailProviderMode=none` override | Deployment `solid-server` provisioning state `Succeeded`. |
+| Validation | PASS | 2026-07-06 | `corepack pnpm qa:smoke:docustream-pane` PASS; `corepack pnpm qa:smoke` PASS | Smoke timeout reproduced as transient and cleared on rerun; staged bundle and routes reachable. |
+| Verification | PASS | 2026-07-06 | ACL storage scan output `BAD_ACL_COUNT=0`; `corepack pnpm policy:validate-env` PASS | Known broken ACL owner pattern absent in staging storage; environment isolation guards remain green. |
+| Wiki | PASS | 2026-07-06 | Updated wiki sections in Security/Azure Platform/Solid Pod Sync/Architecture + UAT addendum | Hardening policy, rollout runbook, responsibility boundary, and enforcement point documented inline. |
+
+Readiness rule:
+- Resume DocuStream functionality implementation only when all tracks are `PASS`.

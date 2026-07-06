@@ -30,7 +30,9 @@ import {
 import { NsfwScanner } from './NsfwScanner.js'
 import { assertValidDataBackpackProfile } from './contracts/DataBackpackContract.js'
 import {
+  assertAclNamespacePolicy,
   DEFAULT_POLICY_MATRIX,
+  deriveOwnerWebId,
   PodLayoutManager,
   type PodPolicyMatrix,
 } from './PodLayoutManager.js'
@@ -254,6 +256,7 @@ export class ProfileManager {
     // Build minimal Turtle ACL document.
     // Prefer an explicit owner WebID, but fall back to the canonical profile-card WebID pattern.
     const ownerWebId = deriveOwnerWebId(containerPath)
+    assertAclNamespacePolicy(containerPath, ownerWebId)
     const ownerBlock = `
 @prefix acl: <http://www.w3.org/ns/auth/acl#> .
 @prefix foaf: <http://xmlns.com/foaf/0.1/> .
@@ -314,21 +317,6 @@ function thingToProfile(thing: Thing): UserProfile {
  */
 function getAllStrings(thing: Thing, predicate: string): string[] {
   return getStringNoLocaleAll(thing, predicate)
-}
-
-function deriveOwnerWebId(containerPath: string): string {
-  try {
-    const containerUrl = new URL(containerPath)
-    const segments = containerUrl.pathname.split('/').filter(Boolean)
-    const reserved = new Set(['public', 'private', 'social', 'backpack', '.well-known'])
-    const accountSegment = segments[0]
-    if (accountSegment && !reserved.has(accountSegment)) {
-      return `${containerUrl.origin}/${accountSegment}/profile/card#me`
-    }
-    return `${containerUrl.origin}/profile/card#me`
-  } catch {
-    return 'https://vocab.nodezero.social/profile/card#me'
-  }
 }
 
 /**

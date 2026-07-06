@@ -15,6 +15,11 @@ export interface PodContainerLayout {
   backpackContainer: string
 }
 
+export const ACL_POLICY_RULES = {
+  OWNER_MISMATCH: 'ACL_NS_OWNER_MISMATCH',
+  TARGET_MALFORMED: 'ACL_PAYLOAD_MALFORMED',
+} as const
+
 export type ContainerVisibility = 'public-read' | 'private'
 
 export interface PodPolicyMatrix {
@@ -53,11 +58,36 @@ export function deriveOwnerWebId(containerPath: string): string {
   }
 }
 
+export function assertAclNamespacePolicy(containerPath: string, ownerWebId: string): void {
+  let containerUrl: URL
+
+  try {
+    containerUrl = new URL(containerPath)
+  } catch {
+    throw new Error(`${ACL_POLICY_RULES.TARGET_MALFORMED}: invalid containerPath '${containerPath}'`)
+  }
+
+  if (containerUrl.protocol !== 'https:' && containerUrl.protocol !== 'http:') {
+    throw new Error(
+      `${ACL_POLICY_RULES.TARGET_MALFORMED}: unsupported protocol '${containerUrl.protocol}'`
+    )
+  }
+
+  const expectedOwner = deriveOwnerWebId(containerPath)
+  if (ownerWebId !== expectedOwner) {
+    throw new Error(
+      `${ACL_POLICY_RULES.OWNER_MISMATCH}: owner '${ownerWebId}' does not match expected '${expectedOwner}'`
+    )
+  }
+}
+
 export function buildAclDocument(
   containerPath: string,
   visibility: ContainerVisibility,
   ownerWebId = deriveOwnerWebId(containerPath)
 ): string {
+  assertAclNamespacePolicy(containerPath, ownerWebId)
+
   const ownerBlock = `
 @prefix acl: <http://www.w3.org/ns/auth/acl#> .
 @prefix foaf: <http://xmlns.com/foaf/0.1/> .

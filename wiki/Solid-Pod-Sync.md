@@ -54,6 +54,26 @@ https://nodezero.solidcommunity.net/
 - Consumed by mobile app contexts and profile flows.
 - Works with release policy checks described in `docs/environment-isolation-matrix.md`.
 
+## ACL Responsibility Boundary
+
+Client-side responsibilities:
+- Canonical ACL authoring for account-scoped resources.
+- Handle-aware owner WebID derivation for path-based pods.
+- Deterministic namespace target construction.
+
+Server-side responsibilities:
+- Authoritative namespace policy enforcement at ACL write boundary.
+- Deny malformed or cross-namespace ACL writes.
+
+Compatibility guarantees:
+- Valid ACL writes remain accepted.
+- Invalid ACL writes are rejected with structured `ruleId` responses.
+
+Regression anchors:
+- `packages/solid-pod-sync/src/PodLayoutManager.ts`
+- `packages/solid-pod-sync/src/ProfileManager.ts`
+- `packages/solid-pod-sync/src/__tests__/PodLayoutManager.test.ts`
+
 ## Credits
 
 - Solid protocol standards make Pod portability and user-owned data flows possible.
