@@ -30,7 +30,7 @@ import { aesthetic } from '../src/theme/aesthetic'
 import { beginSolidSignup } from '../src/onboarding/signupBridge'
 import { createSeamlessNode, getSeamlessSignupConfig } from '../src/onboarding/seamlessSignup'
 import { ProgressStepLadder, type ProgressStep } from '../src/components/ProgressStepLadder'
-import type { NodeSessionRecord } from '../src/onboarding/nodeSession'
+import { saveNodeSession, type NodeSessionRecord } from '../src/onboarding/nodeSession'
 
 const PRESS_OPACITY = 0.82
 
@@ -368,7 +368,6 @@ function AuthRedirectOverlay({ visible }: { visible: boolean }): JSX.Element {
 export default function LandingScreen(): JSX.Element {
   const {
     signIn,
-    signInWithNode,
     nodeSession,
     isLoggedIn,
     isRestoring,
@@ -529,16 +528,20 @@ export default function LandingScreen(): JSX.Element {
         setError('Node created, but the on-chain attestation was not anchored. Please try again.')
         return
       }
+      if (!result.oidcBridge?.token || !result.oidcBridge.consumeUrl) {
+        failActiveCreateStep()
+        setError('Node created, but secure OIDC bridge sign-in is unavailable. Please try again.')
+        return
+      }
       advanceCreateStep('anchor')
 
       const root = result.lockbox.proofRootHex
       setCreateNotice(
-        `Node created. WebID: ${result.webId}\nStellar key: ${result.stellarPublicKey}\nLockb0x (on-chain): ${anchored}\nIdentity anchor: ${result.attestation.accountCommitmentHex}${root ? `\nPairing root: ${root}` : ''}\nSigning you in…`,
+        `Node created. WebID: ${result.webId}\nStellar key: ${result.stellarPublicKey}\nLockb0x (on-chain): ${anchored}\nIdentity anchor: ${result.attestation.accountCommitmentHex}${root ? `\nPairing root: ${root}` : ''}\nContinuing to secure sign-in…`,
       )
 
-      // Auto sign-in: the provisioner already persisted the account to the Pod
-      // and anchored the pairing on-chain, so we record the non-secret node
-      // session locally and land the user in their Local node.
+      // Persist non-secret node metadata locally, then start a real OIDC login
+      // so Pod operations use an authenticated Solid session.
       const record: NodeSessionRecord = {
         webId: result.webId,
         podUrl: result.podUrl,
@@ -549,14 +552,19 @@ export default function LandingScreen(): JSX.Element {
         accountDocumentUrl: result.accountDocumentUrl,
         createdAt: new Date().toISOString(),
       }
-      await signInWithNode(record)
+      await saveNodeSession(record)
       advanceCreateStep('signin')
-      router.replace('/local')
+      setIsSigningIn(true)
+      await signIn(issuerBase, {
+        bridgeToken: result.oidcBridge.token,
+        bridgeConsumeUrl: result.oidcBridge.consumeUrl,
+      })
     } catch (err) {
       failActiveCreateStep()
       setError(mapCreateNodeError(err))
     } finally {
       setIsCreating(false)
+      setIsSigningIn(false)
     }
   }
 
@@ -603,7 +611,7 @@ export default function LandingScreen(): JSX.Element {
                 {'Returning user: sign in with the Node Zero Community Server or your existing Solid identity provider.'}
               </Text>
               <Text style={styles.heroBody}>
-                {'New user: create your node with the streamlined flow below. The Node Zero Community Server creates your Pod, then you will be signed in automatically.'}
+                {'New user: create your node with the streamlined flow below. The Node Zero Community Server creates your Pod, then continues to secure sign-in.'}
               </Text>
             </>
           )}

@@ -42,12 +42,12 @@ interface SolidContextValue {
   /** The authenticated user's WebID URL, or `null`. */
   webId: string | null
   /** Initiates the login redirect to the user's Solid identity provider. */
-  signIn: (idpUrl: string) => Promise<void>
+  signIn: (idpUrl: string, options?: { bridgeToken?: string; bridgeConsumeUrl?: string }) => Promise<void>
   /**
-   * Signs the user in using a locally-held seamless-onboarding node session
-   * (no OIDC redirect). The provisioner has already persisted the account to
-   * the Pod and anchored the pairing on-chain, so this only records the
-   * non-secret session locally and flips auth state.
+    * Persists seamless-onboarding node metadata locally.
+    *
+    * NOTE: This does NOT establish a Solid OIDC session. Pod operations still
+    * require a real OIDC login flow and valid authenticated fetch context.
    */
   signInWithNode: (record: NodeSessionRecord) => Promise<void>
   /** The active seamless node session, when present. */
@@ -133,11 +133,21 @@ export function validateIdpUrl(raw: string, envProfile: string = getEnvProfile()
   return parsed.origin
 }
 
-function resolveRedirectUrl(): string {
+function resolveRedirectUrl(options?: { bridgeToken?: string; bridgeConsumeUrl?: string }): string {
+  const bridgeToken = options?.bridgeToken?.trim()
+  const bridgeConsumeUrl = options?.bridgeConsumeUrl?.trim()
+
   if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.href) {
     // OIDC redirectUrl must not include reserved callback params such as `code` or `state`.
     // Using origin + pathname prevents stale error/callback query fragments from breaking login.
-    return `${window.location.origin}${window.location.pathname}`
+    const redirect = new URL(`${window.location.origin}${window.location.pathname}`)
+    if (bridgeToken) {
+      redirect.searchParams.set('nz_oidc_bridge', bridgeToken)
+    }
+    if (bridgeConsumeUrl) {
+      redirect.searchParams.set('nz_oidc_bridge_consume', bridgeConsumeUrl)
+    }
+    return redirect.toString()
   }
   if (Platform.OS === 'web') {
     throw new Error(
@@ -145,7 +155,14 @@ function resolveRedirectUrl(): string {
     )
   }
   // Keep native flows explicit and deterministic under the app's scheme.
-  return 'nodezero://auth/callback'
+  const nativeRedirect = new URL('nodezero://auth/callback')
+  if (bridgeToken) {
+    nativeRedirect.searchParams.set('nz_oidc_bridge', bridgeToken)
+  }
+  if (bridgeConsumeUrl) {
+    nativeRedirect.searchParams.set('nz_oidc_bridge_consume', bridgeConsumeUrl)
+  }
+  return nativeRedirect.toString()
 }
 
 function hasOidcRedirectParams(): boolean {
@@ -208,15 +225,16 @@ export function SolidProvider({ children }: { children: ReactNode }): JSX.Elemen
       .then(([cachedWebId, signupResume, savedNodeSession]) => {
         setSignupResumeActive(signupResume.hasActiveIntent)
         setSignupReturnDetected(signupResume.returnDetected)
-        // A seamless node session is a complete, self-contained auth state.
+        // A seamless node session is metadata only. Do not treat it as an
+        // authenticated Solid OIDC session.
         if (savedNodeSession) {
           setNodeSession(savedNodeSession)
-          applyWebId(savedNodeSession.webId)
-          return undefined
         }
         if (cachedWebId) applyWebId(cachedWebId)
-        if (!hasOidcRedirectParams()) return undefined
-        return handleIncomingRedirect({ restorePreviousSession: false })
+        if (hasOidcRedirectParams()) {
+          return handleIncomingRedirect({ restorePreviousSession: false })
+        }
+        return handleIncomingRedirect({ restorePreviousSession: true })
       })
       .then((info) => {
         if (info?.isLoggedIn && info.webId) {
@@ -241,9 +259,12 @@ export function SolidProvider({ children }: { children: ReactNode }): JSX.Elemen
     }
   }, [applyWebId, session, syncSessionState])
 
-  const signIn = useCallback(async (idpUrl: string) => {
+  const signIn = useCallback(async (
+    idpUrl: string,
+    options?: { bridgeToken?: string; bridgeConsumeUrl?: string },
+  ) => {
     const oidcIssuer = validateIdpUrl(idpUrl)
-    const redirectUrl = resolveRedirectUrl()
+    const redirectUrl = resolveRedirectUrl(options)
     await login({
       oidcIssuer,
       redirectUrl,
@@ -255,9 +276,8 @@ export function SolidProvider({ children }: { children: ReactNode }): JSX.Elemen
     async (record: NodeSessionRecord) => {
       await saveNodeSession(record)
       setNodeSession(record)
-      applyWebId(record.webId)
     },
-    [applyWebId],
+    [],
   )
 
   const signOut = useCallback(async () => {

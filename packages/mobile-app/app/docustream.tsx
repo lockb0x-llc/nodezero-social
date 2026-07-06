@@ -124,6 +124,7 @@ export default function DocustreamScreen(): JSX.Element {
   const [isSourceModalOpen, setIsSourceModalOpen] = useState(false)
   const [sourceUrlInput, setSourceUrlInput] = useState('')
   const [pendingSourceTitle, setPendingSourceTitle] = useState<string | null>(null)
+  const [sourceModalError, setSourceModalError] = useState<string | null>(null)
   const [isIngesting, setIsIngesting] = useState(false)
   const [sourceOperationId, setSourceOperationId] = useState<string | null>(null)
 
@@ -219,10 +220,10 @@ export default function DocustreamScreen(): JSX.Element {
     }
   }, [podRoot, session])
 
-  const ingestEnabledSources = useCallback(async (): Promise<void> => {
+  const ingestEnabledSources = useCallback(async (sourceList: DocustreamSource[] = sources): Promise<void> => {
     if (!isLoggedIn || !podRoot) return
 
-    const enabled = sources.filter((source) => source.enabled)
+    const enabled = sourceList.filter((source) => source.enabled)
     if (enabled.length === 0) return
 
     setIsIngesting(true)
@@ -333,32 +334,39 @@ export default function DocustreamScreen(): JSX.Element {
     setSourceOperationId('new-source')
     try {
       const { docustreamSourceManager } = getSolidPodSyncManagers(session)
-      await docustreamSourceManager.upsertSource(podRoot, {
+      const savedSource = await docustreamSourceManager.upsertSource(podRoot, {
         type: 'rss',
         url,
         title,
       })
+      setSources((currentSources) => [
+        savedSource,
+        ...currentSources.filter((source) => source.id !== savedSource.id),
+      ])
+      setSourceModalError(null)
       setSourceUrlInput('')
       setPendingSourceTitle(null)
-      await loadSources()
-      Alert.alert('Source added', 'RSS source saved. It will be ingested now.')
-      await ingestEnabledSources()
+      Alert.alert('Source added', 'RSS source saved to your Pod. Ingestion will continue in the background.')
+      void ingestEnabledSources([savedSource])
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to add source.'
+      setSourceModalError(message)
       Alert.alert('Add source failed', message)
     } finally {
       setSourceOperationId(null)
     }
-  }, [ingestEnabledSources, isLoggedIn, loadSources, podRoot, session])
+  }, [ingestEnabledSources, isLoggedIn, podRoot, session])
 
   const handleSourceInputChange = useCallback((nextValue: string): void => {
     setSourceUrlInput(nextValue)
     setPendingSourceTitle(null)
+    setSourceModalError(null)
   }, [])
 
   const handlePresetSelect = useCallback((preset: { title: string; url: string }): void => {
     setSourceUrlInput(preset.url)
     setPendingSourceTitle(preset.title)
+    setSourceModalError(null)
   }, [])
 
   const handleToggleSource = useCallback(async (source: DocustreamSource, nextEnabled: boolean): Promise<void> => {
@@ -536,6 +544,12 @@ export default function DocustreamScreen(): JSX.Element {
                 <Text style={styles.addSourceButtonText}>Add</Text>
               </TouchableOpacity>
             </View>
+
+            {sourceModalError ? (
+              <Text style={styles.sourceErrorText}>
+                Add source failed: {sourceModalError}
+              </Text>
+            ) : null}
 
             {pendingSourceTitle ? (
               <Text style={styles.selectedPresetText}>Selected preset: {pendingSourceTitle}</Text>
@@ -835,6 +849,12 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontWeight: '700',
     fontSize: 13,
+  },
+  sourceErrorText: {
+    marginTop: 8,
+    color: '#EF4444',
+    fontSize: 13,
+    lineHeight: 18,
   },
   selectedPresetText: {
     color: aesthetic.color.textMid,

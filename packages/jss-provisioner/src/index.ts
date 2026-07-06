@@ -14,6 +14,8 @@ import type {
 
 const PORT = Number(process.env.PORT ?? process.env.JSS_PROVISIONER_PORT ?? 8181)
 const ISSUER = process.env.JSS_ISSUER_URL ?? 'https://staging.nodezero.social'
+const PUBLIC_PROVISIONER_BASE_URL =
+  (process.env.JSS_PUBLIC_PROVISIONER_BASE_URL ?? ISSUER).trim().replace(/\/+$/, '')
 const SOLID_CSS_BASE_URL = (process.env.JSS_SOLID_CSS_BASE_URL ?? '').trim().replace(/\/+$/, '')
 const LOCKBOX_FACTORY_CONTRACT_ID =
   process.env.JSS_LOCKBOX_FACTORY_CONTRACT_ID ?? process.env.NZ_LOCKBOX_FACTORY_CONTRACT_ID ?? ''
@@ -28,7 +30,7 @@ const INTERNAL_API_KEY = (process.env.JSS_INTERNAL_API_KEY ?? '').trim()
 // faucet exists). Off by default to preserve the testnet Friendbot self-funding
 // path; enable via JSS_TREASURY_FUND_MEMBERS=1 for MainNet readiness.
 const TREASURY_FUND_MEMBERS = /^(1|true|yes)$/i.test((process.env.JSS_TREASURY_FUND_MEMBERS ?? '').trim())
-const ALLOWED_ORIGINS = (process.env.JSS_ALLOWED_ORIGINS ?? 'https://staging.nodezero.social,https://nodezero.social,https://www.nodezero.social,http://localhost:19006,http://localhost:8081')
+const ALLOWED_ORIGINS = (process.env.JSS_ALLOWED_ORIGINS ?? 'https://staging.nodezero.social,https://nodezero.social,https://www.nodezero.social,https://solid.nodezero.social,http://localhost:19006,http://localhost:8081')
   .split(',')
   .map((origin) => origin.trim())
   .filter((origin) => origin.length > 0)
@@ -193,10 +195,12 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Pro
     }
 
     try {
+      const email = body.email.trim()
+      const password = body.password
       const account = await createSolidAccount(SOLID_CSS_BASE_URL, {
         name: normalizedName,
-        email: body.email.trim(),
-        password: body.password,
+        email,
+        password,
       })
 
       // P3: on MainNet there is no Friendbot, so the member's Stellar account
@@ -326,6 +330,15 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Pro
         podUrl: account.podUrl,
         stellarPublicKey: stellarPublicKey || null,
         accountDocumentUrl,
+        oidcBridge: {
+          ...store.issueOidcBridgeTicket({
+            email,
+            password,
+            webId: account.webId,
+            podUrl: account.podUrl,
+          }),
+          consumeUrl: `${PUBLIC_PROVISIONER_BASE_URL}/v1/oidc-bridge/consume`,
+        },
         clientCredentials: {
           id: account.clientCredentialsId,
           secret: account.clientCredentialsSecret,
@@ -338,6 +351,29 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Pro
       const message = err instanceof Error ? err.message : 'Solid account provisioning failed.'
       sendJson(req, res, 502, { error: message })
     }
+    return
+  }
+
+  if (req.method === 'POST' && url.pathname === '/v1/oidc-bridge/consume') {
+    const body = await readJsonBody<{ token?: string }>(req)
+    if (!isNonEmpty(body.token)) {
+      sendJson(req, res, 400, { error: 'token is required.' })
+      return
+    }
+
+    const ticket = store.consumeOidcBridgeTicket(body.token)
+    if (!ticket) {
+      sendJson(req, res, 400, { error: 'OIDC bridge token is invalid or expired.' })
+      return
+    }
+
+    sendJson(req, res, 200, {
+      email: ticket.email,
+      password: ticket.password,
+      webId: ticket.webId,
+      podUrl: ticket.podUrl,
+      expiresAt: ticket.expiresAt,
+    })
     return
   }
 

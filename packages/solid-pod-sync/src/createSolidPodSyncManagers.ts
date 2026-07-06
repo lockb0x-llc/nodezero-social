@@ -21,13 +21,19 @@ export interface SolidPodSyncManagers {
   socialGraph: SocialGraph
   docustreamManager: DocustreamManager
   docustreamSourceManager: DocustreamSourceManager
-  podLayoutManager: Pick<PodLayoutManager, 'ensureDefaultLayoutAndPolicies'>
+  podLayoutManager: {
+    ensureDefaultLayoutAndPolicies: PodLayoutManager['ensureDefaultLayoutAndPolicies']
+    ensureDocustreamLayoutAndPolicy?: PodLayoutManager['ensureDocustreamLayoutAndPolicy']
+  }
 }
 
 export interface SolidPodSyncFactoryOptions {
   enablePodBootstrap?: boolean
   policyMatrix?: PodPolicyMatrix
-  podLayoutManager?: Pick<PodLayoutManager, 'ensureDefaultLayoutAndPolicies'>
+  podLayoutManager?: {
+    ensureDefaultLayoutAndPolicies: PodLayoutManager['ensureDefaultLayoutAndPolicies']
+    ensureDocustreamLayoutAndPolicy?: PodLayoutManager['ensureDocustreamLayoutAndPolicy']
+  }
   nsfwScanner?: NsfwScanner
 }
 

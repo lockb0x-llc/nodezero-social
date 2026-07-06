@@ -83,6 +83,16 @@ export function buildAclDocument(
 export class PodLayoutManager {
   constructor(private readonly session: AuthenticatedSession) {}
 
+  async ensureDocustreamLayoutAndPolicy(
+    podRoot: string,
+    visibility: ContainerVisibility = DEFAULT_POLICY_MATRIX.docustream
+  ): Promise<string> {
+    const layout = buildPodContainerLayout(podRoot)
+    await this.ensureContainer(layout.docustreamContainer)
+    await this.ensureAcl(layout.docustreamContainer, visibility)
+    return layout.docustreamContainer
+  }
+
   async ensureDefaultLayout(podRoot: string): Promise<PodContainerLayout> {
     const layout = buildPodContainerLayout(podRoot)
 

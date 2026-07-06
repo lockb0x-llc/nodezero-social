@@ -38,7 +38,14 @@ export interface CreateNodeResult {
   podUrl: string
   stellarPublicKey: string | null
   accountDocumentUrl: string | null
-  clientCredentials: { id: string; secret: string; resource: string }
+  oidcBridge?: {
+    token: string
+    expiresAt: string
+    consumeUrl: string
+  }
+  // Transitional/legacy field from provisioner responses.
+  // The web client must not depend on reusable client credentials for Pod I/O.
+  clientCredentials?: { id: string; secret: string; resource: string }
   lockbox: {
     status: string
     userLockboxContractId: string | null

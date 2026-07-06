@@ -70,3 +70,12 @@ export interface ProvisionStatus {
     proofRootHex?: string
   }
 }
+
+export interface OidcBridgeTicket {
+  token: string
+  expiresAt: string
+}
+
+export interface OidcBridgeConsumeRequest {
+  token: string
+}

@@ -25,7 +25,10 @@ export type { StreamItem } from './contracts/DocustreamContract.js'
 export interface DocustreamManagerOptions {
   enablePodBootstrap?: boolean
   policyMatrix?: PodPolicyMatrix
-  podLayoutManager?: Pick<PodLayoutManager, 'ensureDefaultLayoutAndPolicies'>
+  podLayoutManager?: {
+    ensureDefaultLayoutAndPolicies: PodLayoutManager['ensureDefaultLayoutAndPolicies']
+    ensureDocustreamLayoutAndPolicy?: PodLayoutManager['ensureDocustreamLayoutAndPolicy']
+  }
 }
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
@@ -192,8 +195,16 @@ export class DocustreamManager {
   private async ensurePodLayoutIfEnabled(podRoot: string): Promise<void> {
     if (!this.options.enablePodBootstrap) return
 
-    const podLayoutManager =
-      this.options.podLayoutManager ?? new PodLayoutManager({ fetch: this.session.fetch })
+    const fallbackManager = new PodLayoutManager({ fetch: this.session.fetch })
+    const podLayoutManager = this.options.podLayoutManager ?? fallbackManager
+
+    if (typeof podLayoutManager.ensureDocustreamLayoutAndPolicy === 'function') {
+      await podLayoutManager.ensureDocustreamLayoutAndPolicy(
+        podRoot,
+        (this.options.policyMatrix ?? DEFAULT_POLICY_MATRIX).docustream
+      )
+      return
+    }
 
     await podLayoutManager.ensureDefaultLayoutAndPolicies(
       podRoot,

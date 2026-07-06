@@ -4,10 +4,21 @@ import type {
   BootstrapChallenge,
   BootstrapChallengeRequest,
   LockboxProvisioning,
+  OidcBridgeTicket,
   ProvisionStatus,
 } from './types.js'
 
 const CHALLENGE_TTL_MS = Number(process.env.JSS_CHALLENGE_TTL_MS ?? 5 * 60_000)
+const OIDC_BRIDGE_TTL_MS = Number(process.env.JSS_OIDC_BRIDGE_TTL_MS ?? 5 * 60_000)
+
+interface OidcBridgeRecord {
+  token: string
+  email: string
+  password: string
+  webId: string
+  podUrl: string
+  expiresAt: string
+}
 
 function randomNonce(): string {
   return randomUUID().replace(/-/g, '')
@@ -28,6 +39,7 @@ function canonical(input: string): string {
 export class ProvisionStore {
   private challenges = new Map<string, BootstrapChallenge>()
   private jobs = new Map<string, ProvisionStatus>()
+  private oidcBridgeTickets = new Map<string, OidcBridgeRecord>()
   private lockboxFactory = new LockboxFactoryProvisioner()
 
   issueChallenge(input: BootstrapChallengeRequest): BootstrapChallenge {
@@ -127,5 +139,41 @@ export class ProvisionStore {
 
   getJob(jobId: string): ProvisionStatus | null {
     return this.jobs.get(jobId) ?? null
+  }
+
+  issueOidcBridgeTicket(input: {
+    email: string
+    password: string
+    webId: string
+    podUrl: string
+  }): OidcBridgeTicket {
+    const now = new Date()
+    const ticket: OidcBridgeRecord = {
+      token: randomNonce(),
+      email: canonical(input.email),
+      password: input.password,
+      webId: canonical(input.webId),
+      podUrl: canonical(input.podUrl),
+      expiresAt: addMs(now, OIDC_BRIDGE_TTL_MS).toISOString(),
+    }
+
+    this.oidcBridgeTickets.set(ticket.token, ticket)
+    return {
+      token: ticket.token,
+      expiresAt: ticket.expiresAt,
+    }
+  }
+
+  consumeOidcBridgeTicket(token: string): OidcBridgeRecord | null {
+    const key = canonical(token)
+    const ticket = this.oidcBridgeTickets.get(key) ?? null
+    if (!ticket) return null
+
+    this.oidcBridgeTickets.delete(key)
+    if (new Date(ticket.expiresAt).getTime() < Date.now()) {
+      return null
+    }
+
+    return ticket
   }
 }
