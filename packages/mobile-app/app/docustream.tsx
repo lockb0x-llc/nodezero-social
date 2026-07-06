@@ -123,6 +123,7 @@ export default function DocustreamScreen(): JSX.Element {
   const [sources, setSources] = useState<DocustreamSource[]>([])
   const [isSourceModalOpen, setIsSourceModalOpen] = useState(false)
   const [sourceUrlInput, setSourceUrlInput] = useState('')
+  const [pendingSourceTitle, setPendingSourceTitle] = useState<string | null>(null)
   const [isIngesting, setIsIngesting] = useState(false)
   const [sourceOperationId, setSourceOperationId] = useState<string | null>(null)
 
@@ -338,6 +339,7 @@ export default function DocustreamScreen(): JSX.Element {
         title,
       })
       setSourceUrlInput('')
+      setPendingSourceTitle(null)
       await loadSources()
       Alert.alert('Source added', 'RSS source saved. It will be ingested now.')
       await ingestEnabledSources()
@@ -348,6 +350,16 @@ export default function DocustreamScreen(): JSX.Element {
       setSourceOperationId(null)
     }
   }, [ingestEnabledSources, isLoggedIn, loadSources, podRoot, session])
+
+  const handleSourceInputChange = useCallback((nextValue: string): void => {
+    setSourceUrlInput(nextValue)
+    setPendingSourceTitle(null)
+  }, [])
+
+  const handlePresetSelect = useCallback((preset: { title: string; url: string }): void => {
+    setSourceUrlInput(preset.url)
+    setPendingSourceTitle(preset.title)
+  }, [])
 
   const handleToggleSource = useCallback(async (source: DocustreamSource, nextEnabled: boolean): Promise<void> => {
     if (!isLoggedIn || !podRoot) return
@@ -511,7 +523,7 @@ export default function DocustreamScreen(): JSX.Element {
                 placeholder="https://example.com/feed.xml"
                 placeholderTextColor={aesthetic.color.textLow}
                 value={sourceUrlInput}
-                onChangeText={setSourceUrlInput}
+                onChangeText={handleSourceInputChange}
                 autoCapitalize="none"
                 autoCorrect={false}
                 keyboardType="url"
@@ -519,11 +531,15 @@ export default function DocustreamScreen(): JSX.Element {
               <TouchableOpacity
                 style={styles.addSourceButton}
                 disabled={!sourceUrlInput.trim() || sourceOperationId !== null}
-                onPress={() => void handleAddSource(sourceUrlInput)}
+                onPress={() => void handleAddSource(sourceUrlInput, pendingSourceTitle ?? undefined)}
               >
                 <Text style={styles.addSourceButtonText}>Add</Text>
               </TouchableOpacity>
             </View>
+
+            {pendingSourceTitle ? (
+              <Text style={styles.selectedPresetText}>Selected preset: {pendingSourceTitle}</Text>
+            ) : null}
 
             <Text style={styles.presetLabel}>Suggested RSS sources</Text>
             <View style={styles.presetGrid}>
@@ -531,7 +547,7 @@ export default function DocustreamScreen(): JSX.Element {
                 <TouchableOpacity
                   key={preset.url}
                   style={styles.presetChip}
-                  onPress={() => void handleAddSource(preset.url, preset.title)}
+                  onPress={() => handlePresetSelect(preset)}
                   disabled={sourceOperationId !== null}
                 >
                   <Text style={styles.presetChipText}>{preset.title}</Text>
@@ -819,6 +835,11 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontWeight: '700',
     fontSize: 13,
+  },
+  selectedPresetText: {
+    color: aesthetic.color.textMid,
+    fontSize: 12,
+    marginBottom: 10,
   },
   presetLabel: {
     color: aesthetic.color.textMid,
