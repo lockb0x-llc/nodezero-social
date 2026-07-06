@@ -41,6 +41,12 @@ export function buildPodContainerLayout(podRoot: string): PodContainerLayout {
 export function deriveOwnerWebId(containerPath: string): string {
   try {
     const containerUrl = new URL(containerPath)
+    const segments = containerUrl.pathname.split('/').filter(Boolean)
+    const reserved = new Set(['public', 'private', 'social', 'backpack', '.well-known'])
+    const accountSegment = segments[0]
+    if (accountSegment && !reserved.has(accountSegment)) {
+      return `${containerUrl.origin}/${accountSegment}/profile/card#me`
+    }
     return `${containerUrl.origin}/profile/card#me`
   } catch {
     return 'https://vocab.nodezero.social/profile/card#me'

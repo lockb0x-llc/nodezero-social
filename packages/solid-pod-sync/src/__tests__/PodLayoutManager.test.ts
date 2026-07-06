@@ -3,6 +3,7 @@ import {
   buildAclDocument,
   buildPodContainerLayout,
   DEFAULT_POLICY_MATRIX,
+  deriveOwnerWebId,
 } from '../PodLayoutManager.js'
 
 const jestGlobal = import.meta.jest
@@ -86,5 +87,25 @@ describe('PodLayoutManager.applyPolicyMatrix', () => {
     expect(fetch.mock.calls[1][1]).toMatchObject({ method: 'PUT' })
     expect(fetch.mock.calls[3][1]).toMatchObject({ method: 'PUT' })
     expect(fetch.mock.calls[5][1]).toMatchObject({ method: 'PUT' })
+  })
+})
+
+describe('deriveOwnerWebId', () => {
+  it('uses account-segment WebID for path-based pods', () => {
+    expect(deriveOwnerWebId('https://solid.nodezero.social/alice/public/docustream/')).toBe(
+      'https://solid.nodezero.social/alice/profile/card#me'
+    )
+  })
+
+  it('falls back to host root WebID for host-root pods', () => {
+    expect(deriveOwnerWebId('https://alice.example/public/docustream/')).toBe(
+      'https://alice.example/profile/card#me'
+    )
+  })
+
+  it('keeps root WebID for reserved top-level segments', () => {
+    expect(deriveOwnerWebId('https://solid.nodezero.social/public/docustream/')).toBe(
+      'https://solid.nodezero.social/profile/card#me'
+    )
   })
 })
