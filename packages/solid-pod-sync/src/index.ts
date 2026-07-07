@@ -17,6 +17,7 @@ export { SocialGraph } from './SocialGraph.js'
 export { NsfwScanner, NSFW_DOMAINS } from './NsfwScanner.js'
 export { DocustreamManager } from './DocustreamManager.js'
 export { DocustreamSourceManager } from './DocustreamSourceManager.js'
+export { NotificationManager } from './NotificationManager.js'
 export { createSolidPodSyncManagers } from './createSolidPodSyncManagers.js'
 export { mergeAndQueryActivities } from './DocustreamAggregation.js'
 export { buildQueryIndex, queryStreamItems } from './QueryApi.js'
@@ -49,6 +50,18 @@ export {
 	validateDocustreamSource,
 } from './contracts/DocustreamSourceContract.js'
 export {
+	NOTIFICATION_CATEGORIES,
+	DIGEST_CADENCES,
+	DELIVERY_STATUSES,
+	EVENT_PRIORITIES,
+	assertValidNotificationPreferences,
+	validateNotificationPreferences,
+	assertValidNotificationEvent,
+	validateNotificationEvent,
+	assertValidDigestManifest,
+	validateDigestManifest,
+} from './contracts/NotificationContract.js'
+export {
 	assertValidDataBackpackProfile,
 	validateDataBackpackProfile,
 } from './contracts/DataBackpackContract.js'
@@ -70,11 +83,25 @@ export type {
 	DocustreamSourceManagerOptions,
 	UpsertDocustreamSourceInput,
 } from './DocustreamSourceManager.js'
+export type {
+	NotificationManagerOptions,
+	NotificationHistoryRecord,
+	NotificationPreferencesPatch,
+} from './NotificationManager.js'
 export type { ProfileManagerOptions } from './ProfileManager.js'
 export type { SocialGraphOptions } from './SocialGraph.js'
 export type { ContractValidationIssue, StreamSource } from './contracts/DocustreamContract.js'
 export type { DataBackpackProfile } from './contracts/DataBackpackContract.js'
 export type { ConnectionRecord } from './contracts/SocialGraphContract.js'
+export type {
+	NotificationCategory,
+	DigestCadence,
+	DeliveryStatus,
+	NotificationPriority,
+	NotificationPreferences,
+	NotificationEvent,
+	DigestManifest,
+} from './contracts/NotificationContract.js'
 export type {
 	SolidPodSyncManagers,
 	SolidPodSyncFactoryOptions,

@@ -13,6 +13,7 @@ export interface PodContainerLayout {
   docustreamContainer: string
   socialContainer: string
   backpackContainer: string
+  notificationsContainer: string
 }
 
 export const ACL_POLICY_RULES = {
@@ -26,12 +27,14 @@ export interface PodPolicyMatrix {
   docustream: ContainerVisibility
   social: ContainerVisibility
   backpack: ContainerVisibility
+  notifications: ContainerVisibility
 }
 
 export const DEFAULT_POLICY_MATRIX: PodPolicyMatrix = {
   docustream: 'public-read',
   social: 'private',
   backpack: 'private',
+  notifications: 'private',
 }
 
 export function buildPodContainerLayout(podRoot: string): PodContainerLayout {
@@ -40,6 +43,7 @@ export function buildPodContainerLayout(podRoot: string): PodContainerLayout {
     docustreamContainer: `${base}/public/docustream/`,
     socialContainer: `${base}/social/`,
     backpackContainer: `${base}/backpack/`,
+    notificationsContainer: `${base}/backpack/notifications/`,
   }
 }
 
@@ -135,6 +139,7 @@ export class PodLayoutManager {
     await this.ensureContainer(layout.docustreamContainer)
     await this.ensureContainer(layout.socialContainer)
     await this.ensureContainer(layout.backpackContainer)
+    await this.ensureContainer(layout.notificationsContainer)
 
     return layout
   }
@@ -148,6 +153,7 @@ export class PodLayoutManager {
     await this.ensureAcl(layout.docustreamContainer, policyMatrix.docustream)
     await this.ensureAcl(layout.socialContainer, policyMatrix.social)
     await this.ensureAcl(layout.backpackContainer, policyMatrix.backpack)
+    await this.ensureAcl(layout.notificationsContainer, policyMatrix.notifications)
 
     return layout
   }

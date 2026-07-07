@@ -3,6 +3,15 @@ import { createSolidPodSyncManagers } from '../createSolidPodSyncManagers.js'
 const jestGlobal = import.meta.jest
 
 describe('createSolidPodSyncManagers', () => {
+  it('returns notification manager in the shared manager set', () => {
+    const fetch = jestGlobal.fn().mockResolvedValue({ ok: true })
+
+    const managers = createSolidPodSyncManagers({ fetch })
+
+    expect(managers.notificationManager).toBeDefined()
+    expect(typeof managers.notificationManager.getPreferences).toBe('function')
+  })
+
   it('applies shared bootstrap hook to all write managers when enabled', async () => {
     const ensureDefaultLayoutAndPolicies = jestGlobal.fn().mockResolvedValue(undefined)
     const fetch = jestGlobal.fn().mockResolvedValue(new Response('', { status: 200 }))

@@ -6,6 +6,7 @@ import {
 import { ProfileManager, type ProfileManagerOptions } from './ProfileManager.js'
 import { SocialGraph, type SocialGraphOptions } from './SocialGraph.js'
 import { NsfwScanner } from './NsfwScanner.js'
+import { NotificationManager, type NotificationManagerOptions } from './NotificationManager.js'
 import {
   DEFAULT_POLICY_MATRIX,
   PodLayoutManager,
@@ -21,6 +22,7 @@ export interface SolidPodSyncManagers {
   socialGraph: SocialGraph
   docustreamManager: DocustreamManager
   docustreamSourceManager: DocustreamSourceManager
+  notificationManager: NotificationManager
   podLayoutManager: {
     ensureDefaultLayoutAndPolicies: PodLayoutManager['ensureDefaultLayoutAndPolicies']
     ensureDocustreamLayoutAndPolicy?: PodLayoutManager['ensureDocustreamLayoutAndPolicy']
@@ -45,7 +47,11 @@ export function createSolidPodSyncManagers(
     options.podLayoutManager ?? new PodLayoutManager({ fetch: session.fetch })
 
   const sharedBootstrapOptions: Pick<
-    DocustreamManagerOptions & ProfileManagerOptions & SocialGraphOptions & DocustreamSourceManagerOptions,
+    DocustreamManagerOptions &
+      ProfileManagerOptions &
+      SocialGraphOptions &
+      DocustreamSourceManagerOptions &
+      NotificationManagerOptions,
     'enablePodBootstrap' | 'policyMatrix' | 'podLayoutManager'
   > = {
     enablePodBootstrap: options.enablePodBootstrap ?? false,
@@ -62,6 +68,7 @@ export function createSolidPodSyncManagers(
     socialGraph: new SocialGraph(session, sharedBootstrapOptions),
     docustreamManager: new DocustreamManager(session, sharedBootstrapOptions),
     docustreamSourceManager: new DocustreamSourceManager(session, sharedBootstrapOptions),
+    notificationManager: new NotificationManager(session, sharedBootstrapOptions),
     podLayoutManager,
   }
 }
