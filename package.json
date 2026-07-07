@@ -16,6 +16,7 @@
     "type-check": "pnpm -r type-check",
     "clean": "pnpm -r clean && node -e \"require('fs').rmSync('node_modules',{recursive:true,force:true})\"",
     "policy:validate-env": "bash ./scripts/policy/validate-env-isolation.sh",
+    "policy:validate-attestation-fail-closed": "node ./scripts/policy/validate-attestation-fail-closed.mjs",
     "qa:smoke": "bash ./scripts/qa/staging-smoke.sh",
     "qa:smoke:solid-bootstrap": "bash ./scripts/qa/staging-solid-bootstrap-policy-smoke.sh",
     "qa:smoke:gate": "bash ./scripts/qa/staging-smoke.sh && bash ./scripts/qa/staging-solid-bootstrap-policy-smoke.sh",

@@ -45,6 +45,9 @@ jobs:
       - name: Validate environment isolation policy
         run: pnpm policy:validate-env
 
+      - name: Validate attestation fail-closed policy
+        run: pnpm policy:validate-attestation-fail-closed
+
       - name: Setup Azure CLI
         uses: azure/CLI@v2
         with:
