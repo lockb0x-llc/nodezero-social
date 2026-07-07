@@ -36,6 +36,22 @@ Commands:
 - `bash ./scripts/azure/deploy-solid-server.sh`
 - `corepack pnpm policy:validate-env`
 
+Identity endpoint continuity check (required after every Solid deploy):
+1. Confirm the Solid custom hostname remains bound to ACA ingress.
+2. Validate OIDC discovery over the custom domain returns HTTP 200.
+
+Commands:
+- `az containerapp hostname list --resource-group rg-nodezero-social-staging-testnet --name nz-staging-testnet-solid -o json`
+- `curl -i https://solid.nodezero.social/.well-known/openid-configuration`
+
+Failure signature:
+- Browser sign-in/onboarding shows `Failed to fetch`.
+- Browser console/network shows `ERR_CONNECTION_RESET` for `https://solid.nodezero.social/.well-known/openid-configuration`.
+
+Operational safeguard:
+- `scripts/azure/deploy-solid-server.sh` now enforces managed-certificate + hostname binding for `cssCustomDomain` after each deployment so the custom domain does not silently drop.
+- `scripts/azure/deploy-solid-server.sh` hard-fails deployment when `cssCustomDomain` resolves to `solid.nodezero.social` and the effective `cssImage` is not the NodeZero themed image family (`/solid/community-server-nodezero-auth-ui:<tag>`).
+
 Required evidence:
 - Image reference and build timestamp.
 - Azure deployment operation ID(s).

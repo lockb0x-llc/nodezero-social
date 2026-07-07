@@ -18,6 +18,14 @@ The web app now shows a branded transition overlay before redirecting to the Sol
 2. Point the Azure Container App to that image using the existing `cssImage` parameter in the Solid server IaC.
 3. Redeploy the Solid server.
 
+## Hard gate policy (required)
+
+For the Node Zero Community Solid Server (`solid.nodezero.social`), deploys must fail unless the effective `cssImage` points to the NodeZero themed image repository:
+
+- `*/solid/community-server-nodezero-auth-ui:<tag>`
+
+This is enforced in `scripts/azure/deploy-solid-server.sh` before any Azure deployment is applied.
+
 ## Suggested file layout
 
 Create a new folder outside runtime code, for example:
@@ -87,3 +95,11 @@ In your custom identity template, include `custom.css` and keep existing form bi
 - Functional verification on `https://solid.nodezero.social/.account/oidc/consent/`:
   - Page renders NodeZero-styled consent surface.
   - No `TypeError` page error reported in browser snapshot after rollout.
+
+## Incident update (2026-07-06)
+
+- Symptom: identity routes reverted to default Community Solid Server light theme.
+- Root cause: staging deployment input drifted `cssImage` back to `docker.io/solidproject/community-server:7.1.9`.
+- Runtime fix applied: Container App image was switched to `nzsolidui77938.azurecr.io/solid/community-server-nodezero-auth-ui:staging-20260704-consentfix2`.
+- Config fix applied: `infrastructure/azure/solid-server.parameters.staging-testnet.json` now pins the same themed image tag.
+- Verification: `https://solid.nodezero.social/.account/login/password/` now renders `NodeZero Identity` themed UI (dark layout and branded copy).

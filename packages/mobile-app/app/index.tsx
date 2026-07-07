@@ -113,6 +113,30 @@ function mapCreateNodeError(err: unknown): string {
   return err.message || 'Could not create your node. Try again.'
 }
 
+function isEmailAlreadyRegisteredError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false
+
+  const lower = (err.message ?? '').toLowerCase()
+  return (
+    lower.includes('already is a login for this e-mail address') ||
+    lower.includes('already is a login for this email address') ||
+    (lower.includes('badrequesthttperror') && lower.includes('login/password') && lower.includes('h400'))
+  )
+}
+
+function getNodeZeroForgotPasswordUrl(): string {
+  const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
+  const issuer = (appExtra?.nodeZeroIssuerUrl ?? 'https://solid.nodezero.social/').trim()
+  const fallback = 'https://solid.nodezero.social/.account/login/password/forgot/'
+  if (!issuer) return fallback
+
+  try {
+    return new URL('.account/login/password/forgot/', issuer).toString()
+  } catch {
+    return fallback
+  }
+}
+
 type LandingMode = 'marketing' | 'onboarding'
 
 function getLandingMode(): LandingMode {
@@ -136,6 +160,7 @@ interface LandingAuthCardProps {
   signupResumeActive: boolean
   signupReturnDetected: boolean
   error: string | null
+  errorAction: { label: string; url: string } | null
   isSigningIn: boolean
   seamlessEnabled: boolean
   nodeHandle: string
@@ -161,6 +186,7 @@ function LandingAuthCard({
   signupResumeActive,
   signupReturnDetected,
   error,
+  errorAction,
   isSigningIn,
   seamlessEnabled,
   nodeHandle,
@@ -245,7 +271,21 @@ function LandingAuthCard({
           </View>
         ) : null}
       </View>
-      {error && <Text style={styles.errorText}>{error}</Text>}
+      {error ? (
+        <View style={styles.errorBlock}>
+          <Text style={styles.errorText}>{error}</Text>
+          {errorAction ? (
+            <TouchableOpacity
+              onPress={() => void Linking.openURL(errorAction.url)}
+              activeOpacity={PRESS_OPACITY}
+              accessibilityRole="link"
+              accessibilityLabel={errorAction.label}
+            >
+              <Text style={styles.errorActionText}>{errorAction.label}</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      ) : null}
       <TouchableOpacity
         style={[styles.btnPrimary, isSigningIn && styles.btnDisabled]}
         onPress={() => void onSignIn()}
@@ -385,11 +425,13 @@ export default function LandingScreen(): JSX.Element {
   const [selectedIssuer, setSelectedIssuer] = useState(issuerOptions[0]?.value ?? '')
   const [isSigningIn, setIsSigningIn] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [errorAction, setErrorAction] = useState<{ label: string; url: string } | null>(null)
   const [nodeHandle, setNodeHandle] = useState('')
   const [notificationEmail, setNotificationEmail] = useState('')
   const [isCreating, setIsCreating] = useState(false)
   const [createNotice, setCreateNotice] = useState<string | null>(null)
   const [createSteps, setCreateSteps] = useState<ProgressStep[]>([])
+  const knownExistingEmailsRef = React.useRef<Set<string>>(new Set())
 
   /** Marks the given step done and activates the next pending step. */
   const advanceCreateStep = (doneKey: string): void => {
@@ -427,6 +469,7 @@ export default function LandingScreen(): JSX.Element {
 
   const handleSignIn = async (): Promise<void> => {
     setError(null)
+    setErrorAction(null)
     const trimmed = selectedIssuer.trim()
     if (!trimmed) {
       setError('Select an identity provider to continue.')
@@ -448,6 +491,7 @@ export default function LandingScreen(): JSX.Element {
 
   const handleGetStarted = async (source: 'card' | 'footer'): Promise<void> => {
     setError(null)
+    setErrorAction(null)
     try {
       await beginSolidSignup(source)
     } catch (err) {
@@ -457,7 +501,18 @@ export default function LandingScreen(): JSX.Element {
 
   const handleCreateNode = async (): Promise<void> => {
     setError(null)
+    setErrorAction(null)
     setCreateNotice(null)
+
+    const normalizedEmail = notificationEmail.trim().toLowerCase()
+    if (normalizedEmail && knownExistingEmailsRef.current.has(normalizedEmail)) {
+      setError('This email address is already registered. Try signing in, or reset your password to continue.')
+      setErrorAction({
+        label: 'Reset password on Node Zero Community Server',
+        url: getNodeZeroForgotPasswordUrl(),
+      })
+      return
+    }
 
     // Fail-closed: the embedded wallet must be provisioned before onboarding.
     // Without a Stellar public key the provisioner silently skips on-chain
@@ -518,6 +573,7 @@ export default function LandingScreen(): JSX.Element {
       if (!result.lockbox || result.lockbox.status !== 'ready' || !anchored) {
         failActiveCreateStep()
         setError('Node created, but on-chain lockb0x provisioning did not complete. Please try again.')
+        setErrorAction(null)
         return
       }
 
@@ -526,11 +582,13 @@ export default function LandingScreen(): JSX.Element {
       if (!result.attestation) {
         failActiveCreateStep()
         setError('Node created, but the on-chain attestation was not anchored. Please try again.')
+        setErrorAction(null)
         return
       }
       if (!result.oidcBridge?.token || !result.oidcBridge.consumeUrl) {
         failActiveCreateStep()
         setError('Node created, but secure OIDC bridge sign-in is unavailable. Please try again.')
+        setErrorAction(null)
         return
       }
       advanceCreateStep('anchor')
@@ -561,7 +619,21 @@ export default function LandingScreen(): JSX.Element {
       })
     } catch (err) {
       failActiveCreateStep()
-      setError(mapCreateNodeError(err))
+      if (isEmailAlreadyRegisteredError(err)) {
+        if (normalizedEmail) {
+          knownExistingEmailsRef.current.add(normalizedEmail)
+        }
+        setError(
+          'This email address is already registered. Try signing in, or reset your password to continue.',
+        )
+        setErrorAction({
+          label: 'Reset password on Node Zero Community Server',
+          url: getNodeZeroForgotPasswordUrl(),
+        })
+      } else {
+        setError(mapCreateNodeError(err))
+        setErrorAction(null)
+      }
     } finally {
       setIsCreating(false)
       setIsSigningIn(false)
@@ -626,6 +698,7 @@ export default function LandingScreen(): JSX.Element {
           signupResumeActive={signupResumeActive}
           signupReturnDetected={signupReturnDetected}
           error={error}
+          errorAction={errorAction}
           isSigningIn={isSigningIn}
           seamlessEnabled={seamlessConfig.enabled}
           nodeHandle={nodeHandle}
@@ -640,7 +713,10 @@ export default function LandingScreen(): JSX.Element {
           onSignIn={handleSignIn}
           onCreateNode={handleCreateNode}
           onGetStarted={handleGetStarted}
-          onClearError={() => setError(null)}
+          onClearError={() => {
+            setError(null)
+            setErrorAction(null)
+          }}
         />
 
         {showMarketingContent ? (
@@ -702,6 +778,7 @@ export default function LandingScreen(): JSX.Element {
                 signupResumeActive={signupResumeActive}
                 signupReturnDetected={signupReturnDetected}
                 error={error}
+                errorAction={errorAction}
                 isSigningIn={isSigningIn}
                 seamlessEnabled={seamlessConfig.enabled}
                 nodeHandle={nodeHandle}
@@ -716,7 +793,10 @@ export default function LandingScreen(): JSX.Element {
                 onSignIn={handleSignIn}
                 onCreateNode={handleCreateNode}
                 onGetStarted={handleGetStarted}
-                onClearError={() => setError(null)}
+                onClearError={() => {
+                  setError(null)
+                  setErrorAction(null)
+                }}
               />
               <Text style={styles.finalCtaSub}>
                 Powered by{' '}
@@ -916,7 +996,14 @@ const styles = StyleSheet.create({
     backgroundColor: INPUT_BG,
     marginBottom: 12,
   },
-  errorText: { color: DANGER, fontSize: 13, marginBottom: 10 },
+  errorBlock: { marginBottom: 10 },
+  errorText: { color: DANGER, fontSize: 13, marginBottom: 6 },
+  errorActionText: {
+    color: PURPLE,
+    fontSize: 13,
+    fontWeight: '700',
+    textDecorationLine: 'underline',
+  },
   // Identity-provider dropdown
   dropdownWrap: { marginBottom: 12 },
   dropdownField: {

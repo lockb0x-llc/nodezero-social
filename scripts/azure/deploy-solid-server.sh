@@ -16,6 +16,7 @@ CSS_IMAGE="${AZURE_SOLID_CSS_IMAGE:-}"
 CSS_IMAGE_REGISTRY_SERVER="${AZURE_SOLID_CSS_IMAGE_REGISTRY_SERVER:-}"
 CSS_IMAGE_REGISTRY_USERNAME="${AZURE_SOLID_CSS_IMAGE_REGISTRY_USERNAME:-}"
 CSS_IMAGE_REGISTRY_PASSWORD="${AZURE_SOLID_CSS_IMAGE_REGISTRY_PASSWORD:-}"
+CSS_CUSTOM_DOMAIN="${AZURE_SOLID_CSS_CUSTOM_DOMAIN:-}"
 EMAIL_PROVIDER_MODE="${AZURE_SOLID_EMAIL_PROVIDER_MODE:-}"
 EMAIL_FROM_ADDRESS="${AZURE_SOLID_EMAIL_FROM_ADDRESS:-}"
 EMAIL_FROM_NAME="${AZURE_SOLID_EMAIL_FROM_NAME:-}"
@@ -98,6 +99,11 @@ fi
 
 PARAM_EMAIL_MODE="$(node -e "const fs = require('fs'); const p = JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); console.log((p?.parameters?.emailProviderMode?.value ?? 'none').toLowerCase());" "$PARAM_FILE")"
 EFFECTIVE_EMAIL_MODE="${EMAIL_PROVIDER_MODE:-$PARAM_EMAIL_MODE}"
+PARAM_CUSTOM_DOMAIN="$(node -e "const fs = require('fs'); const p = JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); const v = p?.parameters?.cssCustomDomain?.value ?? ''; console.log(String(v).trim());" "$PARAM_FILE")"
+EFFECTIVE_CUSTOM_DOMAIN="${CSS_CUSTOM_DOMAIN:-$PARAM_CUSTOM_DOMAIN}"
+PARAM_CSS_IMAGE="$(node -e "const fs = require('fs'); const p = JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); const v = p?.parameters?.cssImage?.value ?? ''; console.log(String(v).trim());" "$PARAM_FILE")"
+EFFECTIVE_CSS_IMAGE="${CSS_IMAGE:-$PARAM_CSS_IMAGE}"
+EFFECTIVE_CUSTOM_DOMAIN_LOWER="${EFFECTIVE_CUSTOM_DOMAIN,,}"
 
 if [[ "$EFFECTIVE_EMAIL_MODE" != "none" && "$EFFECTIVE_EMAIL_MODE" != "smtp" ]]; then
   echo "Invalid effective emailProviderMode '$EFFECTIVE_EMAIL_MODE'. Allowed values: none, smtp."
@@ -128,12 +134,34 @@ if [[ "$EFFECTIVE_EMAIL_MODE" == "smtp" ]]; then
   fi
 fi
 
+# Hard gate: Node Zero Community Solid Server must always run the themed auth UI image.
+if [[ "$EFFECTIVE_CUSTOM_DOMAIN_LOWER" == "solid.nodezero.social" ]]; then
+  if [[ -z "$EFFECTIVE_CSS_IMAGE" ]]; then
+    echo "Themed image hard gate failed: no effective cssImage was resolved for solid.nodezero.social."
+    exit 1
+  fi
+
+  if [[ "$EFFECTIVE_CSS_IMAGE" != *"/solid/community-server-nodezero-auth-ui:"* ]]; then
+    echo "Themed image hard gate failed for solid.nodezero.social."
+    echo "Expected a NodeZero themed image in repository '/solid/community-server-nodezero-auth-ui', got: $EFFECTIVE_CSS_IMAGE"
+    exit 1
+  fi
+fi
+
 if [[ -n "$CSS_CONFIG_ARG" ]]; then
   PARAM_OVERRIDES+=("cssConfigArg=$CSS_CONFIG_ARG")
 fi
 
 if [[ -n "$CSS_IMAGE" ]]; then
   PARAM_OVERRIDES+=("cssImage=$CSS_IMAGE")
+fi
+
+if [[ -n "$CSS_CUSTOM_DOMAIN" ]]; then
+  if [[ "$CSS_CUSTOM_DOMAIN" == *"://"* || "$CSS_CUSTOM_DOMAIN" == */* ]]; then
+    echo "AZURE_SOLID_CSS_CUSTOM_DOMAIN must be a bare hostname (for example, solid.nodezero.social)."
+    exit 1
+  fi
+  PARAM_OVERRIDES+=("cssCustomDomain=$CSS_CUSTOM_DOMAIN")
 fi
 
 if [[ -n "$CSS_IMAGE_REGISTRY_SERVER" ]]; then
@@ -222,3 +250,40 @@ az deployment group create \
   "${PARAM_OVERRIDES[@]}" \
   --query "properties.outputs" \
   -o json
+
+if [[ -n "$EFFECTIVE_CUSTOM_DOMAIN" ]]; then
+  CONTAINER_APP_NAME="nz-${TARGET_ENVIRONMENT}-solid"
+  echo "Ensuring custom domain binding for '$EFFECTIVE_CUSTOM_DOMAIN' on Container App '$CONTAINER_APP_NAME'..."
+
+  MANAGED_ENV_ID="$(az containerapp show --resource-group "$RESOURCE_GROUP" --name "$CONTAINER_APP_NAME" --query "properties.managedEnvironmentId" -o tsv | tr -d '\r')"
+  if [[ -z "$MANAGED_ENV_ID" ]]; then
+    echo "Unable to resolve managed environment for container app '$CONTAINER_APP_NAME'."
+    exit 1
+  fi
+  MANAGED_ENV_NAME="${MANAGED_ENV_ID##*/}"
+
+  CERT_NAME="$(az containerapp env certificate list --resource-group "$RESOURCE_GROUP" --name "$MANAGED_ENV_NAME" --query "[?properties.subjectName=='$EFFECTIVE_CUSTOM_DOMAIN' && properties.provisioningState=='Succeeded'].name | [0]" -o tsv | tr -d '\r')"
+  if [[ -z "$CERT_NAME" ]]; then
+    CERT_NAME="$(printf 'solid-%s-cert' "$EFFECTIVE_CUSTOM_DOMAIN" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9-' '-' | cut -c1-60)"
+    echo "Creating managed certificate '$CERT_NAME' for '$EFFECTIVE_CUSTOM_DOMAIN'..."
+    az containerapp env certificate create \
+      --resource-group "$RESOURCE_GROUP" \
+      --name "$MANAGED_ENV_NAME" \
+      --certificate-name "$CERT_NAME" \
+      --hostname "$EFFECTIVE_CUSTOM_DOMAIN" \
+      --validation-method CNAME \
+      -o none
+  else
+    echo "Reusing existing managed certificate '$CERT_NAME'."
+  fi
+
+  az containerapp hostname bind \
+    --resource-group "$RESOURCE_GROUP" \
+    --name "$CONTAINER_APP_NAME" \
+    --environment "$MANAGED_ENV_NAME" \
+    --hostname "$EFFECTIVE_CUSTOM_DOMAIN" \
+    --certificate "$CERT_NAME" \
+    -o none
+
+  echo "Custom domain binding ensured for '$EFFECTIVE_CUSTOM_DOMAIN'."
+fi
