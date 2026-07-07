@@ -35,6 +35,30 @@ const ALLOWED_ORIGINS = (process.env.JSS_ALLOWED_ORIGINS ?? 'https://staging.nod
   .map((origin) => origin.trim())
   .filter((origin) => origin.length > 0)
 const store = new ProvisionStore()
+const knownSolidAccountEmails = new Set<string>()
+
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase()
+}
+
+function isValidEmail(email: string): boolean {
+  return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)
+}
+
+function rememberKnownSolidEmail(email: string): void {
+  const normalized = normalizeEmail(email)
+  if (isValidEmail(normalized)) {
+    knownSolidAccountEmails.add(normalized)
+  }
+}
+
+function isDuplicateEmailProvisioningMessage(message: string): boolean {
+  const lower = message.toLowerCase()
+  return (
+    lower.includes('already is a login for this e-mail address') ||
+    lower.includes('already is a login for this email address')
+  )
+}
 
 function corsHeaders(req: IncomingMessage): Record<string, string> {
   const origin = req.headers.origin
@@ -146,6 +170,32 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Pro
     return
   }
 
+  if (req.method === 'POST' && url.pathname === '/v1/solid-account/check-email') {
+    if (!SOLID_CSS_BASE_URL) {
+      sendJson(req, res, 503, { error: 'Solid account provisioning is not configured (JSS_SOLID_CSS_BASE_URL).' })
+      return
+    }
+
+    const body = await readJsonBody<{ email?: string }>(req)
+    if (!isNonEmpty(body.email)) {
+      sendJson(req, res, 400, { error: 'email is required.' })
+      return
+    }
+
+    const email = normalizeEmail(body.email)
+    if (!isValidEmail(email)) {
+      sendJson(req, res, 400, { error: 'email must be a valid email address.' })
+      return
+    }
+
+    sendJson(req, res, 200, {
+      exists: knownSolidAccountEmails.has(email),
+      source: 'provisioner-memory',
+      checkedAt: new Date().toISOString(),
+    })
+    return
+  }
+
   if (req.method === 'POST' && url.pathname === '/v1/solid-account') {
     if (!SOLID_CSS_BASE_URL) {
       sendJson(req, res, 503, { error: 'Solid account provisioning is not configured (JSS_SOLID_CSS_BASE_URL).' })
@@ -195,13 +245,22 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Pro
     }
 
     try {
-      const email = body.email.trim()
+      const email = normalizeEmail(body.email)
+      if (!isValidEmail(email)) {
+        sendJson(req, res, 400, { error: 'email must be a valid email address.' })
+        return
+      }
+      if (knownSolidAccountEmails.has(email)) {
+        sendJson(req, res, 409, { error: 'There already is a login for this e-mail address.' })
+        return
+      }
       const password = body.password
       const account = await createSolidAccount(SOLID_CSS_BASE_URL, {
         name: normalizedName,
         email,
         password,
       })
+      rememberKnownSolidEmail(email)
 
       // P3: on MainNet there is no Friendbot, so the member's Stellar account
       // must be Treasury-funded before they can author on-chain operations
@@ -349,6 +408,11 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Pro
       })
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Solid account provisioning failed.'
+      if (isDuplicateEmailProvisioningMessage(message) && isNonEmpty(body.email)) {
+        rememberKnownSolidEmail(body.email)
+        sendJson(req, res, 409, { error: 'There already is a login for this e-mail address.' })
+        return
+      }
       sendJson(req, res, 502, { error: message })
     }
     return

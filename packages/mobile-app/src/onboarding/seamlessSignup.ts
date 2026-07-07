@@ -58,6 +58,10 @@ export interface CreateNodeResult {
   } | null
 }
 
+interface CheckEmailResult {
+  exists?: boolean
+}
+
 function isStagingOnboardingHost(): boolean {
   if (typeof window === 'undefined' || !window.location?.hostname) return false
 
@@ -157,4 +161,42 @@ export async function createSeamlessNode(input: CreateNodeInput): Promise<Create
   }
 
   return JSON.parse(text) as CreateNodeResult
+}
+
+/**
+ * Best-effort server-side duplicate-email precheck.
+ *
+ * Returns:
+ * - `true` when the provisioner can confirm the email is already registered.
+ * - `false` when the provisioner can confirm it is not known as registered.
+ * - `null` when precheck is unavailable (endpoint missing, transient failure, etc).
+ */
+export async function checkSeamlessEmailExists(email: string): Promise<boolean | null> {
+  const config = getSeamlessSignupConfig()
+  if (!config.enabled || !config.provisionerUrl) return null
+
+  const normalizedEmail = email.trim().toLowerCase()
+  if (!normalizedEmail || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalizedEmail)) {
+    return null
+  }
+
+  try {
+    const res = await fetch(`${config.provisionerUrl}/v1/solid-account/check-email`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify({ email: normalizedEmail }),
+    })
+
+    if (res.status === 404 || res.status === 405 || res.status === 501) {
+      return null
+    }
+    if (!res.ok) {
+      return null
+    }
+
+    const parsed = (await res.json()) as CheckEmailResult
+    return typeof parsed.exists === 'boolean' ? parsed.exists : null
+  } catch {
+    return null
+  }
 }

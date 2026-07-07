@@ -28,7 +28,11 @@ import { useSolid } from '../src/contexts/SolidContext'
 import { useWallet } from '../src/contexts/WalletContext'
 import { aesthetic } from '../src/theme/aesthetic'
 import { beginSolidSignup } from '../src/onboarding/signupBridge'
-import { createSeamlessNode, getSeamlessSignupConfig } from '../src/onboarding/seamlessSignup'
+import {
+  checkSeamlessEmailExists,
+  createSeamlessNode,
+  getSeamlessSignupConfig,
+} from '../src/onboarding/seamlessSignup'
 import { ProgressStepLadder, type ProgressStep } from '../src/components/ProgressStepLadder'
 import { saveNodeSession, type NodeSessionRecord } from '../src/onboarding/nodeSession'
 
@@ -512,6 +516,21 @@ export default function LandingScreen(): JSX.Element {
         url: getNodeZeroForgotPasswordUrl(),
       })
       return
+    }
+
+    // Fast path: ask the provisioner for a server-side duplicate check before
+    // we spend time generating ZK artifacts for an already-registered email.
+    if (normalizedEmail) {
+      const emailAlreadyRegistered = await checkSeamlessEmailExists(normalizedEmail)
+      if (emailAlreadyRegistered) {
+        knownExistingEmailsRef.current.add(normalizedEmail)
+        setError('This email address is already registered. Try signing in, or reset your password to continue.')
+        setErrorAction({
+          label: 'Reset password on Node Zero Community Server',
+          url: getNodeZeroForgotPasswordUrl(),
+        })
+        return
+      }
     }
 
     // Fail-closed: the embedded wallet must be provisioned before onboarding.
