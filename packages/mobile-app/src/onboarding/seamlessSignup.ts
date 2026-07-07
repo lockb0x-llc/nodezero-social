@@ -83,19 +83,6 @@ export function getSeamlessSignupConfig(): SeamlessSignupConfig {
   }
 }
 
-function generatePassword(): string {
-  const bytes = new Uint8Array(24)
-  const cryptoObj = (globalThis as { crypto?: Crypto }).crypto
-  if (cryptoObj?.getRandomValues) {
-    cryptoObj.getRandomValues(bytes)
-  } else {
-    for (let i = 0; i < bytes.length; i += 1) bytes[i] = Math.floor(Math.random() * 256)
-  }
-  let binary = ''
-  for (const b of bytes) binary += String.fromCharCode(b)
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-}
-
 function normalizeHandle(raw: string): string {
   return raw.trim().toLowerCase().replace(/[^a-z0-9-]/g, '')
 }
@@ -130,7 +117,6 @@ export async function createSeamlessNode(input: CreateNodeInput): Promise<Create
   const body: Record<string, string> = {
     name: handle,
     email,
-    password: generatePassword(),
     stellarPublicKey,
   }
 

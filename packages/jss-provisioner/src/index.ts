@@ -1,5 +1,5 @@
 import { createServer } from 'node:http'
-import { createHash, timingSafeEqual } from 'node:crypto'
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { ProvisionStore } from './store.js'
 import { verifyAttestation } from './attestation.js'
@@ -43,6 +43,10 @@ function normalizeEmail(email: string): string {
 
 function isValidEmail(email: string): boolean {
   return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)
+}
+
+function generateServerPassword(): string {
+  return randomBytes(32).toString('base64url')
 }
 
 function rememberKnownSolidEmail(email: string): void {
@@ -205,7 +209,6 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Pro
     const body = await readJsonBody<{
       name?: string
       email?: string
-      password?: string
       stellarPublicKey?: string
       accountCommitmentHex?: string
       ciphertextHex?: string
@@ -218,11 +221,6 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Pro
       sendJson(req, res, 400, { error: 'email is required.' })
       return
     }
-    if (!isNonEmpty(body.password)) {
-      sendJson(req, res, 400, { error: 'password is required.' })
-      return
-    }
-
     // Fail-closed: seamless onboarding must anchor the WebID<->Stellar pairing
     // in a per-user lockb0x on-chain, which requires the member's Stellar public
     // key. Reject requests that omit it so an un-anchored account can never be
@@ -254,7 +252,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Pro
         sendJson(req, res, 409, { error: 'There already is a login for this e-mail address.' })
         return
       }
-      const password = body.password
+      const password = generateServerPassword()
       const account = await createSolidAccount(SOLID_CSS_BASE_URL, {
         name: normalizedName,
         email,
