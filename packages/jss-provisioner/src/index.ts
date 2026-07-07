@@ -6,6 +6,10 @@ import { verifyAttestation } from './attestation.js'
 import { createSolidAccount, patchPodProfileAnchor, writePodAccountDocument } from './solidAccount.js'
 import { treasuryCreateAccount } from './treasuryCreateAccount.js'
 import { anchorAttestation } from './attestationAnchor.js'
+import {
+  createNotificationEventPublisherFromEnv,
+  publishProvisioningEvent,
+} from './notificationEvents.js'
 import type {
   BootstrapChallengeRequest,
   ProvisionRequest,
@@ -36,6 +40,26 @@ const ALLOWED_ORIGINS = (process.env.JSS_ALLOWED_ORIGINS ?? 'https://staging.nod
   .filter((origin) => origin.length > 0)
 const store = new ProvisionStore()
 const knownSolidAccountEmails = new Set<string>()
+const notificationPublisher = createNotificationEventPublisherFromEnv()
+
+function emitLifecycleEvent(
+  eventType: string,
+  payload: {
+    webId?: string
+    podUrl?: string
+    stellarPublicKey?: string
+    lockboxContractId?: string
+    metadata?: Record<string, unknown>
+  }
+): void {
+  void publishProvisioningEvent(notificationPublisher, eventType, {
+    envProfile: process.env.NZ_ENV_PROFILE ?? 'local',
+    issuer: ISSUER,
+    ...payload,
+  }).catch((error) => {
+    console.warn('[jss-provisioner:event] publish failed:', error)
+  })
+}
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase()
@@ -161,6 +185,10 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Pro
       treasuryCreateAccount: {
         enabled: Boolean(INTERNAL_API_KEY),
       },
+      notificationEvents: {
+        mode: notificationPublisher.mode,
+        webhookConfigured: Boolean((process.env.JSS_NOTIFICATION_WEBHOOK_URL ?? '').trim()),
+      },
       uptimeMs: Math.round(process.uptime() * 1000),
     })
     return
@@ -244,6 +272,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Pro
 
     try {
       const email = normalizeEmail(body.email)
+      let treasuryFunded = false
       if (!isValidEmail(email)) {
         sendJson(req, res, 400, { error: 'email must be a valid email address.' })
         return
@@ -267,9 +296,18 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Pro
       if (TREASURY_FUND_MEMBERS) {
         try {
           await treasuryCreateAccount(stellarPublicKey)
+          treasuryFunded = true
         } catch (fundErr) {
           const message = fundErr instanceof Error ? fundErr.message : 'Treasury member funding failed.'
           sendJson(req, res, 502, { error: message, webId: account.webId, podUrl: account.podUrl })
+          emitLifecycleEvent('account.treasury-funding.failed', {
+            webId: account.webId,
+            podUrl: account.podUrl,
+            stellarPublicKey,
+            metadata: {
+              reason: message,
+            },
+          })
           return
         }
       }
@@ -404,6 +442,20 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Pro
         lockbox: lockbox ?? null,
         attestation,
       })
+
+      emitLifecycleEvent('account.created', {
+        webId: account.webId,
+        podUrl: account.podUrl,
+        stellarPublicKey,
+        ...(lockbox?.userLockboxContractId
+          ? { lockboxContractId: lockbox.userLockboxContractId }
+          : {}),
+        metadata: {
+          accountDocumentWritten: Boolean(accountDocumentUrl),
+          treasuryFunded,
+          attestationAnchored: Boolean(attestation),
+        },
+      })
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Solid account provisioning failed.'
       if (isDuplicateEmailProvisioningMessage(message) && isNonEmpty(body.email)) {
@@ -528,6 +580,19 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Pro
         claimHash: receipt.claimHash,
         proofHashHex: receipt.proofHashHex,
         proofRootHex: receipt.proofRootHex,
+      })
+
+      emitLifecycleEvent('provision.ready', {
+        webId: body.webId.trim(),
+        podUrl: body.podUrl.trim(),
+        stellarPublicKey: body.stellarPublicKey.trim(),
+        lockboxContractId: lockbox.userLockboxContractId,
+        metadata: {
+          challengeId: challenge.challengeId,
+          claimHash: receipt.claimHash,
+          proofHashHex: receipt.proofHashHex,
+          proofRootHex: receipt.proofRootHex,
+        },
       })
       return
     } catch (err) {

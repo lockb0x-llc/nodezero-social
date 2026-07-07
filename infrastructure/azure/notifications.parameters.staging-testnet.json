@@ -1,0 +1,15 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": { "value": "eastus2" },
+    "environmentName": { "value": "staging-testnet" },
+    "appName": { "value": "nodezero-social" },
+    "serviceBusSku": { "value": "Standard" },
+    "lifecycleTopicName": { "value": "lifecycle-events" },
+    "digestQueueName": { "value": "digest-work-items" },
+    "digestScheduleQueueName": { "value": "digest-schedule-intents" },
+    "orchestratorSubscriptionName": { "value": "notification-orchestrator" },
+    "duplicateDetectionHistoryDays": { "value": 1 }
+  }
+}

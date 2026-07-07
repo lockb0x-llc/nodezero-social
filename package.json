@@ -42,7 +42,8 @@
     "relay:dev": "pnpm --filter @nodezero/relay-service dev",
     "relay:build": "pnpm --filter @nodezero/relay-service build",
     "deploy:stellar:testnet": "bash ./scripts/stellar/deploy-testnet.sh",
-    "deploy:azure": "bash ./scripts/azure/deploy.sh"
+    "deploy:azure": "bash ./scripts/azure/deploy.sh",
+    "deploy:azure:notifications": "bash ./scripts/azure/deploy-notification-infra.sh"
   },
   "devDependencies": {
     "typescript": "^5.4.5",

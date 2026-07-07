@@ -46,6 +46,32 @@ The server canonicalizes challenge payloads as:
 Clients sign this exact payload using the embedded Stellar key. The provisioner
 verifies signature validity against `stellarPublicKey`.
 
+## Lifecycle notification events
+
+The provisioner can publish account/provision lifecycle events for downstream
+notification orchestration.
+
+Published event types:
+
+- `account.created`
+- `account.treasury-funding.failed`
+- `provision.ready`
+
+Events are emitted in a non-blocking path (response delivery is not delayed by
+publisher failures).
+
+Environment variables:
+
+- `JSS_NOTIFICATION_EVENT_MODE`
+	- `none` (default)
+	- `stdout` (writes JSON envelopes to logs)
+	- `webhook` (HTTP POST)
+- `JSS_NOTIFICATION_WEBHOOK_URL` (required when mode is `webhook`)
+- `JSS_NOTIFICATION_WEBHOOK_TOKEN` (optional bearer token for webhook auth)
+
+`GET /health` includes a `notificationEvents` object indicating current event
+mode and whether a webhook URL is configured.
+
 ## Development
 
 From workspace root:

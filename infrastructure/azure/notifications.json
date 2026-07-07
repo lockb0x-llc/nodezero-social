@@ -1,0 +1,232 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.44.1.10279",
+      "templateHash": "11504651843465806623"
+    }
+  },
+  "parameters": {
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]",
+      "metadata": {
+        "description": "Deployment location for all resources."
+      }
+    },
+    "environmentName": {
+      "type": "string",
+      "defaultValue": "staging-testnet",
+      "allowedValues": [
+        "testnet",
+        "staging-testnet"
+      ],
+      "metadata": {
+        "description": "Short environment identifier. Production intentionally unsupported by this module."
+      }
+    },
+    "appName": {
+      "type": "string",
+      "defaultValue": "nodezero-social",
+      "minLength": 3,
+      "metadata": {
+        "description": "Global application name prefix."
+      }
+    },
+    "serviceBusSku": {
+      "type": "string",
+      "defaultValue": "Standard",
+      "allowedValues": [
+        "Standard",
+        "Premium"
+      ],
+      "metadata": {
+        "description": "Service Bus pricing tier for notification orchestration."
+      }
+    },
+    "lifecycleTopicName": {
+      "type": "string",
+      "defaultValue": "lifecycle-events",
+      "metadata": {
+        "description": "Lifecycle event topic name consumed by notification workers."
+      }
+    },
+    "digestQueueName": {
+      "type": "string",
+      "defaultValue": "digest-work-items",
+      "metadata": {
+        "description": "Digest work queue name for scheduler/worker fan-out."
+      }
+    },
+    "digestScheduleQueueName": {
+      "type": "string",
+      "defaultValue": "digest-schedule-intents",
+      "metadata": {
+        "description": "Queue name for delayed schedule intents (scheduler-ready staging pattern)."
+      }
+    },
+    "orchestratorSubscriptionName": {
+      "type": "string",
+      "defaultValue": "notification-orchestrator",
+      "metadata": {
+        "description": "Topic subscription used by orchestrator workers."
+      }
+    },
+    "duplicateDetectionHistoryDays": {
+      "type": "int",
+      "defaultValue": 1,
+      "minValue": 1,
+      "maxValue": 7,
+      "metadata": {
+        "description": "Days to retain duplicate detection history."
+      }
+    }
+  },
+  "variables": {
+    "resourceToken": "[toLower(uniqueString(resourceGroup().id, parameters('appName'), parameters('environmentName'), 'notifications'))]",
+    "namespaceName": "[take(format('sb{0}{1}{2}', replace(parameters('appName'), '-', ''), replace(parameters('environmentName'), '-', ''), variables('resourceToken')), 50)]",
+    "commonTags": {
+      "application": "[parameters('appName')]",
+      "environment": "[parameters('environmentName')]",
+      "component": "notifications",
+      "runtimeBoundary": "non-production",
+      "costGuardrail": "enabled"
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.ServiceBus/namespaces",
+      "apiVersion": "2022-10-01-preview",
+      "name": "[variables('namespaceName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "[parameters('serviceBusSku')]",
+        "tier": "[parameters('serviceBusSku')]"
+      },
+      "tags": "[variables('commonTags')]",
+      "properties": {
+        "minimumTlsVersion": "1.2",
+        "publicNetworkAccess": "Enabled",
+        "zoneRedundant": false
+      }
+    },
+    {
+      "type": "Microsoft.ServiceBus/namespaces/topics",
+      "apiVersion": "2022-10-01-preview",
+      "name": "[format('{0}/{1}', variables('namespaceName'), parameters('lifecycleTopicName'))]",
+      "properties": {
+        "defaultMessageTimeToLive": "P14D",
+        "maxSizeInMegabytes": 1024,
+        "requiresDuplicateDetection": true,
+        "duplicateDetectionHistoryTimeWindow": "[format('P{0}D', string(parameters('duplicateDetectionHistoryDays')))]",
+        "enablePartitioning": false
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ServiceBus/namespaces', variables('namespaceName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.ServiceBus/namespaces/topics/subscriptions",
+      "apiVersion": "2022-10-01-preview",
+      "name": "[format('{0}/{1}/{2}', variables('namespaceName'), parameters('lifecycleTopicName'), parameters('orchestratorSubscriptionName'))]",
+      "properties": {
+        "maxDeliveryCount": 10,
+        "deadLetteringOnMessageExpiration": true,
+        "lockDuration": "PT1M",
+        "defaultMessageTimeToLive": "P14D"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ServiceBus/namespaces/topics', variables('namespaceName'), parameters('lifecycleTopicName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.ServiceBus/namespaces/queues",
+      "apiVersion": "2022-10-01-preview",
+      "name": "[format('{0}/{1}', variables('namespaceName'), parameters('digestQueueName'))]",
+      "properties": {
+        "maxDeliveryCount": 10,
+        "deadLetteringOnMessageExpiration": true,
+        "lockDuration": "PT1M",
+        "defaultMessageTimeToLive": "P14D",
+        "enablePartitioning": false
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ServiceBus/namespaces', variables('namespaceName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.ServiceBus/namespaces/queues",
+      "apiVersion": "2022-10-01-preview",
+      "name": "[format('{0}/{1}', variables('namespaceName'), parameters('digestScheduleQueueName'))]",
+      "properties": {
+        "maxDeliveryCount": 10,
+        "deadLetteringOnMessageExpiration": true,
+        "lockDuration": "PT1M",
+        "defaultMessageTimeToLive": "P14D",
+        "enablePartitioning": false
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ServiceBus/namespaces', variables('namespaceName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.ServiceBus/namespaces/AuthorizationRules",
+      "apiVersion": "2022-10-01-preview",
+      "name": "[format('{0}/{1}', variables('namespaceName'), 'notification-sender')]",
+      "properties": {
+        "rights": [
+          "Send"
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ServiceBus/namespaces', variables('namespaceName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.ServiceBus/namespaces/AuthorizationRules",
+      "apiVersion": "2022-10-01-preview",
+      "name": "[format('{0}/{1}', variables('namespaceName'), 'notification-processor')]",
+      "properties": {
+        "rights": [
+          "Listen",
+          "Send"
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ServiceBus/namespaces', variables('namespaceName'))]"
+      ]
+    }
+  ],
+  "outputs": {
+    "serviceBusNamespaceName": {
+      "type": "string",
+      "value": "[variables('namespaceName')]"
+    },
+    "lifecycleTopicName": {
+      "type": "string",
+      "value": "[parameters('lifecycleTopicName')]"
+    },
+    "orchestratorSubscriptionName": {
+      "type": "string",
+      "value": "[parameters('orchestratorSubscriptionName')]"
+    },
+    "digestQueueName": {
+      "type": "string",
+      "value": "[parameters('digestQueueName')]"
+    },
+    "digestScheduleQueueName": {
+      "type": "string",
+      "value": "[parameters('digestScheduleQueueName')]"
+    },
+    "senderPolicyName": {
+      "type": "string",
+      "value": "notification-sender"
+    },
+    "processorPolicyName": {
+      "type": "string",
+      "value": "notification-processor"
+    }
+  }
+}
