@@ -10,8 +10,8 @@ const STATUS_TEXT: Record<string, string> = {
   idle: 'Preparing your attestation checks...',
   verifying: 'Verifying your Solid-WebID and Stellar Lockb0x pairing...',
   verified: 'Pairing verified. Redirecting you to your feed...',
-  unlinked: 'Your pairing is no longer valid. Sign in again to recover access.',
-  error: 'Attestation validation failed. Sign in again to retry secure recovery.',
+  unlinked: 'Your lockb0x attestation is not linked. Sign in to start migration and complete relinking.',
+  error: 'Attestation validation failed. Sign in to retry verification or restart secure onboarding.',
 }
 
 export default function OnboardingScreen(): JSX.Element {
@@ -56,9 +56,9 @@ export default function OnboardingScreen(): JSX.Element {
             void signOut().finally(() => router.replace('/'))
           }}
           accessibilityRole="button"
-          accessibilityLabel="Sign in again to recover access"
+          accessibilityLabel="Return to sign in and continue secure onboarding"
         >
-          <Text style={styles.buttonText}>Sign In Again</Text>
+          <Text style={styles.buttonText}>Return to Sign In</Text>
         </TouchableOpacity>
       ) : null}
     </View>

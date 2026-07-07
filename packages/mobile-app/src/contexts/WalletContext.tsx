@@ -597,8 +597,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
 
       // Fail-closed on-return verification: prove the device still controls the
       // ZK identity anchored on-chain. Derive Poseidon(identitySecret) locally
-      // and compare against Lockb0x.get_account_commitment(). Legacy lockboxes
-      // (pre-attestation) return no commitment — treat as verified for back-compat.
+      // and compare against Lockb0x.get_account_commitment().
       const lockboxId = nodeSession.userLockboxContractId
       setAttestationStatus('verifying')
       setAttestationMessage('Verifying your on-chain identity attestation…')
@@ -625,8 +624,22 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
           const onchain = await getWalletService().getLockboxAccountCommitment(lockboxId)
           advanceVerificationStep('anchor')
           if (!onchain) {
-            // Legacy lockb0x without an on-chain attestation anchor.
-            setVerified('Node lockb0x anchored on-chain during creation.')
+            setAttestationStatus('unlinked')
+            setAttestationMessage(
+              'Your node is missing an on-chain attestation anchor. Complete migration to create and link a new lockb0x attestation before continuing.',
+            )
+            setAttestationDetails({
+              registeredWebId: nodeSession.webId,
+              lockboxStateRoot: nodeSession.proofRootHex,
+              registerTxHash: null,
+              verifiedAt: null,
+              custodyClaimHash: null,
+              lockboxFactoryContractId: nodeSession.lockboxFactoryContractId,
+              userLockboxContractId: lockboxId,
+              lockboxIdempotencyKey: null,
+              proofHashHex: null,
+              proofRootHex: nodeSession.proofRootHex,
+            })
             return
           }
           const secret = await _adapter?.loadOrCreate()
@@ -635,6 +648,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
           const deviceCommitment = await deriveAccountCommitmentHex(secret)
           const norm = (h: string): string => h.trim().toLowerCase().replace(/^0x/, '')
           if (norm(deviceCommitment) === norm(onchain)) {
+            advanceVerificationStep('identity')
             setVerified('On-chain ZK identity attestation verified.')
           } else {
             // Fail-closed: the device does not control the anchored identity.
@@ -655,10 +669,25 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
               proofRootHex: nodeSession.proofRootHex,
             })
           }
-        } catch {
-          // Transient on-chain read/derivation failure: do not lock out an
-          // existing session (the lockb0x exists); treat as verified.
-          setVerified('Node lockb0x anchored on-chain during creation.')
+        } catch (err) {
+          setAttestationStatus('error')
+          setAttestationMessage(
+            err instanceof Error
+              ? `Attestation verification failed: ${err.message}`
+              : 'Attestation verification failed. Complete migration to relink your on-chain lockb0x.',
+          )
+          setAttestationDetails({
+            registeredWebId: nodeSession.webId,
+            lockboxStateRoot: nodeSession.proofRootHex,
+            registerTxHash: null,
+            verifiedAt: null,
+            custodyClaimHash: null,
+            lockboxFactoryContractId: nodeSession.lockboxFactoryContractId,
+            userLockboxContractId: lockboxId,
+            lockboxIdempotencyKey: null,
+            proofHashHex: null,
+            proofRootHex: nodeSession.proofRootHex,
+          })
         }
       })()
       return
