@@ -38,6 +38,29 @@ Preserve environment isolation at all times:
 - `NZ_NODEZERO_ISSUER_URL` drives this. `app.config.js` defaults it to the hosted staging Community Server for local/staging; strict profiles fail the build if it is missing.
 - Web bundles MUST be built with `NZ_ENV_PROFILE=staging-testnet` (or production) and the full variable set — a bundle built under the `local` profile silently drops the Community Server from the sign-in options. The staging workflow's "Build Expo web artifact" step is the reference variable set.
 
+## Authentication flow contract (separation of concerns)
+Onboarding/authentication is a standalone concern, separate from application
+features (feed, docustream, backpack, etc.). Application features consume an
+authenticated session; they never participate in establishing one.
+
+- Onboarding requires a **user-chosen password** (min 12 chars). The
+  provisioner `POST /v1/solid-account` rejects missing/short passwords; never
+  reintroduce server-generated credentials the user does not know.
+- The OIDC bridge auto sign-in uses an **explicit handoff leg**: app → IdP
+  login page with `nz_oidc_bridge` + `nz_oidc_bridge_consume` + validated
+  `nz_return` as top-level query params → template consumes ticket and logs in
+  via the CSS **account API** (never native `form.submit()`, which is
+  DOM-clobbered) → back to app → automatic OIDC resume (`nz_bridge_return=1`).
+  Bridge params buried inside the OIDC `redirect_uri` are NOT discoverable by
+  the login page — do not regress to that design.
+- Every bridge failure must leave the login form usable for manual
+  credentials (fallback path). See `docs/architecture.md` → "Authentication
+  and session handoff" for the full flow.
+- `pnpm qa:smoke:auth` (`scripts/qa/staging-auth-evidence.mjs`) is the
+  **blocking** identity gate in `staging-deploy.yml`. DocuStream/mashlib
+  proofs are application checks and run non-blocking — keep them out of the
+  auth gate and vice versa.
+
 When touching deployment or environment code, ensure these pass:
 - `pnpm policy:validate-env`
 - Script guardrails in `scripts/azure/deploy.sh`
@@ -74,7 +97,11 @@ Workspace-level default checks:
 
 Staging gate checks (when relevant):
 - `pnpm qa:smoke`
+- `pnpm qa:smoke:auth` (blocking identity gate: new-user onboarding + returning-user authentication E2E)
 - Manual journeys in `docs/staging-uat-checklist.md`
+
+Application-feature proofs (`pnpm qa:smoke:docustream-pane`, `qa:smoke:mashlib-*`)
+are NOT part of the identity gate; run them separately for feature work.
 
 Package-focused checks are acceptable for scoped changes (for example `pnpm --filter <pkg> type-check`) when full-suite execution is not required.
 

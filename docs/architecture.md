@@ -82,6 +82,57 @@ plaintext claim or the identitySecret.
 
 ---
 
+## Authentication and session handoff
+
+Identity is a standalone concern, separated from application features
+(feed, docustream, backpack, etc.). Application features consume an
+authenticated session; they never participate in establishing one.
+
+### New-user onboarding (seamless "Create Your Node")
+
+1. User enters handle, notification email, and a self-chosen password
+   (min 12 chars) on the landing page.
+2. Device generates the pod_ownership Groth16 proof and encrypted claim.
+3. App calls provisioner `POST /v1/solid-account` (password is required;
+   the provisioner never generates credentials the user does not know).
+4. Provisioner creates the CSS account + Pod, anchors the lockb0x +
+   attestation on-chain, and returns a one-time OIDC bridge ticket.
+5. **Bridge handoff leg (web):** the app navigates to the IdP login page
+   with `nz_oidc_bridge`, `nz_oidc_bridge_consume`, and a validated
+   `nz_return` in the URL. Bridge params must be top-level query params on
+   the login page — params buried inside the OIDC `redirect_uri` are not
+   discoverable by the login template.
+6. The themed login template consumes the ticket at the provisioner,
+   authenticates via the CSS **account API** (never native `form.submit()`,
+   which is DOM-clobbered by the `submit`-named button), establishing the
+   IdP account cookie, then redirects to `nz_return`.
+7. Back in the app, `nz_bridge_return=1` triggers an automatic OIDC sign-in
+   resume; the IdP session already exists, so the flow proceeds directly to
+   consent and returns an authenticated session.
+8. If any bridge step fails, the login page falls back to manual
+   credentials — the user knows their password, so there is no dead end.
+
+### Returning-user authentication
+
+1. User clicks Sign In; app starts a standard Solid OIDC flow against the
+   Node Zero Community Server (default IdP).
+2. User authenticates with email + password on the themed login page,
+   authorizes consent, and returns with `code`/`state`.
+3. Post-authentication verification is fail-closed: the session is only
+   trusted after the on-chain lockb0x pairing attestation verifies
+   (`attestationStatus === 'verified'`); otherwise routing forces
+   `/onboarding`.
+
+### Release gating
+
+The blocking staging gate for identity is `pnpm qa:smoke:auth`
+([scripts/qa/staging-auth-evidence.mjs](../scripts/qa/staging-auth-evidence.mjs)),
+which exercises both journeys end-to-end including on-chain evidence
+assertions. Application-feature proofs (docustream/mashlib) run separately
+and never block identity releases.
+
+---
+
 ## Trust boundary table
 
 | Component | Centralized / Decentralized | Can observe |

@@ -33,17 +33,27 @@ Settings is intentionally excluded from tabs and accessed from Profile via the g
 The landing page renders without authentication and includes:
 - **Hero**: decentralized social onboarding and value proposition
 - **Feature cards**: ownership, local discovery, no feed manipulation, privacy-first identity
-- **Solid sign-in form**: IdP URL field + "Sign In" action
-- **Registration entry**: "Need a Pod? Create one free"
+- **Solid sign-in form**: identity-provider picker (Node Zero Community Server default) + "Sign In" action
+- **Create Your Node form**: handle + notification email + password + confirm password (password min 12 chars, user-chosen — used for manual login fallback and returning sign-in)
 - **Redirect logic**:
-	1. Signed-in + verified pairing attestation goes to `/feed`.
+	1. Signed-in + verified pairing attestation goes to `/feed` (or `/local` for seamless node sessions).
 	2. Signed-in + unverified attestation goes to `/onboarding`.
+
+### New-user create flow (web)
+
+1. Wallet + ZK proof are prepared on-device; provisioner creates Pod, WebID, and on-chain lockb0x anchor.
+2. App hands off to the IdP login page with the one-time OIDC bridge ticket (`nz_oidc_bridge`, `nz_oidc_bridge_consume`) and a validated `nz_return` as top-level URL params.
+3. Login template consumes the ticket and signs in via the CSS account API, then returns to the app with `nz_bridge_return=1`.
+4. App automatically resumes the OIDC flow — IdP session exists, so it proceeds to consent and establishes the authenticated session.
+5. Any bridge failure leaves the login form usable for manual credentials (the user knows their password).
 
 ### Auth validation behavior (current implementation)
 - Empty IdP URL: "Enter your Identity Provider URL."
 - Non-HTTPS IdP URL: "URL must start with https://"
 - Valid HTTPS IdP: continues to Solid OIDC sign-in flow
 - Login failure fallback: "Sign-in failed. Check the URL and try again."
+- Password shorter than 12 chars: "Password must be at least 12 characters."
+- Mismatched passwords: "Passwords do not match."
 
 ## UI navigation tabs and feature catalog
 

@@ -204,6 +204,7 @@ Each row is a discrete unit of work. Mark ✅ when complete with evidence.
 | CICD-02 | Provisioner build + zip deploy + health gate in workflow | ✅ Done | Steps 82–114 in staging-deploy.yml |
 | CICD-03 | Expo web build bakes correct staging env vars | ✅ Done | `NZ_JSS_PROVISIONER_URL` wired; other staging vars via GitHub environment |
 | CICD-04 | `pnpm qa:smoke` runs as post-deploy gate | ✅ Done | Step 171+ in staging-deploy.yml; PASS confirmed 2026-06-30 |
+| CICD-04b | `pnpm qa:smoke:auth` blocking identity E2E gate (new-user onboarding + returning-user auth); mashlib/docustream proofs demoted to non-blocking | ✅ Done | [staging-auth-evidence.mjs](../scripts/qa/staging-auth-evidence.mjs); two consecutive PASS runs 2026-07-08 |
 | CICD-05 | Solid server redeploy workflow available for on-demand refresh | ✅ Done | [redeploy-solid-server.yml](../.github/workflows/redeploy-solid-server.yml) |
 | CICD-06 | **Drift detection (`verify-staging-drift.mjs`) scheduled or gated** | ⬜ To Do | Script exists; not yet wired into any CI step or scheduled run |
 | CICD-07 | **Provisioner app settings pushed from workflow, not ad hoc** | ⬜ To Do | Depends on INF-09 |

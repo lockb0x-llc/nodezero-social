@@ -14,7 +14,15 @@ code.
    ```sh
    STAGING_BASE_URL=https://staging.nodezero.social pnpm qa:smoke
    ```
-3. Work through the manual journeys below. Record PASS/FAIL and notes per row.
+3. Run the blocking onboarding/authentication E2E gate (identity only —
+   application-feature proofs run separately and never block this gate):
+   ```sh
+   STAGING_BASE_URL=https://staging.nodezero.social pnpm qa:smoke:auth
+   ```
+   PASS requires both journeys green: new-user create (Pod + WebID +
+   on-chain lockb0x + bridge auto sign-in + consent + session) and
+   returning-user credential login with the same WebID.
+4. Work through the manual journeys below. Record PASS/FAIL and notes per row.
 
 ## Preconditions
 
@@ -41,6 +49,9 @@ code.
 | AU2 | Submit an empty IdP URL | Actionable error: a provider URL is required | **PASS (2026-06-28 headed validation)** | Landing sign-in panel now shows explicit message: `Enter your Identity Provider URL.` |
 | AU3 | Submit an `http://` non-localhost IdP | Actionable error: provider must use https | **PASS (2026-06-28 headed validation)** | Landing sign-in panel now shows explicit message: `URL must start with https://` |
 | AU4 | Sign out via Profile → Settings | Session cleared, returns to landing | — | Navigate to `/profile` while authenticated → tap ⚙ gear icon → `/settings` opens → tap **Sign Out** → session cleared and landing `/` restored. *(Settings tab removed from nav bar; gear icon on Profile is the new access path.)* |
+| AU5 | New-user seamless onboarding: handle + email + password (min 12) → Create Your Node | ZK proof → Pod + WebID created → lockb0x anchored on-chain → bridge auto sign-in → consent → authenticated at `/local` with no manual credential entry | **PASS (2026-07-08 `qa:smoke:auth`)** | Automated by `scripts/qa/staging-auth-evidence.mjs` (new-user journey); on-chain lockb0x contract ID + pairing proof root asserted. |
+| AU6 | Returning user: manual sign-in with onboarding credentials (fresh browser) | IdP login → consent → authenticated session with the same WebID | **PASS (2026-07-08 `qa:smoke:auth`)** | Automated by `scripts/qa/staging-auth-evidence.mjs` (returning-user journey); WebID equality across journeys asserted. |
+| AU7 | Bridge failure fallback: bridge consume fails on the IdP login page | Login form re-enabled with fallback message; manual credentials complete sign-in | — | Fallback copy: “Secure sign-in could not be completed automatically…”. The user-chosen password guarantees no dead end. |
 
 ### Navigation UX (nav overflow fix + Settings-via-Profile)
 

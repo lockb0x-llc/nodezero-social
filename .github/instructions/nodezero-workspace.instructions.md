@@ -84,7 +84,13 @@ For infra/env/deploy changes, additionally run:
 
 For staging readiness or release work, additionally run:
 - `pnpm qa:smoke`
+- `pnpm qa:smoke:auth` (blocking onboarding/authentication E2E gate — identity only)
 - Manual checks from `docs/staging-uat-checklist.md` (document PASS/FAIL)
+
+Keep concerns separated: `qa:smoke:auth` gates identity (Pod/WebID creation,
+lockb0x anchoring, ZK attestation, OIDC bridge sign-in, returning-user login);
+application-feature proofs (docustream/mashlib) run separately and must never
+be folded into the auth gate.
 
 If full-suite execution is not feasible, run targeted package checks and explicitly state what was not run.
 
