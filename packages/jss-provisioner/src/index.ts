@@ -1,5 +1,5 @@
 import { createServer } from 'node:http'
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
+import { createHash, timingSafeEqual } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { ProvisionStore } from './store.js'
 import { verifyAttestation } from './attestation.js'
@@ -69,8 +69,8 @@ function isValidEmail(email: string): boolean {
   return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)
 }
 
-function generateServerPassword(): string {
-  return randomBytes(32).toString('base64url')
+function isValidProvisioningPassword(password: string): boolean {
+  return password.trim().length >= 12
 }
 
 function rememberKnownSolidEmail(email: string): void {
@@ -159,7 +159,7 @@ function validateProvisionRequest(body: ProvisionRequest): void {
   if (!Array.isArray(body.publicSignals)) throw new Error('publicSignals is required.')
 }
 
-async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
+export async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const url = new URL(req.url ?? '/', 'http://localhost')
 
   if (req.method === 'OPTIONS') {
@@ -237,6 +237,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Pro
     const body = await readJsonBody<{
       name?: string
       email?: string
+      password?: string
       stellarPublicKey?: string
       accountCommitmentHex?: string
       ciphertextHex?: string
@@ -247,6 +248,10 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Pro
     }
     if (!isNonEmpty(body.email)) {
       sendJson(req, res, 400, { error: 'email is required.' })
+      return
+    }
+    if (!isNonEmpty(body.password)) {
+      sendJson(req, res, 400, { error: 'password is required.' })
       return
     }
     // Fail-closed: seamless onboarding must anchor the WebID<->Stellar pairing
@@ -272,16 +277,20 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Pro
 
     try {
       const email = normalizeEmail(body.email)
+      const password = body.password.trim()
       let treasuryFunded = false
       if (!isValidEmail(email)) {
         sendJson(req, res, 400, { error: 'email must be a valid email address.' })
+        return
+      }
+      if (!isValidProvisioningPassword(password)) {
+        sendJson(req, res, 400, { error: 'password must be at least 12 characters.' })
         return
       }
       if (knownSolidAccountEmails.has(email)) {
         sendJson(req, res, 409, { error: 'There already is a login for this e-mail address.' })
         return
       }
-      const password = generateServerPassword()
       const account = await createSolidAccount(SOLID_CSS_BASE_URL, {
         name: normalizedName,
         email,
@@ -623,13 +632,22 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Pro
   sendJson(req, res, 404, { error: 'Not found' })
 }
 
-const server = createServer((req, res) => {
-  handleHttpRequest(req, res).catch((err) => {
-    const message = err instanceof Error ? err.message : 'Unhandled server error.'
-    sendJson(req, res, 500, { error: message })
-  })
-})
+export function createRequestHandler() {
+  return (req: IncomingMessage, res: ServerResponse): void => {
+    handleHttpRequest(req, res).catch((err) => {
+      const message = err instanceof Error ? err.message : 'Unhandled server error.'
+      sendJson(req, res, 500, { error: message })
+    })
+  }
+}
 
-server.listen(PORT, () => {
-  console.log(`[jss-provisioner] listening on :${PORT}`)
-})
+function isEntrypoint(): boolean {
+  return typeof require !== 'undefined' && typeof module !== 'undefined' && require.main === module
+}
+
+if (isEntrypoint()) {
+  const server = createServer(createRequestHandler())
+  server.listen(PORT, () => {
+    console.log(`[jss-provisioner] listening on :${PORT}`)
+  })
+}

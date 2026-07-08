@@ -80,6 +80,8 @@ jobs:
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --name "$JSS_PROVISIONER_APP_NAME" \
             --linux-fx-version "NODE|22-lts" \
+            --always-on true \
+            --health-check-path "/health" \
             --startup-file "bash startup.sh"
 
           az webapp config appsettings set \
@@ -89,6 +91,7 @@ jobs:
               JSS_ISSUER_URL="https://solid.nodezero.social" \
               JSS_PUBLIC_PROVISIONER_BASE_URL="https://${JSS_PROVISIONER_APP_NAME}.azurewebsites.net" \
               JSS_SOLID_CSS_BASE_URL="https://solid.nodezero.social" \
+              JSS_OIDC_BRIDGE_TTL_MS="900000" \
               JSS_ALLOWED_ORIGINS="https://staging.nodezero.social,https://nodezero.social,https://www.nodezero.social,https://solid.nodezero.social,http://localhost:19006,http://localhost:8081"
 
       - name: Deploy JSS provisioner to App Service
@@ -124,6 +127,34 @@ jobs:
           done
 
           echo "Provisioner failed health check after 30 attempts."
+          exit 1
+
+      - name: Warm JSS provisioner onboarding endpoint
+        run: |
+          set -euo pipefail
+          warmup_url="https://${JSS_PROVISIONER_APP_NAME}.azurewebsites.net/v1/solid-account/check-email"
+          payload='{"email":"qa-warmup+staging@nodezero.social"}'
+
+          for attempt in {1..20}; do
+            status_code="$(curl -sS -o /tmp/provisioner-warmup.json -w "%{http_code}" \
+              --max-time 15 \
+              -H "content-type: application/json" \
+              -H "accept: application/json" \
+              -X POST \
+              --data "$payload" \
+              "$warmup_url" || true)"
+
+            if [ "$status_code" = "200" ]; then
+              echo "Provisioner warmup succeeded on attempt ${attempt}."
+              cat /tmp/provisioner-warmup.json
+              exit 0
+            fi
+
+            echo "Attempt ${attempt}/20: warmup returned HTTP ${status_code}. Retrying in 6s..."
+            sleep 6
+          done
+
+          echo "Provisioner warmup failed after 20 attempts."
           exit 1
 
       - name: Build Expo web artifact
@@ -197,6 +228,38 @@ jobs:
             exit 1
           fi
           echo "hostname=$STATIC_WEB_APP_HOSTNAME" >> "$GITHUB_OUTPUT"
+
+      - name: Verify deployed marker provenance
+        env:
+          EXPECTED_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          marker_url="https://${{ steps.hostname.outputs.hostname }}/deploy-marker.json"
+          echo "Checking marker: ${marker_url}"
+
+          marker_json="$(curl -sS --max-time 20 "$marker_url")"
+          echo "$marker_json" > /tmp/deploy-marker.json
+
+          marker_env="$(jq -r '.environment // empty' /tmp/deploy-marker.json)"
+          marker_workflow="$(jq -r '.workflow // empty' /tmp/deploy-marker.json)"
+          marker_commit="$(jq -r '.commit // empty' /tmp/deploy-marker.json)"
+
+          if [ "$marker_env" != "staging-testnet" ]; then
+            echo "Marker environment mismatch: '$marker_env'"
+            exit 1
+          fi
+
+          if [ "$marker_workflow" != "staging-deploy" ]; then
+            echo "Marker workflow mismatch: '$marker_workflow'"
+            exit 1
+          fi
+
+          if [ "$marker_commit" != "$EXPECTED_COMMIT" ]; then
+            echo "Marker commit mismatch: expected '$EXPECTED_COMMIT', got '$marker_commit'"
+            exit 1
+          fi
+
+          echo "Marker provenance check passed."
 
       - name: Run staging smoke suite
         env:

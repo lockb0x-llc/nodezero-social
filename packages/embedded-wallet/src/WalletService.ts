@@ -166,6 +166,15 @@ export class WalletService {
   }
 
   /**
+   * Returns the local Stellar public key without performing any network I/O.
+   * Useful for UI readiness paths that must not block on RPC/Friendbot latency.
+   */
+  async getWalletPublicKey(): Promise<string> {
+    const secret = await this.adapter.loadOrCreate()
+    return Keypair.fromSecret(secret).publicKey()
+  }
+
+  /**
    * Signs a canonical custody-attestation challenge payload with the embedded
    * Stellar keypair and returns the base64-encoded signature.
    */

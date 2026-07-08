@@ -508,9 +508,21 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
 
   useEffect(() => {
     void (async (): Promise<void> => {
+      const service = getWalletService()
       try {
-        const info = await getWalletService().getWalletInfo()
-        setWalletInfo(info)
+        // Make onboarding actionable as soon as the enclave key exists; do not
+        // block UI readiness on RPC/Friendbot funding checks.
+        const publicKey = await service.getWalletPublicKey()
+        setWalletInfo({ publicKey, isFunded: false })
+
+        void (async (): Promise<void> => {
+          try {
+            const hydrated = await service.getWalletInfo()
+            setWalletInfo(hydrated)
+          } catch (err) {
+            console.warn('[WalletContext] Wallet funding hydration failed:', err)
+          }
+        })()
       } catch (err) {
         console.warn('[WalletContext] Failed to load wallet info:', err)
       } finally {

@@ -169,6 +169,8 @@ interface LandingAuthCardProps {
   seamlessEnabled: boolean
   nodeHandle: string
   notificationEmail: string
+  accountPassword: string
+  accountPasswordConfirm: string
   isCreating: boolean
   walletReady: boolean
   createNotice: string | null
@@ -176,6 +178,8 @@ interface LandingAuthCardProps {
   onIssuerChange: (nextIssuer: string) => void
   onNodeHandleChange: (value: string) => void
   onNotificationEmailChange: (value: string) => void
+  onAccountPasswordChange: (value: string) => void
+  onAccountPasswordConfirmChange: (value: string) => void
   onSignIn: () => Promise<void>
   onCreateNode: () => Promise<void>
   onGetStarted: (source: AuthCardSource) => Promise<void>
@@ -195,6 +199,8 @@ function LandingAuthCard({
   seamlessEnabled,
   nodeHandle,
   notificationEmail,
+  accountPassword,
+  accountPasswordConfirm,
   isCreating,
   walletReady,
   createNotice,
@@ -202,6 +208,8 @@ function LandingAuthCard({
   onIssuerChange,
   onNodeHandleChange,
   onNotificationEmailChange,
+  onAccountPasswordChange,
+  onAccountPasswordConfirmChange,
   onSignIn,
   onCreateNode,
   onGetStarted,
@@ -330,6 +338,28 @@ function LandingAuthCard({
             keyboardType="email-address"
             accessibilityLabel="Notification email"
           />
+          <TextInput
+            style={styles.input}
+            value={accountPassword}
+            onChangeText={onAccountPasswordChange}
+            placeholder="Create password (min 12 characters)"
+            placeholderTextColor={DIM}
+            autoCapitalize="none"
+            autoCorrect={false}
+            secureTextEntry
+            accessibilityLabel="Account password"
+          />
+          <TextInput
+            style={styles.input}
+            value={accountPasswordConfirm}
+            onChangeText={onAccountPasswordConfirmChange}
+            placeholder="Confirm password"
+            placeholderTextColor={DIM}
+            autoCapitalize="none"
+            autoCorrect={false}
+            secureTextEntry
+            accessibilityLabel="Confirm account password"
+          />
           <TouchableOpacity
             style={[styles.btnPrimary, (isCreating || !walletReady) && styles.btnDisabled]}
             onPress={() => void onCreateNode()}
@@ -432,6 +462,8 @@ export default function LandingScreen(): JSX.Element {
   const [errorAction, setErrorAction] = useState<{ label: string; url: string } | null>(null)
   const [nodeHandle, setNodeHandle] = useState('')
   const [notificationEmail, setNotificationEmail] = useState('')
+  const [accountPassword, setAccountPassword] = useState('')
+  const [accountPasswordConfirm, setAccountPasswordConfirm] = useState('')
   const [isCreating, setIsCreating] = useState(false)
   const [createNotice, setCreateNotice] = useState<string | null>(null)
   const [createSteps, setCreateSteps] = useState<ProgressStep[]>([])
@@ -509,6 +541,19 @@ export default function LandingScreen(): JSX.Element {
     setCreateNotice(null)
 
     const normalizedEmail = notificationEmail.trim().toLowerCase()
+    const trimmedPassword = accountPassword.trim()
+    const trimmedPasswordConfirm = accountPasswordConfirm.trim()
+
+    if (trimmedPassword.length < 12) {
+      setError('Password must be at least 12 characters.')
+      return
+    }
+
+    if (trimmedPassword !== trimmedPasswordConfirm) {
+      setError('Passwords do not match.')
+      return
+    }
+
     if (normalizedEmail && knownExistingEmailsRef.current.has(normalizedEmail)) {
       setError('This email address is already registered. Try signing in, or reset your password to continue.')
       setErrorAction({
@@ -516,21 +561,6 @@ export default function LandingScreen(): JSX.Element {
         url: getNodeZeroForgotPasswordUrl(),
       })
       return
-    }
-
-    // Fast path: ask the provisioner for a server-side duplicate check before
-    // we spend time generating ZK artifacts for an already-registered email.
-    if (normalizedEmail) {
-      const emailAlreadyRegistered = await checkSeamlessEmailExists(normalizedEmail)
-      if (emailAlreadyRegistered) {
-        knownExistingEmailsRef.current.add(normalizedEmail)
-        setError('This email address is already registered. Try signing in, or reset your password to continue.')
-        setErrorAction({
-          label: 'Reset password on Node Zero Community Server',
-          url: getNodeZeroForgotPasswordUrl(),
-        })
-        return
-      }
     }
 
     // Fail-closed: the embedded wallet must be provisioned before onboarding.
@@ -541,30 +571,50 @@ export default function LandingScreen(): JSX.Element {
       return
     }
 
+    const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
+    const issuerBase = (appExtra?.nodeZeroIssuerUrl ?? '').replace(/\/+$/, '')
+    if (!issuerBase) {
+      setError('Node identity provider is not configured. Try again later.')
+      return
+    }
+
+    const normalizedHandle = nodeHandle.trim().toLowerCase().replace(/[^a-z0-9-]/g, '')
+    if (!normalizedHandle) {
+      setError('Choose a node handle using letters and numbers.')
+      return
+    }
+
     setIsCreating(true)
+    setCreateSteps(
+      CREATE_STEP_DEFS.map(([key, label]) => ({
+        key,
+        label,
+        status: key === 'wallet' ? 'done' : key === 'proof' ? 'active' : 'pending',
+      })),
+    )
+    setCreateNotice('Checking account availability…')
+
     try {
+      // Fast path: ask the provisioner for a server-side duplicate check before
+      // we spend time generating ZK artifacts for an already-registered email.
+      if (normalizedEmail) {
+        const emailAlreadyRegistered = await checkSeamlessEmailExists(normalizedEmail)
+        if (emailAlreadyRegistered) {
+          knownExistingEmailsRef.current.add(normalizedEmail)
+          setError('This email address is already registered. Try signing in, or reset your password to continue.')
+          setErrorAction({
+            label: 'Reset password on Node Zero Community Server',
+            url: getNodeZeroForgotPasswordUrl(),
+          })
+          return
+        }
+      }
+
       // Produce the real on-device attestation first: a pod_ownership Groth16
       // proof (identity commitment) + Stellar-encrypted claim. Bound to the
       // deterministic WebID/Pod the provisioner will create for this handle.
-      const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
-      const issuerBase = (appExtra?.nodeZeroIssuerUrl ?? '').replace(/\/+$/, '')
-      const normalizedHandle = nodeHandle.trim().toLowerCase().replace(/[^a-z0-9-]/g, '')
-      if (!issuerBase || !normalizedHandle) {
-        setError('Node identity provider is not configured. Try again later.')
-        return
-      }
       const expectedWebId = `${issuerBase}/${normalizedHandle}/profile/card#me`
       const expectedPodUrl = `${issuerBase}/${normalizedHandle}/`
-
-      // Show the step ladder: the wallet is ready (checked above), so it is
-      // pre-completed and proof generation becomes the active step.
-      setCreateSteps(
-        CREATE_STEP_DEFS.map(([key, label]) => ({
-          key,
-          label,
-          status: key === 'wallet' ? 'done' : key === 'proof' ? 'active' : 'pending',
-        })),
-      )
 
       setCreateNotice('Generating your zero-knowledge proof…')
       const attestation = await createSeamlessAttestation(
@@ -578,6 +628,7 @@ export default function LandingScreen(): JSX.Element {
       const result = await createSeamlessNode({
         handle: nodeHandle,
         notificationEmail,
+        password: trimmedPassword,
         stellarPublicKey: walletInfo.publicKey,
         accountCommitmentHex: attestation.accountCommitmentHex,
         ciphertextHex: attestation.ciphertextHex,
@@ -636,6 +687,8 @@ export default function LandingScreen(): JSX.Element {
         bridgeToken: result.oidcBridge.token,
         bridgeConsumeUrl: result.oidcBridge.consumeUrl,
       })
+      setAccountPassword('')
+      setAccountPasswordConfirm('')
     } catch (err) {
       failActiveCreateStep()
       if (isEmailAlreadyRegisteredError(err)) {
@@ -722,6 +775,8 @@ export default function LandingScreen(): JSX.Element {
           seamlessEnabled={seamlessConfig.enabled}
           nodeHandle={nodeHandle}
           notificationEmail={notificationEmail}
+          accountPassword={accountPassword}
+          accountPasswordConfirm={accountPasswordConfirm}
           isCreating={isCreating}
           walletReady={Boolean(walletInfo?.publicKey)}
           createNotice={createNotice}
@@ -729,6 +784,8 @@ export default function LandingScreen(): JSX.Element {
           onIssuerChange={setSelectedIssuer}
           onNodeHandleChange={setNodeHandle}
           onNotificationEmailChange={setNotificationEmail}
+          onAccountPasswordChange={setAccountPassword}
+          onAccountPasswordConfirmChange={setAccountPasswordConfirm}
           onSignIn={handleSignIn}
           onCreateNode={handleCreateNode}
           onGetStarted={handleGetStarted}
@@ -802,6 +859,8 @@ export default function LandingScreen(): JSX.Element {
                 seamlessEnabled={seamlessConfig.enabled}
                 nodeHandle={nodeHandle}
                 notificationEmail={notificationEmail}
+                accountPassword={accountPassword}
+                accountPasswordConfirm={accountPasswordConfirm}
                 isCreating={isCreating}
                 walletReady={Boolean(walletInfo?.publicKey)}
                 createNotice={createNotice}
@@ -809,6 +868,8 @@ export default function LandingScreen(): JSX.Element {
                 onIssuerChange={setSelectedIssuer}
                 onNodeHandleChange={setNodeHandle}
                 onNotificationEmailChange={setNotificationEmail}
+                onAccountPasswordChange={setAccountPassword}
+                onAccountPasswordConfirmChange={setAccountPasswordConfirm}
                 onSignIn={handleSignIn}
                 onCreateNode={handleCreateNode}
                 onGetStarted={handleGetStarted}

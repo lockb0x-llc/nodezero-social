@@ -24,6 +24,8 @@ export interface CreateNodeInput {
   handle: string
   /** User's preferred notification email (also used as the CSS login email). */
   notificationEmail: string
+  /** User-selected account password used for manual login fallback. */
+  password: string
   /** Stellar public key to anchor the WebID pairing on-chain (optional). */
   stellarPublicKey?: string
   /** 32-byte hex identity commitment (Poseidon(identitySecret)) to anchor on-chain. */
@@ -60,6 +62,25 @@ export interface CreateNodeResult {
 
 interface CheckEmailResult {
   exists?: boolean
+}
+
+const CHECK_EMAIL_TIMEOUT_MS = 8000
+
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+  if (typeof AbortController === 'undefined') {
+    return fetch(url, init)
+  }
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: controller.signal,
+    })
+  } finally {
+    clearTimeout(timeoutId)
+  }
 }
 
 function isStagingOnboardingHost(): boolean {
@@ -105,6 +126,10 @@ export async function createSeamlessNode(input: CreateNodeInput): Promise<Create
   if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
     throw new Error('Enter a valid notification email address.')
   }
+  const password = input.password.trim()
+  if (password.length < 12) {
+    throw new Error('Password must be at least 12 characters.')
+  }
 
   // Fail-closed: a valid Stellar public key is mandatory. Without it the
   // provisioner cannot anchor the WebID<->Stellar pairing on-chain, which
@@ -117,6 +142,7 @@ export async function createSeamlessNode(input: CreateNodeInput): Promise<Create
   const body: Record<string, string> = {
     name: handle,
     email,
+    password,
     stellarPublicKey,
   }
 
@@ -167,11 +193,15 @@ export async function checkSeamlessEmailExists(email: string): Promise<boolean |
   }
 
   try {
-    const res = await fetch(`${config.provisionerUrl}/v1/solid-account/check-email`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', accept: 'application/json' },
-      body: JSON.stringify({ email: normalizedEmail }),
-    })
+    const res = await fetchWithTimeout(
+      `${config.provisionerUrl}/v1/solid-account/check-email`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json' },
+        body: JSON.stringify({ email: normalizedEmail }),
+      },
+      CHECK_EMAIL_TIMEOUT_MS,
+    )
 
     if (res.status === 404 || res.status === 405 || res.status === 501) {
       return null

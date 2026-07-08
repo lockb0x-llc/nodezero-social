@@ -9,7 +9,11 @@ import type {
 } from './types.js'
 
 const CHALLENGE_TTL_MS = Number(process.env.JSS_CHALLENGE_TTL_MS ?? 5 * 60_000)
-const OIDC_BRIDGE_TTL_MS = Number(process.env.JSS_OIDC_BRIDGE_TTL_MS ?? 5 * 60_000)
+
+function resolveOidcBridgeTtlMs(): number {
+  const raw = Number(process.env.JSS_OIDC_BRIDGE_TTL_MS ?? 15 * 60_000)
+  return Number.isFinite(raw) && raw > 0 ? raw : 15 * 60_000
+}
 
 interface OidcBridgeRecord {
   token: string
@@ -40,6 +44,7 @@ export class ProvisionStore {
   private challenges = new Map<string, BootstrapChallenge>()
   private jobs = new Map<string, ProvisionStatus>()
   private oidcBridgeTickets = new Map<string, OidcBridgeRecord>()
+  private oidcBridgeTtlMs = resolveOidcBridgeTtlMs()
   private lockboxFactory = new LockboxFactoryProvisioner()
 
   issueChallenge(input: BootstrapChallengeRequest): BootstrapChallenge {
@@ -154,7 +159,7 @@ export class ProvisionStore {
       password: input.password,
       webId: canonical(input.webId),
       podUrl: canonical(input.podUrl),
-      expiresAt: addMs(now, OIDC_BRIDGE_TTL_MS).toISOString(),
+      expiresAt: addMs(now, this.oidcBridgeTtlMs).toISOString(),
     }
 
     this.oidcBridgeTickets.set(ticket.token, ticket)

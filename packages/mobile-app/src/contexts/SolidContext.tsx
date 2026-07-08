@@ -229,6 +229,12 @@ export function SolidProvider({ children }: { children: ReactNode }): JSX.Elemen
         // authenticated Solid OIDC session.
         if (savedNodeSession) {
           setNodeSession(savedNodeSession)
+          // Staging fallback: when seamless onboarding returns without an OIDC
+          // callback payload, keep the user in-app using the freshly created
+          // node identity so route guards do not reset to landing.
+          if (!cachedWebId && savedNodeSession.webId) {
+            applyWebId(savedNodeSession.webId)
+          }
         }
         if (cachedWebId) applyWebId(cachedWebId)
         if (hasOidcRedirectParams()) {
