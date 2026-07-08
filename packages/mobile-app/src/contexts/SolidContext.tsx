@@ -39,6 +39,8 @@ interface SolidContextValue {
   session: Session
   /** Whether the user is currently logged in. */
   isLoggedIn: boolean
+  /** Whether authenticated Solid fetch/session is fully ready for Pod writes. */
+  isSessionReady: boolean
   /** The authenticated user's WebID URL, or `null`. */
   webId: string | null
   /** Initiates the login redirect to the user's Solid identity provider. */
@@ -181,6 +183,9 @@ export function SolidProvider({ children }: { children: ReactNode }): JSX.Elemen
 
   const session = getDefaultSession()
   const [isLoggedIn, setIsLoggedIn] = useState(session.info.isLoggedIn)
+  const [isSessionReady, setIsSessionReady] = useState(
+    Boolean(session.info.isLoggedIn && session.info.webId)
+  )
   const [webId, setWebId] = useState<string | null>(session.info.webId ?? null)
   const [isRestoring, setIsRestoring] = useState(true)
   const [signupResumeActive, setSignupResumeActive] = useState(false)
@@ -201,6 +206,7 @@ export function SolidProvider({ children }: { children: ReactNode }): JSX.Elemen
   const syncSessionState = useCallback((): void => {
     if (session.info.isLoggedIn && session.info.webId) {
       applyWebId(session.info.webId)
+      setIsSessionReady(true)
     }
   }, [applyWebId, session])
 
@@ -208,6 +214,7 @@ export function SolidProvider({ children }: { children: ReactNode }): JSX.Elemen
     const handleAuthenticated = (): void => syncSessionState()
     const handleUnauthenticated = (): void => {
       setIsLoggedIn(false)
+      setIsSessionReady(false)
       setWebId(null)
       void AsyncStorage.removeItem(SOLID_WEBID_STORAGE_KEY)
     }
@@ -245,6 +252,7 @@ export function SolidProvider({ children }: { children: ReactNode }): JSX.Elemen
       .then((info) => {
         if (info?.isLoggedIn && info.webId) {
           applyWebId(info.webId)
+          setIsSessionReady(true)
         } else {
           syncSessionState()
         }
@@ -299,6 +307,7 @@ export function SolidProvider({ children }: { children: ReactNode }): JSX.Elemen
     await clearNodeSession()
     setNodeSession(null)
     setIsLoggedIn(false)
+    setIsSessionReady(false)
     setWebId(null)
   }, [])
 
@@ -307,6 +316,7 @@ export function SolidProvider({ children }: { children: ReactNode }): JSX.Elemen
       value={{
         session,
         isLoggedIn,
+        isSessionReady,
         webId,
         signIn,
         signInWithNode,

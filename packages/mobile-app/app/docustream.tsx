@@ -26,6 +26,7 @@ import {
 import { getSolidPodSyncManagers } from '../src/solid/podSyncManagers'
 import { getMashlibWebAdapter } from '../src/solid/mashlibWebAdapter'
 import { loadSyncCheckpoint, saveSyncCheckpoint } from '../src/solid/syncCheckpointStore'
+import { getProvisionerBaseUrl } from '../src/onboarding/seamlessSignup'
 import { aesthetic } from '../src/theme/aesthetic'
 
 type FilterType = 'all' | 'reddit' | 'x' | 'rss'
@@ -113,8 +114,48 @@ function sourceLabelFromUrl(url: string): string {
   }
 }
 
+interface ProvisionerRssFetchResult {
+  url: string
+  xml: string
+}
+
+async function fetchRssXmlViaProvisioner(sourceUrl: string): Promise<string> {
+  const provisionerUrl = getProvisionerBaseUrl()
+  if (!provisionerUrl) {
+    throw new Error('Docustream ingest proxy is not configured for this build.')
+  }
+
+  const response = await fetch(`${provisionerUrl}/v1/docustream/rss-fetch`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      accept: 'application/json',
+    },
+    body: JSON.stringify({ url: sourceUrl }),
+  })
+
+  const payloadText = await response.text()
+  if (!response.ok) {
+    let parsedError = ''
+    try {
+      const payload = JSON.parse(payloadText) as { error?: string }
+      parsedError = typeof payload.error === 'string' ? payload.error : ''
+    } catch {
+      // Fall through with default message.
+    }
+    throw new Error(parsedError || `RSS retrieval failed with HTTP ${response.status}`)
+  }
+
+  const payload = JSON.parse(payloadText) as ProvisionerRssFetchResult
+  if (!payload?.xml || typeof payload.xml !== 'string') {
+    throw new Error('RSS retrieval returned no XML payload.')
+  }
+
+  return payload.xml
+}
+
 export default function DocustreamScreen(): JSX.Element {
-  const { isLoggedIn, webId, session } = useSolid()
+  const { isLoggedIn, isSessionReady, webId, session } = useSolid()
   const [filter, setFilter] = useState<FilterType>('all')
   const [items, setItems] = useState<QueryableStreamItem[]>([])
   const [savingItemId, setSavingItemId] = useState<string | null>(null)
@@ -136,7 +177,7 @@ export default function DocustreamScreen(): JSX.Element {
   }, [webId])
 
   const loadSources = useCallback(async (): Promise<void> => {
-    if (!isLoggedIn || !podRoot) {
+    if (!isLoggedIn || !isSessionReady || !podRoot) {
       setSources([])
       return
     }
@@ -144,10 +185,10 @@ export default function DocustreamScreen(): JSX.Element {
     const { docustreamSourceManager } = getSolidPodSyncManagers(session)
     const nextSources = await docustreamSourceManager.listSources(podRoot)
     setSources(nextSources)
-  }, [isLoggedIn, podRoot, session])
+  }, [isLoggedIn, isSessionReady, podRoot, session])
 
   const loadDocustreamItems = useCallback(async (): Promise<void> => {
-    if (!isLoggedIn || !podRoot || !isSyncCheckpointReady || !webId) {
+    if (!isLoggedIn || !isSessionReady || !podRoot || !isSyncCheckpointReady || !webId) {
       setItems([])
       return
     }
@@ -173,22 +214,27 @@ export default function DocustreamScreen(): JSX.Element {
     syncStateRef.current = merged.sync.nextState
     await saveSyncCheckpoint(webId, 'docustream', syncStateRef.current)
     setItems(merged.items)
-  }, [isLoggedIn, isSyncCheckpointReady, podRoot, session, webId])
+  }, [isLoggedIn, isSessionReady, isSyncCheckpointReady, podRoot, session, webId])
 
   const ingestOneSource = useCallback(async (source: DocustreamSource): Promise<void> => {
-    if (!podRoot || !source.enabled) return
+    if (!podRoot || !source.enabled || !isSessionReady) return
 
     const { docustreamManager, docustreamSourceManager } = getSolidPodSyncManagers(session)
 
     try {
-      const response = await fetch(source.url, {
-        headers: { Accept: 'application/rss+xml, application/xml, text/xml;q=0.9, */*;q=0.8' },
-      })
-      if (!response.ok) {
-        throw new Error(`Fetch failed with HTTP ${response.status}`)
+      let xml = ''
+      if (Platform.OS === 'web') {
+        xml = await fetchRssXmlViaProvisioner(source.url)
+      } else {
+        const response = await fetch(source.url, {
+          headers: { Accept: 'application/rss+xml, application/xml, text/xml;q=0.9, */*;q=0.8' },
+        })
+        if (!response.ok) {
+          throw new Error(`Fetch failed with HTTP ${response.status}`)
+        }
+        xml = await response.text()
       }
 
-      const xml = await response.text()
       const parsed = await rssParser.parse(xml)
       const feedItems = (Array.isArray(parsed.items) ? parsed.items : []).slice(0, 25)
 
@@ -218,10 +264,10 @@ export default function DocustreamScreen(): JSX.Element {
       const message = error instanceof Error ? error.message : 'Unknown ingest error'
       await docustreamSourceManager.recordIngestionResult(podRoot, source.id, message)
     }
-  }, [podRoot, session])
+  }, [isSessionReady, podRoot, session])
 
   const ingestEnabledSources = useCallback(async (sourceList: DocustreamSource[] = sources): Promise<void> => {
-    if (!isLoggedIn || !podRoot) return
+    if (!isLoggedIn || !isSessionReady || !podRoot) return
 
     const enabled = sourceList.filter((source) => source.enabled)
     if (enabled.length === 0) return
@@ -236,7 +282,7 @@ export default function DocustreamScreen(): JSX.Element {
     } finally {
       setIsIngesting(false)
     }
-  }, [ingestOneSource, isLoggedIn, loadDocustreamItems, loadSources, podRoot, sources])
+  }, [ingestOneSource, isLoggedIn, isSessionReady, loadDocustreamItems, loadSources, podRoot, sources])
 
   useEffect((): (() => void) => {
     let active = true
@@ -279,8 +325,9 @@ export default function DocustreamScreen(): JSX.Element {
 
   useEffect((): void => {
     if (!isSyncCheckpointReady) return
+    if (!isSessionReady) return
     void ingestEnabledSources()
-  }, [ingestEnabledSources, isSyncCheckpointReady])
+  }, [ingestEnabledSources, isSessionReady, isSyncCheckpointReady])
 
   useEffect((): void => {
     if (!isLoggedIn || !webId || Platform.OS !== 'web') return
@@ -306,7 +353,7 @@ export default function DocustreamScreen(): JSX.Element {
     filter === 'all' ? items : queryStreamItems(items, { sources: [filter] })
 
   const handleSaveToPod = async (item: StreamItem): Promise<void> => {
-    if (!isLoggedIn || !webId || !podRoot) {
+    if (!isLoggedIn || !isSessionReady || !webId || !podRoot) {
       Alert.alert('Sign in required', 'Sign in to save Downstream items to your Pod.')
       return
     }
@@ -326,7 +373,7 @@ export default function DocustreamScreen(): JSX.Element {
   }
 
   const handleAddSource = useCallback(async (url: string, title?: string): Promise<void> => {
-    if (!isLoggedIn || !podRoot) {
+    if (!isLoggedIn || !isSessionReady || !podRoot) {
       Alert.alert('Sign in required', 'Sign in to manage Docustream sources.')
       return
     }
@@ -355,7 +402,7 @@ export default function DocustreamScreen(): JSX.Element {
     } finally {
       setSourceOperationId(null)
     }
-  }, [ingestEnabledSources, isLoggedIn, podRoot, session])
+  }, [ingestEnabledSources, isLoggedIn, isSessionReady, podRoot, session])
 
   const handleSourceInputChange = useCallback((nextValue: string): void => {
     setSourceUrlInput(nextValue)
@@ -370,7 +417,7 @@ export default function DocustreamScreen(): JSX.Element {
   }, [])
 
   const handleToggleSource = useCallback(async (source: DocustreamSource, nextEnabled: boolean): Promise<void> => {
-    if (!isLoggedIn || !podRoot) return
+    if (!isLoggedIn || !isSessionReady || !podRoot) return
 
     setSourceOperationId(source.id)
     try {
@@ -385,10 +432,10 @@ export default function DocustreamScreen(): JSX.Element {
     } finally {
       setSourceOperationId(null)
     }
-  }, [ingestEnabledSources, isLoggedIn, loadSources, podRoot, session])
+  }, [ingestEnabledSources, isLoggedIn, isSessionReady, loadSources, podRoot, session])
 
   const handleRemoveSource = useCallback(async (source: DocustreamSource): Promise<void> => {
-    if (!isLoggedIn || !podRoot) return
+    if (!isLoggedIn || !isSessionReady || !podRoot) return
 
     setSourceOperationId(source.id)
     try {
@@ -401,7 +448,7 @@ export default function DocustreamScreen(): JSX.Element {
     } finally {
       setSourceOperationId(null)
     }
-  }, [isLoggedIn, loadDocustreamItems, loadSources, podRoot, session])
+  }, [isLoggedIn, isSessionReady, loadDocustreamItems, loadSources, podRoot, session])
 
   const handleIngestSingleSource = useCallback(async (source: DocustreamSource): Promise<void> => {
     setSourceOperationId(source.id)
@@ -415,7 +462,9 @@ export default function DocustreamScreen(): JSX.Element {
   }, [ingestOneSource, loadDocustreamItems, loadSources])
 
   const emptyStateText = isLoggedIn
-    ? 'No Docustream items yet. Add an RSS source to start filling your stream.'
+    ? isSessionReady
+      ? 'No Docustream items yet. Add an RSS source to start filling your stream.'
+      : 'Restoring your authenticated Solid session before stream actions can run...'
     : 'Sign in to load your Docustream from your Pod.'
 
   return (
@@ -429,7 +478,7 @@ export default function DocustreamScreen(): JSX.Element {
           <TouchableOpacity
             onPress={() => void ingestEnabledSources()}
             style={styles.addButton}
-            disabled={isIngesting}
+            disabled={isIngesting || !isSessionReady}
           >
             <Ionicons name="refresh" size={24} color={isIngesting ? aesthetic.color.textLow : aesthetic.color.accent} />
           </TouchableOpacity>
@@ -538,7 +587,7 @@ export default function DocustreamScreen(): JSX.Element {
               />
               <TouchableOpacity
                 style={styles.addSourceButton}
-                disabled={!sourceUrlInput.trim() || sourceOperationId !== null}
+                disabled={!sourceUrlInput.trim() || sourceOperationId !== null || !isSessionReady}
                 onPress={() => void handleAddSource(sourceUrlInput, pendingSourceTitle ?? undefined)}
               >
                 <Text style={styles.addSourceButtonText}>Add</Text>

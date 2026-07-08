@@ -104,6 +104,10 @@ export function getSeamlessSignupConfig(): SeamlessSignupConfig {
   }
 }
 
+export function getProvisionerBaseUrl(): string {
+  return getSeamlessSignupConfig().provisionerUrl
+}
+
 function normalizeHandle(raw: string): string {
   return raw.trim().toLowerCase().replace(/[^a-z0-9-]/g, '')
 }

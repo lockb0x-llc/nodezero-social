@@ -176,6 +176,7 @@ jobs:
           NZ_SOLID_ACCOUNT_PORTAL_URL: https://solidcommunity.net/
           NZ_SEAMLESS_ONBOARDING_ENABLED: 'true'
           NZ_JSS_PROVISIONER_URL: https://nodezero-social-staging-testnet-provisioner.azurewebsites.net
+          NZ_SOLID_BOOTSTRAP_ENABLED: 'true'
           NZ_MASHLIB_EXPLORER_ENABLED: 'true'
           NZ_MASHLIB_MODULE_ID: nodezero:mashlib-pane-provider
         run: pnpm --filter @nodezero/mobile-app build:web

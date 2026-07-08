@@ -1,5 +1,7 @@
 import { createServer } from 'node:http'
 import { createHash, timingSafeEqual } from 'node:crypto'
+import { lookup } from 'node:dns/promises'
+import { isIP } from 'node:net'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { ProvisionStore } from './store.js'
 import { verifyAttestation } from './attestation.js'
@@ -41,6 +43,25 @@ const ALLOWED_ORIGINS = (process.env.JSS_ALLOWED_ORIGINS ?? 'https://staging.nod
 const store = new ProvisionStore()
 const knownSolidAccountEmails = new Set<string>()
 const notificationPublisher = createNotificationEventPublisherFromEnv()
+const DOCUSTREAM_RSS_FETCH_TIMEOUT_MS = Number(process.env.JSS_DOCUSTREAM_RSS_FETCH_TIMEOUT_MS ?? 12000)
+const DOCUSTREAM_RSS_MAX_BYTES = Number(process.env.JSS_DOCUSTREAM_RSS_MAX_BYTES ?? 1_000_000)
+const DOCUSTREAM_RSS_MAX_REDIRECTS = Number(process.env.JSS_DOCUSTREAM_RSS_MAX_REDIRECTS ?? 3)
+const DOCUSTREAM_ALLOWED_CONTENT_TYPES = [
+  'application/rss+xml',
+  'application/xml',
+  'text/xml',
+  'application/atom+xml',
+]
+
+class DocustreamRssFetchError extends Error {
+  constructor(
+    message: string,
+    readonly statusCode: number,
+    readonly errorCode: string,
+  ) {
+    super(message)
+  }
+}
 
 function emitLifecycleEvent(
   eventType: string,
@@ -122,6 +143,139 @@ async function readJsonBody<T>(req: IncomingMessage): Promise<T> {
 
 function isNonEmpty(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0
+}
+
+function isLoopbackOrPrivateAddress(address: string): boolean {
+  const version = isIP(address)
+  if (version === 4) {
+    if (address.startsWith('10.')) return true
+    if (address.startsWith('127.')) return true
+    if (address.startsWith('169.254.')) return true
+    if (address.startsWith('192.168.')) return true
+    const octets = address.split('.').map((part) => Number(part))
+    if (octets.length === 4 && octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) return true
+    return false
+  }
+
+  if (version === 6) {
+    const normalized = address.toLowerCase()
+    if (normalized === '::1') return true
+    if (normalized.startsWith('fc') || normalized.startsWith('fd')) return true
+    if (normalized.startsWith('fe80')) return true
+    return false
+  }
+
+  return false
+}
+
+async function validateDocustreamRssUrl(rawUrl: string): Promise<URL> {
+  let parsed: URL
+  try {
+    parsed = new URL(rawUrl)
+  } catch {
+    throw new DocustreamRssFetchError('Feed URL is invalid.', 400, 'invalid_url')
+  }
+
+  if (parsed.protocol !== 'https:') {
+    throw new DocustreamRssFetchError('Feed URL must use https.', 400, 'invalid_protocol')
+  }
+
+  if (parsed.username || parsed.password) {
+    throw new DocustreamRssFetchError('Feed URL credentials are not allowed.', 400, 'invalid_credentials')
+  }
+
+  const host = parsed.hostname.trim().toLowerCase()
+  if (!host || host === 'localhost') {
+    throw new DocustreamRssFetchError('Feed host is not allowed.', 400, 'blocked_host')
+  }
+
+  if (isLoopbackOrPrivateAddress(host)) {
+    throw new DocustreamRssFetchError('Feed host is not allowed.', 400, 'blocked_host')
+  }
+
+  const resolved = await lookup(host, { all: true, verbatim: true }).catch(() => [])
+  if (!resolved.length) {
+    throw new DocustreamRssFetchError('Feed host could not be resolved.', 400, 'unresolvable_host')
+  }
+
+  if (resolved.some((entry) => isLoopbackOrPrivateAddress(entry.address))) {
+    throw new DocustreamRssFetchError('Feed host resolves to a blocked address.', 400, 'blocked_host')
+  }
+
+  return parsed
+}
+
+function ensureAllowedContentType(contentTypeHeader: string | null): void {
+  const normalized = (contentTypeHeader ?? '').toLowerCase().split(';')[0].trim()
+  if (!normalized || !DOCUSTREAM_ALLOWED_CONTENT_TYPES.includes(normalized)) {
+    throw new DocustreamRssFetchError('Feed content type is not supported.', 415, 'unsupported_content_type')
+  }
+}
+
+async function fetchDocustreamRssXml(feedUrl: URL): Promise<string> {
+  const controller = new AbortController()
+  const timeoutHandle = setTimeout(() => controller.abort(), DOCUSTREAM_RSS_FETCH_TIMEOUT_MS)
+
+  try {
+    let currentUrl = feedUrl
+    for (let redirect = 0; redirect <= DOCUSTREAM_RSS_MAX_REDIRECTS; redirect += 1) {
+      const response = await fetch(currentUrl, {
+        method: 'GET',
+        headers: {
+          accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.5',
+        },
+        redirect: 'manual',
+        signal: controller.signal,
+      })
+
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get('location')
+        if (!location) {
+          throw new DocustreamRssFetchError('Feed redirect location is missing.', 502, 'redirect_missing_location')
+        }
+        if (redirect === DOCUSTREAM_RSS_MAX_REDIRECTS) {
+          throw new DocustreamRssFetchError('Feed has too many redirects.', 502, 'too_many_redirects')
+        }
+        currentUrl = await validateDocustreamRssUrl(new URL(location, currentUrl).toString())
+        continue
+      }
+
+      if (!response.ok) {
+        throw new DocustreamRssFetchError(`Feed responded with HTTP ${response.status}.`, 502, 'upstream_http_error')
+      }
+
+      ensureAllowedContentType(response.headers.get('content-type'))
+
+      const declaredLength = Number(response.headers.get('content-length') ?? '0')
+      if (declaredLength > DOCUSTREAM_RSS_MAX_BYTES) {
+        throw new DocustreamRssFetchError('Feed payload exceeds maximum size.', 413, 'payload_too_large')
+      }
+
+      const xml = await response.text()
+      const xmlBytes = Buffer.byteLength(xml, 'utf8')
+      if (xmlBytes > DOCUSTREAM_RSS_MAX_BYTES) {
+        throw new DocustreamRssFetchError('Feed payload exceeds maximum size.', 413, 'payload_too_large')
+      }
+      if (!xml.trim()) {
+        throw new DocustreamRssFetchError('Feed payload is empty.', 502, 'empty_payload')
+      }
+
+      return xml
+    }
+
+    throw new DocustreamRssFetchError('Feed retrieval exceeded redirect limit.', 502, 'too_many_redirects')
+  } catch (error) {
+    if (error instanceof DocustreamRssFetchError) {
+      throw error
+    }
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new DocustreamRssFetchError('Feed request timed out.', 504, 'timeout')
+    }
+    const message = error instanceof Error ? error.message : 'Feed retrieval failed.'
+    throw new DocustreamRssFetchError(message, 502, 'fetch_failed')
+  } finally {
+    clearTimeout(timeoutHandle)
+  }
 }
 
 /** Constant-time check that the request presents the configured internal API key. */
@@ -225,6 +379,31 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
       source: 'provisioner-memory',
       checkedAt: new Date().toISOString(),
     })
+    return
+  }
+
+  if (req.method === 'POST' && url.pathname === '/v1/docustream/rss-fetch') {
+    const body = await readJsonBody<{ url?: string }>(req)
+    if (!isNonEmpty(body.url)) {
+      sendJson(req, res, 400, { error: 'url is required.', code: 'missing_url' })
+      return
+    }
+
+    try {
+      const feedUrl = await validateDocustreamRssUrl(body.url)
+      const xml = await fetchDocustreamRssXml(feedUrl)
+      sendJson(req, res, 200, {
+        url: feedUrl.toString(),
+        xml,
+      })
+    } catch (error) {
+      if (error instanceof DocustreamRssFetchError) {
+        sendJson(req, res, error.statusCode, { error: error.message, code: error.errorCode })
+        return
+      }
+      const message = error instanceof Error ? error.message : 'Feed retrieval failed.'
+      sendJson(req, res, 502, { error: message, code: 'fetch_failed' })
+    }
     return
   }
 
