@@ -175,15 +175,21 @@ async function run() {
           accountDocumentUrl: `${podUrl}profile/nodezero-account`,
           createdAt,
         }
-        localStorage.setItem('solid.webId.v1', webId)
-        localStorage.setItem('node.session.v1', JSON.stringify(nodeSession))
+
+        const setStorageKey = (key, value) => {
+          localStorage.setItem(key, value)
+          localStorage.setItem(`@${key}`, value)
+        }
+
+        setStorageKey('solid.webId.v1', webId)
+        setStorageKey('node.session.v1', JSON.stringify(nodeSession))
       }, { webId: seededWebId, podUrl: seededPodUrl })
 
       // Seeded node sessions still pass through async wallet attestation verification.
       // During that window RouteGuard can force onboarding and then land on /local.
       // Wait for the authenticated surface first, then navigate to docustream.
       await page.goto(`${baseUrl}/onboarding`, { waitUntil: 'domcontentloaded' })
-      await page.waitForURL(/\/(local|feed)(\?.*)?$/, { timeout: redirectTimeoutMs })
+      await page.waitForURL(/\/(?:$|local|feed)(\?.*)?$/, { timeout: redirectTimeoutMs })
       await page.goto(`${baseUrl}/docustream`, { waitUntil: 'domcontentloaded' })
       await ensureDocustreamVisible(page, baseUrl)
       docustreamCapture = await page.evaluate(() => {
@@ -224,8 +230,21 @@ async function run() {
       await page.goto(`${baseUrl}/`, { waitUntil: 'domcontentloaded' })
 
       console.log('[docustream-pane-evidence] Filling seamless onboarding form...')
-      await page.getByLabel('Node handle').fill(handle)
-      await page.getByLabel('Notification email').fill(email)
+      const onboardingPassword = 'NodeZeroQaPass!2026'
+      const nodeHandleInput = page.locator('input[aria-label="Node handle"]').first()
+      const notificationEmailInput = page.locator('input[aria-label="Notification email"]').first()
+      const accountPasswordInput = page.locator('input[aria-label="Account password"]').first()
+      const accountPasswordConfirmInput = page.locator('input[aria-label="Confirm account password"]').first()
+
+      try {
+        await nodeHandleInput.fill(handle, { timeout: 30000 })
+        await notificationEmailInput.fill(email, { timeout: 30000 })
+        await accountPasswordInput.fill(onboardingPassword, { timeout: 30000 })
+        await accountPasswordConfirmInput.fill(onboardingPassword, { timeout: 30000 })
+      } catch {
+        const snippet = await pageTextSnippet(page)
+        fail(`Could not fill create-node credentials. Page snippet: ${snippet}`)
+      }
 
       await page
         .waitForFunction(() => {
@@ -358,7 +377,7 @@ async function run() {
           .waitForURL(/https:\/\/solid\.nodezero\.social\//, { timeout: createStageTimeoutMs })
           .then(() => 'solid-login'),
         page
-          .waitForURL(/\/(local|feed)(\?.*)?$/, { timeout: createStageTimeoutMs })
+          .waitForURL(/\/(?:$|local|feed)(\?.*)?$/, { timeout: createStageTimeoutMs })
           .then(() => 'authenticated-route'),
         page
           .waitForFunction(() => {
@@ -396,7 +415,7 @@ async function run() {
       console.log('[docustream-pane-evidence] Waiting for authenticated route redirect...')
       const redirectStage = await Promise.race([
         page
-          .waitForURL(/\/(local|feed)(\?.*)?$/, { timeout: redirectTimeoutMs })
+          .waitForURL(/\/(?:$|local|feed)(\?.*)?$/, { timeout: redirectTimeoutMs })
           .then(() => 'authenticated-route'),
         page
           .waitForURL(/https:\/\/solid\.nodezero\.social\//, { timeout: redirectTimeoutMs })
@@ -430,6 +449,36 @@ async function run() {
       }
 
       console.log(`[docustream-pane-evidence] Redirected to ${page.url()}.`)
+
+      const hasSessionAfterCreate = await page.evaluate(() => {
+        try {
+          return Boolean(localStorage.getItem('solid.webId.v1') || localStorage.getItem('@solid.webId.v1'))
+        } catch {
+          return false
+        }
+      })
+
+      if (!hasSessionAfterCreate) {
+        console.log('[docustream-pane-evidence] No active session detected after create; attempting manual fallback sign-in...')
+        try {
+          await page.getByRole('button', { name: 'Sign In' }).first().click({ timeout: 20000 })
+          await page.waitForURL((url) => url.hostname === 'solid.nodezero.social', {
+            timeout: redirectTimeoutMs,
+          })
+
+          await page.locator('#email').fill(email, { timeout: 20000 })
+          await page.locator('#password').fill(onboardingPassword, { timeout: 20000 })
+          await page.locator('button[type="submit"]').first().click({ timeout: 20000 })
+
+          await page.waitForURL((url) => url.hostname === 'staging.nodezero.social', {
+            timeout: redirectTimeoutMs,
+          })
+          console.log(`[docustream-pane-evidence] Manual fallback sign-in returned to ${page.url()}.`)
+        } catch {
+          const snippet = await pageTextSnippet(page)
+          fail(`Manual fallback sign-in did not complete. URL=${page.url()}. Page snippet: ${snippet}`)
+        }
+      }
 
       console.log('[docustream-pane-evidence] Opening docustream route...')
       await openDocustreamWithRetry(page, baseUrl)

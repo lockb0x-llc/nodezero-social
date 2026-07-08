@@ -99,6 +99,8 @@ fi
 
 PARAM_EMAIL_MODE="$(node -e "const fs = require('fs'); const p = JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); console.log((p?.parameters?.emailProviderMode?.value ?? 'none').toLowerCase());" "$PARAM_FILE")"
 EFFECTIVE_EMAIL_MODE="${EMAIL_PROVIDER_MODE:-$PARAM_EMAIL_MODE}"
+PARAM_EMAIL_FROM_ADDRESS="$(node -e "const fs = require('fs'); const p = JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); const v = p?.parameters?.emailFromAddress?.value ?? ''; console.log(String(v).trim());" "$PARAM_FILE")"
+EFFECTIVE_EMAIL_FROM_ADDRESS="${EMAIL_FROM_ADDRESS:-$PARAM_EMAIL_FROM_ADDRESS}"
 PARAM_CUSTOM_DOMAIN="$(node -e "const fs = require('fs'); const p = JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); const v = p?.parameters?.cssCustomDomain?.value ?? ''; console.log(String(v).trim());" "$PARAM_FILE")"
 EFFECTIVE_CUSTOM_DOMAIN="${CSS_CUSTOM_DOMAIN:-$PARAM_CUSTOM_DOMAIN}"
 PARAM_CSS_IMAGE="$(node -e "const fs = require('fs'); const p = JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); const v = p?.parameters?.cssImage?.value ?? ''; console.log(String(v).trim());" "$PARAM_FILE")"
@@ -111,7 +113,7 @@ if [[ "$EFFECTIVE_EMAIL_MODE" != "none" && "$EFFECTIVE_EMAIL_MODE" != "smtp" ]];
 fi
 
 if [[ "$EFFECTIVE_EMAIL_MODE" == "smtp" ]]; then
-  if [[ -z "$EMAIL_FROM_ADDRESS" ]]; then
+  if [[ -z "$EFFECTIVE_EMAIL_FROM_ADDRESS" ]]; then
     echo "SMTP mode requires AZURE_SOLID_EMAIL_FROM_ADDRESS to be set (or provided in the parameters file)."
     exit 1
   fi

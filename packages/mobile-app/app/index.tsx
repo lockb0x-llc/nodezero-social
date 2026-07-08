@@ -503,6 +503,37 @@ export default function LandingScreen(): JSX.Element {
     }
   }, [attestationStatus, isLoggedIn, isRestoring, nodeSession, pathname, router])
 
+  // Bridge return leg: after the IdP login page consumed the one-time bridge
+  // ticket (account cookie established), it redirects back here with
+  // nz_bridge_return=1. Resume the real OIDC sign-in automatically — the IdP
+  // session already exists, so the flow continues straight to consent.
+  React.useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return
+    if (isRestoring || isLoggedIn) return
+
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('nz_bridge_return') !== '1') return
+
+    // Clear the marker first so a failed attempt cannot loop.
+    params.delete('nz_bridge_return')
+    const cleaned = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}`
+    window.history.replaceState(null, '', cleaned)
+
+    const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
+    const issuerBase = (appExtra?.nodeZeroIssuerUrl ?? '').replace(/\/+$/, '')
+    if (!issuerBase) return
+
+    setIsSigningIn(true)
+    void signIn(issuerBase).catch((err) => {
+      setIsSigningIn(false)
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Automatic sign-in could not resume. Use Sign In to continue.',
+      )
+    })
+  }, [isLoggedIn, isRestoring, signIn])
+
   const handleSignIn = async (): Promise<void> => {
     setError(null)
     setErrorAction(null)
@@ -683,6 +714,27 @@ export default function LandingScreen(): JSX.Element {
       await saveNodeSession(record)
       advanceCreateStep('signin')
       setIsSigningIn(true)
+
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        // Seamless hand-off: open the IdP login page with the one-time bridge
+        // ticket directly in the URL. The themed login template consumes the
+        // ticket, establishes the CSS account cookie, and redirects back here
+        // with nz_bridge_return=1. The resume effect below then starts the
+        // real OIDC sign-in against the already-authenticated IdP session.
+        // (Bridge params buried inside the OIDC redirect_uri are not
+        // discoverable by the login page, so this explicit leg is required.)
+        const loginUrl = new URL('.account/login/password/', `${issuerBase}/`)
+        loginUrl.searchParams.set('nz_oidc_bridge', result.oidcBridge.token)
+        loginUrl.searchParams.set('nz_oidc_bridge_consume', result.oidcBridge.consumeUrl)
+        const returnUrl = new URL(`${window.location.origin}${window.location.pathname}`)
+        returnUrl.searchParams.set('nz_bridge_return', '1')
+        loginUrl.searchParams.set('nz_return', returnUrl.toString())
+        setAccountPassword('')
+        setAccountPasswordConfirm('')
+        window.location.assign(loginUrl.toString())
+        return
+      }
+
       await signIn(issuerBase, {
         bridgeToken: result.oidcBridge.token,
         bridgeConsumeUrl: result.oidcBridge.consumeUrl,

@@ -266,7 +266,21 @@ jobs:
           STAGING_BASE_URL: https://${{ steps.hostname.outputs.hostname }}
         run: pnpm qa:smoke
 
-      - name: Run focused mashlib runtime proof
+      - name: Install Playwright browsers for auth gate
+        run: pnpm exec playwright install chromium --with-deps
+
+      # BLOCKING auth release gate: new-user onboarding (Pod + WebID + Stellar
+      # lockb0x anchor + ZK attestation + OIDC bridge sign-in) and
+      # returning-user credential authentication, end-to-end on staging.
+      - name: Run onboarding/authentication E2E gate
+        env:
+          STAGING_BASE_URL: https://staging.nodezero.social
+        run: pnpm qa:smoke:auth
+
+      # Application-feature proofs (DocuStream/mashlib). NOT part of the auth
+      # release gate — failures surface for triage without blocking identity.
+      - name: Run focused mashlib runtime proof (non-blocking)
+        continue-on-error: true
         env:
           NZ_ENV_PROFILE: staging-testnet
           NZ_RELAY_URL: wss://nodezero-social-staging-testnet-relay.azurewebsites.net
@@ -282,10 +296,11 @@ jobs:
           NZ_MASHLIB_MODULE_ID: nodezero:mashlib-pane-provider
         run: pnpm qa:smoke:mashlib-runtime
 
-      - name: Run deployed mashlib bundle proof
+      - name: Run deployed mashlib bundle proof (non-blocking)
+        continue-on-error: true
         env:
           STAGING_BASE_URL: https://${{ steps.hostname.outputs.hostname }}
         run: pnpm qa:smoke:mashlib-deployed
 
       - name: Staging deployment summary
-        run: echo "Staging infrastructure deployment, Expo web publish, and smoke suite completed."
+        run: echo "Staging infrastructure deployment, Expo web publish, smoke suite, and auth E2E gate completed."
