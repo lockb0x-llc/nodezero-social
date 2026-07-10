@@ -7,6 +7,11 @@ import { aesthetic } from '../src/theme/aesthetic'
 import { deriveNameFromWebId, parseDirectoryRecords, resolveDirectoryEndpoint } from '../src/directory/directorySource'
 import type { DirectoryEntry } from '../src/directory/types'
 import { useConnections } from '../src/social/useConnections'
+import {
+  addTrustCircleMember,
+  listTrustCircleMembers,
+  removeTrustCircleMember,
+} from '../src/social/trustCircleStore'
 
 export default function CommunityDirectoryScreen(): JSX.Element {
   const { session, webId, nodeSession, isLoggedIn, isSessionReady, signIn } = useSolid()
@@ -15,6 +20,8 @@ export default function CommunityDirectoryScreen(): JSX.Element {
 
   const [directoryLoading, setDirectoryLoading] = useState(false)
   const [communityDirectory, setCommunityDirectory] = useState<DirectoryEntry[]>([])
+  const [trustCircleMembers, setTrustCircleMembers] = useState<string[]>([])
+  const [trustCircleBusyWebId, setTrustCircleBusyWebId] = useState<string | null>(null)
 
   const loadCommunityDirectory = useCallback(async (connections: string[]): Promise<void> => {
     if (!effectiveWebId || !managerRef.current) {
@@ -83,6 +90,7 @@ export default function CommunityDirectoryScreen(): JSX.Element {
   useEffect(() => {
     if (!isLoggedIn) {
       setCommunityDirectory([])
+      setTrustCircleMembers([])
       return
     }
 
@@ -93,11 +101,28 @@ export default function CommunityDirectoryScreen(): JSX.Element {
   useEffect(() => {
     if (!isLoggedIn || !effectiveWebId || !managerRef.current) {
       setCommunityDirectory([])
+      setTrustCircleMembers([])
       return
     }
 
+    void listTrustCircleMembers(effectiveWebId).then(setTrustCircleMembers)
     void loadCommunityDirectory(connections)
   }, [connections, effectiveWebId, isLoggedIn, loadCommunityDirectory])
+
+  const toggleTrustCircle = useCallback(async (targetWebId: string): Promise<void> => {
+    if (!effectiveWebId || targetWebId === effectiveWebId) return
+
+    setTrustCircleBusyWebId(targetWebId)
+    try {
+      const isMember = trustCircleMembers.includes(targetWebId)
+      const next = isMember
+        ? await removeTrustCircleMember(effectiveWebId, targetWebId)
+        : await addTrustCircleMember(effectiveWebId, targetWebId)
+      setTrustCircleMembers(next)
+    } finally {
+      setTrustCircleBusyWebId(null)
+    }
+  }, [effectiveWebId, trustCircleMembers])
 
   if (!isLoggedIn) {
     return (
@@ -151,29 +176,52 @@ export default function CommunityDirectoryScreen(): JSX.Element {
           communityDirectory.slice(0, 50).map((entry) => {
             const isSelf = entry.webId === effectiveWebId
             const isConnected = connections.includes(entry.webId)
+            const inTrustCircle = trustCircleMembers.includes(entry.webId)
             return (
               <View key={entry.webId} style={styles.directoryRow}>
                 <View style={styles.directoryMetaWrap}>
                   <Text style={styles.directoryName}>{entry.displayName}</Text>
                   <Text style={styles.directoryWebId} numberOfLines={2}>{entry.webId}</Text>
+                  <View style={styles.badgeRow}>
+                    {isSelf ? <Text style={styles.metaBadge}>You</Text> : null}
+                    {isConnected ? <Text style={styles.metaBadge}>Connected</Text> : null}
+                    {inTrustCircle ? <Text style={styles.metaBadge}>In Trust Circle</Text> : null}
+                  </View>
                 </View>
-                <TouchableOpacity
-                  style={[
-                    styles.directoryConnectButton,
-                    (isSelf || isConnected) && styles.directoryConnectButtonDisabled,
-                  ]}
-                  onPress={() => void addConnection(entry.webId)}
-                  disabled={isSelf || isConnected || connectionBusyWebId === entry.webId}
-                  activeOpacity={aesthetic.motion.pressOpacity}
-                >
-                  {connectionBusyWebId === entry.webId ? (
-                    <ActivityIndicator color="#FFF" size="small" />
-                  ) : (
-                    <Text style={styles.directoryConnectButtonText}>
-                      {isSelf ? 'You' : isConnected ? 'Connected' : 'Connect'}
-                    </Text>
-                  )}
-                </TouchableOpacity>
+                <View style={styles.actionColumn}>
+                  <TouchableOpacity
+                    style={[
+                      styles.directoryConnectButton,
+                      (isSelf || isConnected) && styles.directoryConnectButtonDisabled,
+                    ]}
+                    onPress={() => void addConnection(entry.webId)}
+                    disabled={isSelf || isConnected || connectionBusyWebId === entry.webId}
+                    activeOpacity={aesthetic.motion.pressOpacity}
+                  >
+                    {connectionBusyWebId === entry.webId ? (
+                      <ActivityIndicator color="#FFF" size="small" />
+                    ) : (
+                      <Text style={styles.directoryConnectButtonText}>
+                        {isSelf ? 'You' : isConnected ? 'Connected' : 'Connect'}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.trustCircleButton, (isSelf || trustCircleBusyWebId === entry.webId) && styles.directoryConnectButtonDisabled]}
+                    onPress={() => void toggleTrustCircle(entry.webId)}
+                    disabled={isSelf || trustCircleBusyWebId === entry.webId}
+                    activeOpacity={aesthetic.motion.pressOpacity}
+                  >
+                    {trustCircleBusyWebId === entry.webId ? (
+                      <ActivityIndicator color="#FFF" size="small" />
+                    ) : (
+                      <Text style={styles.directoryConnectButtonText}>
+                        {inTrustCircle ? 'Remove Circle' : 'Add Circle'}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
               </View>
             )
           })
@@ -251,11 +299,34 @@ const styles = StyleSheet.create({
   directoryMetaWrap: {
     flex: 1,
   },
+  badgeRow: {
+    marginTop: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  metaBadge: {
+    color: '#9EC2FF',
+    borderWidth: 1,
+    borderColor: '#365586',
+    borderRadius: 8,
+    fontSize: 10,
+    fontWeight: '700',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    overflow: 'hidden',
+  },
   directoryName: {
     color: aesthetic.color.textHigh,
     fontSize: 13,
     fontWeight: '700',
     marginBottom: 2,
+  },
+  actionColumn: {
+    alignItems: 'stretch',
+    gap: 6,
+    minWidth: 100,
   },
   directoryWebId: {
     color: aesthetic.color.textMid,
@@ -264,6 +335,14 @@ const styles = StyleSheet.create({
   },
   directoryConnectButton: {
     backgroundColor: aesthetic.color.accent,
+    borderRadius: 9,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    minWidth: 84,
+    alignItems: 'center',
+  },
+  trustCircleButton: {
+    backgroundColor: '#315D44',
     borderRadius: 9,
     paddingHorizontal: 12,
     paddingVertical: 8,

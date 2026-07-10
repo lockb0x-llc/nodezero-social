@@ -20,6 +20,8 @@ import { getSolidPodSyncManagers } from '../src/solid/podSyncManagers';
 import { aesthetic } from '../src/theme/aesthetic';
 
 type AudienceType = 'foaf' | 'verified' | 'local';
+  import { resolveAudienceRecipients } from '../src/social/composeRecipients';
+  import { listTrustCircleMembers } from '../src/social/trustCircleStore';
 
 export default function ComposeScreen() {
   const [postText, setPostText] = useState('');

@@ -1,0 +1,22 @@
+export type AudienceType = 'foaf' | 'verified' | 'local'
+
+/**
+ * Resolves recipients for compose audiences.
+ *
+ * Current contract deliberately preserves existing broadcast behavior:
+ * - Directory membership alone has no effect.
+ * - Trust Circle membership is advisory metadata until a dedicated audience mode is introduced.
+ */
+export function resolveAudienceRecipients(args: {
+  audience: AudienceType
+  connections: string[]
+  trustCircleMembers: string[]
+}): string[] {
+  const { audience, connections } = args
+
+  if (audience === 'foaf' || audience === 'verified') {
+    return Array.from(new Set(connections))
+  }
+
+  return []
+}
