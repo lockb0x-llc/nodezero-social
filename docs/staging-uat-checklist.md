@@ -49,8 +49,8 @@ code.
 | AU2 | Submit an empty IdP URL | Actionable error: a provider URL is required | **PASS (2026-06-28 headed validation)** | Landing sign-in panel now shows explicit message: `Enter your Identity Provider URL.` |
 | AU3 | Submit an `http://` non-localhost IdP | Actionable error: provider must use https | **PASS (2026-06-28 headed validation)** | Landing sign-in panel now shows explicit message: `URL must start with https://` |
 | AU4 | Sign out via Profile → Settings | Session cleared, returns to landing | — | Navigate to `/profile` while authenticated → tap ⚙ gear icon → `/settings` opens → tap **Sign Out** → session cleared and landing `/` restored. *(Settings tab removed from nav bar; gear icon on Profile is the new access path.)* |
-| AU5 | New-user seamless onboarding: handle + email + password (min 12) → Create Your Node | ZK proof → Pod + WebID created → lockb0x anchored on-chain → bridge auto sign-in → consent → authenticated at `/local` with no manual credential entry | **PASS (2026-07-08 `qa:smoke:auth`)** | Automated by `scripts/qa/staging-auth-evidence.mjs` (new-user journey); on-chain lockb0x contract ID + pairing proof root asserted. |
-| AU6 | Returning user: manual sign-in with onboarding credentials (fresh browser) | IdP login → consent → authenticated session with the same WebID | **PASS (2026-07-08 `qa:smoke:auth`)** | Automated by `scripts/qa/staging-auth-evidence.mjs` (returning-user journey); WebID equality across journeys asserted. |
+| AU5 | New-user seamless onboarding: handle + email + password (min 12) → Create Your Node | ZK proof → Pod + WebID created → lockb0x anchored on-chain → bridge auto sign-in → consent → authenticated at `/local` with no manual credential entry | **PASS (2026-07-10 `qa:smoke:auth`, staging run #46)** | Automated by `scripts/qa/staging-auth-evidence.mjs` (new-user journey); on-chain lockb0x contract ID + proof root asserted. |
+| AU6 | Returning user: manual sign-in with onboarding credentials (fresh browser) | IdP login → consent → authenticated session with the same WebID | **PASS (2026-07-10 `qa:smoke:auth`, staging run #46)** | Automated by `scripts/qa/staging-auth-evidence.mjs` (returning-user journey); WebID equality across journeys asserted. |
 | AU7 | Bridge failure fallback: bridge consume fails on the IdP login page | Login form re-enabled with fallback message; manual credentials complete sign-in | — | Fallback copy: “Secure sign-in could not be completed automatically…”. The user-chosen password guarantees no dead end. |
 
 ### Navigation UX (nav overflow fix + Settings-via-Profile)
@@ -145,6 +145,7 @@ Validate the nav bar overflow fix and the Settings access path change introduced
 | Auth guards on protected routes | ✅ PASS |
 | Solid IdP redirect initiation | ✅ PASS |
 | Post-auth authenticated flow | ✅ PASS (2026-06-28 headed validation) |
+| Blocking auth gate (`qa:smoke:auth`) | ✅ PASS (2026-07-10, staging run #46 step #28 success) |
 | Empty IdP error specificity | ✅ PASS (2026-06-28 headed validation) |
 | HTTP IdP client-side rejection | ✅ PASS (2026-06-28 headed validation) |
 | Wallet provisioning on web | ✅ PASS (web localStorage fallback) |
@@ -155,10 +156,10 @@ Validate the nav bar overflow fix and the Settings access path change introduced
 
 ## Sign-off
 
-- Release decision: **CONDITIONAL GO** for Milestone K attestation scope
-- Rationale: All Milestone K objectives (K1–K5) are DONE. WR1/WR2 wallet provisioning fixed and confirmed on staging. AT1/AT2/AT3 attestation flow PASS. Remaining release work is focused on authenticated LM1/LM2/AU4 rerun and ongoing platform hardening (D1/D3).
-- Reviewer: QA_RELEASE_AGENT + PM direct evidence (automated browser session, 2026-06-26)
-- Date: 2026-06-26
+- Release decision: **GO** for staging/testnet milestone release
+- Rationale: Blocking onboarding/authentication E2E gate now passes in CI (run #46), Directory-tab implementation is deployed, and core smoke gates remain green.
+- Reviewer: QA_RELEASE_AGENT + PM evidence bundle (automation + workflow run evidence)
+- Date: 2026-07-10
 
 ## ACL Hardening Validation Addendum
 

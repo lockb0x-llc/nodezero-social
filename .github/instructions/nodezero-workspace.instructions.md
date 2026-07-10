@@ -26,6 +26,19 @@ Build and maintain NodeZero Social: a decentralized social app that integrates S
 - `packages/contracts`: Soroban smart contract source and tests.
 - `infrastructure/azure`: staging/mainnet environment provisioning templates.
 
+## Current implementation snapshot (staging-testnet)
+- The authenticated web navigation includes a dedicated `Directory` tab
+	between `Feed` and `Backpack`.
+- Community Directory is implemented as its own route (`/directory`) and is
+	no longer profile-embedded.
+- Directory Trust Circle actions are available, but audience recipient
+	targeting remains connection-driven through
+	`packages/mobile-app/src/social/composeRecipients.ts`.
+- `pnpm qa:smoke:community-directory` provides tab-order and directory
+	acceptance evidence.
+- In CI, `pnpm qa:smoke:auth` remains the blocking identity gate and now
+	includes one controlled retry for transient auth timing issues.
+
 Keep edits constrained to the relevant package unless cross-package changes are explicitly required.
 
 ## Non-negotiable environment rules

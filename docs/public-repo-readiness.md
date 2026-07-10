@@ -1,6 +1,6 @@
 # Open-Source Readiness Assessment
 
-**Date:** 2026-07-01  
+**Date:** 2026-07-10  
 **Environment assessed:** `staging-testnet` branch + live `staging.nodezero.social`  
 **Assessment method:** Live Playwright E2E validation, stellar.expert on-chain evidence, source code analysis.
 
@@ -36,14 +36,16 @@
 ### 1. README (done — 2026-07-01)
 The README now reflects the real deployed system: architecture diagram, package map, ZK flow, status table, and deployment references. The hackathon submission context has been removed.
 
-### 2. CHANGELOG.md (high)
-There is no public changelog. Recommended: add `CHANGELOG.md` following [Keep a Changelog](https://keepachangelog.com/) format, with one entry per meaningful milestone. The roadmap (`docs/staging-runtime-implementation-roadmap.md`) already has detailed evidence; a public changelog would be a summarised subset.
+### 2. CHANGELOG.md (done — 2026-07-10)
+`CHANGELOG.md` is now maintained with milestone entries and current
+staging/testnet implementation updates.
 
 ### 3. GOVERNANCE.md and MAINTAINERS.md (medium)
 No governance or maintainers document. For an identity/social-graph project with trust implications, a short `GOVERNANCE.md` naming the decision process and `MAINTAINERS.md` naming current owners and escalation paths would significantly raise trust.
 
-### 4. docs/architecture.md (medium)
-The system architecture is described in the README and roadmap, but a standalone `docs/architecture.md` with a deeper threat-model section (key custody, relay trust, Azure dependency, on-chain vs off-chain trust boundary) is expected by contributors working in the identity/Solid/Stellar space.
+### 4. docs/architecture.md (done)
+`docs/architecture.md` is present and now serves as the canonical deep-dive for
+trust boundaries, key custody, session handoff, and threat model guidance.
 
 ### 5. Dependency update policy (medium)
 There is no Dependabot / Renovate configuration. For a project pulling `@stellar/stellar-sdk`, `snarkjs`, `expo`, and Soroban SDK, automated dependency PRs are important for security posture.
@@ -91,8 +93,8 @@ For contributors and security reviewers in the Solid ecosystem:
 - [x] No secrets in repository
 - [x] README reflects current deployed system
 - [x] Deployment contract IDs tracked in `deployments/`
-- [ ] `CHANGELOG.md`
+- [x] `CHANGELOG.md`
 - [ ] `GOVERNANCE.md` + `MAINTAINERS.md`
-- [ ] `docs/architecture.md` (threat model section)
+- [x] `docs/architecture.md` (threat model section)
 - [ ] Dependabot / Renovate configuration
 - [ ] Pre-publish lint pass (resolve pre-existing mobile-app errors)

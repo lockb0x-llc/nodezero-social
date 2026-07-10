@@ -1,11 +1,13 @@
 # Roadmap
 
-## Current status (2026-07-09)
+## Current status (2026-07-10)
 
 - Staging/TestNet is live and operational.
-- Release-close cleanup for v0.0.2 is complete.
+- Staging/testnet milestone release documentation is aligned with deployed behavior.
 - Docustream staging stabilization is complete (source add/ingest/render +
 	session continuity hardening).
+- Community Directory is live as a dedicated tab between Feed and Backpack.
+- Blocking auth gate (`pnpm qa:smoke:auth`) passed in workflow run #46.
 - Remaining work is hardening and production-mainnet promotion separation.
 
 ## Current priorities

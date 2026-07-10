@@ -8,7 +8,47 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-Docustream staging stabilization, authentication/session hardening, repository cleanup, and profile/social graph feature expansion.
+No entries yet.
+
+---
+
+## [0.0.3-testnet] — 2026-07-10
+
+Milestone release for staging/testnet implementation alignment, with Community
+Directory as a first-class route and hardened auth-gate reliability in CI.
+
+### Added
+
+- Dedicated Community Directory route and tab wiring between Feed and Backpack:
+  - `packages/mobile-app/app/directory.tsx`
+  - `packages/mobile-app/app/_layout.tsx`
+- Shared audience resolution contract for Broadcast recipients:
+  - `packages/mobile-app/src/social/composeRecipients.ts`
+  - `packages/mobile-app/src/social/composeRecipients.test.ts`
+- Trust Circle local persistence helper for social UX state:
+  - `packages/mobile-app/src/social/trustCircleStore.ts`
+- Directory acceptance evidence smoke script:
+  - `scripts/qa/staging-community-directory-evidence.mjs`
+  - root script `qa:smoke:community-directory` in `package.json`
+
+### Additional stabilization updates
+
+- Compose flow now consumes centralized recipient resolution for `foaf`,
+  `verified`, and `local` modes, keeping recipients connection-driven even
+  when Directory-only Trust Circle members exist:
+  - `packages/mobile-app/app/compose.tsx`
+- Staging workflow auth gate remains blocking and is now resilient to transient
+  IdP/OIDC timing flake by allowing one retry before failing the run:
+  - `.github/workflows/staging-deploy.yml`
+- Repository instructions, docs, and wiki were refreshed to reflect current
+  staging/testnet behavior and acceptance posture.
+
+### Additional fixes
+
+- Fixed workflow runtime configuration for provisioner health check to use
+  supported Azure CLI parameters in staging deploy.
+- Closed auth-gate instability observed in run `#45` by hardening CI auth-gate
+  execution. Run `#46` completed with auth step success.
 
 ### Changed
 
@@ -162,5 +202,6 @@ proven end-to-end on live staging at `staging.nodezero.social`.
   `extraNodeModules.buffer` alias + boot-time polyfill.
 
 [0.1.0-testnet]: https://github.com/lockb0x-llc/nodezero-social/releases/tag/v0.1.0-testnet
+[0.0.3-testnet]: https://github.com/lockb0x-llc/nodezero-social/compare/ae6efaeadb174eb50ed62001fae2924c0671adf0...7b98755c321795aeca46c5dd8c0c06b5429a8938
 [0.0.2]: https://github.com/lockb0x-llc/nodezero-social/releases/tag/v0.0.2
 [Unreleased]: https://github.com/lockb0x-llc/nodezero-social/compare/v0.0.2...HEAD

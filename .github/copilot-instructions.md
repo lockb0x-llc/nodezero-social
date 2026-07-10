@@ -24,6 +24,20 @@ Primary packages and responsibilities:
 - `packages/geo-discovery`: H3-based local discovery utilities.
 - `infrastructure/azure`: Azure Bicep templates.
 
+## Current implementation snapshot (staging-testnet)
+- Web navigation includes a dedicated `Directory` tab positioned between
+  `Feed` and `Backpack`.
+- Community Directory is implemented on `/directory` (not profile-embedded)
+  with refresh, connect actions, and Trust Circle actions.
+- Broadcast recipient resolution is centralized in
+  `packages/mobile-app/src/social/composeRecipients.ts`; directory-only
+  Trust Circle entries do not become recipients unless they are real
+  connections.
+- `pnpm qa:smoke:community-directory` provides acceptance evidence for tab
+  sequence and directory availability.
+- The staging deploy workflow keeps `pnpm qa:smoke:auth` as a blocking gate,
+  with one controlled retry for transient IdP/OIDC timing failures.
+
 ## Mandatory policy constraints
 Preserve environment isolation at all times:
 - Allowed profiles: `local`, `staging-testnet`, `production-mainnet`.
@@ -57,9 +71,9 @@ authenticated session; they never participate in establishing one.
   credentials (fallback path). See `docs/architecture.md` → "Authentication
   and session handoff" for the full flow.
 - `pnpm qa:smoke:auth` (`scripts/qa/staging-auth-evidence.mjs`) is the
-  **blocking** identity gate in `staging-deploy.yml`. DocuStream/mashlib
-  proofs are application checks and run non-blocking — keep them out of the
-  auth gate and vice versa.
+  **blocking** identity gate in `staging-deploy.yml`, with one retry to absorb
+  transient auth timing churn. DocuStream/mashlib proofs are application
+  checks and run non-blocking — keep them out of the auth gate and vice versa.
 
 When touching deployment or environment code, ensure these pass:
 - `pnpm policy:validate-env`

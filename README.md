@@ -162,6 +162,8 @@ enforces that staging and production values never mix. See
 | WebID profile-card anchor (`nz:` triples) | ✅ Live |
 | On-return fail-closed attestation check | ✅ Live |
 | Docustream RSS sources (add/toggle/delete + ingest) | ✅ Live — Pod-backed source registry and feed ingestion |
+| Community Directory tab (`/directory`) | ✅ Live — dedicated tab between Feed and Backpack with connect + Trust Circle actions |
+| Broadcast recipient guardrails | ✅ Live — audience recipients resolved centrally; directory-only trust-circle entries are not implicit recipients |
 | Local peer messaging (P2P relay) | ✅ Live — staging relay healthy |
 | Feed / social graph (FOAF) | 🔶 Shell renders; real Pod-connected graph is post-MVP |
 | Proof-of-Humanity (poh.circom + PoHVerifier) | ⚪ Contract deployed; not wired into onboarding yet |
@@ -178,6 +180,11 @@ enforces that staging and production values never mix. See
 - Runtime implementation roadmap: `docs/staging-runtime-implementation-roadmap.md`
 - UAT checklist: `docs/staging-uat-checklist.md`
 - Feature progress + upstream attribution: `docs/feature-implementation-attribution.md`
+
+Identity release gate note:
+- Staging deploy (`.github/workflows/staging-deploy.yml`) runs
+   `pnpm qa:smoke:auth` as a blocking onboarding/authentication gate with a
+   single retry for transient IdP/OIDC timing failures.
 
 ---
 

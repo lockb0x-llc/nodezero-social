@@ -12,6 +12,7 @@ The mobile app package hosts the main user experience via Expo Router.
 | Local Node | `/local` | Yes | "Sign in to join your Local Node." |
 | Broadcast | `/compose` | Yes | Requires active session |
 | Stream | `/docustream` | Yes | Requires active session for Pod-backed source management and stream ingest |
+| Directory | `/directory` | Yes | Requires active session for community member discovery and Trust Circle actions |
 | Backpack | `/backpack` | Yes | Requires active session for ACL updates |
 | Profile | `/profile` | Yes | "Please sign in to view your profile." |
 | Settings | `/settings` | No (partial) | Shows pod/wallet/prefs with signed-out state |
@@ -23,6 +24,7 @@ Authenticated web users see these tabs in the bottom navigation:
 - Broadcast
 - Stream
 - Feed
+- Directory
 - Backpack
 - Profile
 
@@ -102,6 +104,17 @@ Session continuity note:
 	- maps items into feed cards and sorts newest-first by timestamp.
 	- this screen aggregates reads and does not directly write feed content.
 
+### Directory tab
+
+- **Purpose**: dedicated community discovery and trust-circle curation surface.
+- **How it is used**: user refreshes discoverable members, connects to members,
+  and adds/removes trust-circle state from the directory UI.
+- **Data handling**:
+	- reads provisioner-backed directory records and filters unlisted records.
+	- merges results with connection-derived state for consistent connect actions.
+	- trust-circle actions persist local state and do not auto-promote recipients
+	  for broadcast targeting.
+
 ### Backpack tab
 
 - **Purpose**: user-facing permission toggles for data containers.
@@ -113,7 +126,7 @@ Session continuity note:
 ### Profile tab
 
 - **Purpose**: edit and persist user profile metadata.
-- **How it is used**: user edits display name, bio, avatar URL, external URL, and interests, then saves; user can also manage connections and browse the community directory.
+- **How it is used**: user edits display name, bio, avatar URL, external URL, and interests, then saves; user can also manage direct connections.
 - **Data handling**:
 	- reads profile from Pod into local form state.
 	- writes profile back to Pod and re-reads after save.
@@ -122,7 +135,7 @@ Session continuity note:
 	- NSFW modal and banners depend on Pod-backed profile NSFW flag.
 	- peer view can compute shared semantic interest overlap.
 	- social connections are loaded from the Pod-backed social graph and can be added/removed by WebID.
-	- optional community directory entries are merged with local graph discovery to provide connect actions for Node Zero Pod holders.
+	- community directory interaction moved to dedicated `/directory` route.
 
 ## Settings page (`/settings`)
 
@@ -161,7 +174,8 @@ Settings is partially accessible without authentication:
 - Docustream screen supports RSS source add/toggle/delete and ingest into stream results.
 - Docustream source add/ingest/render path is stable in staging after session
 	continuity + Pod-listing compatibility hardening (2026-07-09).
-- Profile flow now supports resilient save behavior during session restoration windows and exposes connection management + community directory actions.
+- Directory tab is live between Feed and Backpack with refresh, connect, and Trust Circle actions.
+- Profile flow now supports resilient save behavior during session restoration windows and exposes connection management actions.
 - Settings renders wallet state, NSFW toggle, and account controls for signed-in and signed-out users.
 
 ## Known gaps and resolution status
@@ -170,8 +184,8 @@ Settings is partially accessible without authentication:
 |---|---|---|---|
 | WR1 | Wallet provisioning silently fails on web — `expo-secure-store` calls `getValueWithKeyAsync` (native-only bridge method); Settings shows "Provisioning…" forever | **FIXED** in testnet commit 778c37f | `Platform.OS === 'web'` guard in `WalletContext.tsx` skips `SecureStore` on web, using in-memory fallback |
 | DS1 | Stream ingest completed but no items rendered when Pod container listing returned JSON-LD | **FIXED** (2026-07-09) | `DocustreamManager` now parses JSON-LD + Turtle listings and normalizes/dedupes URLs before item fetch |
-| PR1 | Authenticated staging pass for Profile save + Connection List + Community Directory journeys | **Pending QA rerun** | Execute profile/social manual rows in `docs/staging-uat-checklist.md` after deploy |
-| J4 | Authenticated journeys (LM1/LM2/WR2/AU4) not fully re-run on latest branch set | **Pending QA rerun** | Execute authenticated staging checklist after B1/B2 integration deploy |
+| PR1 | Authenticated staging pass for Profile save + Connection List + Community Directory journeys | **PARTIAL PASS (2026-07-09)** | Save/readback + connection add/remove validated; keep rerunning profile rows as fixtures evolve. |
+| J4 | Blocking onboarding/authentication gate stability on latest staging workflow | **PASS (2026-07-10)** | `qa:smoke:auth` passed in staging workflow run #46 (step #28 success). |
 
 ## Notes
 
@@ -191,6 +205,7 @@ Settings is partially accessible without authentication:
 - `packages/mobile-app/app/index.tsx`
 - `packages/mobile-app/app/onboarding.tsx`
 - `packages/mobile-app/app/feed.tsx`
+- `packages/mobile-app/app/directory.tsx`
 - `packages/mobile-app/app/local.tsx`
 - `packages/mobile-app/app/compose.tsx`
 - `packages/mobile-app/app/docustream.tsx`

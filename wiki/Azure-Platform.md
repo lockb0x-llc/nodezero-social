@@ -21,6 +21,10 @@ Infrastructure and deployment automation for staging environments are defined in
 - Mandatory parameter file enforcement.
 - Environment mismatch rejection.
 - What-if preflight before deployment.
+- Blocking onboarding/authentication E2E gate (`pnpm qa:smoke:auth`) with one
+	retry for transient IdP/OIDC timing churn.
+- Latest staging deploy evidence: workflow run `#46` completed with auth gate
+	success (`step #28`).
 
 ## ACL Hardening Rollout Runbook (Staging)
 

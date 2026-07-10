@@ -128,8 +128,9 @@ authenticated session; they never participate in establishing one.
 The blocking staging gate for identity is `pnpm qa:smoke:auth`
 ([scripts/qa/staging-auth-evidence.mjs](../scripts/qa/staging-auth-evidence.mjs)),
 which exercises both journeys end-to-end including on-chain evidence
-assertions. Application-feature proofs (docustream/mashlib) run separately
-and never block identity releases.
+assertions. In CI (`staging-deploy.yml`) this gate remains blocking with one
+controlled retry for transient IdP/OIDC timing churn. Application-feature
+proofs (docustream/mashlib) run separately and never block identity releases.
 
 ---
 
