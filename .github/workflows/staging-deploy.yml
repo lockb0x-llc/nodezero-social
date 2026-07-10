@@ -81,7 +81,7 @@ jobs:
             --name "$JSS_PROVISIONER_APP_NAME" \
             --linux-fx-version "NODE|22-lts" \
             --always-on true \
-            --health-check-path "/health" \
+            --generic-configurations '{"healthCheckPath":"/health"}' \
             --startup-file "bash startup.sh"
 
           az webapp config appsettings set \
