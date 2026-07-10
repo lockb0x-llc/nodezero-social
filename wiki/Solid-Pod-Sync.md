@@ -74,6 +74,17 @@ Regression anchors:
 - `packages/solid-pod-sync/src/ProfileManager.ts`
 - `packages/solid-pod-sync/src/__tests__/PodLayoutManager.test.ts`
 
+## Docustream stabilization (2026-07-09)
+
+- `DocustreamManager.listActivities` now supports Pod container listings returned
+  as JSON-LD as well as Turtle, with normalization + dedupe of item URLs before
+  fetch.
+- Item fetch requests now send explicit `Accept` headers to improve
+  cross-provider compatibility for JSON-LD/Turtle payloads.
+- `DocustreamSourceManager` source-registry write failures now include richer
+  diagnostics (`HTTP status`, `www-authenticate`, body snippet), improving
+  auth/session triage in staging.
+
 ## Credits
 
 - Solid protocol standards make Pod portability and user-owned data flows possible.

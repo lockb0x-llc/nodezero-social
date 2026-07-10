@@ -8,7 +8,35 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-- No entries yet.
+Docustream staging stabilization, authentication/session hardening, repository cleanup, and profile/social graph feature expansion.
+
+### Changed
+
+- Docustream stream listing now supports Pod container responses in both JSON-LD and Turtle formats, with URL normalization and deduplication in `packages/solid-pod-sync/src/DocustreamManager.ts`.
+- Docustream screen session handling now preserves usability while Solid OIDC restoration settles by using node-session WebID continuity and guarded route behavior in:
+  - `packages/mobile-app/src/contexts/SolidContext.tsx`
+  - `packages/mobile-app/app/_layout.tsx`
+  - `packages/mobile-app/app/index.tsx`
+- Docustream source management UX now uses safer modal/backdrop interaction and testable source controls (`testID` selectors) in `packages/mobile-app/app/docustream.tsx`.
+- Profile save flow now uses effective WebID/session readiness checks and a deterministic re-auth recovery path before Pod writes in `packages/mobile-app/app/profile.tsx`.
+- Profile tab now includes first-party social graph controls for contact list management (add/remove WebID connections) in `packages/mobile-app/app/profile.tsx`.
+- Profile tab now includes a community directory surface that aggregates discoverable Node Zero Pod holder WebIDs and supports one-tap connect actions in `packages/mobile-app/app/profile.tsx`.
+
+### Fixed
+
+- Fixed staging issue where source ingestion succeeded but stream cards were not rendered because list parsing depended on Turtle-only container listings.
+- Fixed Add Source auth-edge handling by adding explicit Solid re-auth initiation when write access is not ready or returns authorization failures.
+- Improved source-registry write failure diagnostics to include HTTP status text, `www-authenticate`, and a response body snippet in `packages/solid-pod-sync/src/DocustreamSourceManager.ts`.
+- Fixed profile edit save failures caused by transient session-restore windows by guarding write operations and prompting explicit sign-in recovery.
+- Fixed Profile connection writes silently failing under node-session fallback by requiring authenticated OIDC session readiness for Pod writes in `packages/mobile-app/app/profile.tsx`.
+- Fixed social graph read/write subject mismatch risk by normalizing owner subject handling (canonical profile WebID + legacy fallback) in `packages/solid-pod-sync/src/SocialGraph.ts`.
+- Fixed stale-session connection add/remove recovery by forcing re-auth on auth-like write failures and surfacing operation status in `packages/mobile-app/app/profile.tsx`.
+
+### Removed
+
+- Removed temporary QA debug probes no longer needed after stabilization:
+  - `scripts/qa/tmp-create-node-click-probe.mjs`
+  - `scripts/qa/tmp-live-onboarding-debug.mjs`
 
 ---
 

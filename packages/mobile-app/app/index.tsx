@@ -445,6 +445,7 @@ export default function LandingScreen(): JSX.Element {
     nodeSession,
     isLoggedIn,
     isRestoring,
+    isSessionReady,
     signupResumeActive,
     signupReturnDetected,
   } = useSolid()
@@ -509,7 +510,10 @@ export default function LandingScreen(): JSX.Element {
   // session already exists, so the flow continues straight to consent.
   React.useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return
-    if (isRestoring || isLoggedIn) return
+    if (isRestoring) return
+
+    const hasNodeSessionOnly = Boolean(nodeSession) && !isSessionReady
+    if (isLoggedIn && !hasNodeSessionOnly) return
 
     const params = new URLSearchParams(window.location.search)
     if (params.get('nz_bridge_return') !== '1') return
@@ -532,7 +536,7 @@ export default function LandingScreen(): JSX.Element {
           : 'Automatic sign-in could not resume. Use Sign In to continue.',
       )
     })
-  }, [isLoggedIn, isRestoring, signIn])
+  }, [isLoggedIn, isRestoring, isSessionReady, nodeSession, signIn])
 
   const handleSignIn = async (): Promise<void> => {
     setError(null)

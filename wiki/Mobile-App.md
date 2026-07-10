@@ -47,6 +47,10 @@ The landing page renders without authentication and includes:
 4. App automatically resumes the OIDC flow — IdP session exists, so it proceeds to consent and establishes the authenticated session.
 5. Any bridge failure leaves the login form usable for manual credentials (the user knows their password).
 
+Session continuity note:
+- During transient OIDC restore windows, node-session WebID continuity keeps
+	authenticated routes usable while full Solid session readiness settles.
+
 ### Auth validation behavior (current implementation)
 - Empty IdP URL: "Enter your Identity Provider URL."
 - Non-HTTPS IdP URL: "URL must start with https://"
@@ -83,8 +87,9 @@ The landing page renders without authentication and includes:
 - **Data handling**:
 	- supports RSS source registry actions (add source, enable/disable, delete source).
 	- source configuration is persisted to the user's Pod and loaded on session resume.
+	- source add flow can trigger Solid re-auth when write authorization is stale.
 	- enabled RSS sources are ingested into the stream pipeline.
-	- loads Pod-backed stream entries when available, with mock fallback content.
+	- loads Pod-backed stream entries from JSON-LD and Turtle-compatible Pod container listings, with mock fallback content.
 	- save action appends item payload as JSON-LD into public docustream container in the user Pod.
 
 ### Feed tab
@@ -108,13 +113,16 @@ The landing page renders without authentication and includes:
 ### Profile tab
 
 - **Purpose**: edit and persist user profile metadata.
-- **How it is used**: user edits display name, bio, avatar URL, external URL, and interests, then saves.
+- **How it is used**: user edits display name, bio, avatar URL, external URL, and interests, then saves; user can also manage connections and browse the community directory.
 - **Data handling**:
 	- reads profile from Pod into local form state.
 	- writes profile back to Pod and re-reads after save.
+	- save path uses effective session identity and can trigger Solid re-auth when write readiness is unavailable.
 	- interest tags are normalized from comma-separated input.
 	- NSFW modal and banners depend on Pod-backed profile NSFW flag.
 	- peer view can compute shared semantic interest overlap.
+	- social connections are loaded from the Pod-backed social graph and can be added/removed by WebID.
+	- optional community directory entries are merged with local graph discovery to provide connect actions for Node Zero Pod holders.
 
 ## Settings page (`/settings`)
 
@@ -151,6 +159,9 @@ Settings is partially accessible without authentication:
 - Feed screen now aggregates connections from Solid social graph and orders posts chronologically.
 - Local Node screen uses relay-backed P2P signaling and supports target selection from known peers.
 - Docustream screen supports RSS source add/toggle/delete and ingest into stream results.
+- Docustream source add/ingest/render path is stable in staging after session
+	continuity + Pod-listing compatibility hardening (2026-07-09).
+- Profile flow now supports resilient save behavior during session restoration windows and exposes connection management + community directory actions.
 - Settings renders wallet state, NSFW toggle, and account controls for signed-in and signed-out users.
 
 ## Known gaps and resolution status
@@ -158,6 +169,8 @@ Settings is partially accessible without authentication:
 | ID | Issue | Status | Fix |
 |---|---|---|---|
 | WR1 | Wallet provisioning silently fails on web — `expo-secure-store` calls `getValueWithKeyAsync` (native-only bridge method); Settings shows "Provisioning…" forever | **FIXED** in testnet commit 778c37f | `Platform.OS === 'web'` guard in `WalletContext.tsx` skips `SecureStore` on web, using in-memory fallback |
+| DS1 | Stream ingest completed but no items rendered when Pod container listing returned JSON-LD | **FIXED** (2026-07-09) | `DocustreamManager` now parses JSON-LD + Turtle listings and normalizes/dedupes URLs before item fetch |
+| PR1 | Authenticated staging pass for Profile save + Connection List + Community Directory journeys | **Pending QA rerun** | Execute profile/social manual rows in `docs/staging-uat-checklist.md` after deploy |
 | J4 | Authenticated journeys (LM1/LM2/WR2/AU4) not fully re-run on latest branch set | **Pending QA rerun** | Execute authenticated staging checklist after B1/B2 integration deploy |
 
 ## Notes

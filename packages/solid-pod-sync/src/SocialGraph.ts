@@ -21,6 +21,7 @@ import {
   buildThing,
   createThing,
   getUrlAll,
+  getThingAll,
   type SolidDataset,
   type WithServerResourceInfo,
 } from '@inrupt/solid-client'
@@ -94,6 +95,8 @@ export class SocialGraph {
    */
   async listConnections(podRootUrl: string): Promise<Connection[]> {
     const datasetUrl = this.connectionsUrl(podRootUrl)
+    const canonicalOwnerWebId = this.ownerWebId(podRootUrl)
+    const legacyOwnerWebId = `${datasetUrl}#me`
 
     let dataset: SolidDataset & WithServerResourceInfo
 
@@ -104,11 +107,23 @@ export class SocialGraph {
       return []
     }
 
-    const ownerWebId = `${datasetUrl}#me`
-    const thing = getThing(dataset, ownerWebId)
-    if (!thing) return []
+    const ownerThing =
+      getThing(dataset, canonicalOwnerWebId) ??
+      getThing(dataset, legacyOwnerWebId)
 
-    return getUrlAll(thing, FOAF_KNOWS).map((webId) => ({ webId }))
+    if (ownerThing) {
+      return getUrlAll(ownerThing, FOAF_KNOWS).map((webId) => ({ webId }))
+    }
+
+    // Fallback for dataset URL normalization differences across Solid servers.
+    const knows = new Set<string>()
+    for (const thing of getThingAll(dataset)) {
+      for (const webId of getUrlAll(thing, FOAF_KNOWS)) {
+        knows.add(webId)
+      }
+    }
+
+    return Array.from(knows).map((webId) => ({ webId }))
   }
 
   /**
@@ -125,10 +140,11 @@ export class SocialGraph {
     await this.ensurePodLayoutIfEnabled(podRootUrl)
 
     const datasetUrl = this.connectionsUrl(podRootUrl)
-    const ownerWebId = `${datasetUrl}#me`
+    const ownerWebId = this.ownerWebId(podRootUrl)
+    const legacyOwnerWebId = `${datasetUrl}#me`
 
     const dataset = await this.getOrCreateDataset(datasetUrl)
-    const existing = getThing(dataset, ownerWebId)
+    const existing = getThing(dataset, ownerWebId) ?? getThing(dataset, legacyOwnerWebId)
 
     // Build updated thing – preserve existing `foaf:knows` entries.
     const existingUrls = existing ? getUrlAll(existing, FOAF_KNOWS) : []
@@ -142,7 +158,11 @@ export class SocialGraph {
       thingBuilder = thingBuilder.addUrl(FOAF_KNOWS, url)
     }
 
-    const updated = setThing(dataset, thingBuilder.build())
+    let updated = setThing(dataset, thingBuilder.build())
+    if (legacyOwnerWebId !== ownerWebId) {
+      updated = removeThing(updated, legacyOwnerWebId)
+    }
+
     await saveSolidDatasetAt(datasetUrl, updated, { fetch: this.session.fetch })
 
     return datasetUrl
@@ -162,7 +182,8 @@ export class SocialGraph {
     await this.ensurePodLayoutIfEnabled(podRootUrl)
 
     const datasetUrl = this.connectionsUrl(podRootUrl)
-    const ownerWebId = `${datasetUrl}#me`
+    const ownerWebId = this.ownerWebId(podRootUrl)
+    const legacyOwnerWebId = `${datasetUrl}#me`
 
     let dataset: SolidDataset & WithServerResourceInfo
 
@@ -173,14 +194,17 @@ export class SocialGraph {
       return datasetUrl
     }
 
-    const existing = getThing(dataset, ownerWebId)
+    const existing = getThing(dataset, ownerWebId) ?? getThing(dataset, legacyOwnerWebId)
     if (!existing) return datasetUrl
 
     const remainingUrls = getUrlAll(existing, FOAF_KNOWS).filter((u) => u !== targetWebId)
 
     if (remainingUrls.length === 0) {
       // Remove the whole thing if no connections remain.
-      const stripped = removeThing(dataset, ownerWebId)
+      let stripped = removeThing(dataset, ownerWebId)
+      if (legacyOwnerWebId !== ownerWebId) {
+        stripped = removeThing(stripped, legacyOwnerWebId)
+      }
       await saveSolidDatasetAt(datasetUrl, stripped, { fetch: this.session.fetch })
       return datasetUrl
     }
@@ -193,7 +217,11 @@ export class SocialGraph {
       thingBuilder = thingBuilder.addUrl(FOAF_KNOWS, url)
     }
 
-    const updated = setThing(dataset, thingBuilder.build())
+    let updated = setThing(dataset, thingBuilder.build())
+    if (legacyOwnerWebId !== ownerWebId) {
+      updated = removeThing(updated, legacyOwnerWebId)
+    }
+
     await saveSolidDatasetAt(datasetUrl, updated, { fetch: this.session.fetch })
 
     return datasetUrl
@@ -201,6 +229,10 @@ export class SocialGraph {
 
   private connectionsUrl(podRootUrl: string): string {
     return `${podRootUrl.replace(/\/$/, '')}/social/connections`
+  }
+
+  private ownerWebId(podRootUrl: string): string {
+    return `${podRootUrl.replace(/\/$/, '')}/profile/card#me`
   }
 
   private async getOrCreateDataset(

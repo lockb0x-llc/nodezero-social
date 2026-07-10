@@ -69,6 +69,21 @@ Validate the nav bar overflow fix and the Settings access path change introduced
 |---|------|----------|--------|-------|
 | FE1 | Open the global feed while authenticated | Feed renders without runtime errors | **PASS (2026-06-28 headed validation)** | Authenticated return landed directly on `/feed`; feed shell rendered (`Global Feed`, `OIDC Redirect`, quiet-feed empty state). Console showed a non-blocking `401` fetch error during background requests. |
 
+### Docustream (stream + source management)
+
+| # | Step | Expected | Result | Notes |
+|---|------|----------|--------|-------|
+| DS1 | Add RSS source from Stream -> Sources modal, then ingest | Source is saved, ingest completes, and stream items render in-pane | **PASS (2026-07-09 live staging validation)** | Stabilized read path now handles JSON-LD and Turtle Pod container listings. |
+| DS2 | Add source while Solid write auth is stale/expired | UI surfaces recovery guidance and redirects to Solid sign-in to restore write access | **PASS (2026-07-09 live staging validation)** | Source flow now explicitly initiates re-auth when write returns auth failures. |
+
+### Profile + social graph (contacts and directory)
+
+| # | Step | Expected | Result | Notes |
+|---|------|----------|--------|-------|
+| PR1 | Authenticated user updates Profile fields and taps Save to Solid Pod | Save succeeds, profile reload reflects persisted values, and no silent failure occurs during session-restore windows | **PARTIAL PASS (2026-07-09 headed validation)** | Tested with account `pakana-10@pakana.net`: profile values saved and later reloaded (`Display Name`/`Bio` values present after auth round-trip). One transient `PATCH ... net::ERR_ABORTED` was observed during OIDC restore churn; stale-session-forced re-auth branch was not deterministically reproduced in this manual pass. |
+| PR2 | In Profile, add a valid contact WebID then remove it | Added WebID appears in Connections list and remove action updates list consistently | **PASS (2026-07-09 live staging rerun)** | With account `https://solid.nodezero.social/qa-conn-20260709-1/profile/card#me`, adding `https://solid.nodezero.social/pakana-10/profile/card#me` immediately rendered a Connections row and status `Connection added successfully.`; removing it returned to empty state and status `Connection removed.`. |
+| PR3 | In Profile, open Community Directory and connect to an entry | Directory list renders, connect action adds relationship unless entry is self/already connected | **PASS (2026-07-09 live staging rerun)** | Community Directory rendered self + non-self entries, and the non-self target transitioned to `Connected` after add. After removal in PR2 rerun, directory reflected self-only state again as expected. |
+
 | # | Step | Expected | Result | Notes |
 |---|------|----------|--------|-------|
 | LM1 | Open the Local Node screen | Local discovery initialises against the staging relay | **PARTIAL PASS (2026-06-28 headed validation)** | While authenticated, `/local` opens and renders Local Node screen, but this run is blocked at location permission gate (`Location access is required...`). Relay endpoint is healthy; manual location-allow step still required for full pass in a normal browser context. |

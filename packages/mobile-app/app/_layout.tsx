@@ -23,6 +23,15 @@ import * as mashlibPaneProvider from '../src/solid/mashlibPaneProvider'
 
 const PUBLIC_ROUTES = new Set(['/'])
 const TRANSITION_ROUTES = new Set(['/onboarding'])
+const NODE_SESSION_VERIFICATION_ALLOWED_ROUTES = new Set([
+  '/local',
+  '/compose',
+  '/docustream',
+  '/feed',
+  '/backpack',
+  '/profile',
+  '/settings',
+])
 
 function normalizeRoute(pathname: string): string {
   if (!pathname) return '/'
@@ -39,6 +48,7 @@ function RouteGuard(): null {
   const pathname = usePathname()
   const router = useRouter()
   const isSignOutInFlightRef = React.useRef(false)
+  const pendingProtectedRouteRef = React.useRef<string | null>(null)
 
   React.useEffect(() => {
     if (isRestoring) return
@@ -47,6 +57,7 @@ function RouteGuard(): null {
 
     if (!isLoggedIn) {
       isSignOutInFlightRef.current = false
+      pendingProtectedRouteRef.current = null
       if (!PUBLIC_ROUTES.has(route)) {
         router.replace('/')
       }
@@ -55,13 +66,23 @@ function RouteGuard(): null {
 
     if (attestationStatus === 'verified') {
       isSignOutInFlightRef.current = false
+      const defaultTarget = nodeSession ? '/local' : '/feed'
+      const pendingTarget = pendingProtectedRouteRef.current
+
       if (PUBLIC_ROUTES.has(route) || TRANSITION_ROUTES.has(route)) {
-        router.replace(nodeSession ? '/local' : '/feed')
+        router.replace(pendingTarget ?? defaultTarget)
+        pendingProtectedRouteRef.current = null
       }
+
+      if (!PUBLIC_ROUTES.has(route) && !TRANSITION_ROUTES.has(route)) {
+        pendingProtectedRouteRef.current = null
+      }
+
       return
     }
 
     if (attestationStatus === 'unlinked' || attestationStatus === 'error') {
+      pendingProtectedRouteRef.current = null
       if (!isSignOutInFlightRef.current) {
         isSignOutInFlightRef.current = true
         void signOut().finally(() => {
@@ -72,8 +93,16 @@ function RouteGuard(): null {
       return
     }
 
+    // During post-login attestation checks, keep node-session users on the
+    // requested feature route instead of bouncing through onboarding/local.
+    // This avoids route churn while verification settles and preserves intent.
+    if (nodeSession && NODE_SESSION_VERIFICATION_ALLOWED_ROUTES.has(route)) {
+      return
+    }
+
     // Logged in but not yet verified: only onboarding is allowed.
     if (!TRANSITION_ROUTES.has(route)) {
+      pendingProtectedRouteRef.current = route
       router.replace('/onboarding')
     }
   }, [attestationStatus, isLoggedIn, isRestoring, nodeSession, pathname, router, signOut])

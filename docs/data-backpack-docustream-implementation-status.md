@@ -1,6 +1,6 @@
 # Data Backpack + DocuStream Implementation Status
 
-Status date: 2026-07-05
+Status date: 2026-07-09
 Environment focus: staging-testnet
 
 ## Scope of this status
@@ -158,6 +158,48 @@ Outcome:
   - Stellar deployment script guardrails validated
   - Mobile runtime profile guardrails validated
   - Bicep environment guardrails validated
+
+  ## 2026-07-09 stabilization update (Docustream retrieval + auth continuity)
+
+  Stabilization scope completed for staging Docustream reliability, focused on
+  session continuity during OIDC restore and Pod listing compatibility.
+
+  Implemented/updated files:
+
+  - `packages/solid-pod-sync/src/DocustreamManager.ts`
+  - `packages/solid-pod-sync/src/DocustreamSourceManager.ts`
+  - `packages/mobile-app/src/contexts/SolidContext.tsx`
+  - `packages/mobile-app/app/_layout.tsx`
+  - `packages/mobile-app/app/index.tsx`
+  - `packages/mobile-app/app/docustream.tsx`
+  - `scripts/qa/staging-docustream-pane-evidence.mjs`
+
+  Behavioral outcomes:
+
+  1. Pod container listing parse compatibility now supports JSON-LD payloads and
+    Turtle fallback, preventing false-empty stream results after ingest.
+  2. Source write failures now surface auth/status diagnostics (`HTTP`,
+    `www-authenticate`, response snippet) for faster triage.
+  3. Mobile/web auth flow preserves WebID continuity through node-session fallback
+    while OIDC session restoration settles, reducing route churn and avoiding
+    dead "restoring" states on Docustream operations.
+  4. Source modal interaction and add flow now support explicit re-auth
+    initiation when write authorization is missing/expired.
+
+  Verification commands and outcomes:
+
+  1. `corepack pnpm --filter @nodezero/solid-pod-sync type-check`
+    - Outcome: PASS
+
+  2. `corepack pnpm --filter @nodezero/solid-pod-sync test -- src/__tests__/new-features.test.ts`
+    - Outcome: PASS
+    - Evidence summary: 1 suite passed, 10 tests passed
+
+  3. `corepack pnpm --filter @nodezero/mobile-app type-check`
+    - Outcome: PASS
+
+  4. `node --check scripts/qa/staging-docustream-pane-evidence.mjs`
+    - Outcome: PASS
 
 ## Remaining implementation gaps
 

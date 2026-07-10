@@ -15,7 +15,7 @@ const STATUS_TEXT: Record<string, string> = {
 }
 
 export default function OnboardingScreen(): JSX.Element {
-  const { isLoggedIn, isRestoring, nodeSession, signOut } = useSolid()
+  const { isLoggedIn, isRestoring, signOut } = useSolid()
   const { attestationStatus, attestationMessage, verificationSteps } = useWallet()
   const router = useRouter()
 
@@ -24,13 +24,8 @@ export default function OnboardingScreen(): JSX.Element {
 
     if (!isLoggedIn) {
       router.replace('/')
-      return
     }
-
-    if (attestationStatus === 'verified') {
-      router.replace(nodeSession ? '/local' : '/feed')
-    }
-  }, [attestationStatus, isLoggedIn, isRestoring, nodeSession, router])
+  }, [isLoggedIn, isRestoring, router])
 
   return (
     <View style={styles.root}>

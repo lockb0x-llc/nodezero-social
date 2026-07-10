@@ -84,6 +84,35 @@ function fromJsonLd(text: string): StreamItem | null {
   }
 }
 
+function extractJsonLdUrls(payload: unknown): string[] {
+  const found = new Set<string>()
+
+  const visit = (value: unknown): void => {
+    if (Array.isArray(value)) {
+      for (const entry of value) visit(entry)
+      return
+    }
+
+    if (!value || typeof value !== 'object') {
+      if (typeof value === 'string' && value.includes('.jsonld')) {
+        found.add(value)
+      }
+      return
+    }
+
+    const record = value as Record<string, unknown>
+    for (const [key, nested] of Object.entries(record)) {
+      if (key === '@id' && typeof nested === 'string' && nested.includes('.jsonld')) {
+        found.add(nested)
+      }
+      visit(nested)
+    }
+  }
+
+  visit(payload)
+  return Array.from(found)
+}
+
 // ─── DocustreamManager ────────────────────────────────────────────────────────
 
 /**
@@ -162,20 +191,52 @@ export class DocustreamManager {
 
       if (!containerResp.ok) return []
 
-      const turtle: string = await containerResp.text()
+      const listingBody: string = await containerResp.text()
+      const contentType = (containerResp.headers?.get?.('content-type') ?? '').toLowerCase()
 
-      // Extract resource URLs that end in .jsonld from the Turtle listing.
-      const jsonldUrls = Array.from(
-        turtle.matchAll(/<([^>]+\.jsonld)>/g),
-        (m: RegExpMatchArray) => m[1] as string
+      let jsonldUrls: string[] = []
+
+      if (contentType.includes('json') || listingBody.trim().startsWith('{') || listingBody.trim().startsWith('[')) {
+        try {
+          const parsed = JSON.parse(listingBody)
+          jsonldUrls = extractJsonLdUrls(parsed)
+        } catch {
+          jsonldUrls = []
+        }
+      }
+
+      if (jsonldUrls.length === 0) {
+        // Fallback for Pod implementations returning Turtle container listings.
+        jsonldUrls = Array.from(
+          listingBody.matchAll(/<([^>]+\.jsonld)>/g),
+          (m: RegExpMatchArray) => m[1] as string
+        )
+      }
+
+      const normalizedUrls = Array.from(
+        new Set(
+          jsonldUrls
+            .map((candidate) => {
+              try {
+                return new URL(candidate, containerUrl).toString()
+              } catch {
+                return ''
+              }
+            })
+            .filter((candidate) => candidate.length > 0)
+        )
       )
 
       const items: StreamItem[] = []
 
       await Promise.all(
-        jsonldUrls.map(async (url) => {
+        normalizedUrls.map(async (url) => {
           try {
-            const resp = await this.session.fetch(url)
+            const resp = await this.session.fetch(url, {
+              headers: {
+                Accept: 'application/ld+json, application/json;q=0.9, text/turtle;q=0.8',
+              },
+            })
             if (!resp.ok) return
             const text: string = await resp.text()
             const item = fromJsonLd(text)

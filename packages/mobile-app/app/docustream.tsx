@@ -5,6 +5,7 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Pressable,
   SafeAreaView,
   Alert,
   Platform,
@@ -14,6 +15,7 @@ import {
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import * as rssParser from 'react-native-rss-parser'
+import Constants from 'expo-constants'
 import { useSolid } from '../src/contexts/SolidContext'
 import {
   createSyncState,
@@ -155,7 +157,7 @@ async function fetchRssXmlViaProvisioner(sourceUrl: string): Promise<string> {
 }
 
 export default function DocustreamScreen(): JSX.Element {
-  const { isLoggedIn, isSessionReady, webId, session } = useSolid()
+  const { isLoggedIn, isSessionReady, webId, nodeSession, session, signIn } = useSolid()
   const [filter, setFilter] = useState<FilterType>('all')
   const [items, setItems] = useState<QueryableStreamItem[]>([])
   const [savingItemId, setSavingItemId] = useState<string | null>(null)
@@ -171,13 +173,26 @@ export default function DocustreamScreen(): JSX.Element {
 
   const syncStateRef = useRef(createSyncState())
 
+  const effectiveWebId = useMemo(() => webId ?? nodeSession?.webId ?? null, [nodeSession, webId])
+
   const podRoot = useMemo(() => {
-    if (!webId) return ''
-    return `${webId.split('/profile/')[0]}/`
-  }, [webId])
+    if (!effectiveWebId) return ''
+    return `${effectiveWebId.split('/profile/')[0]}/`
+  }, [effectiveWebId])
+
+  const hasNodeSessionFallback = useMemo(() => {
+    if (!nodeSession?.webId) return false
+    if (!webId) return true
+    return nodeSession.webId === webId
+  }, [nodeSession, webId])
+
+  // WebID continuity is sufficient to keep Docustream usable while Solid OIDC
+  // session restoration settles in the background.
+  const hasUsableWebIdentity = isLoggedIn && Boolean(effectiveWebId)
+  const canOperateDocustream = isSessionReady || hasNodeSessionFallback || hasUsableWebIdentity
 
   const loadSources = useCallback(async (): Promise<void> => {
-    if (!isLoggedIn || !isSessionReady || !podRoot) {
+    if (!isLoggedIn || !canOperateDocustream || !podRoot) {
       setSources([])
       return
     }
@@ -185,10 +200,10 @@ export default function DocustreamScreen(): JSX.Element {
     const { docustreamSourceManager } = getSolidPodSyncManagers(session)
     const nextSources = await docustreamSourceManager.listSources(podRoot)
     setSources(nextSources)
-  }, [isLoggedIn, isSessionReady, podRoot, session])
+  }, [canOperateDocustream, isLoggedIn, podRoot, session])
 
   const loadDocustreamItems = useCallback(async (): Promise<void> => {
-    if (!isLoggedIn || !isSessionReady || !podRoot || !isSyncCheckpointReady || !webId) {
+    if (!isLoggedIn || !canOperateDocustream || !podRoot || !isSyncCheckpointReady || !effectiveWebId) {
       setItems([])
       return
     }
@@ -199,8 +214,8 @@ export default function DocustreamScreen(): JSX.Element {
     const merged = mergeAndQueryActivities(
       [
         {
-          sourceWebId: webId,
-          items: podItems.map((item) => ({ ...item, authorWebId: webId })),
+          sourceWebId: effectiveWebId,
+          items: podItems.map((item) => ({ ...item, authorWebId: effectiveWebId })),
         },
       ],
       {
@@ -212,12 +227,12 @@ export default function DocustreamScreen(): JSX.Element {
     )
 
     syncStateRef.current = merged.sync.nextState
-    await saveSyncCheckpoint(webId, 'docustream', syncStateRef.current)
+    await saveSyncCheckpoint(effectiveWebId, 'docustream', syncStateRef.current)
     setItems(merged.items)
-  }, [isLoggedIn, isSessionReady, isSyncCheckpointReady, podRoot, session, webId])
+  }, [canOperateDocustream, effectiveWebId, isLoggedIn, isSyncCheckpointReady, podRoot, session])
 
   const ingestOneSource = useCallback(async (source: DocustreamSource): Promise<void> => {
-    if (!podRoot || !source.enabled || !isSessionReady) return
+    if (!podRoot || !source.enabled || !canOperateDocustream) return
 
     const { docustreamManager, docustreamSourceManager } = getSolidPodSyncManagers(session)
 
@@ -264,10 +279,10 @@ export default function DocustreamScreen(): JSX.Element {
       const message = error instanceof Error ? error.message : 'Unknown ingest error'
       await docustreamSourceManager.recordIngestionResult(podRoot, source.id, message)
     }
-  }, [isSessionReady, podRoot, session])
+  }, [canOperateDocustream, podRoot, session])
 
   const ingestEnabledSources = useCallback(async (sourceList: DocustreamSource[] = sources): Promise<void> => {
-    if (!isLoggedIn || !isSessionReady || !podRoot) return
+    if (!isLoggedIn || !canOperateDocustream || !podRoot) return
 
     const enabled = sourceList.filter((source) => source.enabled)
     if (enabled.length === 0) return
@@ -282,7 +297,7 @@ export default function DocustreamScreen(): JSX.Element {
     } finally {
       setIsIngesting(false)
     }
-  }, [ingestOneSource, isLoggedIn, isSessionReady, loadDocustreamItems, loadSources, podRoot, sources])
+  }, [canOperateDocustream, ingestOneSource, isLoggedIn, loadDocustreamItems, loadSources, podRoot, sources])
 
   useEffect((): (() => void) => {
     let active = true
@@ -325,12 +340,12 @@ export default function DocustreamScreen(): JSX.Element {
 
   useEffect((): void => {
     if (!isSyncCheckpointReady) return
-    if (!isSessionReady) return
+    if (!canOperateDocustream) return
     void ingestEnabledSources()
-  }, [ingestEnabledSources, isSessionReady, isSyncCheckpointReady])
+  }, [canOperateDocustream, ingestEnabledSources, isSyncCheckpointReady])
 
   useEffect((): void => {
-    if (!isLoggedIn || !webId || Platform.OS !== 'web') return
+    if (!isLoggedIn || !effectiveWebId || Platform.OS !== 'web') return
 
     const adapter = getMashlibWebAdapter()
     if (!adapter.isSupported) {
@@ -338,7 +353,7 @@ export default function DocustreamScreen(): JSX.Element {
       return
     }
 
-    const resourceUrl = `${webId.split('/profile/')[0]}/public/docustream/`
+    const resourceUrl = `${effectiveWebId.split('/profile/')[0]}/public/docustream/`
     void adapter
       .listBoundPanes(resourceUrl)
       .then((binding) => {
@@ -347,13 +362,13 @@ export default function DocustreamScreen(): JSX.Element {
       .catch(() => {
         setAdapterPaneLabels([])
       })
-  }, [isLoggedIn, webId])
+  }, [effectiveWebId, isLoggedIn])
 
   const filteredStream =
     filter === 'all' ? items : queryStreamItems(items, { sources: [filter] })
 
   const handleSaveToPod = async (item: StreamItem): Promise<void> => {
-    if (!isLoggedIn || !isSessionReady || !webId || !podRoot) {
+    if (!isLoggedIn || !canOperateDocustream || !effectiveWebId || !podRoot) {
       Alert.alert('Sign in required', 'Sign in to save Downstream items to your Pod.')
       return
     }
@@ -373,8 +388,25 @@ export default function DocustreamScreen(): JSX.Element {
   }
 
   const handleAddSource = useCallback(async (url: string, title?: string): Promise<void> => {
-    if (!isLoggedIn || !isSessionReady || !podRoot) {
+    if (!isLoggedIn || !canOperateDocustream || !podRoot) {
+      setSourceModalError('Solid session is still restoring. If this persists, use Sign In once to re-establish Solid auth.')
       Alert.alert('Sign in required', 'Sign in to manage Docustream sources.')
+      return
+    }
+
+    if (!isSessionReady) {
+      const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
+      const issuerBase = (appExtra?.nodeZeroIssuerUrl ?? '').replace(/\/+$/, '')
+      if (!issuerBase) {
+        setSourceModalError('Solid sign-in is required before sources can be saved. Please use Sign In and try again.')
+        return
+      }
+
+      setSourceModalError('Restoring Solid write access. Redirecting to sign-in...')
+      await signIn(issuerBase).catch((error) => {
+        const message = error instanceof Error ? error.message : 'Unable to start Solid sign-in.'
+        setSourceModalError(message)
+      })
       return
     }
 
@@ -397,12 +429,27 @@ export default function DocustreamScreen(): JSX.Element {
       void ingestEnabledSources([savedSource])
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to add source.'
+      const isAuthFailure = /\bHTTP\s*401\b|www-authenticate|unauthorized|h401/i.test(message)
+
+      if (isAuthFailure) {
+        const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
+        const issuerBase = (appExtra?.nodeZeroIssuerUrl ?? '').replace(/\/+$/, '')
+        if (issuerBase) {
+          setSourceModalError('Solid session expired. Redirecting to sign-in to restore write access...')
+          await signIn(issuerBase).catch((signInError) => {
+            const signInMessage = signInError instanceof Error ? signInError.message : 'Unable to start Solid sign-in.'
+            setSourceModalError(signInMessage)
+          })
+          return
+        }
+      }
+
       setSourceModalError(message)
       Alert.alert('Add source failed', message)
     } finally {
       setSourceOperationId(null)
     }
-  }, [ingestEnabledSources, isLoggedIn, isSessionReady, podRoot, session])
+  }, [canOperateDocustream, ingestEnabledSources, isLoggedIn, isSessionReady, podRoot, session, signIn])
 
   const handleSourceInputChange = useCallback((nextValue: string): void => {
     setSourceUrlInput(nextValue)
@@ -417,7 +464,7 @@ export default function DocustreamScreen(): JSX.Element {
   }, [])
 
   const handleToggleSource = useCallback(async (source: DocustreamSource, nextEnabled: boolean): Promise<void> => {
-    if (!isLoggedIn || !isSessionReady || !podRoot) return
+    if (!isLoggedIn || !canOperateDocustream || !podRoot) return
 
     setSourceOperationId(source.id)
     try {
@@ -432,10 +479,10 @@ export default function DocustreamScreen(): JSX.Element {
     } finally {
       setSourceOperationId(null)
     }
-  }, [ingestEnabledSources, isLoggedIn, isSessionReady, loadSources, podRoot, session])
+  }, [canOperateDocustream, ingestEnabledSources, isLoggedIn, loadSources, podRoot, session])
 
   const handleRemoveSource = useCallback(async (source: DocustreamSource): Promise<void> => {
-    if (!isLoggedIn || !isSessionReady || !podRoot) return
+    if (!isLoggedIn || !canOperateDocustream || !podRoot) return
 
     setSourceOperationId(source.id)
     try {
@@ -448,7 +495,7 @@ export default function DocustreamScreen(): JSX.Element {
     } finally {
       setSourceOperationId(null)
     }
-  }, [isLoggedIn, isSessionReady, loadDocustreamItems, loadSources, podRoot, session])
+  }, [canOperateDocustream, isLoggedIn, loadDocustreamItems, loadSources, podRoot, session])
 
   const handleIngestSingleSource = useCallback(async (source: DocustreamSource): Promise<void> => {
     setSourceOperationId(source.id)
@@ -462,9 +509,9 @@ export default function DocustreamScreen(): JSX.Element {
   }, [ingestOneSource, loadDocustreamItems, loadSources])
 
   const emptyStateText = isLoggedIn
-    ? isSessionReady
+    ? canOperateDocustream
       ? 'No Docustream items yet. Add an RSS source to start filling your stream.'
-      : 'Restoring your authenticated Solid session before stream actions can run...'
+      : 'Restoring your authenticated Solid session in the background...'
     : 'Sign in to load your Docustream from your Pod.'
 
   return (
@@ -478,13 +525,15 @@ export default function DocustreamScreen(): JSX.Element {
           <TouchableOpacity
             onPress={() => void ingestEnabledSources()}
             style={styles.addButton}
-            disabled={isIngesting || !isSessionReady}
+            disabled={isIngesting || !canOperateDocustream}
           >
             <Ionicons name="refresh" size={24} color={isIngesting ? aesthetic.color.textLow : aesthetic.color.accent} />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => setIsSourceModalOpen(true)}
             style={styles.addButton}
+            testID="docustream-sources-open"
+            accessibilityLabel="Open Docustream sources"
           >
             <Ionicons name="add-circle" size={28} color="#2563EB" />
           </TouchableOpacity>
@@ -564,12 +613,14 @@ export default function DocustreamScreen(): JSX.Element {
         visible={isSourceModalOpen}
         onRequestClose={() => setIsSourceModalOpen(false)}
       >
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setIsSourceModalOpen(false)}
-        >
-          <View style={styles.modalSheet} onStartShouldSetResponder={() => true}>
+        <View style={styles.modalOverlay}>
+          <Pressable
+            style={styles.modalBackdropTapArea}
+            onPress={() => setIsSourceModalOpen(false)}
+            accessibilityRole="button"
+            accessibilityLabel="Close Docustream sources"
+          />
+          <View style={styles.modalSheet}>
             <View style={styles.modalHandle} />
             <Text style={styles.modalTitle}>Docustream Sources</Text>
             <Text style={styles.modalSubtitle}>Add and manage RSS sources for your Pod-backed stream.</Text>
@@ -579,6 +630,7 @@ export default function DocustreamScreen(): JSX.Element {
                 style={styles.sourceInput}
                 placeholder="https://example.com/feed.xml"
                 placeholderTextColor={aesthetic.color.textLow}
+                testID="docustream-source-url-input"
                 value={sourceUrlInput}
                 onChangeText={handleSourceInputChange}
                 autoCapitalize="none"
@@ -587,7 +639,8 @@ export default function DocustreamScreen(): JSX.Element {
               />
               <TouchableOpacity
                 style={styles.addSourceButton}
-                disabled={!sourceUrlInput.trim() || sourceOperationId !== null || !isSessionReady}
+                disabled={!sourceUrlInput.trim() || sourceOperationId !== null}
+                testID="docustream-source-add"
                 onPress={() => void handleAddSource(sourceUrlInput, pendingSourceTitle ?? undefined)}
               >
                 <Text style={styles.addSourceButtonText}>Add</Text>
@@ -670,7 +723,7 @@ export default function DocustreamScreen(): JSX.Element {
               ))}
             </ScrollView>
           </View>
-        </TouchableOpacity>
+        </View>
       </Modal>
     </SafeAreaView>
   )
@@ -844,6 +897,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.65)',
     justifyContent: 'flex-end',
+  },
+  modalBackdropTapArea: {
+    flex: 1,
   },
   modalSheet: {
     backgroundColor: aesthetic.color.surface,

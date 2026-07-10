@@ -228,7 +228,17 @@ export class DocustreamSourceManager {
     })
 
     if (!response.ok) {
-      throw new Error(`Failed to write source registry at ${registryUrl}: HTTP ${response.status}`)
+      const authHeader = response.headers.get('www-authenticate') ?? 'none'
+      let responseSnippet = ''
+      try {
+        responseSnippet = (await response.text()).replace(/\s+/g, ' ').slice(0, 300)
+      } catch {
+        responseSnippet = 'unavailable'
+      }
+
+      throw new Error(
+        `Failed to write source registry at ${registryUrl}: HTTP ${response.status} ${response.statusText}; www-authenticate=${authHeader}; body=${responseSnippet}`
+      )
     }
   }
 

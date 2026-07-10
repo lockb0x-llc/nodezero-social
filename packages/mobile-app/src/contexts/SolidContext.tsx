@@ -213,8 +213,15 @@ export function SolidProvider({ children }: { children: ReactNode }): JSX.Elemen
   useEffect(() => {
     const handleAuthenticated = (): void => syncSessionState()
     const handleUnauthenticated = (): void => {
-      setIsLoggedIn(false)
       setIsSessionReady(false)
+      if (nodeSession?.webId) {
+        // Keep the user identity stable during transient OIDC restore/logout
+        // events when a valid local node session still exists.
+        applyWebId(nodeSession.webId)
+        return
+      }
+
+      setIsLoggedIn(false)
       setWebId(null)
       void AsyncStorage.removeItem(SOLID_WEBID_STORAGE_KEY)
     }
@@ -236,14 +243,17 @@ export function SolidProvider({ children }: { children: ReactNode }): JSX.Elemen
         // authenticated Solid OIDC session.
         if (savedNodeSession) {
           setNodeSession(savedNodeSession)
-          // Staging fallback: when seamless onboarding returns without an OIDC
-          // callback payload, keep the user in-app using the freshly created
-          // node identity so route guards do not reset to landing.
-          if (!cachedWebId && savedNodeSession.webId) {
-            applyWebId(savedNodeSession.webId)
-          }
         }
-        if (cachedWebId) applyWebId(cachedWebId)
+
+        // WebID continuity invariant: if a node session exists, its WebID is a
+        // valid identity anchor for in-app session continuity while OIDC restore
+        // settles.
+        if (savedNodeSession?.webId) {
+          applyWebId(savedNodeSession.webId)
+        } else if (cachedWebId) {
+          applyWebId(cachedWebId)
+        }
+
         if (hasOidcRedirectParams()) {
           return handleIncomingRedirect({ restorePreviousSession: false })
         }
@@ -271,7 +281,7 @@ export function SolidProvider({ children }: { children: ReactNode }): JSX.Elemen
       session.events.off(EVENTS.LOGOUT, handleUnauthenticated)
       session.events.off(EVENTS.SESSION_EXPIRED, handleUnauthenticated)
     }
-  }, [applyWebId, session, syncSessionState])
+  }, [applyWebId, nodeSession?.webId, session, syncSessionState])
 
   const signIn = useCallback(async (
     idpUrl: string,
@@ -290,8 +300,10 @@ export function SolidProvider({ children }: { children: ReactNode }): JSX.Elemen
     async (record: NodeSessionRecord) => {
       await saveNodeSession(record)
       setNodeSession(record)
+      applyWebId(record.webId)
+      setIsSessionReady(false)
     },
-    [],
+    [applyWebId],
   )
 
   const signOut = useCallback(async () => {
