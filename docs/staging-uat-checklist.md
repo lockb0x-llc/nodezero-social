@@ -59,9 +59,21 @@ Validate the nav bar overflow fix and the Settings access path change introduced
 
 | # | Step | Expected | Result | Notes |
 |---|------|----------|--------|-------|
-| N1 | Authenticated at 375px (Chrome DevTools → iPhone SE preset): inspect bottom nav | Nav bar shows 6 tabs (Local, Broadcast, Stream, Feed, Backpack, Profile). No "Settings" tab visible. No tab is clipped off-screen. Bar scrolls horizontally if viewport is very narrow. | — | Emulate iPhone SE (375×812) via DevTools Device toolbar. |
+| N1 | Authenticated at 375px (Chrome DevTools → iPhone SE preset): inspect bottom nav | Nav bar shows 7 tabs (Local, Broadcast, Stream, Feed, Directory, Backpack, Profile). No "Settings" tab visible. No tab is clipped off-screen. Bar scrolls horizontally if viewport is very narrow. | — | Emulate iPhone SE (375×812) via DevTools Device toolbar. |
 | N2 | Authenticated at 375px: tap **Profile** tab → confirm ⚙ icon → tap it | ⚙ gear icon appears top-right of Profile content area. Tap navigates to `/settings` page without reload. | — | Gear icon uses `settings-outline` Ionicon, `textMid` colour. |
 | N3 | Repeat N1 and N2 in Safari (WebKit) via responsive mode | Same pass criteria as N1/N2 — horizontal scroll and gear icon work in Safari | — | Use Safari → Develop → Responsive Design Mode (or equivalent). |
+
+### Community Directory + Trust Circle acceptance
+
+| # | Step | Expected | Result | Notes |
+|---|------|----------|--------|-------|
+| CD1 | Authenticated at 375px, inspect bottom nav order | Directory tab is present between Feed and Backpack | — | Manual counterpart to `pnpm qa:smoke:community-directory` tab-sequence evidence. |
+| CD2 | Open Directory tab and tap Refresh before any opt-in record is published | Unlisted users remain absent from non-connection results | — | Verifies unlisted-by-default behavior in the UI. |
+| CD3 | Trigger opt-in for a seeded account via provisioner API and refresh Directory | Newly listed member appears in Directory results | — | Pairs with automated store lifecycle test and API mutation checks. |
+| CD4 | Trigger opt-out for the same member and refresh Directory | Member is removed/hidden from Directory results while existing direct connections remain connectable | — | Confirms opt-out removal behavior in UI. |
+| CD5 | In Directory, add a directory-only member to Trust Circle and do not add as connection | Trust Circle badge/state updates in Directory only | — | Precondition for CD6 recipient guard check. |
+| CD6 | Compose in `verified` audience with directory-only trust-circle member (no connection) | Recipient targeting does not include that member | — | Confirms Trust Circle remains a filter signal, not implicit targeting. |
+| CD7 | Compose in `foaf`, `verified`, and `local` with known contacts | Existing audience behavior remains stable across all modes | — | Validate no regression versus pre-directory behavior. |
 
 ### Global feed
 
@@ -82,7 +94,7 @@ Validate the nav bar overflow fix and the Settings access path change introduced
 |---|------|----------|--------|-------|
 | PR1 | Authenticated user updates Profile fields and taps Save to Solid Pod | Save succeeds, profile reload reflects persisted values, and no silent failure occurs during session-restore windows | **PARTIAL PASS (2026-07-09 headed validation)** | Tested with account `pakana-10@pakana.net`: profile values saved and later reloaded (`Display Name`/`Bio` values present after auth round-trip). One transient `PATCH ... net::ERR_ABORTED` was observed during OIDC restore churn; stale-session-forced re-auth branch was not deterministically reproduced in this manual pass. |
 | PR2 | In Profile, add a valid contact WebID then remove it | Added WebID appears in Connections list and remove action updates list consistently | **PASS (2026-07-09 live staging rerun)** | With account `https://solid.nodezero.social/qa-conn-20260709-1/profile/card#me`, adding `https://solid.nodezero.social/pakana-10/profile/card#me` immediately rendered a Connections row and status `Connection added successfully.`; removing it returned to empty state and status `Connection removed.`. |
-| PR3 | In Profile, open Community Directory and connect to an entry | Directory list renders, connect action adds relationship unless entry is self/already connected | **PASS (2026-07-09 live staging rerun)** | Community Directory rendered self + non-self entries, and the non-self target transitioned to `Connected` after add. After removal in PR2 rerun, directory reflected self-only state again as expected. |
+| PR3 | Open Directory tab and connect to an entry | Directory list renders, connect action adds relationship unless entry is self/already connected | — | Supersedes legacy Profile-embedded directory flow; execute from dedicated `/directory` tab. |
 
 | # | Step | Expected | Result | Notes |
 |---|------|----------|--------|-------|
@@ -138,7 +150,7 @@ Validate the nav bar overflow fix and the Settings access path change introduced
 | Wallet provisioning on web | ✅ PASS (web localStorage fallback) |
 | Wallet on-chain registration | ✅ PASS (AT1 evidence) |
 | Attestation proof verification (returning sign-in) | ✅ PASS |
-| Nav bar overflow fix (6 tabs, horizontal scroll) | ✅ PASS (2026-06-28 N1) |
+| Nav bar overflow fix (7 tabs incl. Directory, horizontal scroll) | — |
 | Settings accessible via Profile ⚙ gear | ✅ PASS (2026-06-28 N2) |
 
 ## Sign-off

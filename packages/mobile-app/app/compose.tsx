@@ -18,10 +18,22 @@ import { useWallet } from '../src/contexts/WalletContext';
 import { P2PChannel } from '@nodezero/p2p-comms';
 import { getSolidPodSyncManagers } from '../src/solid/podSyncManagers';
 import { aesthetic } from '../src/theme/aesthetic';
+import { resolveAudienceRecipients } from '../src/social/composeRecipients';
+import { listTrustCircleMembers } from '../src/social/trustCircleStore';
 
 type AudienceType = 'foaf' | 'verified' | 'local';
-  import { resolveAudienceRecipients } from '../src/social/composeRecipients';
-  import { listTrustCircleMembers } from '../src/social/trustCircleStore';
+
+function toWebIdList(connections: Array<unknown>): string[] {
+  return connections
+    .map((entry) => {
+      if (typeof entry === 'string') return entry;
+      if (entry && typeof entry === 'object' && typeof (entry as { webId?: unknown }).webId === 'string') {
+        return (entry as { webId: string }).webId;
+      }
+      return '';
+    })
+    .filter((webId) => webId.length > 0);
+}
 
 export default function ComposeScreen() {
   const [postText, setPostText] = useState('');
@@ -56,10 +68,16 @@ export default function ComposeScreen() {
         // Write payload to Pod /outbox/ container via session.fetch
         const podRoot = (webId ?? '').split('/profile/')[0] + '/';
         const { socialGraph: graph } = getSolidPodSyncManagers(session);
-        const connections = await graph.listConnections(podRoot).catch(() => []);
+        const connections = toWebIdList(await graph.listConnections(podRoot).catch(() => []));
+        const trustCircleMembers = webId ? await listTrustCircleMembers(webId) : [];
+        const recipientIds = resolveAudienceRecipients({
+          audience,
+          connections,
+          trustCircleMembers,
+        });
         const payload = JSON.stringify({ text: postText, audience, ts: Date.now() });
         await Promise.allSettled(
-          connections.map((_c) =>
+          recipientIds.map(() =>
             session.fetch(
               podRoot +
                 'outbox/' +
@@ -79,11 +97,16 @@ export default function ComposeScreen() {
         // Same as foaf but guard each recipient with verifyPoH check
         const podRoot = (webId ?? '').split('/profile/')[0] + '/';
         const { socialGraph: graph } = getSolidPodSyncManagers(session);
-        const connections = await graph.listConnections(podRoot).catch(() => []);
+        const connections = toWebIdList(await graph.listConnections(podRoot).catch(() => []));
+        const trustCircleMembers = webId ? await listTrustCircleMembers(webId) : [];
+        const recipientIds = resolveAudienceRecipients({
+          audience,
+          connections,
+          trustCircleMembers,
+        });
         const payload = JSON.stringify({ text: postText, audience, ts: Date.now() });
         await Promise.allSettled(
-          connections.map(async (c) => {
-            const recipientWebId = (c as { webId?: string }).webId ?? String(c);
+          recipientIds.map(async (recipientWebId) => {
             const isVerified = await verifyPoH(recipientWebId);
             if (!isVerified) {
               console.warn('[compose] skipping unverified recipient', recipientWebId);
