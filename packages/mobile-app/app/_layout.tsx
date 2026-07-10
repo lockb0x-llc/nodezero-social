@@ -28,6 +28,7 @@ const NODE_SESSION_VERIFICATION_ALLOWED_ROUTES = new Set([
   '/compose',
   '/docustream',
   '/feed',
+  '/directory',
   '/backpack',
   '/profile',
   '/settings',
@@ -127,6 +128,7 @@ function WebNavBar(): JSX.Element | null {
     { href: '/compose', label: 'Broadcast' },
     { href: '/docustream', label: 'Stream' },
     { href: '/feed', label: 'Feed' },
+    { href: '/directory', label: 'Directory' },
     { href: '/backpack', label: 'Backpack' },
     { href: '/profile', label: 'Profile' },
   ] as const

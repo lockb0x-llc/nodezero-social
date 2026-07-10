@@ -94,6 +94,7 @@ const mashlibExplorerEnabled =
   nonEmptyEnv('NZ_MASHLIB_EXPLORER_ENABLED') ?? (envProfile === 'staging-testnet' ? 'true' : 'false')
 const mashlibModuleId =
   nonEmptyEnv('NZ_MASHLIB_MODULE_ID') ?? (envProfile === 'staging-testnet' ? 'nodezero:mashlib-pane-provider' : '')
+const nodeZeroDirectoryUrl = nonEmptyEnv('NZ_NODEZERO_DIRECTORY_URL') ?? ''
 
 if (profile.enforceStrictVariables) {
   if (!relayUrl) {
@@ -178,6 +179,7 @@ module.exports = {
     envProfile,
     solidOidcIssuerUrl,
     nodeZeroIssuerUrl,
+    nodeZeroDirectoryUrl,
     solidSignupUrl,
     solidAccountPortalUrl,
     solidSignupReturnMode,

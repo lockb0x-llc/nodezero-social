@@ -28,6 +28,7 @@ import type { ProfileManager, UserProfile } from '@nodezero/solid-pod-sync'
 import { getSolidPodSyncManagers } from '../src/solid/podSyncManagers'
 import { Ionicons } from '@expo/vector-icons'
 import { aesthetic } from '../src/theme/aesthetic'
+import { useConnections } from '../src/social/useConnections'
 
 const EMPTY_PROFILE: UserProfile = {
   displayName: '',
@@ -36,70 +37,6 @@ const EMPTY_PROFILE: UserProfile = {
   externalUrl: undefined,
   interests: [],
   isNsfw: false,
-}
-
-interface CommunityDirectoryEntry {
-  webId: string
-  displayName: string
-  source: 'self' | 'connection' | 'directory'
-}
-
-interface ConnectionStatus {
-  type: 'info' | 'success' | 'error'
-  message: string
-}
-
-function isLikelyWebId(value: string): boolean {
-  try {
-    const parsed = new URL(value)
-    return parsed.protocol === 'https:' && parsed.pathname.includes('/profile/card')
-  } catch {
-    return false
-  }
-}
-
-function deriveNameFromWebId(candidate: string): string {
-  try {
-    const parsed = new URL(candidate)
-    const segment = parsed.pathname.split('/').filter(Boolean)[0]
-    return segment || parsed.hostname
-  } catch {
-    return candidate
-  }
-}
-
-function readDirectoryEndpoint(): string {
-  const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
-  const custom = appExtra?.nodeZeroDirectoryUrl?.trim()
-  if (custom) return custom
-
-  const issuer = (appExtra?.nodeZeroIssuerUrl ?? '').trim().replace(/\/+$/, '')
-  if (!issuer) return ''
-
-  return `${issuer}/public/nodezero-pod-holders.json`
-}
-
-function parseDirectoryWebIds(payload: unknown): string[] {
-  if (Array.isArray(payload)) {
-    return payload
-      .map((entry) => {
-        if (typeof entry === 'string') return entry
-        if (entry && typeof entry === 'object' && typeof (entry as { webId?: unknown }).webId === 'string') {
-          return (entry as { webId: string }).webId
-        }
-        return ''
-      })
-      .filter((entry) => isLikelyWebId(entry))
-  }
-
-  if (payload && typeof payload === 'object') {
-    const record = payload as Record<string, unknown>
-    if (Array.isArray(record.members)) {
-      return parseDirectoryWebIds(record.members)
-    }
-  }
-
-  return []
 }
 
 export default function ProfileScreen(): JSX.Element {
@@ -113,19 +50,28 @@ export default function ProfileScreen(): JSX.Element {
   const [interestsInput, setInterestsInput] = useState('')
   const [sharedThreads, setSharedThreads] = useState<string[]>([])
   const [zkTooltipOpen, setZkTooltipOpen] = useState(false)
-  const [connectionsLoading, setConnectionsLoading] = useState(false)
-  const [connections, setConnections] = useState<string[]>([])
   const [connectionInput, setConnectionInput] = useState('')
-  const [connectionBusyWebId, setConnectionBusyWebId] = useState<string | null>(null)
-  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus | null>(null)
-  const [directoryLoading, setDirectoryLoading] = useState(false)
-  const [communityDirectory, setCommunityDirectory] = useState<CommunityDirectoryEntry[]>([])
 
   const { peerWebId } = useLocalSearchParams<{ peerWebId?: string }>()
   const router = useRouter()
   const effectiveWebId = webId ?? nodeSession?.webId ?? null
   // Pod writes require an authenticated OIDC fetch context; node-session data is identity metadata only.
   const canWriteProfile = isSessionReady
+
+  const {
+    connectionsLoading,
+    connections,
+    connectionBusyWebId,
+    connectionStatus,
+    loadConnections,
+    addConnection,
+    removeConnection,
+  } = useConnections({
+    effectiveWebId,
+    session,
+    isSessionReady,
+    signIn,
+  })
 
   const ensureSolidWriteReady = useCallback(async (forceReauth = false): Promise<boolean> => {
     if (!forceReauth && canWriteProfile) return true
@@ -146,76 +92,6 @@ export default function ProfileScreen(): JSX.Element {
     return false
   }, [canWriteProfile, signIn])
 
-  const loadConnections = useCallback(async (): Promise<void> => {
-    if (!effectiveWebId) {
-      setConnections([])
-      return
-    }
-
-    setConnectionsLoading(true)
-    try {
-      const podRoot = `${effectiveWebId.split('/profile/')[0]}/`
-      const { socialGraph } = getSolidPodSyncManagers(session)
-      const list = await socialGraph.listConnections(podRoot)
-      setConnections(list.map((item) => item.webId).filter((item) => item !== effectiveWebId))
-    } catch {
-      setConnections([])
-    } finally {
-      setConnectionsLoading(false)
-    }
-  }, [effectiveWebId, session])
-
-  const loadCommunityDirectory = useCallback(async (): Promise<void> => {
-    if (!effectiveWebId || !managerRef.current) {
-      setCommunityDirectory([])
-      return
-    }
-
-    setDirectoryLoading(true)
-    try {
-      const seed = new Set<string>([effectiveWebId, ...connections])
-      const directoryEndpoint = readDirectoryEndpoint()
-
-      if (directoryEndpoint) {
-        try {
-          const response = await session.fetch(directoryEndpoint)
-          if (response.ok) {
-            const payload = await response.json()
-            for (const candidate of parseDirectoryWebIds(payload)) {
-              seed.add(candidate)
-            }
-          }
-        } catch {
-          // Directory endpoint is optional.
-        }
-      }
-
-      const entries = await Promise.all(
-        Array.from(seed).map(async (candidateWebId) => {
-          const profileData = await managerRef.current?.readProfile(candidateWebId).catch(() => null)
-          const displayName = profileData?.displayName?.trim() || deriveNameFromWebId(candidateWebId)
-          const source: CommunityDirectoryEntry['source'] =
-            candidateWebId === effectiveWebId
-              ? 'self'
-              : connections.includes(candidateWebId)
-                ? 'connection'
-                : 'directory'
-
-          return {
-            webId: candidateWebId,
-            displayName,
-            source,
-          }
-        })
-      )
-
-      entries.sort((a, b) => a.displayName.localeCompare(b.displayName))
-      setCommunityDirectory(entries)
-    } finally {
-      setDirectoryLoading(false)
-    }
-  }, [connections, effectiveWebId, session])
-
   // Peer view: load semantic overlap when viewing another user's profile.
   useEffect(() => {
     if (!peerWebId || !isLoggedIn) return
@@ -233,10 +109,6 @@ export default function ProfileScreen(): JSX.Element {
   // Initialise ProfileManager once session is available.
   useEffect(() => {
     if (!isLoggedIn) {
-      setConnections([])
-      setCommunityDirectory([])
-      setConnectionsLoading(false)
-      setDirectoryLoading(false)
       return
     }
 
@@ -264,15 +136,6 @@ export default function ProfileScreen(): JSX.Element {
         setLoading(false)
       })
   }, [effectiveWebId])
-
-  useEffect(() => {
-    if (!isLoggedIn || !effectiveWebId || !managerRef.current) {
-      setCommunityDirectory([])
-      return
-    }
-
-    void loadCommunityDirectory()
-  }, [effectiveWebId, isLoggedIn, loadCommunityDirectory])
 
   const saveProfile = useCallback(async () => {
     if (!effectiveWebId || !managerRef.current) return
@@ -315,7 +178,6 @@ export default function ProfileScreen(): JSX.Element {
         setProfile(saved)
         setInterestsInput(saved.interests.join(', '))
       }
-      void loadCommunityDirectory()
       Alert.alert('Saved', 'Your profile has been updated in your Solid Pod.')
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to save profile. Please try again.'
@@ -324,88 +186,7 @@ export default function ProfileScreen(): JSX.Element {
     } finally {
       setSaving(false)
     }
-  }, [canWriteProfile, effectiveWebId, interestsInput, loadCommunityDirectory, profile, signIn])
-
-  const addConnection = useCallback(async (targetWebId: string): Promise<void> => {
-    if (!effectiveWebId) return
-
-    if (!(await ensureSolidWriteReady())) return
-
-    const candidate = targetWebId.trim()
-    if (!isLikelyWebId(candidate)) {
-      Alert.alert('Invalid WebID', 'Use a valid https WebID, for example: https://your-node/profile/card#me')
-      return
-    }
-    if (candidate === effectiveWebId) {
-      Alert.alert('Not allowed', 'You are already connected to yourself.')
-      return
-    }
-
-    const podRoot = `${effectiveWebId.split('/profile/')[0]}/`
-    setConnectionStatus(null)
-    setConnectionBusyWebId(candidate)
-    try {
-      const { socialGraph } = getSolidPodSyncManagers(session)
-      await socialGraph.addConnection(podRoot, candidate)
-      setConnectionInput('')
-      await loadConnections()
-      await loadCommunityDirectory()
-      setConnectionStatus({ type: 'success', message: 'Connection added successfully.' })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to add connection.'
-      const isAuthFailure =
-        /\bHTTP\s*401\b|www-authenticate|unauthorized|h401|network\s*request\s*failed|fetch/i.test(
-          message
-        ) ||
-        !isSessionReady
-
-      if (isAuthFailure) {
-        setConnectionStatus({ type: 'info', message: 'Solid session needs re-authentication. Redirecting to sign-in...' })
-        void ensureSolidWriteReady(true)
-        return
-      }
-
-      setConnectionStatus({ type: 'error', message: `Add failed: ${message}` })
-      Alert.alert('Connection error', message)
-    } finally {
-      setConnectionBusyWebId(null)
-    }
-  }, [effectiveWebId, ensureSolidWriteReady, isSessionReady, loadCommunityDirectory, loadConnections, session])
-
-  const removeConnection = useCallback(async (targetWebId: string): Promise<void> => {
-    if (!effectiveWebId) return
-
-    if (!(await ensureSolidWriteReady())) return
-
-    const podRoot = `${effectiveWebId.split('/profile/')[0]}/`
-    setConnectionStatus(null)
-    setConnectionBusyWebId(targetWebId)
-    try {
-      const { socialGraph } = getSolidPodSyncManagers(session)
-      await socialGraph.removeConnection(podRoot, targetWebId)
-      await loadConnections()
-      await loadCommunityDirectory()
-      setConnectionStatus({ type: 'success', message: 'Connection removed.' })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to remove connection.'
-      const isAuthFailure =
-        /\bHTTP\s*401\b|www-authenticate|unauthorized|h401|network\s*request\s*failed|fetch/i.test(
-          message
-        ) ||
-        !isSessionReady
-
-      if (isAuthFailure) {
-        setConnectionStatus({ type: 'info', message: 'Solid session needs re-authentication. Redirecting to sign-in...' })
-        void ensureSolidWriteReady(true)
-        return
-      }
-
-      setConnectionStatus({ type: 'error', message: `Remove failed: ${message}` })
-      Alert.alert('Connection error', message)
-    } finally {
-      setConnectionBusyWebId(null)
-    }
-  }, [effectiveWebId, ensureSolidWriteReady, isSessionReady, loadCommunityDirectory, loadConnections, session])
+  }, [canWriteProfile, effectiveWebId, interestsInput, profile, signIn])
 
   if (!isLoggedIn) {
     return (
@@ -610,7 +391,11 @@ export default function ProfileScreen(): JSX.Element {
             />
             <TouchableOpacity
               style={styles.connectionActionButton}
-              onPress={() => void addConnection(connectionInput)}
+              onPress={() => {
+                void addConnection(connectionInput).then((didAdd) => {
+                  if (didAdd) setConnectionInput('')
+                })
+              }}
               disabled={Boolean(connectionBusyWebId) || connectionInput.trim().length === 0}
               activeOpacity={aesthetic.motion.pressOpacity}
             >
@@ -653,57 +438,6 @@ export default function ProfileScreen(): JSX.Element {
                 </TouchableOpacity>
               </View>
             ))
-          )}
-        </View>
-
-        <View style={styles.sectionCard}>
-          <View style={styles.sectionCardHeader}>
-            <Text style={styles.sectionCardTitle}>Community Directory</Text>
-            <TouchableOpacity
-              onPress={() => void loadCommunityDirectory()}
-              disabled={directoryLoading}
-              activeOpacity={aesthetic.motion.pressOpacity}
-              style={styles.inlineRefreshButton}
-            >
-              {directoryLoading ? (
-                <ActivityIndicator color={aesthetic.color.accentSoft} size="small" />
-              ) : (
-                <Text style={styles.inlineRefreshButtonText}>Refresh</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-          <Text style={styles.directoryHintText}>
-            Discover Node Zero Pod holders from your graph and shared community directory sources.
-          </Text>
-
-          {communityDirectory.length === 0 ? (
-            <Text style={styles.emptySubtleText}>No directory entries available yet.</Text>
-          ) : (
-            communityDirectory.slice(0, 30).map((entry) => {
-              const isSelf = entry.webId === effectiveWebId
-              const isConnected = connections.includes(entry.webId)
-              return (
-                <View key={entry.webId} style={styles.directoryRow}>
-                  <View style={styles.directoryMetaWrap}>
-                    <Text style={styles.directoryName}>{entry.displayName}</Text>
-                    <Text style={styles.directoryWebId} numberOfLines={2}>{entry.webId}</Text>
-                  </View>
-                  <TouchableOpacity
-                    style={[
-                      styles.directoryConnectButton,
-                      (isSelf || isConnected) && styles.directoryConnectButtonDisabled,
-                    ]}
-                    onPress={() => void addConnection(entry.webId)}
-                    disabled={isSelf || isConnected || connectionBusyWebId === entry.webId}
-                    activeOpacity={aesthetic.motion.pressOpacity}
-                  >
-                    <Text style={styles.directoryConnectButtonText}>
-                      {isSelf ? 'You' : isConnected ? 'Connected' : 'Connect'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              )
-            })
           )}
         </View>
       </ScrollView>
@@ -815,58 +549,6 @@ const styles = StyleSheet.create({
     height: 34,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  inlineRefreshButton: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  inlineRefreshButtonText: {
-    color: aesthetic.color.accentSoft,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  directoryHintText: {
-    color: aesthetic.color.textMid,
-    fontSize: 12,
-    marginBottom: 10,
-  },
-  directoryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderTopWidth: 1,
-    borderTopColor: aesthetic.color.border,
-    paddingTop: 10,
-    marginTop: 10,
-    gap: 10,
-  },
-  directoryMetaWrap: {
-    flex: 1,
-  },
-  directoryName: {
-    color: aesthetic.color.textHigh,
-    fontSize: 13,
-    fontWeight: '700',
-    marginBottom: 2,
-  },
-  directoryWebId: {
-    color: aesthetic.color.textMid,
-    fontSize: 11,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-  },
-  directoryConnectButton: {
-    backgroundColor: aesthetic.color.accent,
-    borderRadius: 9,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  directoryConnectButtonDisabled: {
-    backgroundColor: '#384158',
-  },
-  directoryConnectButtonText: {
-    color: '#FFF',
-    fontSize: 12,
-    fontWeight: '700',
   },
   // Settings access
   settingsRow: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 4, marginTop: -4 },

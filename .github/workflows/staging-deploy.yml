@@ -171,6 +171,7 @@ jobs:
           NZ_ZK_ARTIFACTS_URL: https://stki7yquyjmnskg.blob.core.windows.net/zk-artifacts/
           NZ_ZK_MANIFEST_URL: https://stki7yquyjmnskg.blob.core.windows.net/zk-artifacts/zk-testnet-artifacts.json
           NZ_NODEZERO_ISSUER_URL: https://solid.nodezero.social/
+          NZ_NODEZERO_DIRECTORY_URL: https://solid.nodezero.social/public/nodezero-pod-holders.json
           NZ_SOLID_OIDC_ISSUER_URL: https://solidcommunity.net/
           NZ_SOLID_SIGNUP_URL: https://solidcommunity.net/register
           NZ_SOLID_ACCOUNT_PORTAL_URL: https://solidcommunity.net/

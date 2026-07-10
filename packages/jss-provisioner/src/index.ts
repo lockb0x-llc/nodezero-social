@@ -12,6 +12,7 @@ import {
   createNotificationEventPublisherFromEnv,
   publishProvisioningEvent,
 } from './notificationEvents.js'
+import { CommunityDirectoryStore } from './communityDirectory.js'
 import type {
   BootstrapChallengeRequest,
   ProvisionRequest,
@@ -41,6 +42,7 @@ const ALLOWED_ORIGINS = (process.env.JSS_ALLOWED_ORIGINS ?? 'https://staging.nod
   .map((origin) => origin.trim())
   .filter((origin) => origin.length > 0)
 const store = new ProvisionStore()
+const communityDirectory = new CommunityDirectoryStore()
 const knownSolidAccountEmails = new Set<string>()
 const notificationPublisher = createNotificationEventPublisherFromEnv()
 const DOCUSTREAM_RSS_FETCH_TIMEOUT_MS = Number(process.env.JSS_DOCUSTREAM_RSS_FETCH_TIMEOUT_MS ?? 12000)
@@ -116,7 +118,7 @@ function corsHeaders(req: IncomingMessage): Record<string, string> {
   return {
     'access-control-allow-origin': allowOrigin,
     'access-control-allow-methods': 'GET,POST,OPTIONS',
-    'access-control-allow-headers': 'content-type,authorization',
+    'access-control-allow-headers': 'content-type,authorization,x-nz-internal-key',
     vary: 'origin',
   }
 }
@@ -382,6 +384,45 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
     return
   }
 
+  if (req.method === 'GET' && url.pathname === '/v1/community-directory/index') {
+    sendJson(req, res, 200, communityDirectory.buildPublicIndex())
+    return
+  }
+
+  if (
+    req.method === 'POST' &&
+    (url.pathname === '/v1/community-directory/opt-in' || url.pathname === '/v1/community-directory/opt-out')
+  ) {
+    if (!INTERNAL_API_KEY) {
+      sendJson(req, res, 503, { error: 'Community directory mutation is not enabled (JSS_INTERNAL_API_KEY).' })
+      return
+    }
+    if (!hasValidInternalKey(req)) {
+      sendJson(req, res, 401, { error: 'A valid x-nz-internal-key header is required.' })
+      return
+    }
+
+    const body = await readJsonBody<{ webId?: string }>(req)
+    if (!isNonEmpty(body.webId)) {
+      sendJson(req, res, 400, { error: 'webId is required.' })
+      return
+    }
+
+    const listed = url.pathname.endsWith('/opt-in')
+    const updated = communityDirectory.setListing(body.webId.trim(), listed)
+    if (!updated) {
+      sendJson(req, res, 404, { error: 'No directory record exists for the provided webId.' })
+      return
+    }
+
+    sendJson(req, res, 200, {
+      status: 'ok',
+      listed,
+      record: updated,
+    })
+    return
+  }
+
   if (req.method === 'POST' && url.pathname === '/v1/docustream/rss-fetch') {
     const body = await readJsonBody<{ url?: string }>(req)
     if (!isNonEmpty(body.url)) {
@@ -474,6 +515,11 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
         name: normalizedName,
         email,
         password,
+      })
+      communityDirectory.seedRecord({
+        webId: account.webId,
+        podUrl: account.podUrl,
+        issuer: ISSUER,
       })
       rememberKnownSolidEmail(email)
 
