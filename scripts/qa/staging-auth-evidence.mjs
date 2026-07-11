@@ -63,6 +63,24 @@ function currentHost(page) {
   }
 }
 
+async function gotoWithRetry(page, url, label, maxAttempts = 4) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 })
+      return
+    } catch (error) {
+      const message = String(error?.message || error)
+      const isTransientAbort = message.includes('net::ERR_ABORTED')
+      const hasAttemptsLeft = attempt < maxAttempts
+      if (!isTransientAbort || !hasAttemptsLeft) {
+        throw error
+      }
+      log(`${label}: transient navigation abort on attempt ${attempt}/${maxAttempts}; retrying...`)
+      await page.waitForTimeout(1200)
+    }
+  }
+}
+
 /** Detects a terminal identity-provider error page (e.g. invalid_request). */
 async function detectIdpErrorPage(page) {
   return await page
@@ -613,7 +631,7 @@ async function runReturningUserJourney(context, credentials) {
 
   // Simulate app restart while preserving the embedded wallet key so the
   // user appears signed out locally but can still complete the auth flow.
-  await page.goto(`${baseUrl}/`, { waitUntil: 'domcontentloaded' })
+  await gotoWithRetry(page, `${baseUrl}/`, 'RETURNING USER: initial app load')
   await page.evaluate(() => {
     const walletKey = 'nodezero.embedded-wallet.nodezero.stellar.secret'
     const walletSecret = localStorage.getItem(walletKey)
@@ -623,7 +641,7 @@ async function runReturningUserJourney(context, credentials) {
     }
   })
 
-  await page.goto(`${baseUrl}/`, { waitUntil: 'domcontentloaded' })
+  await gotoWithRetry(page, `${baseUrl}/`, 'RETURNING USER: post-clear app load')
   await page.waitForTimeout(2500)
 
   const signInButton = page.getByRole('button', { name: 'Sign In' }).first()
