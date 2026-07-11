@@ -158,6 +158,7 @@ async function completeIdentityProviderFlow(page, options) {
     lastManualSubmitAt: 0,
     loginPageFirstSeenAt: 0,
     forcedPlainLogin: false,
+    bridgeReturnUrl: null,
   }
   // Grace window that lets the OIDC bridge auto-login run before we fall back
   // to manual credentials (bridge consume + native form submit take a moment).
@@ -172,7 +173,24 @@ async function completeIdentityProviderFlow(page, options) {
     const host = currentHost(page)
 
     if (host === appHost) {
-      return
+      const hasSession = await page
+        .evaluate(() => {
+          try {
+            return Boolean(localStorage.getItem('solid.webId.v1'))
+          } catch {
+            return false
+          }
+        })
+        .catch(() => false)
+      if (hasSession) {
+        return
+      }
+
+      // App host reached, but session is not established yet. Give the app a
+      // short moment to resume OIDC and keep looping so we can handle any
+      // follow-up consent/login redirects.
+      await page.waitForTimeout(1500)
+      continue
     }
 
     if (host !== solidHost) {
@@ -186,6 +204,16 @@ async function completeIdentityProviderFlow(page, options) {
     }
 
     const path = new URL(page.url()).pathname
+
+    if (/\/\.?account\/account(?:\/|$)/.test(path)) {
+      const bridgeReturn = flowState.bridgeReturnUrl || `${baseUrl}/?nz_bridge_return=1`
+      log('Account page reached after manual sign-in; resuming app handoff.')
+      await page
+        .goto(bridgeReturn, { waitUntil: 'domcontentloaded', timeout: 30000 })
+        .catch(() => {})
+      await page.waitForTimeout(1500)
+      continue
+    }
 
     if (path.includes('/oidc/') || path.includes('consent')) {
       await authorizeConsentIfPresent(page, flowState)
@@ -221,6 +249,20 @@ async function completeIdentityProviderFlow(page, options) {
         continue
       }
 
+      if (!flowState.bridgeReturnUrl) {
+        try {
+          const candidate = new URL(page.url()).searchParams.get('nz_return')
+          if (candidate) {
+            const parsed = new URL(candidate)
+            if (parsed.hostname.toLowerCase() === appHost) {
+              flowState.bridgeReturnUrl = parsed.toString()
+            }
+          }
+        } catch {
+          // Ignore malformed bridge return values.
+        }
+      }
+
       if (!flowState.loginPageFirstSeenAt) {
         flowState.loginPageFirstSeenAt = Date.now()
       }
@@ -253,7 +295,8 @@ async function completeIdentityProviderFlow(page, options) {
 
           log('Bridge appears stalled on readonly login form; reloading manual login route.')
           const manualLoginUrl = new URL(page.url())
-          manualLoginUrl.search = ''
+          manualLoginUrl.searchParams.delete('nz_oidc_bridge')
+          manualLoginUrl.searchParams.delete('nz_oidc_bridge_consume')
           await page
             .goto(manualLoginUrl.toString(), { waitUntil: 'domcontentloaded', timeout: 30000 })
             .catch(() => {})
@@ -267,7 +310,8 @@ async function completeIdentityProviderFlow(page, options) {
           if (!flowState.forcedPlainLogin && (bridgeScopedUrl || bridgeManagedReadonly)) {
             log('Bridge fallback detected on bridge-scoped login; reloading plain login route.')
             const manualLoginUrl = new URL(page.url())
-            manualLoginUrl.search = ''
+            manualLoginUrl.searchParams.delete('nz_oidc_bridge')
+            manualLoginUrl.searchParams.delete('nz_oidc_bridge_consume')
             await page
               .goto(manualLoginUrl.toString(), { waitUntil: 'domcontentloaded', timeout: 30000 })
               .catch(() => {})
@@ -368,10 +412,25 @@ async function runNewUserJourney(browser, credentials) {
   const context = await browser.newContext()
   const page = await context.newPage()
   const navigations = []
+  let provisionedPassword = null
   page.on('framenavigated', (frame) => {
     if (frame !== page.mainFrame()) return
     navigations.push(frame.url())
     if (navigations.length > 40) navigations.shift()
+  })
+  page.on('request', (request) => {
+    if (!request.url().includes('/v1/solid-account')) return
+    if (request.method() !== 'POST') return
+    try {
+      const bodyText = request.postData() || ''
+      const parsed = JSON.parse(bodyText)
+      const candidate = typeof parsed?.password === 'string' ? parsed.password.trim() : ''
+      if (candidate.length >= 12) {
+        provisionedPassword = candidate
+      }
+    } catch {
+      // Ignore parse failures; fallback uses generated credentials password.
+    }
   })
 
   log(`NEW USER: starting create-node with handle '${credentials.handle}'.`)
@@ -473,9 +532,10 @@ async function runNewUserJourney(browser, credentials) {
   }
 
   // Phase 2: identity-provider flow (bridge auto-login + consent).
+  const effectivePassword = provisionedPassword || credentials.password
   await completeIdentityProviderFlow(page, {
     email: credentials.email,
-    password: credentials.password,
+    password: effectivePassword,
     expectManual: false,
   })
   log(`NEW USER: returned to app at ${page.url()}.`)
@@ -491,7 +551,7 @@ async function runNewUserJourney(browser, credentials) {
   log(`NEW USER: PASS. webId=${webId}`)
   log(`NEW USER: on-chain evidence: ${JSON.stringify(nodeEvidence)}`)
 
-  return { webId, nodeEvidence, context }
+  return { webId, nodeEvidence, context, password: effectivePassword }
 }
 
 async function runReturningUserJourney(context, credentials) {
@@ -557,7 +617,11 @@ async function run() {
   const browser = await chromium.launch({ headless: true })
   try {
     const newUser = await runNewUserJourney(browser, credentials)
-    const returningUser = await runReturningUserJourney(newUser.context, credentials)
+    const authCredentials = {
+      ...credentials,
+      password: newUser.password || credentials.password,
+    }
+    const returningUser = await runReturningUserJourney(newUser.context, authCredentials)
 
     if (newUser.webId !== returningUser.webId) {
       fail(`WebID mismatch between journeys: new='${newUser.webId}' returning='${returningUser.webId}'.`)
