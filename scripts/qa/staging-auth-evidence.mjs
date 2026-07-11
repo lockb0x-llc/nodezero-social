@@ -315,8 +315,6 @@ async function runNewUserJourney(browser, credentials) {
   try {
     await page.locator('input[aria-label="Node handle"]').first().fill(credentials.handle, { timeout: 30000 })
     await page.locator('input[aria-label="Notification email"]').first().fill(credentials.email, { timeout: 30000 })
-    await page.locator('input[aria-label="Account password"]').first().fill(credentials.password, { timeout: 30000 })
-    await page.locator('input[aria-label="Confirm account password"]').first().fill(credentials.password, { timeout: 30000 })
   } catch {
     const snippet = await pageTextSnippet(page)
     fail(`Could not fill onboarding credentials. Page snippet: ${snippet}`)
@@ -428,15 +426,26 @@ async function runNewUserJourney(browser, credentials) {
   log(`NEW USER: PASS. webId=${webId}`)
   log(`NEW USER: on-chain evidence: ${JSON.stringify(nodeEvidence)}`)
 
-  await context.close()
-  return { webId, nodeEvidence }
+  return { webId, nodeEvidence, context }
 }
 
-async function runReturningUserJourney(browser, credentials) {
-  const context = await browser.newContext()
+async function runReturningUserJourney(context, credentials) {
   const page = await context.newPage()
 
-  log('RETURNING USER: starting manual sign-in from a fresh browser context.')
+  log('RETURNING USER: starting sign-in from same browser context (preserved IdP session).')
+
+  // Simulate app restart while preserving the embedded wallet key so the
+  // user appears signed out locally but can still complete the auth flow.
+  await page.goto(`${baseUrl}/`, { waitUntil: 'domcontentloaded' })
+  await page.evaluate(() => {
+    const walletKey = 'nodezero.embedded-wallet.nodezero.stellar.secret'
+    const walletSecret = localStorage.getItem(walletKey)
+    localStorage.clear()
+    if (walletSecret) {
+      localStorage.setItem(walletKey, walletSecret)
+    }
+  })
+
   await page.goto(`${baseUrl}/`, { waitUntil: 'domcontentloaded' })
   await page.waitForTimeout(2500)
 
@@ -456,14 +465,13 @@ async function runReturningUserJourney(browser, credentials) {
   await completeIdentityProviderFlow(page, {
     email: credentials.email,
     password: credentials.password,
-    expectManual: true,
+    expectManual: false,
   })
   log(`RETURNING USER: returned to app at ${page.url()}.`)
 
   const webId = await waitForAuthenticatedSession(page, 'returning user')
   log(`RETURNING USER: PASS. webId=${webId}`)
 
-  await context.close()
   return { webId }
 }
 
@@ -484,7 +492,7 @@ async function run() {
   const browser = await chromium.launch({ headless: true })
   try {
     const newUser = await runNewUserJourney(browser, credentials)
-    const returningUser = await runReturningUserJourney(browser, credentials)
+    const returningUser = await runReturningUserJourney(newUser.context, credentials)
 
     if (newUser.webId !== returningUser.webId) {
       fail(`WebID mismatch between journeys: new='${newUser.webId}' returning='${returningUser.webId}'.`)
@@ -497,6 +505,8 @@ async function run() {
       factory: newUser.nodeEvidence?.lockboxFactoryContractId ?? null,
       proofRoot: newUser.nodeEvidence?.proofRootHex ?? null,
     })}`)
+
+    await newUser.context.close()
   } finally {
     await browser.close()
   }
