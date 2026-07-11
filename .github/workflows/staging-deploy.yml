@@ -328,6 +328,10 @@ jobs:
       - name: Run onboarding/authentication E2E gate
         env:
           STAGING_BASE_URL: https://staging.nodezero.social
+          AUTH_E2E_REDIRECT_TIMEOUT_MS: '480000'
+          AUTH_E2E_SESSION_TIMEOUT_MS: '360000'
+          AUTH_E2E_BRIDGE_GRACE_MS: '30000'
+          AUTH_E2E_BRIDGE_STALL_MS: '60000'
         run: |
           set -euo pipefail
 
