@@ -25,7 +25,6 @@ import {
   xdr,
   type Transaction,
 } from '@stellar/stellar-sdk'
-import { createHash } from 'node:crypto'
 import type { EnclaveAdapter } from './EnclaveAdapter.js'
 import type {
   WalletInfo,
@@ -53,6 +52,34 @@ function normalizeBootstrapField(value: string): string {
 
 function toBase64Url(value: string): string {
   return value.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  const maybeBuffer = (globalThis as { Buffer?: { from: (input: Uint8Array) => { toString: (encoding: string) => string } } }).Buffer
+  if (maybeBuffer) {
+    return maybeBuffer.from(bytes).toString('base64')
+  }
+
+  let binary = ''
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte)
+  }
+  return btoa(binary)
+}
+
+async function sha256Base64(input: Uint8Array): Promise<string> {
+  const subtle = globalThis.crypto?.subtle
+  if (subtle) {
+    const digestInput =
+      input.byteOffset === 0 && input.byteLength === input.buffer.byteLength
+        ? (input.buffer as ArrayBuffer)
+        : input.slice().buffer
+    const digest = await subtle.digest('SHA-256', digestInput)
+    return bytesToBase64(new Uint8Array(digest))
+  }
+
+  const { createHash } = await import('crypto')
+  return createHash('sha256').update(input).digest('base64')
 }
 
 function bytesLikeToHex(value: unknown): string | null {
@@ -237,7 +264,7 @@ export class WalletService {
     ].join('|')
 
     const signature = keypair.sign(Buffer.from(canonicalMessage, 'utf8'))
-    const digest = createHash('sha256').update(signature).digest('base64')
+    const digest = await sha256Base64(signature)
     const encoded = toBase64Url(digest)
 
     // Ensure a CSS-compatible high-entropy password with stable prefix.
