@@ -365,26 +365,45 @@ async function completeIdentityProviderFlow(page, options) {
 /** Waits for the app to establish the authenticated session after OIDC return. */
 async function waitForAuthenticatedSession(page, label) {
   log(`Waiting for authenticated session (${label})...`)
-  const state = await page
-    .waitForFunction(() => {
-      try {
-        const webId = localStorage.getItem('solid.webId.v1')
-        if (webId) return { webId }
-      } catch {
-        // storage unavailable; fall through
-      }
-      return false
-    }, { timeout: sessionTimeoutMs, polling: 1000 })
-    .then(async (handle) => handle.jsonValue())
-    .catch(() => null)
+  const deadline = Date.now() + sessionTimeoutMs
+  const appHost = new URL(baseUrl).hostname.toLowerCase()
+  const recoveryState = { authorizedUrls: new Set() }
+  let loggedConsentRecovery = false
 
-  if (!state || !state.webId) {
-    const snippet = await pageTextSnippet(page)
-    fail(`Authenticated session was not established (${label}). URL=${page.url()}. Page snippet: ${snippet}`)
+  while (Date.now() < deadline) {
+    const host = currentHost(page)
+
+    if (host === appHost) {
+      const webId = await page
+        .evaluate(() => {
+          try {
+            return localStorage.getItem('solid.webId.v1')
+          } catch {
+            return null
+          }
+        })
+        .catch(() => null)
+
+      if (webId) {
+        log(`Session established (${label}): webId=${webId}`)
+        return webId
+      }
+    } else if (host === solidHost) {
+      const path = new URL(page.url()).pathname
+      if (path.includes('/oidc/') || path.includes('consent') || path.includes('/login/password')) {
+        const handled = await authorizeConsentIfPresent(page, recoveryState)
+        if (handled && !loggedConsentRecovery) {
+          log(`Session wait (${label}): consent interstitial detected; authorizing and resuming.`)
+          loggedConsentRecovery = true
+        }
+      }
+    }
+
+    await page.waitForTimeout(1000)
   }
 
-  log(`Session established (${label}): webId=${state.webId}`)
-  return state.webId
+  const snippet = await pageTextSnippet(page)
+  fail(`Authenticated session was not established (${label}). URL=${page.url()}. Page snippet: ${snippet}`)
 }
 
 /** Collects on-chain/node metadata persisted by onboarding for the evidence report. */
