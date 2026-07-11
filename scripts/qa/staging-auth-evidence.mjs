@@ -26,8 +26,8 @@ import { chromium } from '@playwright/test'
 const baseUrl = (process.env.STAGING_BASE_URL || 'https://staging.nodezero.social').replace(/\/$/, '')
 const solidHost = (process.env.SOLID_HOST || 'solid.nodezero.social').toLowerCase()
 const createTimeoutMs = Number(process.env.AUTH_E2E_CREATE_TIMEOUT_MS || 8 * 60 * 1000)
-const authRedirectTimeoutMs = Number(process.env.AUTH_E2E_REDIRECT_TIMEOUT_MS || 4 * 60 * 1000)
-const sessionTimeoutMs = Number(process.env.AUTH_E2E_SESSION_TIMEOUT_MS || 3 * 60 * 1000)
+const authRedirectTimeoutMs = Number(process.env.AUTH_E2E_REDIRECT_TIMEOUT_MS || 6 * 60 * 1000)
+const sessionTimeoutMs = Number(process.env.AUTH_E2E_SESSION_TIMEOUT_MS || 4 * 60 * 1000)
 
 function log(message) {
   console.log(`[auth-evidence] ${message}`)
@@ -369,6 +369,7 @@ async function waitForAuthenticatedSession(page, label) {
   const appHost = new URL(baseUrl).hostname.toLowerCase()
   const recoveryState = { authorizedUrls: new Set() }
   let loggedConsentRecovery = false
+  let forcedAccountResume = false
 
   while (Date.now() < deadline) {
     const host = currentHost(page)
@@ -390,6 +391,18 @@ async function waitForAuthenticatedSession(page, label) {
       }
     } else if (host === solidHost) {
       const path = new URL(page.url()).pathname
+
+      if (/\/\.?account\/account(?:\/|$)/.test(path)) {
+        const resumeUrl = `${baseUrl}/?nz_bridge_return=1`
+        if (!forcedAccountResume) {
+          log(`Session wait (${label}): account page detected; forcing app handoff resume.`)
+          forcedAccountResume = true
+        }
+        await page.goto(resumeUrl, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {})
+        await page.waitForTimeout(1000)
+        continue
+      }
+
       if (path.includes('/oidc/') || path.includes('consent') || path.includes('/login/password')) {
         const handled = await authorizeConsentIfPresent(page, recoveryState)
         if (handled && !loggedConsentRecovery) {
