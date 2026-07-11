@@ -155,6 +155,7 @@ async function completeIdentityProviderFlow(page, options) {
     authorizedUrls: new Set(),
     manualSubmitted: false,
     loginPageFirstSeenAt: 0,
+    forcedPlainLogin: false,
   }
   // Grace window that lets the OIDC bridge auto-login run before we fall back
   // to manual credentials (bridge consume + native form submit take a moment).
@@ -258,6 +259,20 @@ async function completeIdentityProviderFlow(page, options) {
         }
 
         if (bridgeFellBack) {
+          const bridgeScopedUrl = page.url().includes('nz_oidc_bridge=')
+          if (!flowState.forcedPlainLogin && (bridgeScopedUrl || bridgeManagedReadonly)) {
+            log('Bridge fallback detected on bridge-scoped login; reloading plain login route.')
+            const manualLoginUrl = new URL(page.url())
+            manualLoginUrl.search = ''
+            await page
+              .goto(manualLoginUrl.toString(), { waitUntil: 'domcontentloaded', timeout: 30000 })
+              .catch(() => {})
+            flowState.loginPageFirstSeenAt = Date.now()
+            flowState.forcedPlainLogin = true
+            await page.waitForTimeout(1500)
+            continue
+          }
+
           log('Bridge fallback message shown; continuing with manual credentials (fallback path).')
         } else if (!flowState.manualSubmitted) {
           log('Bridge auto-login did not complete within grace window; using manual credentials.')
