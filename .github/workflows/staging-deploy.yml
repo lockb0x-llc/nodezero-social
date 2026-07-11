@@ -322,6 +322,36 @@ jobs:
       - name: Install Playwright browsers for auth gate
         run: pnpm exec playwright install chromium --with-deps
 
+      - name: Verify staging domain marker convergence for auth gate
+        env:
+          EXPECTED_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          marker_url="https://staging.nodezero.social/deploy-marker.json"
+          echo "Checking staging marker: ${marker_url}"
+
+          for attempt in {1..24}; do
+            marker_json="$(curl -sS --max-time 20 "$marker_url" || true)"
+            echo "$marker_json" > /tmp/staging-domain-marker.json
+
+            marker_env="$(jq -r '.environment // empty' /tmp/staging-domain-marker.json 2>/dev/null || true)"
+            marker_workflow="$(jq -r '.workflow // empty' /tmp/staging-domain-marker.json 2>/dev/null || true)"
+            marker_commit="$(jq -r '.commit // empty' /tmp/staging-domain-marker.json 2>/dev/null || true)"
+
+            if [ "$marker_env" = "staging-testnet" ] && \
+               [ "$marker_workflow" = "staging-deploy" ] && \
+               [ "$marker_commit" = "$EXPECTED_COMMIT" ]; then
+              echo "Staging domain marker converged on attempt ${attempt}."
+              exit 0
+            fi
+
+            echo "Attempt ${attempt}/24: staging marker not converged (env='${marker_env}', workflow='${marker_workflow}', commit='${marker_commit}'). Retrying in 10s..."
+            sleep 10
+          done
+
+          echo "Staging domain marker did not converge to commit '$EXPECTED_COMMIT' before auth gate."
+          exit 1
+
       # BLOCKING auth release gate: new-user onboarding (Pod + WebID + Stellar
       # lockb0x anchor + ZK attestation + OIDC bridge sign-in) and
       # returning-user credential authentication, end-to-end on staging.
