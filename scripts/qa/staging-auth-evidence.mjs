@@ -154,6 +154,8 @@ async function completeIdentityProviderFlow(page, options) {
   const flowState = {
     authorizedUrls: new Set(),
     manualSubmitted: false,
+    manualAttempts: 0,
+    lastManualSubmitAt: 0,
     loginPageFirstSeenAt: 0,
     forcedPlainLogin: false,
   }
@@ -163,6 +165,8 @@ async function completeIdentityProviderFlow(page, options) {
   // Upper bound for waiting on bridge-controlled readonly forms before forcing
   // navigation to a plain manual-login page.
   const bridgeStallMs = Number(process.env.AUTH_E2E_BRIDGE_STALL_MS || 45000)
+  const manualRetryDelayMs = Number(process.env.AUTH_E2E_MANUAL_RETRY_DELAY_MS || 5000)
+  const manualMaxAttempts = Number(process.env.AUTH_E2E_MANUAL_MAX_ATTEMPTS || 3)
 
   while (Date.now() < deadline) {
     const host = currentHost(page)
@@ -285,11 +289,22 @@ async function completeIdentityProviderFlow(page, options) {
           continue
         }
 
+        flowState.manualAttempts += 1
         flowState.manualSubmitted = true
+        flowState.lastManualSubmitAt = Date.now()
         log(`Submitting manual credentials on login page (${page.url()})...`)
         await page.locator('#email').fill(email, { timeout: 15000 })
         await page.locator('#password').fill(password, { timeout: 15000 })
         await page.locator('button[type="submit"]').first().click({ timeout: 15000 })
+      } else if (
+        state.errorText.toLowerCase().includes('invalid email/password combination') &&
+        flowState.manualAttempts < manualMaxAttempts &&
+        Date.now() - flowState.lastManualSubmitAt >= manualRetryDelayMs
+      ) {
+        log(
+          `Manual login attempt ${flowState.manualAttempts} was rejected; retrying (max ${manualMaxAttempts}).`,
+        )
+        flowState.manualSubmitted = false
       }
       await page.waitForTimeout(2000)
       continue
