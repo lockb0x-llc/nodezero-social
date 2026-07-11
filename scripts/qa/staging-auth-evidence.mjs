@@ -363,13 +363,14 @@ async function completeIdentityProviderFlow(page, options) {
 }
 
 /** Waits for the app to establish the authenticated session after OIDC return. */
-async function waitForAuthenticatedSession(page, label) {
+async function waitForAuthenticatedSession(page, label, authOptions = null) {
   log(`Waiting for authenticated session (${label})...`)
   const deadline = Date.now() + sessionTimeoutMs
   const appHost = new URL(baseUrl).hostname.toLowerCase()
   const recoveryState = { authorizedUrls: new Set() }
   let loggedConsentRecovery = false
   let forcedAccountResume = false
+  let attemptedFullFlowRecovery = false
 
   while (Date.now() < deadline) {
     const host = currentHost(page)
@@ -391,6 +392,22 @@ async function waitForAuthenticatedSession(page, label) {
       }
     } else if (host === solidHost) {
       const path = new URL(page.url()).pathname
+
+      if (!attemptedFullFlowRecovery && authOptions?.email && authOptions?.password) {
+        const canRecoverViaFlow =
+          path.includes('/login/password') || path.includes('/oidc/') || path.includes('consent')
+        if (canRecoverViaFlow) {
+          attemptedFullFlowRecovery = true
+          log(`Session wait (${label}): redirected back to IdP; re-running auth completion flow.`)
+          await completeIdentityProviderFlow(page, {
+            email: authOptions.email,
+            password: authOptions.password,
+            expectManual: false,
+          })
+          await page.waitForTimeout(1000)
+          continue
+        }
+      }
 
       if (/\/\.?account\/account(?:\/|$)/.test(path)) {
         const resumeUrl = `${baseUrl}/?nz_bridge_return=1`
@@ -573,7 +590,10 @@ async function runNewUserJourney(browser, credentials) {
   log(`NEW USER: returned to app at ${page.url()}.`)
 
   // Phase 3: session establishment on the app origin.
-  const webId = await waitForAuthenticatedSession(page, 'new user')
+  const webId = await waitForAuthenticatedSession(page, 'new user', {
+    email: credentials.email,
+    password: effectivePassword,
+  })
   const nodeEvidence = await collectNodeSessionEvidence(page)
 
   if (!nodeEvidence?.userLockboxContractId) {
@@ -626,7 +646,10 @@ async function runReturningUserJourney(context, credentials) {
   })
   log(`RETURNING USER: returned to app at ${page.url()}.`)
 
-  const webId = await waitForAuthenticatedSession(page, 'returning user')
+  const webId = await waitForAuthenticatedSession(page, 'returning user', {
+    email: credentials.email,
+    password: credentials.password,
+  })
   log(`RETURNING USER: PASS. webId=${webId}`)
 
   return { webId }
