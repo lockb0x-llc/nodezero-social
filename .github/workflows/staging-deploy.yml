@@ -337,10 +337,17 @@ jobs:
 
           for attempt in 1 2; do
             echo "[auth-gate] Attempt ${attempt}/2"
-            if pnpm qa:smoke:auth; then
+            attempt_log="/tmp/auth-gate-attempt-${attempt}.log"
+            if pnpm qa:smoke:auth 2>&1 | tee "$attempt_log"; then
               echo "[auth-gate] PASS on attempt ${attempt}."
               exit 0
             fi
+
+            tail_compact="$(grep -E '\[auth-evidence\]|FAIL:' "$attempt_log" | tail -n 12 | tr '\n' '|' | sed 's/|$//')"
+            if [ -z "$tail_compact" ]; then
+              tail_compact="$(tail -n 12 "$attempt_log" | tr '\n' '|' | sed 's/|$//')"
+            fi
+            echo "::error title=Auth gate attempt ${attempt} failed::${tail_compact}"
 
             if [ "$attempt" -lt 2 ]; then
               echo "[auth-gate] Attempt ${attempt} failed. Waiting 20s before retry..."
