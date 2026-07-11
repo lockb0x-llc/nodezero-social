@@ -293,29 +293,27 @@ jobs:
           marker_url="https://${{ steps.hostname.outputs.hostname }}/deploy-marker.json"
           echo "Checking marker: ${marker_url}"
 
-          marker_json="$(curl -sS --max-time 20 "$marker_url")"
-          echo "$marker_json" > /tmp/deploy-marker.json
+          for attempt in {1..18}; do
+            marker_json="$(curl -sS --max-time 20 "$marker_url" || true)"
+            echo "$marker_json" > /tmp/deploy-marker.json
 
-          marker_env="$(jq -r '.environment // empty' /tmp/deploy-marker.json)"
-          marker_workflow="$(jq -r '.workflow // empty' /tmp/deploy-marker.json)"
-          marker_commit="$(jq -r '.commit // empty' /tmp/deploy-marker.json)"
+            marker_env="$(jq -r '.environment // empty' /tmp/deploy-marker.json 2>/dev/null || true)"
+            marker_workflow="$(jq -r '.workflow // empty' /tmp/deploy-marker.json 2>/dev/null || true)"
+            marker_commit="$(jq -r '.commit // empty' /tmp/deploy-marker.json 2>/dev/null || true)"
 
-          if [ "$marker_env" != "staging-testnet" ]; then
-            echo "Marker environment mismatch: '$marker_env'"
-            exit 1
-          fi
+            if [ "$marker_env" = "staging-testnet" ] && \
+               [ "$marker_workflow" = "staging-deploy" ] && \
+               [ "$marker_commit" = "$EXPECTED_COMMIT" ]; then
+              echo "Marker provenance check passed on attempt ${attempt}."
+              exit 0
+            fi
 
-          if [ "$marker_workflow" != "staging-deploy" ]; then
-            echo "Marker workflow mismatch: '$marker_workflow'"
-            exit 1
-          fi
+            echo "Attempt ${attempt}/18: marker not updated yet (env='${marker_env}', workflow='${marker_workflow}', commit='${marker_commit}'). Retrying in 10s..."
+            sleep 10
+          done
 
-          if [ "$marker_commit" != "$EXPECTED_COMMIT" ]; then
-            echo "Marker commit mismatch: expected '$EXPECTED_COMMIT', got '$marker_commit'"
-            exit 1
-          fi
-
-          echo "Marker provenance check passed."
+          echo "Marker provenance check failed after retries. Expected commit '$EXPECTED_COMMIT'."
+          exit 1
 
       - name: Run staging smoke suite
         env:
