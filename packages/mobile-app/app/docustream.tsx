@@ -192,7 +192,7 @@ export default function DocustreamScreen(): JSX.Element {
   const canOperateDocustream = isSessionReady || hasNodeSessionFallback || hasUsableWebIdentity
 
   const loadSources = useCallback(async (): Promise<void> => {
-    if (!isLoggedIn || !canOperateDocustream || !podRoot) {
+    if (!isLoggedIn || !isSessionReady || !podRoot) {
       setSources([])
       return
     }
@@ -200,7 +200,7 @@ export default function DocustreamScreen(): JSX.Element {
     const { docustreamSourceManager } = getSolidPodSyncManagers(session)
     const nextSources = await docustreamSourceManager.listSources(podRoot)
     setSources(nextSources)
-  }, [canOperateDocustream, isLoggedIn, podRoot, session])
+  }, [isLoggedIn, isSessionReady, podRoot, session])
 
   const loadDocustreamItems = useCallback(async (): Promise<void> => {
     if (!isLoggedIn || !canOperateDocustream || !podRoot || !isSyncCheckpointReady || !effectiveWebId) {
@@ -333,6 +333,11 @@ export default function DocustreamScreen(): JSX.Element {
   useEffect((): void => {
     void loadSources()
   }, [loadSources])
+
+  useEffect((): void => {
+    if (!isSourceModalOpen || !isSessionReady) return
+    void loadSources()
+  }, [isSourceModalOpen, isSessionReady, loadSources])
 
   useEffect((): void => {
     void loadDocustreamItems()

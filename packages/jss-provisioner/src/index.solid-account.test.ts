@@ -97,6 +97,47 @@ void test('/v1/oidc-bridge/consume returns 400 when audience is missing', async 
   })
 })
 
+void test('/v1/oidc-bridge/consume returns 400 when origin header is missing', async () => {
+  await withServer(async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/v1/oidc-bridge/consume`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json',
+      },
+      body: JSON.stringify({
+        token: 'test-token',
+        audience: 'nz-solid-css-login-v1',
+      }),
+    })
+
+    const payload = (await response.json()) as { error?: string }
+    assert.equal(response.status, 400)
+    assert.equal(payload.error, 'origin header is required.')
+  })
+})
+
+void test('/v1/oidc-bridge/consume returns 400 when token is invalid', async () => {
+  await withServer(async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/v1/oidc-bridge/consume`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json',
+        origin: 'https://solid.nodezero.social',
+      },
+      body: JSON.stringify({
+        token: 'invalid-token',
+        audience: 'nz-solid-css-login-v1',
+      }),
+    })
+
+    const payload = (await response.json()) as { error?: string }
+    assert.equal(response.status, 400)
+    assert.equal(payload.error, 'OIDC bridge token is invalid or expired.')
+  })
+})
+
 void test('/v1/docustream/rss-fetch returns 400 when url is missing', async () => {
   await withServer(async (baseUrl) => {
     const response = await fetch(`${baseUrl}/v1/docustream/rss-fetch`, {

@@ -78,6 +78,12 @@ jobs:
             exit 1
           fi
 
+          if ! echo "$expected_image" | grep -Eq '^.+@sha256:[a-f0-9]{64}$'; then
+            echo "Expected cssImage must be pinned by digest (repo@sha256:...)."
+            echo "Got: $expected_image"
+            exit 1
+          fi
+
           active_image="$(az containerapp show \
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --name "$SOLID_CONTAINER_APP_NAME" \

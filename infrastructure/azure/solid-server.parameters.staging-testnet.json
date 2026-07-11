@@ -5,7 +5,7 @@
     "location": { "value": "eastus2" },
     "environmentName": { "value": "staging-testnet" },
     "appName": { "value": "nodezero-social" },
-    "cssImage": { "value": "nzsolidui77938.azurecr.io/solid/community-server-nodezero-auth-ui:staging-20260704-consentfix2" },
+    "cssImage": { "value": "nzsolidui77938.azurecr.io/solid/community-server-nodezero-auth-ui@sha256:8db7c381fb34220ec8e56347e68c44b2fb1fb1ea38d1bafa0c2d98d95ce793cf" },
     "fileShareQuotaGb": { "value": 100 },
     "containerCpu": { "value": "1.0" },
     "containerMemory": { "value": "2Gi" },

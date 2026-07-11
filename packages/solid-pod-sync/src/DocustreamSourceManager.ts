@@ -127,11 +127,20 @@ export class DocustreamSourceManager {
       const response = await this.session.fetch(registryUrl, {
         headers: { Accept: 'application/ld+json, application/json' },
       })
-      if (!response.ok) return []
+      if (!response.ok) {
+        const authHeader = response.headers.get('www-authenticate') ?? 'none'
+        console.warn(
+          `[DocustreamSourceManager] listSources failed for ${registryUrl}: ` +
+            `HTTP ${response.status} ${response.statusText}; www-authenticate=${authHeader}`
+        )
+        return []
+      }
 
       const payload = await response.text()
       return fromJsonLd(payload).sort((left, right) => left.url.localeCompare(right.url))
-    } catch {
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'unknown error'
+      console.warn(`[DocustreamSourceManager] listSources exception for ${registryUrl}: ${message}`)
       return []
     }
   }
