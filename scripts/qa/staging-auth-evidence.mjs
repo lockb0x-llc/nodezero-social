@@ -159,6 +159,9 @@ async function completeIdentityProviderFlow(page, options) {
   // Grace window that lets the OIDC bridge auto-login run before we fall back
   // to manual credentials (bridge consume + native form submit take a moment).
   const bridgeGraceMs = Number(process.env.AUTH_E2E_BRIDGE_GRACE_MS || 20000)
+  // Upper bound for waiting on bridge-controlled readonly forms before forcing
+  // navigation to a plain manual-login page.
+  const bridgeStallMs = Number(process.env.AUTH_E2E_BRIDGE_STALL_MS || 45000)
 
   while (Date.now() < deadline) {
     const host = currentHost(page)
@@ -201,6 +204,8 @@ async function completeIdentityProviderFlow(page, options) {
         return {
           hasForm: Boolean(emailEl && passwordEl),
           emailValue: emailEl ? emailEl.value : '',
+          emailReadOnly: emailEl ? emailEl.readOnly : false,
+          passwordReadOnly: passwordEl ? passwordEl.readOnly : false,
           errorText: errorEl ? errorEl.textContent.trim() : '',
           submitDisabled: submitEl ? submitEl.disabled : true,
         }
@@ -218,8 +223,12 @@ async function completeIdentityProviderFlow(page, options) {
       // Bridge auto-login in progress: the login template consumes the bridge
       // ticket and submits the native form itself. Give it the grace window.
       if (!expectManual) {
-        const bridgeFellBack = state.errorText.includes('could not be completed automatically')
-        const withinGrace = Date.now() - flowState.loginPageFirstSeenAt < bridgeGraceMs
+        const bridgeFellBack =
+          state.errorText.includes('could not be completed automatically') ||
+          state.errorText.toLowerCase().includes('audience is required')
+        const bridgeManagedReadonly = state.emailReadOnly || state.passwordReadOnly
+        const onLoginPageMs = Date.now() - flowState.loginPageFirstSeenAt
+        const withinGrace = onLoginPageMs < bridgeGraceMs
         if (!bridgeFellBack && withinGrace) {
           if (state.errorText.includes('Completing secure sign-in')) {
             log('Bridge auto-login in progress...')
@@ -227,6 +236,27 @@ async function completeIdentityProviderFlow(page, options) {
           await page.waitForTimeout(1500)
           continue
         }
+
+        // When the bridge owns the form, email/password stay readonly and are
+        // not safe for manual fallback entry. Wait up to a capped window and
+        // then drop bridge query params to recover manual login.
+        if (!bridgeFellBack && bridgeManagedReadonly) {
+          if (onLoginPageMs < bridgeStallMs) {
+            await page.waitForTimeout(1500)
+            continue
+          }
+
+          log('Bridge appears stalled on readonly login form; reloading manual login route.')
+          const manualLoginUrl = new URL(page.url())
+          manualLoginUrl.search = ''
+          await page
+            .goto(manualLoginUrl.toString(), { waitUntil: 'domcontentloaded', timeout: 30000 })
+            .catch(() => {})
+          flowState.loginPageFirstSeenAt = Date.now()
+          await page.waitForTimeout(1500)
+          continue
+        }
+
         if (bridgeFellBack) {
           log('Bridge fallback message shown; continuing with manual credentials (fallback path).')
         } else if (!flowState.manualSubmitted) {
@@ -235,6 +265,11 @@ async function completeIdentityProviderFlow(page, options) {
       }
 
       if (!flowState.manualSubmitted) {
+        if (state.emailReadOnly || state.passwordReadOnly) {
+          await page.waitForTimeout(1500)
+          continue
+        }
+
         flowState.manualSubmitted = true
         log(`Submitting manual credentials on login page (${page.url()})...`)
         await page.locator('#email').fill(email, { timeout: 15000 })
