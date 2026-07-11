@@ -54,6 +54,7 @@ const DOCUSTREAM_ALLOWED_CONTENT_TYPES = [
   'text/xml',
   'application/atom+xml',
 ]
+const OIDC_BRIDGE_AUDIENCE = 'nz-solid-css-login-v1'
 
 class DocustreamRssFetchError extends Error {
   constructor(
@@ -145,6 +146,14 @@ async function readJsonBody<T>(req: IncomingMessage): Promise<T> {
 
 function isNonEmpty(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0
+}
+
+function toOrigin(rawUrl: string): string | null {
+  try {
+    return new URL(rawUrl).origin
+  } catch {
+    return null
+  }
 }
 
 function isLoopbackOrPrivateAddress(address: string): boolean {
@@ -453,6 +462,11 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
       sendJson(req, res, 503, { error: 'Solid account provisioning is not configured (JSS_SOLID_CSS_BASE_URL).' })
       return
     }
+    const cssConsumerOrigin = toOrigin(SOLID_CSS_BASE_URL)
+    if (!cssConsumerOrigin) {
+      sendJson(req, res, 503, { error: 'Solid account provisioning has an invalid CSS base URL.' })
+      return
+    }
 
     const body = await readJsonBody<{
       name?: string
@@ -665,13 +679,11 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
             password,
             webId: account.webId,
             podUrl: account.podUrl,
+            audience: OIDC_BRIDGE_AUDIENCE,
+            consumerOrigin: cssConsumerOrigin,
+            issuer: ISSUER,
           }),
           consumeUrl: `${PUBLIC_PROVISIONER_BASE_URL}/v1/oidc-bridge/consume`,
-        },
-        clientCredentials: {
-          id: account.clientCredentialsId,
-          secret: account.clientCredentialsSecret,
-          resource: account.clientCredentialsResource,
         },
         lockbox: lockbox ?? null,
         attestation,
@@ -703,13 +715,28 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
   }
 
   if (req.method === 'POST' && url.pathname === '/v1/oidc-bridge/consume') {
-    const body = await readJsonBody<{ token?: string }>(req)
+    const body = await readJsonBody<{ token?: string; audience?: string }>(req)
     if (!isNonEmpty(body.token)) {
       sendJson(req, res, 400, { error: 'token is required.' })
       return
     }
+    if (!isNonEmpty(body.audience)) {
+      sendJson(req, res, 400, { error: 'audience is required.' })
+      return
+    }
 
-    const ticket = store.consumeOidcBridgeTicket(body.token)
+    const requestOrigin = typeof req.headers.origin === 'string' ? req.headers.origin.trim() : ''
+    if (!requestOrigin) {
+      sendJson(req, res, 400, { error: 'origin header is required.' })
+      return
+    }
+
+    const ticket = store.consumeOidcBridgeTicket({
+      token: body.token,
+      audience: body.audience,
+      consumerOrigin: requestOrigin,
+      issuer: ISSUER,
+    })
     if (!ticket) {
       sendJson(req, res, 400, { error: 'OIDC bridge token is invalid or expired.' })
       return

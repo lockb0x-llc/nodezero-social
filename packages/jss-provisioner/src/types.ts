@@ -78,4 +78,5 @@ export interface OidcBridgeTicket {
 
 export interface OidcBridgeConsumeRequest {
   token: string
+  audience: string
 }

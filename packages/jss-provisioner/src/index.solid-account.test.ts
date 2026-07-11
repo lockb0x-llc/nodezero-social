@@ -77,6 +77,26 @@ void test('/v1/solid-account returns 400 when password is too short', async () =
   })
 })
 
+void test('/v1/oidc-bridge/consume returns 400 when audience is missing', async () => {
+  await withServer(async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/v1/oidc-bridge/consume`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json',
+        origin: 'https://solid.nodezero.social',
+      },
+      body: JSON.stringify({
+        token: 'test-token',
+      }),
+    })
+
+    const payload = (await response.json()) as { error?: string }
+    assert.equal(response.status, 400)
+    assert.equal(payload.error, 'audience is required.')
+  })
+})
+
 void test('/v1/docustream/rss-fetch returns 400 when url is missing', async () => {
   await withServer(async (baseUrl) => {
     const response = await fetch(`${baseUrl}/v1/docustream/rss-fetch`, {

@@ -387,6 +387,16 @@ interface WalletContextValue {
     podUrl: string,
     stellarPublicKey: string,
   ) => Promise<SeamlessAttestation>
+  /**
+   * Derives the deterministic bootstrap password from the local Stellar key.
+   * Used by seamless onboarding before OIDC bridge hand-off.
+   */
+  createBootstrapPassword: (input: {
+    issuer: string
+    handle: string
+    notificationEmail: string
+    stellarPublicKey: string
+  }) => Promise<string>
   /** Destroys local wallet + pairing state, optionally unlinking on-chain. */
   deleteNodeData: (options?: {
     unlinkIdentity?: boolean
@@ -1079,6 +1089,18 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
     []
   )
 
+  const createBootstrapPassword = useCallback(
+    async (input: {
+      issuer: string
+      handle: string
+      notificationEmail: string
+      stellarPublicKey: string
+    }): Promise<string> => {
+      return getWalletService().deriveBootstrapPassword(input)
+    },
+    []
+  )
+
   return (
     <WalletContext.Provider value={{
       walletInfo,
@@ -1091,6 +1113,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
       exportRecoveryBundle,
       deleteNodeData,
       createSeamlessAttestation,
+      createBootstrapPassword,
     }}>
       {children}
     </WalletContext.Provider>

@@ -19,6 +19,7 @@ jobs:
     env:
       STATIC_WEB_APP_NAME: nodezero-social-staging-testnet-web
       JSS_PROVISIONER_APP_NAME: nodezero-social-staging-testnet-provisioner
+      SOLID_CONTAINER_APP_NAME: nz-staging-testnet-solid
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
       AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
@@ -66,6 +67,50 @@ jobs:
           AZURE_BICEP_PARAMETERS_FILE: infrastructure/azure/main.parameters.staging-testnet.json
           AZURE_ENVIRONMENT_NAME: staging-testnet
         run: pnpm deploy:azure
+
+      - name: Verify Solid CSS image matches staging parameters
+        run: |
+          set -euo pipefail
+
+          expected_image="$(jq -r '.parameters.cssImage.value // empty' infrastructure/azure/solid-server.parameters.staging-testnet.json)"
+          if [ -z "$expected_image" ]; then
+            echo "Expected cssImage is missing from solid-server.parameters.staging-testnet.json"
+            exit 1
+          fi
+
+          active_image="$(az containerapp show \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$SOLID_CONTAINER_APP_NAME" \
+            --query 'properties.template.containers[0].image' \
+            -o tsv)"
+
+          if [ -z "$active_image" ]; then
+            echo "Unable to resolve active image for $SOLID_CONTAINER_APP_NAME"
+            exit 1
+          fi
+
+          echo "Expected CSS image: $expected_image"
+          echo "Active CSS image:   $active_image"
+
+          if [ "$active_image" != "$expected_image" ]; then
+            echo "Solid CSS image drift detected between parameters and runtime template."
+            exit 1
+          fi
+
+      - name: Verify Solid login template bridge markers
+        run: |
+          set -euo pipefail
+
+          login_url="https://solid.nodezero.social/.account/login/password/"
+          echo "Checking login template at $login_url"
+
+          body="$(curl -sS --max-time 20 "$login_url")"
+          printf '%s' "$body" > /tmp/solid-login.html
+
+          grep -q 'nz-solid-css-login-v1' /tmp/solid-login.html
+          grep -q 'Secure sign-in could not be completed automatically' /tmp/solid-login.html
+
+          echo "Login template marker verification passed."
 
       - name: Build JSS provisioner
         run: pnpm --filter @nodezero/jss-provisioner build

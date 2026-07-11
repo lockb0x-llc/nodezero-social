@@ -21,6 +21,9 @@ interface OidcBridgeRecord {
   password: string
   webId: string
   podUrl: string
+  audience: string
+  consumerOrigin: string
+  issuer: string
   expiresAt: string
 }
 
@@ -151,6 +154,9 @@ export class ProvisionStore {
     password: string
     webId: string
     podUrl: string
+    audience: string
+    consumerOrigin: string
+    issuer: string
   }): OidcBridgeTicket {
     const now = new Date()
     const ticket: OidcBridgeRecord = {
@@ -159,6 +165,9 @@ export class ProvisionStore {
       password: input.password,
       webId: canonical(input.webId),
       podUrl: canonical(input.podUrl),
+      audience: canonical(input.audience),
+      consumerOrigin: canonical(input.consumerOrigin),
+      issuer: canonical(input.issuer),
       expiresAt: addMs(now, this.oidcBridgeTtlMs).toISOString(),
     }
 
@@ -169,10 +178,25 @@ export class ProvisionStore {
     }
   }
 
-  consumeOidcBridgeTicket(token: string): OidcBridgeRecord | null {
-    const key = canonical(token)
+  consumeOidcBridgeTicket(input: {
+    token: string
+    audience: string
+    consumerOrigin: string
+    issuer: string
+  }): OidcBridgeRecord | null {
+    const key = canonical(input.token)
     const ticket = this.oidcBridgeTickets.get(key) ?? null
     if (!ticket) return null
+
+    if (ticket.audience !== canonical(input.audience)) {
+      return null
+    }
+    if (ticket.consumerOrigin !== canonical(input.consumerOrigin)) {
+      return null
+    }
+    if (ticket.issuer !== canonical(input.issuer)) {
+      return null
+    }
 
     this.oidcBridgeTickets.delete(key)
     if (new Date(ticket.expiresAt).getTime() < Date.now()) {

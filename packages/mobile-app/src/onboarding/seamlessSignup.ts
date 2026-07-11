@@ -24,7 +24,7 @@ export interface CreateNodeInput {
   handle: string
   /** User's preferred notification email (also used as the CSS login email). */
   notificationEmail: string
-  /** User-selected account password used for manual login fallback. */
+  /** Deterministic bootstrap password derived from Stellar signature. */
   password: string
   /** Stellar public key to anchor the WebID pairing on-chain (optional). */
   stellarPublicKey?: string
@@ -45,9 +45,6 @@ export interface CreateNodeResult {
     expiresAt: string
     consumeUrl: string
   }
-  // Transitional/legacy field from provisioner responses.
-  // The web client must not depend on reusable client credentials for Pod I/O.
-  clientCredentials?: { id: string; secret: string; resource: string }
   lockbox: {
     status: string
     userLockboxContractId: string | null

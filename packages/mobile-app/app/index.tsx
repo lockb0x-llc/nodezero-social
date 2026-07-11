@@ -169,8 +169,6 @@ interface LandingAuthCardProps {
   seamlessEnabled: boolean
   nodeHandle: string
   notificationEmail: string
-  accountPassword: string
-  accountPasswordConfirm: string
   isCreating: boolean
   walletReady: boolean
   createNotice: string | null
@@ -178,8 +176,6 @@ interface LandingAuthCardProps {
   onIssuerChange: (nextIssuer: string) => void
   onNodeHandleChange: (value: string) => void
   onNotificationEmailChange: (value: string) => void
-  onAccountPasswordChange: (value: string) => void
-  onAccountPasswordConfirmChange: (value: string) => void
   onSignIn: () => Promise<void>
   onCreateNode: () => Promise<void>
   onGetStarted: (source: AuthCardSource) => Promise<void>
@@ -199,8 +195,6 @@ function LandingAuthCard({
   seamlessEnabled,
   nodeHandle,
   notificationEmail,
-  accountPassword,
-  accountPasswordConfirm,
   isCreating,
   walletReady,
   createNotice,
@@ -208,8 +202,6 @@ function LandingAuthCard({
   onIssuerChange,
   onNodeHandleChange,
   onNotificationEmailChange,
-  onAccountPasswordChange,
-  onAccountPasswordConfirmChange,
   onSignIn,
   onCreateNode,
   onGetStarted,
@@ -338,28 +330,10 @@ function LandingAuthCard({
             keyboardType="email-address"
             accessibilityLabel="Notification email"
           />
-          <TextInput
-            style={styles.input}
-            value={accountPassword}
-            onChangeText={onAccountPasswordChange}
-            placeholder="Create password (min 12 characters)"
-            placeholderTextColor={DIM}
-            autoCapitalize="none"
-            autoCorrect={false}
-            secureTextEntry
-            accessibilityLabel="Account password"
-          />
-          <TextInput
-            style={styles.input}
-            value={accountPasswordConfirm}
-            onChangeText={onAccountPasswordConfirmChange}
-            placeholder="Confirm password"
-            placeholderTextColor={DIM}
-            autoCapitalize="none"
-            autoCorrect={false}
-            secureTextEntry
-            accessibilityLabel="Confirm account password"
-          />
+          <Text style={styles.createHintText}>
+            A one-time bootstrap password is derived from your device wallet signature.
+            You can reset it anytime from the Node Zero Community Server login screen.
+          </Text>
           <TouchableOpacity
             style={[styles.btnPrimary, (isCreating || !walletReady) && styles.btnDisabled]}
             onPress={() => void onCreateNode()}
@@ -449,7 +423,7 @@ export default function LandingScreen(): JSX.Element {
     signupResumeActive,
     signupReturnDetected,
   } = useSolid()
-  const { attestationStatus, walletInfo, createSeamlessAttestation } = useWallet()
+  const { attestationStatus, walletInfo, createSeamlessAttestation, createBootstrapPassword } = useWallet()
   const router = useRouter()
   const pathname = usePathname()
   const landingMode = getLandingMode()
@@ -463,8 +437,6 @@ export default function LandingScreen(): JSX.Element {
   const [errorAction, setErrorAction] = useState<{ label: string; url: string } | null>(null)
   const [nodeHandle, setNodeHandle] = useState('')
   const [notificationEmail, setNotificationEmail] = useState('')
-  const [accountPassword, setAccountPassword] = useState('')
-  const [accountPasswordConfirm, setAccountPasswordConfirm] = useState('')
   const [isCreating, setIsCreating] = useState(false)
   const [createNotice, setCreateNotice] = useState<string | null>(null)
   const [createSteps, setCreateSteps] = useState<ProgressStep[]>([])
@@ -576,19 +548,6 @@ export default function LandingScreen(): JSX.Element {
     setCreateNotice(null)
 
     const normalizedEmail = notificationEmail.trim().toLowerCase()
-    const trimmedPassword = accountPassword.trim()
-    const trimmedPasswordConfirm = accountPasswordConfirm.trim()
-
-    if (trimmedPassword.length < 12) {
-      setError('Password must be at least 12 characters.')
-      return
-    }
-
-    if (trimmedPassword !== trimmedPasswordConfirm) {
-      setError('Passwords do not match.')
-      return
-    }
-
     if (normalizedEmail && knownExistingEmailsRef.current.has(normalizedEmail)) {
       setError('This email address is already registered. Try signing in, or reset your password to continue.')
       setErrorAction({
@@ -660,10 +619,17 @@ export default function LandingScreen(): JSX.Element {
       advanceCreateStep('proof')
       setCreateNotice('Creating your Pod on the Node Zero Community Server…')
 
+      const bootstrapPassword = await createBootstrapPassword({
+        issuer: issuerBase,
+        handle: normalizedHandle,
+        notificationEmail: normalizedEmail,
+        stellarPublicKey: walletInfo.publicKey,
+      })
+
       const result = await createSeamlessNode({
         handle: nodeHandle,
         notificationEmail,
-        password: trimmedPassword,
+        password: bootstrapPassword,
         stellarPublicKey: walletInfo.publicKey,
         accountCommitmentHex: attestation.accountCommitmentHex,
         ciphertextHex: attestation.ciphertextHex,
@@ -733,8 +699,6 @@ export default function LandingScreen(): JSX.Element {
         const returnUrl = new URL(`${window.location.origin}${window.location.pathname}`)
         returnUrl.searchParams.set('nz_bridge_return', '1')
         loginUrl.searchParams.set('nz_return', returnUrl.toString())
-        setAccountPassword('')
-        setAccountPasswordConfirm('')
         window.location.assign(loginUrl.toString())
         return
       }
@@ -743,8 +707,6 @@ export default function LandingScreen(): JSX.Element {
         bridgeToken: result.oidcBridge.token,
         bridgeConsumeUrl: result.oidcBridge.consumeUrl,
       })
-      setAccountPassword('')
-      setAccountPasswordConfirm('')
     } catch (err) {
       failActiveCreateStep()
       if (isEmailAlreadyRegisteredError(err)) {
@@ -831,8 +793,6 @@ export default function LandingScreen(): JSX.Element {
           seamlessEnabled={seamlessConfig.enabled}
           nodeHandle={nodeHandle}
           notificationEmail={notificationEmail}
-          accountPassword={accountPassword}
-          accountPasswordConfirm={accountPasswordConfirm}
           isCreating={isCreating}
           walletReady={Boolean(walletInfo?.publicKey)}
           createNotice={createNotice}
@@ -840,8 +800,6 @@ export default function LandingScreen(): JSX.Element {
           onIssuerChange={setSelectedIssuer}
           onNodeHandleChange={setNodeHandle}
           onNotificationEmailChange={setNotificationEmail}
-          onAccountPasswordChange={setAccountPassword}
-          onAccountPasswordConfirmChange={setAccountPasswordConfirm}
           onSignIn={handleSignIn}
           onCreateNode={handleCreateNode}
           onGetStarted={handleGetStarted}
@@ -915,8 +873,6 @@ export default function LandingScreen(): JSX.Element {
                 seamlessEnabled={seamlessConfig.enabled}
                 nodeHandle={nodeHandle}
                 notificationEmail={notificationEmail}
-                accountPassword={accountPassword}
-                accountPasswordConfirm={accountPasswordConfirm}
                 isCreating={isCreating}
                 walletReady={Boolean(walletInfo?.publicKey)}
                 createNotice={createNotice}
@@ -924,8 +880,6 @@ export default function LandingScreen(): JSX.Element {
                 onIssuerChange={setSelectedIssuer}
                 onNodeHandleChange={setNodeHandle}
                 onNotificationEmailChange={setNotificationEmail}
-                onAccountPasswordChange={setAccountPassword}
-                onAccountPasswordConfirmChange={setAccountPasswordConfirm}
                 onSignIn={handleSignIn}
                 onCreateNode={handleCreateNode}
                 onGetStarted={handleGetStarted}
@@ -1181,6 +1135,7 @@ const styles = StyleSheet.create({
   createPodText: { color: PURPLE, fontSize: 13 },
   createNodeBlock: { marginTop: 16, borderTopWidth: 1, borderTopColor: BORDER, paddingTop: 16 },
   createNodeTitle: { color: MUTED, fontSize: 13, fontWeight: '600', marginBottom: 12 },
+  createHintText: { color: MUTED, fontSize: 12, lineHeight: 18, marginBottom: 12 },
   createNotice: { color: PURPLE, fontSize: 12, lineHeight: 18, marginBottom: 12 },
 
   // Redirect overlay
