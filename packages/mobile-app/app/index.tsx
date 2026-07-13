@@ -35,6 +35,7 @@ import {
 } from '../src/onboarding/seamlessSignup'
 import { ProgressStepLadder, type ProgressStep } from '../src/components/ProgressStepLadder'
 import { saveNodeSession, type NodeSessionRecord } from '../src/onboarding/nodeSession'
+import { useStellarSignIn } from '../src/auth/useStellarSignIn'
 
 const PRESS_OPACITY = 0.82
 
@@ -510,6 +511,8 @@ export default function LandingScreen(): JSX.Element {
     })
   }, [isLoggedIn, isRestoring, isSessionReady, nodeSession, signIn])
 
+  const stellarSignIn = useStellarSignIn()
+
   const handleSignIn = async (): Promise<void> => {
     setError(null)
     setErrorAction(null)
@@ -524,6 +527,42 @@ export default function LandingScreen(): JSX.Element {
     }
     setIsSigningIn(true)
     try {
+      // For returning NodeZero users (nodeSession exists), attempt the silent
+      // Stellar sign-in flow: derive a signed token on-device and embed it in
+      // the OIDC redirect URL so the CSS login template can complete auth
+      // without showing any credentials UI to the user.
+      const isNodeZeroIssuer =
+        trimmed === (selectedIssuer.trim()) &&
+        trimmed === (issuerOptions[0]?.value ?? '')
+      const stellarWebId: string | null =
+        nodeSession?.webId ??
+        (Platform.OS === 'web' && typeof window !== 'undefined'
+          ? (window.localStorage.getItem('nodezero.embedded-wallet.nodezero.stellar.webid') || null)
+          : null)
+      if (stellarWebId && isNodeZeroIssuer) {
+        try {
+          const { loginToken, tokenVerifyUrl } = await stellarSignIn(stellarWebId)
+          // Navigate directly to the CSS login page with the Stellar token as
+          // top-level URL params — same pattern as nz_oidc_bridge. The CSS
+          // login template calls POST /.account/login/stellar/, sets the account
+          // cookie, then redirects back via nz_return → nz_bridge_return=1 which
+          // resumes the standard OIDC flow to complete authentication.
+          if (Platform.OS === 'web' && typeof window !== 'undefined') {
+            const issuerBase = trimmed.replace(/\/+$/, '')
+            const returnUrl = `${window.location.origin}/?nz_bridge_return=1`
+            const loginUrl = new URL(`${issuerBase}/.account/login/password/`)
+            loginUrl.searchParams.set('nz_stellar_token', loginToken)
+            loginUrl.searchParams.set('nz_stellar_token_verify', tokenVerifyUrl)
+            loginUrl.searchParams.set('nz_return', returnUrl)
+            window.location.href = loginUrl.toString()
+            return
+          }
+        } catch (stellarErr) {
+          // Stellar sign-in failed — fall through to standard OIDC redirect.
+          // The CSS login form is always available as the safe fallback.
+          console.warn('[handleSignIn] Stellar sign-in failed, falling back to standard OIDC:', stellarErr)
+        }
+      }
       await signIn(trimmed)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Sign-in failed. Check the URL and try again.')
@@ -682,6 +721,11 @@ export default function LandingScreen(): JSX.Element {
         createdAt: new Date().toISOString(),
       }
       await saveNodeSession(record)
+      // Store the webId alongside the wallet key so Stellar SSO works on return
+      // visits even after a full localStorage clear (qa:smoke:auth scenario).
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        try { window.localStorage.setItem('nodezero.embedded-wallet.nodezero.stellar.webid', result.webId) } catch {}
+      }
       advanceCreateStep('signin')
       setIsSigningIn(true)
 

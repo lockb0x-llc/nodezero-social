@@ -105,6 +105,13 @@ param smtpUsername string = ''
 @secure()
 param smtpPassword string = ''
 
+@description('HMAC shared secret for the Stellar auth plugin (NZ_STELLAR_AUTH_SHARED_SECRET). Must be >=32 chars. Required when the Stellar auth CSS plugin is enabled.')
+@secure()
+param stellarAuthSharedSecret string = ''
+
+@description('Comma-separated trusted provisioner origins for the Stellar auth CSS plugin (NZ_STELLAR_AUTH_PROVISIONER_ORIGINS).')
+param stellarAuthProvisionerOrigins string = ''
+
 var resourceToken = toLower(uniqueString(resourceGroup().id, appName, environmentName, 'solid'))
 var logAnalyticsName = '${appName}-${environmentName}-solid-law'
 var storageAccountName = 'stsolid${take(resourceToken, 16)}'
@@ -280,6 +287,33 @@ var smtpSecretEnv = emailProviderMode == 'smtp'
     ]
   : []
 
+var stellarAuthSecrets = !empty(stellarAuthSharedSecret)
+  ? [
+      {
+        name: 'nz-stellar-auth-shared-secret'
+        value: stellarAuthSharedSecret
+      }
+    ]
+  : []
+
+var stellarAuthSecretEnv = !empty(stellarAuthSharedSecret)
+  ? [
+      {
+        name: 'NZ_STELLAR_AUTH_SHARED_SECRET'
+        secretRef: 'nz-stellar-auth-shared-secret'
+      }
+    ]
+  : []
+
+var stellarAuthEnv = !empty(stellarAuthProvisionerOrigins)
+  ? [
+      {
+        name: 'NZ_STELLAR_AUTH_PROVISIONER_ORIGINS'
+        value: stellarAuthProvisionerOrigins
+      }
+    ]
+  : []
+
 resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
   name: containerAppName
   location: location
@@ -287,7 +321,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
   properties: {
     managedEnvironmentId: managedEnv.id
     configuration: {
-      secrets: concat(smtpSecrets, cssImageRegistrySecrets)
+      secrets: concat(smtpSecrets, cssImageRegistrySecrets, stellarAuthSecrets)
       registries: cssImageRegistries
       ingress: {
         external: true
@@ -312,7 +346,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
             memory: containerMemory
           }
           args: cssContainerArgs
-          env: concat(emailBaseEnv, smtpSecretEnv)
+          env: concat(emailBaseEnv, smtpSecretEnv, stellarAuthSecretEnv, stellarAuthEnv)
           volumeMounts: [
             {
               volumeName: volumeName

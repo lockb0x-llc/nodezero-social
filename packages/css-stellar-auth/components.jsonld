@@ -1,0 +1,81 @@
+{
+  "@context": "https://linkedsoftwaredependencies.org/bundles/npm/@nodezero/css-stellar-auth/^0.1.0/components/context.jsonld",
+  "@graph": [
+    {
+      "@id": "nzsa:StellarLoginHandler",
+      "@type": "Class",
+      "requireName": "@nodezero/css-stellar-auth",
+      "requireElement": "StellarLoginHandler",
+      "comment": "Handles passwordless Stellar-keypair authentication at /.account/login/stellar/",
+      "parameters": [
+        {
+          "@id": "nzsa:StellarLoginHandler#accountStore",
+          "range": "owl:Thing",
+          "required": true,
+          "unique": true,
+          "comment": "The CSS GenericAccountStore used by the base ResolveLoginHandler."
+        },
+        {
+          "@id": "nzsa:StellarLoginHandler#cookieStore",
+          "range": "owl:Thing",
+          "required": true,
+          "unique": true,
+          "comment": "The CSS BaseCookieStore used by the base ResolveLoginHandler."
+        },
+        {
+          "@id": "nzsa:StellarLoginHandler#accountStorage",
+          "range": "owl:Thing",
+          "required": true,
+          "unique": true,
+          "comment": "The BaseLoginAccountStorage used to look up accountId from webId."
+        },
+        {
+          "@id": "nzsa:StellarLoginHandler#provisionerOrigins",
+          "range": "xsd:string",
+          "required": true,
+          "unique": true,
+          "comment": "Comma-separated trusted provisioner origins for the verify callback URL."
+        },
+        {
+          "@id": "nzsa:StellarLoginHandler#sharedSecret",
+          "range": "xsd:string",
+          "required": true,
+          "unique": true,
+          "comment": "HMAC-SHA256 shared secret used to authenticate verify callbacks to the provisioner."
+        }
+      ],
+      "constructorArguments": [
+        {
+          "@type": "om:ObjectMapping",
+          "om:properties": [
+            {
+              "@type": "om:PropertyMapping",
+              "om:node": { "@id": "nzsa:StellarLoginHandler#accountStore" },
+              "om:property": "accountStore"
+            },
+            {
+              "@type": "om:PropertyMapping",
+              "om:node": { "@id": "nzsa:StellarLoginHandler#cookieStore" },
+              "om:property": "cookieStore"
+            },
+            {
+              "@type": "om:PropertyMapping",
+              "om:node": { "@id": "nzsa:StellarLoginHandler#accountStorage" },
+              "om:property": "accountStorage"
+            },
+            {
+              "@type": "om:PropertyMapping",
+              "om:node": { "@id": "nzsa:StellarLoginHandler#provisionerOrigins" },
+              "om:property": "provisionerOrigins"
+            },
+            {
+              "@type": "om:PropertyMapping",
+              "om:node": { "@id": "nzsa:StellarLoginHandler#sharedSecret" },
+              "om:property": "sharedSecret"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

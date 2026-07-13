@@ -85,10 +85,20 @@ PKG_FILE="$(npm pack | tail -n 1)"
 cp "$PKG_FILE" "$BUILD_DIR/solid-nodezero-auth-ui.tgz"
 popd >/dev/null
 
+echo "Building @nodezero/css-stellar-auth plugin..."
+pushd "$REPO_ROOT/packages/css-stellar-auth" >/dev/null
+# Install devDependencies (including @solid/community-server peer) then build.
+npm install --include=dev
+npm run build
+STELLAR_PKG_FILE="$(npm pack | tail -n 1)"
+cp "$STELLAR_PKG_FILE" "$BUILD_DIR/css-stellar-auth.tgz"
+popd >/dev/null
+
 cp "$REPO_ROOT/infrastructure/azure/solid-theme/Dockerfile" "$BUILD_DIR/Dockerfile"
-mkdir -p "$BUILD_DIR/templates" "$BUILD_DIR/styles"
+mkdir -p "$BUILD_DIR/templates" "$BUILD_DIR/styles" "$BUILD_DIR/css-config"
 cp "$REPO_ROOT/infrastructure/azure/solid-theme/templates/main.html.ejs" "$BUILD_DIR/templates/main.html.ejs"
 cp "$REPO_ROOT/infrastructure/azure/solid-theme/styles/nodezero-theme.css" "$BUILD_DIR/styles/nodezero-theme.css"
+cp "$REPO_ROOT/infrastructure/azure/solid-theme/css-config/nodezero.json" "$BUILD_DIR/css-config/nodezero.json"
 
 AZ_BUILD_DIR="$(az_path "$BUILD_DIR")"
 AZ_DOCKERFILE="$(az_path "$BUILD_DIR/Dockerfile")"

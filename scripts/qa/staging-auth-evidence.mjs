@@ -70,7 +70,12 @@ async function gotoWithRetry(page, url, label, maxAttempts = 4) {
       return
     } catch (error) {
       const message = String(error?.message || error)
-      const isTransientAbort = message.includes('net::ERR_ABORTED')
+      // Both net::ERR_ABORTED and "interrupted by another navigation" occur when
+      // the browser redirects mid-goto (e.g. OIDC silent-refresh racing with our
+      // navigation). Treat both as transient and eligible for retry.
+      const isTransientAbort =
+        message.includes('net::ERR_ABORTED') ||
+        message.includes('interrupted by another navigation')
       const hasAttemptsLeft = attempt < maxAttempts
       if (!isTransientAbort || !hasAttemptsLeft) {
         throw error
@@ -296,25 +301,27 @@ async function completeIdentityProviderFlow(page, options) {
         const withinGrace = onLoginPageMs < bridgeGraceMs
         if (!bridgeFellBack && withinGrace) {
           if (state.errorText.includes('Completing secure sign-in')) {
-            log('Bridge auto-login in progress...')
+            log('Auto-login (bridge or Stellar) in progress...')
           }
           await page.waitForTimeout(1500)
           continue
         }
 
-        // When the bridge owns the form, email/password stay readonly and are
-        // not safe for manual fallback entry. Wait up to a capped window and
-        // then drop bridge query params to recover manual login.
+        // When the bridge or Stellar handler owns the form, email/password stay
+        // readonly and are not safe for manual fallback entry. Wait up to a
+        // capped window and then drop query params to recover manual login.
         if (!bridgeFellBack && bridgeManagedReadonly) {
           if (onLoginPageMs < bridgeStallMs) {
             await page.waitForTimeout(1500)
             continue
           }
 
-          log('Bridge appears stalled on readonly login form; reloading manual login route.')
+          log('Auto-login appears stalled on readonly login form; reloading manual login route.')
           const manualLoginUrl = new URL(page.url())
           manualLoginUrl.searchParams.delete('nz_oidc_bridge')
           manualLoginUrl.searchParams.delete('nz_oidc_bridge_consume')
+          manualLoginUrl.searchParams.delete('nz_stellar_token')
+          manualLoginUrl.searchParams.delete('nz_stellar_token_verify')
           await page
             .goto(manualLoginUrl.toString(), { waitUntil: 'domcontentloaded', timeout: 30000 })
             .catch(() => {})
@@ -324,12 +331,14 @@ async function completeIdentityProviderFlow(page, options) {
         }
 
         if (bridgeFellBack) {
-          const bridgeScopedUrl = page.url().includes('nz_oidc_bridge=')
+          const bridgeScopedUrl = page.url().includes('nz_oidc_bridge=') || page.url().includes('nz_stellar_token=')
           if (!flowState.forcedPlainLogin && (bridgeScopedUrl || bridgeManagedReadonly)) {
-            log('Bridge fallback detected on bridge-scoped login; reloading plain login route.')
+            log('Auto-login fallback detected on auto-login-scoped login; reloading plain login route.')
             const manualLoginUrl = new URL(page.url())
             manualLoginUrl.searchParams.delete('nz_oidc_bridge')
             manualLoginUrl.searchParams.delete('nz_oidc_bridge_consume')
+            manualLoginUrl.searchParams.delete('nz_stellar_token')
+            manualLoginUrl.searchParams.delete('nz_stellar_token_verify')
             await page
               .goto(manualLoginUrl.toString(), { waitUntil: 'domcontentloaded', timeout: 30000 })
               .catch(() => {})
@@ -627,22 +636,80 @@ async function runNewUserJourney(browser, credentials) {
 async function runReturningUserJourney(context, credentials) {
   const page = await context.newPage()
 
-  log('RETURNING USER: starting sign-in from same browser context (preserved IdP session).')
+  // Track whether the Stellar silent login path was invoked.
+  const stellarEvidence = {
+    stellarLoginCalled: false,
+    stellarLoginStatus: null,
+    loginPageFirstSeenAt: null,
+    loginPageLeftAt: null,
+    manualFormFilled: false,
+  }
 
-  // Simulate app restart while preserving the embedded wallet key so the
-  // user appears signed out locally but can still complete the auth flow.
-  await gotoWithRetry(page, `${baseUrl}/`, 'RETURNING USER: initial app load')
-  await page.evaluate(() => {
-    const walletKey = 'nodezero.embedded-wallet.nodezero.stellar.secret'
-    const walletSecret = localStorage.getItem(walletKey)
-    localStorage.clear()
-    if (walletSecret) {
-      localStorage.setItem(walletKey, walletSecret)
+  page.on('request', (req) => {
+    if (req.url().includes('/.account/login/stellar/') && req.method() === 'POST') {
+      stellarEvidence.stellarLoginCalled = true
+      log('RETURNING USER: Stellar silent login endpoint called.')
+    }
+    if (req.url().includes('/.account/login/password/') && req.method() === 'POST') {
+      stellarEvidence.manualFormFilled = true
+      log('RETURNING USER: [WARN] Password login called — Stellar path did not succeed.')
     }
   })
 
+  page.on('response', async (resp) => {
+    if (resp.url().includes('/.account/login/stellar/')) {
+      stellarEvidence.stellarLoginStatus = resp.status()
+      log(`RETURNING USER: Stellar login endpoint responded ${resp.status()}.`)
+    }
+  })
+
+  // Track all URL changes on solid.nodezero.social for diagnosis
+  const solidUrlHistory = []
+  page.on('framenavigated', (frame) => {
+    if (frame === page.mainFrame()) {
+      const url = frame.url()
+      if (url.includes(solidHost)) {
+        solidUrlHistory.push(url.substring(0, 120))
+      }
+    }
+  })
+
+  // Capture ALL browser console messages for diagnosis of Stellar sign-in failure
+  page.on('console', (msg) => {
+    const text = msg.text()
+    if (text.includes('handleSignIn') || text.includes('Stellar') || text.includes('stellar') ||
+        text.includes('challenge') || text.includes('Provisioner') || text.includes('wallet')) {
+      log(`RETURNING USER: [BROWSER-${msg.type().toUpperCase()}] ${text.substring(0, 300)}`)
+    }
+  })
+
+  log('RETURNING USER: starting sign-in from same browser context (preserved IdP session).')
+
+  // Simulate app restart while preserving the embedded wallet key and the
+  // wallet-paired webId key. The node.session.v1 is NOT preserved so the app
+  // shows the landing sign-in page (no auto-redirect to /local). The IdP
+  // session cookies are cleared so the CSS login page is shown, enabling the
+  // nz_stellar_token to be consumed by the CSS plugin.
+  await gotoWithRetry(page, `${baseUrl}/`, 'RETURNING USER: initial app load')
+  await page.evaluate(() => {
+    const walletKey = 'nodezero.embedded-wallet.nodezero.stellar.secret'
+    const walletWebIdKey = 'nodezero.embedded-wallet.nodezero.stellar.webid'
+    const walletSecret = localStorage.getItem(walletKey)
+    const walletWebId = localStorage.getItem(walletWebIdKey)
+    localStorage.clear()
+    if (walletSecret) localStorage.setItem(walletKey, walletSecret)
+    if (walletWebId) localStorage.setItem(walletWebIdKey, walletWebId)
+  })
+  // Clear IdP session cookies so the CSS login page is shown (not just consent)
+  // — this is where nz_stellar_token is consumed by the CSS Stellar plugin.
+  await context.clearCookies({ domain: solidHost })
+
   await gotoWithRetry(page, `${baseUrl}/`, 'RETURNING USER: post-clear app load')
-  await page.waitForTimeout(2500)
+  // Wait for the wallet to initialize from localStorage (reads the Stellar
+  // secret and derives the public key asynchronously). Without this wait
+  // walletInfo.publicKey is null when Sign In is clicked and the Stellar
+  // silent sign-in path throws immediately.
+  await page.waitForTimeout(6000)
 
   const signInButton = page.getByRole('button', { name: 'Sign In' }).first()
   await signInButton.click({ timeout: 30000 }).catch(async () => {
@@ -657,20 +724,58 @@ async function runReturningUserJourney(context, credentials) {
       fail(`Sign In did not reach the identity provider. URL=${page.url()}. Page snippet: ${snippet}`)
     })
 
+  stellarEvidence.loginPageFirstSeenAt = Date.now()
+  log(`RETURNING USER: reached IdP login page at ${page.url()}. URL history on IdP: ${JSON.stringify(solidUrlHistory.slice(-5))}`)
+
   await completeIdentityProviderFlow(page, {
     email: credentials.email,
     password: credentials.password,
     expectManual: false,
   })
+
+  stellarEvidence.loginPageLeftAt = Date.now()
+  const loginPageDwellMs = stellarEvidence.loginPageFirstSeenAt
+    ? stellarEvidence.loginPageLeftAt - stellarEvidence.loginPageFirstSeenAt
+    : null
+
   log(`RETURNING USER: returned to app at ${page.url()}.`)
 
   const webId = await waitForAuthenticatedSession(page, 'returning user', {
     email: credentials.email,
     password: credentials.password,
   })
-  log(`RETURNING USER: PASS. webId=${webId}`)
 
-  return { webId }
+  // --- Stellar silent-login assertions ---
+  // When the Stellar auth plugin is deployed and the nz_stellar_token was
+  // embedded in the OIDC redirect_uri, the CSS login template calls
+  // /.account/login/stellar/ silently and the CSS login page dwell time is
+  // short (< 10s). Log evidence either way — do not hard-fail if the plugin
+  // is not yet deployed to the current staging image.
+  if (stellarEvidence.stellarLoginCalled) {
+    if (stellarEvidence.stellarLoginStatus !== 200) {
+      log(`RETURNING USER: [WARN] Stellar login endpoint called but returned ${stellarEvidence.stellarLoginStatus}. Fell back to manual path.`)
+    } else {
+      log(`RETURNING USER: Stellar silent login SUCCEEDED (no credentials entered by user).`)
+      if (loginPageDwellMs !== null) {
+        log(`RETURNING USER: CSS login page dwell time: ${loginPageDwellMs}ms.`)
+      }
+      if (stellarEvidence.manualFormFilled) {
+        fail('RETURNING USER: Stellar login succeeded but password.login was also called — unexpected dual-path.')
+      }
+    }
+  } else {
+    log(`RETURNING USER: [INFO] Stellar login endpoint was not called — plugin may not be deployed yet, or Stellar token was not carried in OIDC redirect. Fell through to standard auth path.`)
+    if (loginPageDwellMs !== null && loginPageDwellMs < 500) {
+      // If login page dwell was very short but no stellar endpoint was called,
+      // the bridge auto-login path handled it instead.
+      log(`RETURNING USER: Login page dwell was ${loginPageDwellMs}ms — likely bridge auto-login.`)
+    }
+  }
+
+  log(`RETURNING USER: PASS. webId=${webId}`)
+  log(`RETURNING USER: stellar-login evidence: ${JSON.stringify(stellarEvidence)}`)
+
+  return { webId, stellarEvidence }
 }
 
 async function run() {
@@ -706,6 +811,11 @@ async function run() {
       lockbox: newUser.nodeEvidence?.userLockboxContractId ?? null,
       factory: newUser.nodeEvidence?.lockboxFactoryContractId ?? null,
       proofRoot: newUser.nodeEvidence?.proofRootHex ?? null,
+      stellarSilentLogin: returningUser.stellarEvidence?.stellarLoginCalled ?? false,
+      stellarLoginStatus: returningUser.stellarEvidence?.stellarLoginStatus ?? null,
+      loginPageDwellMs: returningUser.stellarEvidence?.loginPageFirstSeenAt && returningUser.stellarEvidence?.loginPageLeftAt
+        ? returningUser.stellarEvidence.loginPageLeftAt - returningUser.stellarEvidence.loginPageFirstSeenAt
+        : null,
     })}`)
 
     await newUser.context.close()

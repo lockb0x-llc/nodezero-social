@@ -6,6 +6,7 @@
     "environmentName": { "value": "staging-testnet" },
     "appName": { "value": "nodezero-social" },
     "cssImage": { "value": "nzsolidui77938.azurecr.io/solid/community-server-nodezero-auth-ui@sha256:8db7c381fb34220ec8e56347e68c44b2fb1fb1ea38d1bafa0c2d98d95ce793cf" },
+    "cssConfigArg": { "value": "/community-server/config/nodezero.json" },
     "fileShareQuotaGb": { "value": 100 },
     "containerCpu": { "value": "1.0" },
     "containerMemory": { "value": "2Gi" },
@@ -17,6 +18,7 @@
     "smtpPort": { "value": 587 },
     "smtpStartTls": { "value": true },
     "logAnalyticsRetentionDays": { "value": 30 },
-    "logAnalyticsDailyQuotaGb": { "value": 1 }
+    "logAnalyticsDailyQuotaGb": { "value": 1 },
+    "stellarAuthProvisionerOrigins": { "value": "https://staging.nodezero.social" }
   }
 }

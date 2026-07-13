@@ -1,0 +1,22 @@
+{
+  "name": "@nodezero/css-stellar-auth",
+  "version": "0.1.0",
+  "description": "CSS v7 plugin: adds POST /.account/login/stellar/ for passwordless Stellar-keypair authentication",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "lsd:module": "https://linkedsoftwaredependencies.org/bundles/npm/@nodezero/css-stellar-auth/0.1.0/",
+  "lsd:components": "components/context.jsonld",
+  "files": ["dist", "components", "config"],
+  "scripts": {
+    "build": "tsc --project tsconfig.json",
+    "test": "node --require ./test-setup/mock-css-require.js --test dist/__tests__/StellarLoginHandler.test.js",
+    "pretest": "tsc --project tsconfig.json",
+    "type-check": "tsc --noEmit",
+    "clean": "npx rimraf dist"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.4.5"
+  }
+}

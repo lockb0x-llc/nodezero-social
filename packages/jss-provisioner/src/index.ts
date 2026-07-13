@@ -1,5 +1,5 @@
 import { createServer } from 'node:http'
-import { createHash, timingSafeEqual } from 'node:crypto'
+import { createHash, timingSafeEqual, createPublicKey, createVerify } from 'node:crypto'
 import { lookup } from 'node:dns/promises'
 import { isIP } from 'node:net'
 import type { IncomingMessage, ServerResponse } from 'node:http'
@@ -13,10 +13,38 @@ import {
   publishProvisioningEvent,
 } from './notificationEvents.js'
 import { CommunityDirectoryStore } from './communityDirectory.js'
+// Stellar StrKey base32 decode + Ed25519 verify (no external SDK needed)
+const _B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
+function _b32Decode(s: string): Buffer {
+  const out: number[] = []
+  let bits = 0; let val = 0
+  for (const c of s.toUpperCase()) {
+    if (c === '=') break
+    const i = _B32.indexOf(c)
+    if (i < 0) throw new Error('Invalid base32 char: ' + c)
+    val = (val << 5) | i; bits += 5
+    if (bits >= 8) { out.push((val >>> (bits - 8)) & 0xff); bits -= 8 }
+  }
+  return Buffer.from(out)
+}
+const _SPKI_ED25519 = Buffer.from('302a300506032b6570032100', 'hex')
+function verifyStellarEd25519(pubKeyStrKey: string, message: string, signatureBase64: string): boolean {
+  try {
+    const decoded = _b32Decode(pubKeyStrKey)
+    if (decoded.length < 33) return false
+    const rawKey = decoded.slice(1, 33)
+    const key = createPublicKey({ key: Buffer.concat([_SPKI_ED25519, rawKey]), format: 'der', type: 'spki' })
+    const sig = Buffer.from(signatureBase64, 'base64')
+    return createVerify('Ed25519').update(Buffer.from(message, 'utf8')).verify(key, sig)
+  } catch { return false }
+}
 import type {
   BootstrapChallengeRequest,
   ProvisionRequest,
   ProvisionResult,
+  StellarChallengeRequest,
+  StellarTokenRequest,
+  StellarVerifyRequest,
 } from './types.js'
 
 const PORT = Number(process.env.PORT ?? process.env.JSS_PROVISIONER_PORT ?? 8181)
@@ -55,6 +83,10 @@ const DOCUSTREAM_ALLOWED_CONTENT_TYPES = [
   'application/atom+xml',
 ]
 const OIDC_BRIDGE_AUDIENCE = 'nz-solid-css-login-v1'
+const STELLAR_AUTH_AUDIENCE = 'nz-css-stellar-login-v1'
+// Shared HMAC secret with the CSS StellarLoginHandler plugin.
+// Must be set for the stellar-verify endpoint to accept callbacks from CSS.
+const STELLAR_AUTH_SHARED_SECRET = (process.env.NZ_STELLAR_AUTH_SHARED_SECRET ?? '').trim()
 
 class DocustreamRssFetchError extends Error {
   constructor(
@@ -749,6 +781,132 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
       podUrl: ticket.podUrl,
       expiresAt: ticket.expiresAt,
     })
+    return
+  }
+
+  // ---------------------------------------------------------------------------
+  // Stellar Auth: challenge / token / verify endpoints
+  // ---------------------------------------------------------------------------
+
+  if (req.method === 'POST' && url.pathname === '/v1/auth/stellar-challenge') {
+    const body = await readJsonBody<StellarChallengeRequest>(req)
+    if (!isNonEmpty(body.stellarPublicKey)) {
+      sendJson(req, res, 400, { error: 'stellarPublicKey is required.' })
+      return
+    }
+    if (!isNonEmpty(body.webId)) {
+      sendJson(req, res, 400, { error: 'webId is required.' })
+      return
+    }
+    // Validate G-key format (Stellar public key: 56 chars, starts with G).
+    const pk = body.stellarPublicKey.trim()
+    if (pk.length !== 56 || !pk.startsWith('G')) {
+      sendJson(req, res, 400, { error: 'stellarPublicKey must be a valid Stellar G-key (56 chars).' })
+      return
+    }
+    // Basic webId sanity check.
+    let parsedWebId: URL
+    try {
+      parsedWebId = new URL(body.webId.trim())
+    } catch {
+      sendJson(req, res, 400, { error: 'webId must be a valid HTTPS URL.' })
+      return
+    }
+    if (parsedWebId.protocol !== 'https:') {
+      sendJson(req, res, 400, { error: 'webId must use https.' })
+      return
+    }
+    const challenge = store.issueStellarChallenge({ stellarPublicKey: pk, webId: body.webId.trim() })
+    sendJson(req, res, 200, challenge)
+    return
+  }
+
+  if (req.method === 'POST' && url.pathname === '/v1/auth/stellar-token') {
+    const body = await readJsonBody<StellarTokenRequest>(req)
+    if (!isNonEmpty(body.challengeId)) {
+      sendJson(req, res, 400, { error: 'challengeId is required.' })
+      return
+    }
+    if (!isNonEmpty(body.stellarPublicKey)) {
+      sendJson(req, res, 400, { error: 'stellarPublicKey is required.' })
+      return
+    }
+    if (!isNonEmpty(body.signatureBase64)) {
+      sendJson(req, res, 400, { error: 'signatureBase64 is required.' })
+      return
+    }
+
+    const challenge = store.consumeStellarChallenge(body.challengeId.trim())
+    if (!challenge) {
+      sendJson(req, res, 400, { error: 'Challenge not found or has expired.' })
+      return
+    }
+    if (challenge.stellarPublicKey !== body.stellarPublicKey.trim()) {
+      sendJson(req, res, 400, { error: 'stellarPublicKey does not match the challenge.' })
+      return
+    }
+
+    // Verify the Stellar Ed25519 signature. The signed payload is:
+    //   JSON.stringify({ nonce, stellarPublicKey, audience })
+    // The private key never leaves the device; only the public key + signature arrive here.
+    const signedPayload = JSON.stringify({
+      nonce: challenge.nonce,
+      stellarPublicKey: challenge.stellarPublicKey,
+      audience: STELLAR_AUTH_AUDIENCE,
+    })
+    const signatureValid = verifyStellarEd25519(
+      challenge.stellarPublicKey,
+      signedPayload,
+      body.signatureBase64.trim(),
+    )
+    if (!signatureValid) {
+      sendJson(req, res, 401, { error: 'Stellar signature verification failed.' })
+      return
+    }
+
+    const loginToken = store.issueStellarLoginToken(challenge.webId)
+    sendJson(req, res, 200, {
+      loginToken: loginToken.tokenId,
+      tokenVerifyUrl: `${PUBLIC_PROVISIONER_BASE_URL}/v1/auth/stellar-verify`,
+      expiresAt: loginToken.expiresAt,
+    })
+    return
+  }
+
+  if (req.method === 'POST' && url.pathname === '/v1/auth/stellar-verify') {
+    // This endpoint is called exclusively by the CSS StellarLoginHandler plugin,
+    // not by browser clients. It is HMAC-authenticated.
+    if (!STELLAR_AUTH_SHARED_SECRET) {
+      sendJson(req, res, 503, { error: 'Stellar auth is not configured (NZ_STELLAR_AUTH_SHARED_SECRET).' })
+      return
+    }
+    const body = await readJsonBody<StellarVerifyRequest>(req)
+    if (!isNonEmpty(body.token)) {
+      sendJson(req, res, 400, { error: 'token is required.' })
+      return
+    }
+    if (!isNonEmpty(body.audience)) {
+      sendJson(req, res, 400, { error: 'audience is required.' })
+      return
+    }
+
+    const hmacHeader = Array.isArray(req.headers['x-nz-stellar-auth'])
+      ? (req.headers['x-nz-stellar-auth'][0] ?? '')
+      : (req.headers['x-nz-stellar-auth'] ?? '')
+
+    const result = store.consumeStellarLoginToken({
+      tokenId: body.token.trim(),
+      audience: body.audience.trim(),
+      hmacHeader: hmacHeader.trim(),
+      sharedSecret: STELLAR_AUTH_SHARED_SECRET,
+    })
+
+    if (!result) {
+      sendJson(req, res, 200, { valid: false })
+      return
+    }
+
+    sendJson(req, res, 200, { valid: true, webId: result.webId })
     return
   }
 

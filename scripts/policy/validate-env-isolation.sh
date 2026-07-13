@@ -88,4 +88,10 @@ file_contains_literal "$BICEP_FILE" "'staging-testnet'" || fail "Bicep missing s
 file_contains_literal "$BICEP_FILE" "'production-mainnet'" || fail "Bicep missing production-mainnet allowed environment value."
 pass "Bicep environment guardrails validated."
 
+# 6) Stellar auth shared secret must be referenced as a secret (not plain env var) in Bicep.
+SOLID_BICEP="$REPO_ROOT/infrastructure/azure/solid-server.bicep"
+file_contains_literal "$SOLID_BICEP" "NZ_STELLAR_AUTH_SHARED_SECRET" || fail "solid-server.bicep must wire NZ_STELLAR_AUTH_SHARED_SECRET."
+file_contains_literal "$SOLID_BICEP" "stellarAuthSharedSecret" || fail "solid-server.bicep must declare stellarAuthSharedSecret as a @secure() parameter."
+pass "Stellar auth secret Bicep wiring validated."
+
 echo "[policy] All environment-isolation policy checks passed."

@@ -44,7 +44,16 @@ interface SolidContextValue {
   /** The authenticated user's WebID URL, or `null`. */
   webId: string | null
   /** Initiates the login redirect to the user's Solid identity provider. */
-  signIn: (idpUrl: string, options?: { bridgeToken?: string; bridgeConsumeUrl?: string }) => Promise<void>
+  signIn: (idpUrl: string, options?: {
+    bridgeToken?: string
+    bridgeConsumeUrl?: string
+    /** Short-lived Stellar login token from /v1/auth/stellar-token. */
+    stellarToken?: string
+    /** Provisioner verify URL for the stellarToken (trusted by the CSS plugin). */
+    stellarTokenVerifyUrl?: string
+    /** Validated return URL for the bridge/stellar path (nz_return). */
+    nzReturn?: string
+  }) => Promise<void>
   /**
     * Persists seamless-onboarding node metadata locally.
     *
@@ -135,9 +144,20 @@ export function validateIdpUrl(raw: string, envProfile: string = getEnvProfile()
   return parsed.origin
 }
 
-function resolveRedirectUrl(options?: { bridgeToken?: string; bridgeConsumeUrl?: string }): string {
+type SignInOptions = {
+  bridgeToken?: string
+  bridgeConsumeUrl?: string
+  stellarToken?: string
+  stellarTokenVerifyUrl?: string
+  nzReturn?: string
+}
+
+function resolveRedirectUrl(options?: SignInOptions): string {
   const bridgeToken = options?.bridgeToken?.trim()
   const bridgeConsumeUrl = options?.bridgeConsumeUrl?.trim()
+  const stellarToken = options?.stellarToken?.trim()
+  const stellarTokenVerifyUrl = options?.stellarTokenVerifyUrl?.trim()
+  const nzReturn = options?.nzReturn?.trim()
 
   if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.href) {
     // OIDC redirectUrl must not include reserved callback params such as `code` or `state`.
@@ -148,6 +168,15 @@ function resolveRedirectUrl(options?: { bridgeToken?: string; bridgeConsumeUrl?:
     }
     if (bridgeConsumeUrl) {
       redirect.searchParams.set('nz_oidc_bridge_consume', bridgeConsumeUrl)
+    }
+    if (stellarToken) {
+      redirect.searchParams.set('nz_stellar_token', stellarToken)
+    }
+    if (stellarTokenVerifyUrl) {
+      redirect.searchParams.set('nz_stellar_token_verify', stellarTokenVerifyUrl)
+    }
+    if (nzReturn) {
+      redirect.searchParams.set('nz_return', nzReturn)
     }
     return redirect.toString()
   }
@@ -163,6 +192,15 @@ function resolveRedirectUrl(options?: { bridgeToken?: string; bridgeConsumeUrl?:
   }
   if (bridgeConsumeUrl) {
     nativeRedirect.searchParams.set('nz_oidc_bridge_consume', bridgeConsumeUrl)
+  }
+  if (stellarToken) {
+    nativeRedirect.searchParams.set('nz_stellar_token', stellarToken)
+  }
+  if (stellarTokenVerifyUrl) {
+    nativeRedirect.searchParams.set('nz_stellar_token_verify', stellarTokenVerifyUrl)
+  }
+  if (nzReturn) {
+    nativeRedirect.searchParams.set('nz_return', nzReturn)
   }
   return nativeRedirect.toString()
 }
@@ -285,7 +323,7 @@ export function SolidProvider({ children }: { children: ReactNode }): JSX.Elemen
 
   const signIn = useCallback(async (
     idpUrl: string,
-    options?: { bridgeToken?: string; bridgeConsumeUrl?: string },
+    options?: SignInOptions,
   ) => {
     const oidcIssuer = validateIdpUrl(idpUrl)
     const redirectUrl = resolveRedirectUrl(options)

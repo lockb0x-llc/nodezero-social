@@ -397,6 +397,17 @@ interface WalletContextValue {
     notificationEmail: string
     stellarPublicKey: string
   }) => Promise<string>
+  /**
+   * Signs an arbitrary UTF-8 string with the device Stellar keypair and
+   * returns the base64-encoded signature together with the public key.
+   * Used by the Stellar sign-in flow to prove keypair ownership to the
+   * provisioner without transmitting the private key.
+   */
+  signAttestationChallenge: (challengePayload: string) => Promise<{
+    stellarPublicKey: string
+    challengePayload: string
+    signatureBase64: string
+  }>
   /** Destroys local wallet + pairing state, optionally unlinking on-chain. */
   deleteNodeData: (options?: {
     unlinkIdentity?: boolean
@@ -1101,6 +1112,13 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
     []
   )
 
+  const signAttestationChallenge = useCallback(
+    async (challengePayload: string) => {
+      return getWalletService().signAttestationChallenge(challengePayload)
+    },
+    []
+  )
+
   return (
     <WalletContext.Provider value={{
       walletInfo,
@@ -1114,6 +1132,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
       deleteNodeData,
       createSeamlessAttestation,
       createBootstrapPassword,
+      signAttestationChallenge,
     }}>
       {children}
     </WalletContext.Provider>

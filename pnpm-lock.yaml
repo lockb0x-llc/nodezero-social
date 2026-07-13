@@ -27,6 +27,15 @@ importers:
         specifier: ^5.4.5
         version: 5.9.3
 
+  packages/css-stellar-auth:
+    devDependencies:
+      '@types/node':
+        specifier: ^20.14.0
+        version: 20.19.43
+      typescript:
+        specifier: ^5.4.5
+        version: 5.9.3
+
   packages/embedded-wallet:
     dependencies:
       '@stellar/stellar-sdk':
@@ -66,6 +75,10 @@ importers:
         version: 5.9.3
 
   packages/jss-provisioner:
+    dependencies:
+      '@stellar/stellar-sdk':
+        specifier: ^16.0.0
+        version: 16.0.1
     devDependencies:
       '@types/node':
         specifier: ^20.14.0
