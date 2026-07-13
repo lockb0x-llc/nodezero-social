@@ -48,7 +48,7 @@ RUN set -eux; \
     obj['StellarLoginHandler']='https://linkedsoftwaredependencies.org/bundles/npm/@nodezero/css-stellar-auth/0.1.0/components/StellarLoginHandler'; \
     obj['StellarLoginHandler_accountStore']='https://linkedsoftwaredependencies.org/bundles/npm/@nodezero/css-stellar-auth/0.1.0/components/StellarLoginHandler_accountStore'; \
     obj['StellarLoginHandler_cookieStore']='https://linkedsoftwaredependencies.org/bundles/npm/@nodezero/css-stellar-auth/0.1.0/components/StellarLoginHandler_cookieStore'; \
-    obj['StellarLoginHandler_accountStorage']='https://linkedsoftwaredependencies.org/bundles/npm/@nodezero/css-stellar-auth/0.1.0/components/StellarLoginHandler_accountStorage'; \
+    obj['StellarLoginHandler_webIdStore']='https://linkedsoftwaredependencies.org/bundles/npm/@nodezero/css-stellar-auth/0.1.0/components/StellarLoginHandler_webIdStore'; \
     if(!ctx.includes(obj)){ctx.push(obj);} \
     c['@context']=ctx; \
     fs.writeFileSync(CTX,JSON.stringify(c)); \

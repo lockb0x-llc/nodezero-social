@@ -1,5 +1,6 @@
 import { createServer } from 'node:http'
-import { createHash, timingSafeEqual, createPublicKey, createVerify } from 'node:crypto'
+import { createHash, timingSafeEqual } from 'node:crypto'
+import { subtle } from 'node:crypto'
 import { lookup } from 'node:dns/promises'
 import { isIP } from 'node:net'
 import type { IncomingMessage, ServerResponse } from 'node:http'
@@ -13,11 +14,11 @@ import {
   publishProvisioningEvent,
 } from './notificationEvents.js'
 import { CommunityDirectoryStore } from './communityDirectory.js'
-// Stellar StrKey base32 decode + Ed25519 verify (no external SDK needed)
+// Stellar StrKey base32 decode + Ed25519 verify using Web Crypto API
 const _B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
-function _b32Decode(s: string): Buffer {
+function _b32Decode(s: string): Uint8Array {
   const out: number[] = []
-  let bits = 0; let val = 0
+  let bits = 0, val = 0
   for (const c of s.toUpperCase()) {
     if (c === '=') break
     const i = _B32.indexOf(c)
@@ -25,17 +26,18 @@ function _b32Decode(s: string): Buffer {
     val = (val << 5) | i; bits += 5
     if (bits >= 8) { out.push((val >>> (bits - 8)) & 0xff); bits -= 8 }
   }
-  return Buffer.from(out)
+  return new Uint8Array(out)
 }
-const _SPKI_ED25519 = Buffer.from('302a300506032b6570032100', 'hex')
-function verifyStellarEd25519(pubKeyStrKey: string, message: string, signatureBase64: string): boolean {
+async function verifyStellarEd25519(pubKeyStrKey: string, message: string, signatureBase64: string): Promise<boolean> {
   try {
     const decoded = _b32Decode(pubKeyStrKey)
     if (decoded.length < 33) return false
+    // Stellar StrKey: byte[0] = versionByte << 3, bytes[1..32] = raw 32-byte Ed25519 key
     const rawKey = decoded.slice(1, 33)
-    const key = createPublicKey({ key: Buffer.concat([_SPKI_ED25519, rawKey]), format: 'der', type: 'spki' })
     const sig = Buffer.from(signatureBase64, 'base64')
-    return createVerify('Ed25519').update(Buffer.from(message, 'utf8')).verify(key, sig)
+    const msgBytes = Buffer.from(message, 'utf8')
+    const key = await subtle.importKey('raw', rawKey, { name: 'Ed25519' }, false, ['verify'])
+    return await subtle.verify({ name: 'Ed25519' }, key, sig, msgBytes)
   } catch { return false }
 }
 import type {
@@ -854,7 +856,7 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
       stellarPublicKey: challenge.stellarPublicKey,
       audience: STELLAR_AUTH_AUDIENCE,
     })
-    const signatureValid = verifyStellarEd25519(
+    const signatureValid = await verifyStellarEd25519(
       challenge.stellarPublicKey,
       signedPayload,
       body.signatureBase64.trim(),

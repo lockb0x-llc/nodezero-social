@@ -711,6 +711,16 @@ async function runReturningUserJourney(context, credentials) {
   // silent sign-in path throws immediately.
   await page.waitForTimeout(6000)
 
+  // Diagnostic: check what's in localStorage at click time
+  const preClickState = await page.evaluate(() => {
+    return {
+      webId: localStorage.getItem('nodezero.embedded-wallet.nodezero.stellar.webid'),
+      walletKey: localStorage.getItem('nodezero.embedded-wallet.nodezero.stellar.secret') ? 'present' : 'absent',
+      nodeSession: localStorage.getItem('node.session.v1') ? 'present' : 'absent',
+    }
+  })
+  log(`RETURNING USER: pre-click state: webId=${preClickState.webId ? preClickState.webId.substring(0, 50) : 'NULL'}, wallet=${preClickState.walletKey}, nodeSession=${preClickState.nodeSession}`)
+
   const signInButton = page.getByRole('button', { name: 'Sign In' }).first()
   await signInButton.click({ timeout: 30000 }).catch(async () => {
     const snippet = await pageTextSnippet(page)

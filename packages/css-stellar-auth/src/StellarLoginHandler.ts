@@ -28,6 +28,9 @@
 import { createHmac } from 'node:crypto'
 import {
   ResolveLoginHandler,
+  BadRequestHttpError,
+  UnauthorizedHttpError,
+  InternalServerError,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 } from '@solid/community-server'
 
@@ -39,10 +42,7 @@ type AnyAccountStore = any
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyCookieStore = any
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyAccountStorage = any
-
-/** Storage type constant used by BaseWebIdStore (CSS v7.1.x). */
-const WEBID_LINK_TYPE = 'webIdLink'
+type AnyWebIdStore = any
 
 /** Audience claim sent in every verify callback. */
 const STELLAR_AUTH_AUDIENCE = 'nz-css-stellar-login-v1'
@@ -53,12 +53,6 @@ const VERIFY_TIMEOUT_MS = 8_000
 interface VerifyResponse {
   valid: boolean
   webId?: string
-}
-
-interface WebIdLinkRecord {
-  id: string
-  webId: string
-  accountId: string
 }
 
 // The CSS base class uses `JsonInteractionHandlerInput` which has `json: unknown`.
@@ -100,7 +94,7 @@ function isTrustedVerifyUrl(raw: string, allowedOrigins: readonly string[]): boo
 }
 
 export class StellarLoginHandler extends ResolveLoginHandler {
-  private readonly accountStorage: AnyAccountStorage
+  private readonly webIdStore: AnyWebIdStore
   private readonly allowedOrigins: readonly string[]
   private readonly sharedSecret: string
 
@@ -112,10 +106,10 @@ export class StellarLoginHandler extends ResolveLoginHandler {
   constructor(
     accountStore: AnyAccountStore,
     cookieStore: AnyCookieStore,
-    accountStorage: AnyAccountStorage,
+    webIdStore: AnyWebIdStore,
   ) {
     super(accountStore, cookieStore)
-    this.accountStorage = accountStorage
+    this.webIdStore = webIdStore
     const origins = (process.env.NZ_STELLAR_AUTH_PROVISIONER_ORIGINS ?? '').trim()
     this.allowedOrigins = origins.split(',').map((s) => s.trim()).filter(Boolean)
     this.sharedSecret = (process.env.NZ_STELLAR_AUTH_SHARED_SECRET ?? '').trim()
@@ -140,22 +134,31 @@ export class StellarLoginHandler extends ResolveLoginHandler {
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async login(input: AnyInteractionInput): Promise<any> {
+    try {
+      return await this.doLogin(input)
+    } catch (err: unknown) {
+      // Re-throw proper CSS HttpError instances directly; wrap unknown errors
+      if (err && typeof err === 'object' && err instanceof Error &&
+          ('statusCode' in err || err.constructor.name.endsWith('HttpError'))) throw err
+      throw new InternalServerError(err instanceof Error ? err.message : 'Stellar login failed.')
+    }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private async doLogin(input: AnyInteractionInput): Promise<any> {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
     const json: Record<string, unknown> = input.json ?? {}
     const loginToken = json.loginToken
     const tokenVerifyUrl = json.tokenVerifyUrl
 
     if (typeof loginToken !== 'string' || !loginToken.trim()) {
-      throw Object.assign(new Error('loginToken is required.'), { statusCode: 400 })
+      throw new BadRequestHttpError('loginToken is required.')
     }
     if (typeof tokenVerifyUrl !== 'string' || !tokenVerifyUrl.trim()) {
-      throw Object.assign(new Error('tokenVerifyUrl is required.'), { statusCode: 400 })
+      throw new BadRequestHttpError('tokenVerifyUrl is required.')
     }
     if (!isTrustedVerifyUrl(tokenVerifyUrl, this.allowedOrigins)) {
-      throw Object.assign(
-        new Error('tokenVerifyUrl origin is not in the trusted provisioner allowlist.'),
-        { statusCode: 400 },
-      )
+      throw new BadRequestHttpError('tokenVerifyUrl origin is not in the trusted provisioner allowlist.')
     }
 
     // --- Step 1: call provisioner to validate the Stellar-signed token -------
@@ -176,37 +179,53 @@ export class StellarLoginHandler extends ResolveLoginHandler {
       }).finally(() => clearTimeout(timeout))
 
       if (!resp.ok) {
-        throw Object.assign(new Error(`Provisioner verify returned ${resp.status}.`), {
-          statusCode: 401,
-        })
+        throw new UnauthorizedHttpError(`Provisioner verify returned ${resp.status}.`)
       }
       verifyResult = (await resp.json()) as VerifyResponse
     } catch (err: unknown) {
       if (err instanceof Error && (err as NodeJS.ErrnoException).code === 'ABORT_ERR') {
-        throw Object.assign(new Error('Stellar token verification timed out.'), { statusCode: 503 })
+        throw new InternalServerError('Stellar token verification timed out.')
       }
       throw err
     }
 
     if (!verifyResult.valid || typeof verifyResult.webId !== 'string' || !verifyResult.webId.trim()) {
-      throw Object.assign(new Error('Stellar token is invalid or has expired.'), { statusCode: 401 })
+      throw new UnauthorizedHttpError('Stellar token is invalid or has expired.')
     }
 
-    // --- Step 2: resolve accountId from webId via internal storage -----------
+    // --- Step 2: resolve accountId from webId via WebIdStore storage ---------
     const webId = verifyResult.webId.trim()
-    const records: WebIdLinkRecord[] = await (
-      this.accountStorage as unknown as {
-        find: (type: string, filter: Record<string, string>) => Promise<WebIdLinkRecord[]>
-      }
-    ).find(WEBID_LINK_TYPE, { webId })
 
-    if (!records.length) {
-      throw Object.assign(new Error(`No CSS account is linked to WebID <${webId}>.`), {
-        statusCode: 401,
-      })
+    // CSS v7 WebIdStore public interface only exposes findLinks(accountId) and
+    // isLinked(webId, accountId) — neither lets us derive accountId from webId
+    // alone.  BaseWebIdStore (the runtime implementation) delegates to an
+    // internal AccountLoginStorage instance that stores webId link records as
+    // { id, webId, accountId } tuples under the type key 'webIdLink'.
+    //
+    // We access the internal `storage.find()` via a dynamic property lookup so
+    // that this handler does not depend on CSS private APIs in TypeScript but
+    // still works correctly against the running CSS instance.
+    let accountId: string | undefined
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      const internalStorage = (this.webIdStore as Record<string, unknown>)['storage']
+      if (
+        internalStorage &&
+        typeof internalStorage === 'object' &&
+        typeof (internalStorage as Record<string, unknown>)['find'] === 'function'
+      ) {
+        type LinkRecord = { id: string; webId: string; accountId: string }
+        const links = await (internalStorage as { find: (type: string, filter: Record<string, string>) => Promise<LinkRecord[]> }).find('webIdLink', { webId })
+        accountId = links[0]?.accountId
+      }
+    } catch {
+      accountId = undefined
     }
 
-    const { accountId } = records[0]
+    if (!accountId) {
+      throw new UnauthorizedHttpError(`No CSS account is linked to WebID <${webId}>.`)
+    }
+
     return { json: { accountId, remember: true } }
   }
 }
