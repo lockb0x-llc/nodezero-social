@@ -176,8 +176,8 @@ async function main() {
   // The wallet must be provisioned before Create activates.
   await page.waitForFunction(
     () => {
-      const buttons = Array.from(document.querySelectorAll('div[role="button"], button'))
-      return buttons.some((el) => (el.textContent || '').includes('Create Your Node'))
+      const allEls = Array.from(document.querySelectorAll('*'))
+      return allEls.some((el) => (el.textContent || '').trim() === 'Create Your Node')
     },
     undefined,
     { timeout: 120_000 },
@@ -220,8 +220,8 @@ async function main() {
 
   await page.waitForFunction(
     () => {
-      const buttons = Array.from(document.querySelectorAll('div[role="button"], button'))
-      return buttons.some((el) => (el.textContent || '').trim() === 'Sign In')
+      const allEls = Array.from(document.querySelectorAll('*'))
+      return allEls.some((el) => (el.textContent || '').trim() === 'Sign In')
     },
     undefined,
     { timeout: 120_000 },
