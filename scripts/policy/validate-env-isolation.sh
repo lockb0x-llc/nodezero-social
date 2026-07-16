@@ -94,4 +94,21 @@ file_contains_literal "$SOLID_BICEP" "NZ_STELLAR_AUTH_SHARED_SECRET" || fail "so
 file_contains_literal "$SOLID_BICEP" "stellarAuthSharedSecret" || fail "solid-server.bicep must declare stellarAuthSharedSecret as a @secure() parameter."
 pass "Stellar auth secret Bicep wiring validated."
 
+# 7) Internal-auth cutover: the legacy OIDC bridge and browser Solid OIDC
+#    surfaces must never return. Sessions are provisioner-issued; the browser
+#    must not hold Solid OIDC machinery or bridge endpoints.
+PROVISIONER_SRC="$REPO_ROOT/packages/jss-provisioner/src/index.ts"
+POD_PROXY_SRC="$REPO_ROOT/packages/jss-provisioner/src/podProxy.ts"
+if grep -q '/v1/oidc-bridge/consume' "$PROVISIONER_SRC"; then
+  fail "Legacy OIDC bridge endpoint reintroduced in the provisioner (cutover regression)."
+fi
+grep -q "'/v1/pod-proxy/'" "$POD_PROXY_SRC" || fail "Pod Access Proxy route prefix missing from podProxy.ts (session invariant unenforceable)."
+grep -q 'handlePodProxyRequest' "$PROVISIONER_SRC" || fail "Provisioner router does not wire the Pod Access Proxy (session invariant unenforceable)."
+MOBILE_PKG_JSON="$REPO_ROOT/packages/mobile-app/package.json"
+if grep -q '@inrupt/solid-client-authn-browser' "$MOBILE_PKG_JSON"; then
+  fail "Browser Solid OIDC dependency reintroduced in mobile-app (cutover regression)."
+fi
+grep -q 'NZ_JSS_PROVISIONER_URL is required' "$APP_CONFIG" || fail "Mobile app config must fail closed without NZ_JSS_PROVISIONER_URL on strict profiles."
+pass "Internal-auth cutover guardrails validated."
+
 echo "[policy] All environment-isolation policy checks passed."

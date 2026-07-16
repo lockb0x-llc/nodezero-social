@@ -22,14 +22,14 @@ import {
 } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useRouter } from 'expo-router'
-import { useSolid } from '../src/contexts/SolidContext'
+import { useNodeZeroSession } from '../src/contexts/NodeZeroSessionContext'
 import { useWallet } from '../src/contexts/WalletContext'
 import { aesthetic } from '../src/theme/aesthetic'
 
 const SHOW_NSFW_KEY = 'settings.showNsfw'
 
 export default function SettingsScreen(): JSX.Element {
-  const { signOut, webId, nodeSession } = useSolid()
+  const { signOut, webId, podUrl, lockbox, sessionCreatedAt } = useNodeZeroSession()
   const router = useRouter()
   const {
     walletInfo,
@@ -159,38 +159,33 @@ export default function SettingsScreen(): JSX.Element {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {/* ── Your Node ────────────────────────────────── */}
-      {nodeSession ? (
+      {webId ? (
         <>
           <Text style={styles.sectionHeader}>Your Node</Text>
           <View style={styles.card}>
-            <Row label="WebID" value={nodeSession.webId} mono />
-            <Row label="Pod URL" value={nodeSession.podUrl} mono />
+            <Row label="WebID" value={webId} mono />
+            <Row label="Pod URL" value={podUrl ?? 'Unknown'} mono />
             <Row
               label="Stellar Key"
-              value={nodeSession.stellarPublicKey ?? 'Not linked'}
+              value={walletInfo?.publicKey ?? 'Not linked'}
               mono
             />
             <Row
               label="Lockb0x (on-chain)"
-              value={nodeSession.userLockboxContractId ?? 'Not anchored'}
+              value={lockbox?.userLockboxContractId ?? 'Not anchored'}
               mono
             />
             <Row
               label="Lockb0x Factory"
-              value={nodeSession.lockboxFactoryContractId ?? 'Not configured'}
+              value={lockbox?.factoryContractId ?? 'Not configured'}
               mono
             />
             <Row
               label="Pairing Root"
-              value={nodeSession.proofRootHex ?? 'Not generated'}
+              value={lockbox?.proofRootHex ?? 'Not generated'}
               mono
             />
-            <Row
-              label="Pod Account Doc"
-              value={nodeSession.accountDocumentUrl ?? 'Not written'}
-              mono
-            />
-            <Row label="Created" value={nodeSession.createdAt} />
+            <Row label="Created" value={sessionCreatedAt ?? 'Unknown'} />
           </View>
         </>
       ) : null}
@@ -201,7 +196,7 @@ export default function SettingsScreen(): JSX.Element {
           <Text style={styles.rowLabel}>Auth Mode</Text>
           <View style={styles.authModeWrap}>
             <View style={styles.authModeBadge}>
-              <Text style={styles.authModeBadgeText}>OIDC Redirect</Text>
+              <Text style={styles.authModeBadgeText}>NodeZero Session</Text>
             </View>
             <TouchableOpacity
               onPress={() => setShowAuthModeHint((v) => !v)}
@@ -215,7 +210,7 @@ export default function SettingsScreen(): JSX.Element {
         </View>
         {showAuthModeHint ? (
           <Text style={styles.rowSubDetail}>
-            {'Sign-in always uses the configured Solid OIDC Identity Provider redirect flow.'}
+            {'Your device Stellar key signs you in. Pod access flows through the NodeZero Pod proxy — no passwords, no redirects.'}
           </Text>
         ) : null}
         <Row label="WebID" value={webId ?? 'Not signed in'} mono />

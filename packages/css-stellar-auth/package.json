@@ -1,7 +1,7 @@
 {
   "name": "@nodezero/css-stellar-auth",
   "version": "0.1.0",
-  "description": "CSS v7 plugin: adds POST /.account/login/stellar/ for passwordless Stellar-keypair authentication",
+  "description": "RETIRED (internal-auth cutover): legacy CSS v7 login-page plugin. The provisioner verify endpoint it depends on no longer exists; the CSS interactive login surface is disabled. Kept only until the solid-server image build drops it.",
   "license": "MIT",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -10,8 +10,7 @@
   "files": ["dist", "components", "config"],
   "scripts": {
     "build": "tsc --project tsconfig.json",
-    "test": "node --require ./test-setup/mock-css-require.js --test dist/__tests__/StellarLoginHandler.test.js",
-    "pretest": "tsc --project tsconfig.json",
+    "test": "echo '[css-stellar-auth] RETIRED: legacy CSS login plugin excluded from the workspace gate (internal-auth cutover).'",
     "type-check": "tsc --noEmit",
     "clean": "npx rimraf dist"
   },

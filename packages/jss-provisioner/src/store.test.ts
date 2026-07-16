@@ -3,125 +3,71 @@ import { test } from 'node:test'
 
 import { ProvisionStore } from './store.js'
 
-void test('OIDC bridge ticket default TTL is approximately 15 minutes', () => {
-  delete process.env.JSS_OIDC_BRIDGE_TTL_MS
+void test('stellar challenge: issue returns nonce + expiry bound to the key', () => {
   const store = new ProvisionStore()
-  const issuedAt = Date.now()
-
-  const ticket = store.issueOidcBridgeTicket({
-    email: 'qa@example.com',
-    password: 'correct horse battery staple',
-    webId: 'https://solid.nodezero.social/qa/profile/card#me',
-    podUrl: 'https://solid.nodezero.social/qa/',
-    audience: 'nz-solid-css-login-v1',
-    consumerOrigin: 'https://solid.nodezero.social',
-    issuer: 'https://staging.nodezero.social',
+  const challenge = store.issueStellarChallenge({
+    stellarPublicKey: 'GAUMNOPBK5WYUGIV2VH7JXMHACFSB4QV4HCJM5LB7ERUYKUN6UEZGEYI',
   })
 
-  const expiresAtMs = new Date(ticket.expiresAt).getTime()
-  const ttlMs = expiresAtMs - issuedAt
-
-  assert.ok(ttlMs >= 14 * 60_000, `Expected TTL >= 14 minutes, got ${ttlMs}ms`)
-  assert.ok(ttlMs <= 16 * 60_000, `Expected TTL <= 16 minutes, got ${ttlMs}ms`)
+  assert.ok(challenge.challengeId)
+  assert.ok(challenge.nonce.length >= 16)
+  assert.equal(challenge.stellarPublicKey, 'GAUMNOPBK5WYUGIV2VH7JXMHACFSB4QV4HCJM5LB7ERUYKUN6UEZGEYI')
+  assert.ok(new Date(challenge.expiresAt).getTime() > Date.now())
 })
 
-void test('OIDC bridge TTL respects JSS_OIDC_BRIDGE_TTL_MS override', () => {
-  process.env.JSS_OIDC_BRIDGE_TTL_MS = '120000'
+void test('stellar challenge: consume is single-use', () => {
   const store = new ProvisionStore()
-  const issuedAt = Date.now()
-
-  const ticket = store.issueOidcBridgeTicket({
-    email: 'qa@example.com',
-    password: 'correct horse battery staple',
-    webId: 'https://solid.nodezero.social/qa/profile/card#me',
-    podUrl: 'https://solid.nodezero.social/qa/',
-    audience: 'nz-solid-css-login-v1',
-    consumerOrigin: 'https://solid.nodezero.social',
-    issuer: 'https://staging.nodezero.social',
+  const challenge = store.issueStellarChallenge({
+    stellarPublicKey: 'GAUMNOPBK5WYUGIV2VH7JXMHACFSB4QV4HCJM5LB7ERUYKUN6UEZGEYI',
   })
 
-  const expiresAtMs = new Date(ticket.expiresAt).getTime()
-  const ttlMs = expiresAtMs - issuedAt
-
-  assert.ok(ttlMs >= 110000, `Expected TTL >= 110000ms, got ${ttlMs}ms`)
-  assert.ok(ttlMs <= 130000, `Expected TTL <= 130000ms, got ${ttlMs}ms`)
-
-  delete process.env.JSS_OIDC_BRIDGE_TTL_MS
-})
-
-void test('OIDC bridge ticket can be consumed only once with matching bindings', () => {
-  const store = new ProvisionStore()
-  const ticket = store.issueOidcBridgeTicket({
-    email: 'qa@example.com',
-    password: 'correct horse battery staple',
-    webId: 'https://solid.nodezero.social/qa/profile/card#me',
-    podUrl: 'https://solid.nodezero.social/qa/',
-    audience: 'nz-solid-css-login-v1',
-    consumerOrigin: 'https://solid.nodezero.social',
-    issuer: 'https://staging.nodezero.social',
-  })
-
-  const first = store.consumeOidcBridgeTicket({
-    token: ticket.token,
-    audience: 'nz-solid-css-login-v1',
-    consumerOrigin: 'https://solid.nodezero.social',
-    issuer: 'https://staging.nodezero.social',
-  })
+  const first = store.consumeStellarChallenge(challenge.challengeId)
   assert.ok(first)
+  assert.equal(first.nonce, challenge.nonce)
 
-  const second = store.consumeOidcBridgeTicket({
-    token: ticket.token,
-    audience: 'nz-solid-css-login-v1',
-    consumerOrigin: 'https://solid.nodezero.social',
-    issuer: 'https://staging.nodezero.social',
-  })
+  const second = store.consumeStellarChallenge(challenge.challengeId)
   assert.equal(second, null)
 })
 
-void test('OIDC bridge consume fails when audience, origin, or issuer mismatch', () => {
+void test('stellar challenge: unknown id yields null', () => {
   const store = new ProvisionStore()
+  assert.equal(store.consumeStellarChallenge('nope'), null)
+})
 
-  const issue = () =>
-    store.issueOidcBridgeTicket({
-      email: 'qa@example.com',
-      password: 'correct horse battery staple',
-      webId: 'https://solid.nodezero.social/qa/profile/card#me',
-      podUrl: 'https://solid.nodezero.social/qa/',
-      audience: 'nz-solid-css-login-v1',
-      consumerOrigin: 'https://solid.nodezero.social',
-      issuer: 'https://staging.nodezero.social',
-    })
+void test('bootstrap challenge: issue/consume round-trip preserves bindings', () => {
+  const store = new ProvisionStore()
+  const challenge = store.issueChallenge({
+    handle: 'qa',
+    webId: 'https://solid.nodezero.social/qa/profile/card#me',
+    podUrl: 'https://solid.nodezero.social/qa/',
+  })
 
-  const audienceMismatch = issue()
-  assert.equal(
-    store.consumeOidcBridgeTicket({
-      token: audienceMismatch.token,
-      audience: 'wrong-audience',
-      consumerOrigin: 'https://solid.nodezero.social',
-      issuer: 'https://staging.nodezero.social',
-    }),
-    null,
-  )
+  const consumed = store.consumeChallenge(challenge.challengeId)
+  assert.ok(consumed)
+  assert.equal(consumed.handle, 'qa')
+  assert.equal(consumed.webId, 'https://solid.nodezero.social/qa/profile/card#me')
 
-  const originMismatch = issue()
-  assert.equal(
-    store.consumeOidcBridgeTicket({
-      token: originMismatch.token,
-      audience: 'nz-solid-css-login-v1',
-      consumerOrigin: 'https://evil.example',
-      issuer: 'https://staging.nodezero.social',
-    }),
-    null,
-  )
+  assert.equal(store.consumeChallenge(challenge.challengeId), null)
+})
 
-  const issuerMismatch = issue()
-  assert.equal(
-    store.consumeOidcBridgeTicket({
-      token: issuerMismatch.token,
-      audience: 'nz-solid-css-login-v1',
-      consumerOrigin: 'https://solid.nodezero.social',
-      issuer: 'https://production.nodezero.social',
-    }),
-    null,
-  )
+void test('jobs: pending -> ready lifecycle', () => {
+  const store = new ProvisionStore()
+  const jobId = store.createPendingJob()
+  assert.equal(store.getJob(jobId)?.status, 'pending')
+
+  store.resolveJob(jobId, {
+    handle: 'qa',
+    webId: 'https://solid.nodezero.social/qa/profile/card#me',
+    podUrl: 'https://solid.nodezero.social/qa/',
+    issuer: 'https://staging.nodezero.social',
+    stellarPublicKey: 'GAUMNOPBK5WYUGIV2VH7JXMHACFSB4QV4HCJM5LB7ERUYKUN6UEZGEYI',
+    challengeId: 'ch-1',
+    claimHash: 'abc',
+    proofHashHex: 'def',
+    proofRootHex: '123',
+  })
+  assert.equal(store.getJob(jobId)?.status, 'ready')
+
+  store.failJob(jobId, 'boom')
+  assert.equal(store.getJob(jobId)?.status, 'error')
 })

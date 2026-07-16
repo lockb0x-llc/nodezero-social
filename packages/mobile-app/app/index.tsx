@@ -2,10 +2,10 @@
  * LandingScreen – NodeZero.social public entry point.
  *
  * Marketing landing page for new and returning visitors.
- * New users: "Create Your Node" → Node Zero Community Server Pod creation.
- * Returning users: "Sign In" → Node Zero Community Server OIDC by default
- * (solidcommunity.net offered as a secondary external-Pod option).
- * Authenticated users are immediately redirected to /feed.
+ * New users: "Create Your Node" → provisioner creates the Pod and returns a
+ * ready NodeZero session — no redirect, no password.
+ * Returning users: "Sign In" → one-tap Stellar signature login on-device.
+ * Authenticated users are immediately redirected into the app.
  */
 
 import React, { useState } from 'react'
@@ -24,59 +24,18 @@ import {
 } from 'react-native'
 import { useRouter, usePathname } from 'expo-router'
 import Constants from 'expo-constants'
-import { useSolid } from '../src/contexts/SolidContext'
+import { useNodeZeroSession } from '../src/contexts/NodeZeroSessionContext'
 import { useWallet } from '../src/contexts/WalletContext'
 import { aesthetic } from '../src/theme/aesthetic'
-import { beginSolidSignup } from '../src/onboarding/signupBridge'
 import {
   checkSeamlessEmailExists,
   createSeamlessNode,
   getSeamlessSignupConfig,
 } from '../src/onboarding/seamlessSignup'
 import { ProgressStepLadder, type ProgressStep } from '../src/components/ProgressStepLadder'
-import { saveNodeSession, type NodeSessionRecord } from '../src/onboarding/nodeSession'
-import { useStellarSignIn } from '../src/auth/useStellarSignIn'
+import { useStellarSignIn, NoAccountError } from '../src/auth/useStellarSignIn'
 
 const PRESS_OPACITY = 0.82
-
-interface IssuerOption {
-  /** Short display name shown in the dropdown. */
-  label: string
-  /** Secondary descriptive line. */
-  sublabel: string
-  /** The OIDC issuer URL used to start the sign-in flow. */
-  value: string
-  /** Optional brand glyph rendered before the label (e.g. the NodeZero mark). */
-  mark?: string
-}
-
-/**
- * Builds the identity-provider options for the sign-in dropdown. The NodeZero
- * authentication flow (the self-hosted NodeZero identity provider) is always
- * the default first option; solidcommunity.net is offered second for users
- * with an external Solid Pod.
- */
-function getIssuerOptions(): IssuerOption[] {
-  const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
-  const nodeZeroIssuer = appExtra?.nodeZeroIssuerUrl?.trim() ?? ''
-  const solidIssuer = appExtra?.solidOidcIssuerUrl?.trim() || 'https://solidcommunity.net/'
-
-  const options: IssuerOption[] = []
-  if (nodeZeroIssuer) {
-    options.push({
-      label: 'Node Zero Community Server',
-      sublabel: 'Sign in with the hosted Node Zero Community Server (recommended)',
-      value: nodeZeroIssuer,
-      mark: '⊙',
-    })
-  }
-  options.push({
-    label: 'solidcommunity.net',
-    sublabel: 'Sign in with an external Solid Pod',
-    value: solidIssuer,
-  })
-  return options
-}
 
 type AuthCardSource = 'card' | 'footer'
 
@@ -129,19 +88,6 @@ function isEmailAlreadyRegisteredError(err: unknown): boolean {
   )
 }
 
-function getNodeZeroForgotPasswordUrl(): string {
-  const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
-  const issuer = (appExtra?.nodeZeroIssuerUrl ?? 'https://solid.nodezero.social/').trim()
-  const fallback = 'https://solid.nodezero.social/.account/login/password/forgot/'
-  if (!issuer) return fallback
-
-  try {
-    return new URL('.account/login/password/forgot/', issuer).toString()
-  } catch {
-    return fallback
-  }
-}
-
 type LandingMode = 'marketing' | 'onboarding'
 
 function getLandingMode(): LandingMode {
@@ -159,11 +105,6 @@ function getLandingMode(): LandingMode {
 
 interface LandingAuthCardProps {
   source: AuthCardSource
-  showResumeHint: boolean
-  issuerOptions: IssuerOption[]
-  selectedIssuer: string
-  signupResumeActive: boolean
-  signupReturnDetected: boolean
   error: string | null
   errorAction: { label: string; url: string } | null
   isSigningIn: boolean
@@ -174,22 +115,14 @@ interface LandingAuthCardProps {
   walletReady: boolean
   createNotice: string | null
   createSteps: ProgressStep[]
-  onIssuerChange: (nextIssuer: string) => void
   onNodeHandleChange: (value: string) => void
   onNotificationEmailChange: (value: string) => void
   onSignIn: () => Promise<void>
   onCreateNode: () => Promise<void>
-  onGetStarted: (source: AuthCardSource) => Promise<void>
-  onClearError: () => void
 }
 
 function LandingAuthCard({
   source,
-  showResumeHint,
-  issuerOptions,
-  selectedIssuer,
-  signupResumeActive,
-  signupReturnDetected,
   error,
   errorAction,
   isSigningIn,
@@ -200,82 +133,22 @@ function LandingAuthCard({
   walletReady,
   createNotice,
   createSteps,
-  onIssuerChange,
   onNodeHandleChange,
   onNotificationEmailChange,
   onSignIn,
   onCreateNode,
-  onGetStarted,
-  onClearError,
 }: LandingAuthCardProps): JSX.Element {
-  const [issuerMenuOpen, setIssuerMenuOpen] = useState(false)
-  const selectedOption = issuerOptions.find((option) => option.value === selectedIssuer) ?? issuerOptions[0]
-
+  void source
   return (
     <View style={styles.signInPanel}>
       <View style={styles.signInBrand}>
         <Text style={styles.signInBrandMark}>⊙</Text>
         <Text style={styles.signInBrandName}>NodeZero</Text>
       </View>
-      <Text style={styles.signInTitle}>Sign in with your Solid Pod</Text>
-      <Text style={styles.signInHint}>Choose your identity provider</Text>
-      {showResumeHint && signupResumeActive ? (
-        <Text style={styles.resumeHint}>
-          {signupReturnDetected
-            ? 'Signup return detected. Continue by signing in with your new Solid Pod identity.'
-            : 'Need a Pod first? Create one, then return here to continue onboarding.'}
-        </Text>
-      ) : null}
-      <View style={styles.dropdownWrap}>
-        <TouchableOpacity
-          style={styles.dropdownField}
-          onPress={() => setIssuerMenuOpen((open) => !open)}
-          activeOpacity={PRESS_OPACITY}
-          accessibilityRole="button"
-          accessibilityLabel="Identity provider"
-          accessibilityState={{ expanded: issuerMenuOpen }}
-        >
-          <View style={styles.dropdownFieldText}>
-            <View style={styles.dropdownLabelRow}>
-              {selectedOption?.mark ? <Text style={styles.dropdownMark}>{selectedOption.mark}</Text> : null}
-              <Text style={styles.dropdownLabel}>{selectedOption?.label ?? 'Select provider'}</Text>
-            </View>
-            <Text style={styles.dropdownSub}>{selectedOption?.sublabel ?? ''}</Text>
-          </View>
-          <Text style={styles.dropdownChevron}>{issuerMenuOpen ? '▴' : '▾'}</Text>
-        </TouchableOpacity>
-        {issuerMenuOpen ? (
-          <View style={styles.dropdownMenu}>
-            {issuerOptions.map((opt, i) => (
-              <TouchableOpacity
-                key={opt.value || opt.label}
-                style={[
-                  styles.dropdownOption,
-                  i < issuerOptions.length - 1 && styles.dropdownOptionDivider,
-                  opt.value === selectedIssuer && styles.dropdownOptionActive,
-                ]}
-                onPress={() => {
-                  onIssuerChange(opt.value)
-                  setIssuerMenuOpen(false)
-                  onClearError()
-                }}
-                activeOpacity={PRESS_OPACITY}
-                accessibilityRole="button"
-                accessibilityLabel={opt.label}
-              >
-                <View style={styles.dropdownFieldText}>
-                  <View style={styles.dropdownLabelRow}>
-                    {opt.mark ? <Text style={styles.dropdownMark}>{opt.mark}</Text> : null}
-                    <Text style={styles.dropdownLabel}>{opt.label}</Text>
-                  </View>
-                  <Text style={styles.dropdownSub}>{opt.sublabel}</Text>
-                </View>
-                {opt.value === selectedIssuer ? <Text style={styles.dropdownCheck}>✓</Text> : null}
-              </TouchableOpacity>
-            ))}
-          </View>
-        ) : null}
-      </View>
+      <Text style={styles.signInTitle}>Sign in to your node</Text>
+      <Text style={styles.signInHint}>
+        Your device key signs you in — no passwords, no redirects.
+      </Text>
       {error ? (
         <View style={styles.errorBlock}>
           <Text style={styles.errorText}>{error}</Text>
@@ -292,9 +165,9 @@ function LandingAuthCard({
         </View>
       ) : null}
       <TouchableOpacity
-        style={[styles.btnPrimary, isSigningIn && styles.btnDisabled]}
+        style={[styles.btnPrimary, (isSigningIn || !walletReady) && styles.btnDisabled]}
         onPress={() => void onSignIn()}
-        disabled={isSigningIn}
+        disabled={isSigningIn || !walletReady}
         activeOpacity={PRESS_OPACITY}
         accessibilityRole="button"
         accessibilityLabel="Sign In"
@@ -302,7 +175,7 @@ function LandingAuthCard({
         {isSigningIn ? (
           <ActivityIndicator color="#FFF" />
         ) : (
-          <Text style={styles.btnPrimaryText}>Sign In</Text>
+          <Text style={styles.btnPrimaryText}>{walletReady ? 'Sign In' : 'Preparing wallet…'}</Text>
         )}
       </TouchableOpacity>
       {seamlessEnabled ? (
@@ -332,8 +205,8 @@ function LandingAuthCard({
             accessibilityLabel="Notification email"
           />
           <Text style={styles.createHintText}>
-            A one-time bootstrap password is derived from your device wallet signature.
-            You can reset it anytime from the Node Zero Community Server login screen.
+            Your device wallet is your key. There is no account password — keep
+            your recovery bundle safe to restore access on a new device.
           </Text>
           <TouchableOpacity
             style={[styles.btnPrimary, (isCreating || !walletReady) && styles.btnDisabled]}
@@ -350,15 +223,7 @@ function LandingAuthCard({
             )}
           </TouchableOpacity>
         </View>
-      ) : (
-        <TouchableOpacity
-          onPress={() => void onGetStarted(source)}
-          style={styles.createPodLink}
-          activeOpacity={PRESS_OPACITY}
-        >
-          <Text style={styles.createPodText}>Need a Pod? Create one free →</Text>
-        </TouchableOpacity>
-      )}
+      ) : null}
     </View>
   )
 }
@@ -403,9 +268,9 @@ function AuthRedirectOverlay({ visible }: { visible: boolean }): JSX.Element {
       <View style={styles.redirectOverlayBackdrop}>
         <View style={styles.redirectOverlayCard}>
           <Text style={styles.redirectOverlayMark}>⊙</Text>
-          <Text style={styles.redirectOverlayTitle}>Continuing to sign in</Text>
+          <Text style={styles.redirectOverlayTitle}>Signing you in</Text>
           <Text style={styles.redirectOverlayBody}>
-            Taking you to the Node Zero Community Server to complete secure sign-in.
+            Verifying your device key and establishing your session.
           </Text>
           <ActivityIndicator color={PURPLE} size="small" />
         </View>
@@ -415,24 +280,14 @@ function AuthRedirectOverlay({ visible }: { visible: boolean }): JSX.Element {
 }
 
 export default function LandingScreen(): JSX.Element {
-  const {
-    signIn,
-    nodeSession,
-    isLoggedIn,
-    isRestoring,
-    isSessionReady,
-    signupResumeActive,
-    signupReturnDetected,
-  } = useSolid()
-  const { attestationStatus, walletInfo, createSeamlessAttestation, createBootstrapPassword } = useWallet()
+  const { status, adoptSession } = useNodeZeroSession()
+  const { attestationStatus, walletInfo, createSeamlessAttestation } = useWallet()
   const router = useRouter()
   const pathname = usePathname()
   const landingMode = getLandingMode()
   const showMarketingContent = landingMode === 'marketing'
-  const issuerOptions = getIssuerOptions()
   const seamlessConfig = getSeamlessSignupConfig()
 
-  const [selectedIssuer, setSelectedIssuer] = useState(issuerOptions[0]?.value ?? '')
   const [isSigningIn, setIsSigningIn] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [errorAction, setErrorAction] = useState<{ label: string; url: string } | null>(null)
@@ -464,120 +319,38 @@ export default function LandingScreen(): JSX.Element {
   }
 
   React.useEffect(() => {
-    if (!isRestoring && isLoggedIn && pathname === '/') {
-      // Fail-closed routing: only verified sessions enter the app. Seamless node
-      // users (already anchored on-chain) go straight to their Local node;
-      // everyone else must pass through onboarding, which blocks until the
-      // on-chain lockb0x pairing is verified.
+    if (status === 'authenticated' && pathname === '/') {
+      // Fail-closed routing: only verified sessions enter the app. Everyone
+      // else passes through onboarding, which blocks until the on-chain
+      // lockb0x pairing is verified.
       if (attestationStatus === 'verified') {
-        router.replace(nodeSession ? '/local' : '/feed')
+        router.replace('/feed')
       } else {
         router.replace('/onboarding')
       }
     }
-  }, [attestationStatus, isLoggedIn, isRestoring, nodeSession, pathname, router])
-
-  // Bridge return leg: after the IdP login page consumed the one-time bridge
-  // ticket (account cookie established), it redirects back here with
-  // nz_bridge_return=1. Resume the real OIDC sign-in automatically — the IdP
-  // session already exists, so the flow continues straight to consent.
-  React.useEffect(() => {
-    if (Platform.OS !== 'web' || typeof window === 'undefined') return
-    if (isRestoring) return
-
-    const hasNodeSessionOnly = Boolean(nodeSession) && !isSessionReady
-    if (isLoggedIn && !hasNodeSessionOnly) return
-
-    const params = new URLSearchParams(window.location.search)
-    if (params.get('nz_bridge_return') !== '1') return
-
-    // Clear the marker first so a failed attempt cannot loop.
-    params.delete('nz_bridge_return')
-    const cleaned = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}`
-    window.history.replaceState(null, '', cleaned)
-
-    const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
-    const issuerBase = (appExtra?.nodeZeroIssuerUrl ?? '').replace(/\/+$/, '')
-    if (!issuerBase) return
-
-    setIsSigningIn(true)
-    void signIn(issuerBase).catch((err) => {
-      setIsSigningIn(false)
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'Automatic sign-in could not resume. Use Sign In to continue.',
-      )
-    })
-  }, [isLoggedIn, isRestoring, isSessionReady, nodeSession, signIn])
+  }, [attestationStatus, pathname, router, status])
 
   const stellarSignIn = useStellarSignIn()
 
   const handleSignIn = async (): Promise<void> => {
     setError(null)
     setErrorAction(null)
-    const trimmed = selectedIssuer.trim()
-    if (!trimmed) {
-      setError('Select an identity provider to continue.')
-      return
-    }
-    if (!trimmed.startsWith('https://')) {
-      setError('Identity provider must use https://')
-      return
-    }
     setIsSigningIn(true)
     try {
-      // For returning NodeZero users (nodeSession exists), attempt the silent
-      // Stellar sign-in flow: derive a signed token on-device and embed it in
-      // the OIDC redirect URL so the CSS login template can complete auth
-      // without showing any credentials UI to the user.
-      const isNodeZeroIssuer =
-        trimmed === (selectedIssuer.trim()) &&
-        trimmed === (issuerOptions[0]?.value ?? '')
-      const stellarWebId: string | null =
-        nodeSession?.webId ??
-        (Platform.OS === 'web' && typeof window !== 'undefined'
-          ? (window.localStorage.getItem('nodezero.embedded-wallet.nodezero.stellar.webid') || null)
-          : null)
-      if (stellarWebId && isNodeZeroIssuer) {
-        try {
-          const { loginToken, tokenVerifyUrl } = await stellarSignIn(stellarWebId)
-          // Navigate directly to the CSS login page with the Stellar token as
-          // top-level URL params — same pattern as nz_oidc_bridge. The CSS
-          // login template calls POST /.account/login/stellar/, sets the account
-          // cookie, then redirects back via nz_return → nz_bridge_return=1 which
-          // resumes the standard OIDC flow to complete authentication.
-          if (Platform.OS === 'web' && typeof window !== 'undefined') {
-            const issuerBase = trimmed.replace(/\/+$/, '')
-            const returnUrl = `${window.location.origin}/?nz_bridge_return=1`
-            const loginUrl = new URL(`${issuerBase}/.account/login/password/`)
-            loginUrl.searchParams.set('nz_stellar_token', loginToken)
-            loginUrl.searchParams.set('nz_stellar_token_verify', tokenVerifyUrl)
-            loginUrl.searchParams.set('nz_return', returnUrl)
-            window.location.href = loginUrl.toString()
-            return
-          }
-        } catch (stellarErr) {
-          // Stellar sign-in failed — fall through to standard OIDC redirect.
-          // The CSS login form is always available as the safe fallback.
-          console.warn('[handleSignIn] Stellar sign-in failed, falling back to standard OIDC:', stellarErr)
-        }
-      }
-      await signIn(trimmed)
+      // One-tap sign-in: challenge → on-device Stellar signature → NodeZero
+      // session. The provisioner only issues the session after proving live
+      // Solid access (fail-closed) — no redirect, no password, no CSS UI.
+      const result = await stellarSignIn()
+      await adoptSession(result)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Sign-in failed. Check the URL and try again.')
+      if (err instanceof NoAccountError) {
+        setError('No node exists for this device key yet. Create your node below to get started.')
+      } else {
+        setError(err instanceof Error ? err.message : 'Sign-in failed. Try again.')
+      }
     } finally {
       setIsSigningIn(false)
-    }
-  }
-
-  const handleGetStarted = async (source: 'card' | 'footer'): Promise<void> => {
-    setError(null)
-    setErrorAction(null)
-    try {
-      await beginSolidSignup(source)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not open account creation. Try again.')
     }
   }
 
@@ -588,17 +361,13 @@ export default function LandingScreen(): JSX.Element {
 
     const normalizedEmail = notificationEmail.trim().toLowerCase()
     if (normalizedEmail && knownExistingEmailsRef.current.has(normalizedEmail)) {
-      setError('This email address is already registered. Try signing in, or reset your password to continue.')
-      setErrorAction({
-        label: 'Reset password on Node Zero Community Server',
-        url: getNodeZeroForgotPasswordUrl(),
-      })
+      setError('This email address is already registered. If this is your account, sign in with the device that created it.')
       return
     }
 
     // Fail-closed: the embedded wallet must be provisioned before onboarding.
-    // Without a Stellar public key the provisioner silently skips on-chain
-    // lockb0x creation, which previously let users continue un-anchored.
+    // Without a Stellar public key the provisioner cannot anchor the on-chain
+    // lockb0x, so creation is blocked until the wallet is ready.
     if (!walletInfo?.publicKey) {
       setError('Your wallet is still initializing. Wait a moment and try again.')
       return
@@ -634,11 +403,7 @@ export default function LandingScreen(): JSX.Element {
         const emailAlreadyRegistered = await checkSeamlessEmailExists(normalizedEmail)
         if (emailAlreadyRegistered) {
           knownExistingEmailsRef.current.add(normalizedEmail)
-          setError('This email address is already registered. Try signing in, or reset your password to continue.')
-          setErrorAction({
-            label: 'Reset password on Node Zero Community Server',
-            url: getNodeZeroForgotPasswordUrl(),
-          })
+          setError('This email address is already registered. If this is your account, sign in with the device that created it.')
           return
         }
       }
@@ -658,17 +423,9 @@ export default function LandingScreen(): JSX.Element {
       advanceCreateStep('proof')
       setCreateNotice('Creating your Pod on the Node Zero Community Server…')
 
-      const bootstrapPassword = await createBootstrapPassword({
-        issuer: issuerBase,
-        handle: normalizedHandle,
-        notificationEmail: normalizedEmail,
-        stellarPublicKey: walletInfo.publicKey,
-      })
-
       const result = await createSeamlessNode({
         handle: nodeHandle,
         notificationEmail,
-        password: bootstrapPassword,
         stellarPublicKey: walletInfo.publicKey,
         accountCommitmentHex: attestation.accountCommitmentHex,
         ciphertextHex: attestation.ciphertextHex,
@@ -695,9 +452,12 @@ export default function LandingScreen(): JSX.Element {
         setErrorAction(null)
         return
       }
-      if (!result.oidcBridge?.token || !result.oidcBridge.consumeUrl) {
+
+      // Fail-closed: the provisioner must return a ready NodeZero session —
+      // it only does so after proving live Solid access against the new Pod.
+      if (!result.session?.accessToken) {
         failActiveCreateStep()
-        setError('Node created, but secure OIDC bridge sign-in is unavailable. Please try again.')
+        setError('Node created, but no session was issued. Please try again.')
         setErrorAction(null)
         return
       }
@@ -705,51 +465,24 @@ export default function LandingScreen(): JSX.Element {
 
       const root = result.lockbox.proofRootHex
       setCreateNotice(
-        `Node created. WebID: ${result.webId}\nStellar key: ${result.stellarPublicKey}\nLockb0x (on-chain): ${anchored}\nIdentity anchor: ${result.attestation.accountCommitmentHex}${root ? `\nPairing root: ${root}` : ''}\nContinuing to secure sign-in…`,
+        `Node created. WebID: ${result.webId}\nStellar key: ${result.stellarPublicKey}\nLockb0x (on-chain): ${anchored}\nIdentity anchor: ${result.attestation.accountCommitmentHex}${root ? `\nPairing root: ${root}` : ''}\nSigning you in…`,
       )
 
-      // Persist non-secret node metadata locally, then start a real OIDC login
-      // so Pod operations use an authenticated Solid session.
-      const record: NodeSessionRecord = {
-        webId: result.webId,
-        podUrl: result.podUrl,
-        stellarPublicKey: result.stellarPublicKey,
-        userLockboxContractId: anchored,
-        lockboxFactoryContractId: result.lockbox.factoryContractId ?? null,
-        proofRootHex: result.lockbox.proofRootHex ?? null,
-        accountDocumentUrl: result.accountDocumentUrl,
-        createdAt: new Date().toISOString(),
-      }
-      await saveNodeSession(record)
-      // Store the webId alongside the wallet key so Stellar SSO works on return
-      // visits even after a full localStorage clear (qa:smoke:auth scenario).
-      if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        try { window.localStorage.setItem('nodezero.embedded-wallet.nodezero.stellar.webid', result.webId) } catch {}
-      }
       advanceCreateStep('signin')
       setIsSigningIn(true)
 
-      if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        // Seamless hand-off: open the IdP login page with the one-time bridge
-        // ticket directly in the URL. The themed login template consumes the
-        // ticket, establishes the CSS account cookie, and redirects back here
-        // with nz_bridge_return=1. The resume effect below then starts the
-        // real OIDC sign-in against the already-authenticated IdP session.
-        // (Bridge params buried inside the OIDC redirect_uri are not
-        // discoverable by the login page, so this explicit leg is required.)
-        const loginUrl = new URL('.account/login/password/', `${issuerBase}/`)
-        loginUrl.searchParams.set('nz_oidc_bridge', result.oidcBridge.token)
-        loginUrl.searchParams.set('nz_oidc_bridge_consume', result.oidcBridge.consumeUrl)
-        const returnUrl = new URL(`${window.location.origin}${window.location.pathname}`)
-        returnUrl.searchParams.set('nz_bridge_return', '1')
-        loginUrl.searchParams.set('nz_return', returnUrl.toString())
-        window.location.assign(loginUrl.toString())
-        return
-      }
-
-      await signIn(issuerBase, {
-        bridgeToken: result.oidcBridge.token,
-        bridgeConsumeUrl: result.oidcBridge.consumeUrl,
+      // Adopt the inline session — the user lands in the app authenticated,
+      // with the RouteGuard driving the attestation-verified transition.
+      await adoptSession({
+        session: result.session,
+        webId: result.webId,
+        podUrl: result.podUrl,
+        lockbox: {
+          userLockboxContractId: anchored,
+          factoryContractId: result.lockbox.factoryContractId ?? null,
+          proofRootHex: result.lockbox.proofRootHex ?? null,
+        },
+        createdAt: new Date().toISOString(),
       })
     } catch (err) {
       failActiveCreateStep()
@@ -758,12 +491,9 @@ export default function LandingScreen(): JSX.Element {
           knownExistingEmailsRef.current.add(normalizedEmail)
         }
         setError(
-          'This email address is already registered. Try signing in, or reset your password to continue.',
+          'This email address is already registered. If this is your account, sign in with the device that created it.',
         )
-        setErrorAction({
-          label: 'Reset password on Node Zero Community Server',
-          url: getNodeZeroForgotPasswordUrl(),
-        })
+        setErrorAction(null)
       } else {
         setError(mapCreateNodeError(err))
         setErrorAction(null)
@@ -774,7 +504,7 @@ export default function LandingScreen(): JSX.Element {
     }
   }
 
-  if (isRestoring) {
+  if (status === 'restoring') {
     return (
       <View style={styles.centred}>
         <ActivityIndicator color={PURPLE} size="large" />
@@ -803,7 +533,7 @@ export default function LandingScreen(): JSX.Element {
               <Text style={styles.heroEyebrow}>Local · Private · Human</Text>
               <Text style={styles.heroHeadline}>A calmer social network{`\n`}for real communities.</Text>
               <Text style={styles.heroBody}>
-                {'Sign in with the Node Zero Community Server in one tap. New here? Create your node in seconds and you are ready to post.'}
+                {'Sign in with your device key in one tap. New here? Create your node in seconds and you are ready to post.'}
               </Text>
               <Text style={styles.heroBody}>
                 {'NodeZero keeps the experience simple up front: chronological feed, optional nearby discovery, and privacy controls that you can change anytime.'}
@@ -814,10 +544,10 @@ export default function LandingScreen(): JSX.Element {
               <Text style={styles.heroEyebrow}>NodeZero Staging</Text>
               <Text style={styles.heroHeadline}>Continue to your node</Text>
               <Text style={styles.heroBody}>
-                {'Returning user: sign in with the Node Zero Community Server or your existing Solid identity provider.'}
+                {'Returning user: sign in with your device key — one tap, no passwords.'}
               </Text>
               <Text style={styles.heroBody}>
-                {'New user: create your node with the streamlined flow below. The Node Zero Community Server creates your Pod, then continues to secure sign-in.'}
+                {'New user: create your node with the streamlined flow below. Your Pod is created and you are signed in immediately.'}
               </Text>
             </>
           )}
@@ -826,11 +556,6 @@ export default function LandingScreen(): JSX.Element {
         {/* ── Sign-in panel (always visible) ───────────── */}
         <LandingAuthCard
           source="card"
-          showResumeHint
-          issuerOptions={issuerOptions}
-          selectedIssuer={selectedIssuer}
-          signupResumeActive={signupResumeActive}
-          signupReturnDetected={signupReturnDetected}
           error={error}
           errorAction={errorAction}
           isSigningIn={isSigningIn}
@@ -841,16 +566,10 @@ export default function LandingScreen(): JSX.Element {
           walletReady={Boolean(walletInfo?.publicKey)}
           createNotice={createNotice}
           createSteps={createSteps}
-          onIssuerChange={setSelectedIssuer}
           onNodeHandleChange={setNodeHandle}
           onNotificationEmailChange={setNotificationEmail}
           onSignIn={handleSignIn}
           onCreateNode={handleCreateNode}
-          onGetStarted={handleGetStarted}
-          onClearError={() => {
-            setError(null)
-            setErrorAction(null)
-          }}
         />
 
         {showMarketingContent ? (
@@ -906,11 +625,6 @@ export default function LandingScreen(): JSX.Element {
               <Text style={styles.finalCtaTitle}>Ready to join your local NodeZero community?</Text>
               <LandingAuthCard
                 source="footer"
-                showResumeHint={false}
-                issuerOptions={issuerOptions}
-                selectedIssuer={selectedIssuer}
-                signupResumeActive={signupResumeActive}
-                signupReturnDetected={signupReturnDetected}
                 error={error}
                 errorAction={errorAction}
                 isSigningIn={isSigningIn}
@@ -921,16 +635,10 @@ export default function LandingScreen(): JSX.Element {
                 walletReady={Boolean(walletInfo?.publicKey)}
                 createNotice={createNotice}
                 createSteps={createSteps}
-                onIssuerChange={setSelectedIssuer}
                 onNodeHandleChange={setNodeHandle}
                 onNotificationEmailChange={setNotificationEmail}
                 onSignIn={handleSignIn}
                 onCreateNode={handleCreateNode}
-                onGetStarted={handleGetStarted}
-                onClearError={() => {
-                  setError(null)
-                  setErrorAction(null)
-                }}
               />
               <Text style={styles.finalCtaSub}>
                 Powered by{' '}

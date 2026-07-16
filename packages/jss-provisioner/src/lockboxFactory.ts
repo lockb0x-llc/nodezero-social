@@ -338,6 +338,31 @@ export class LockboxFactoryProvisioner {
       process.env.JSS_LOCKBOX_FACTORY_CONTRACT_ID ?? process.env.NZ_LOCKBOX_FACTORY_CONTRACT_ID ?? ''
 
     if (mode !== 'soroban') {
+      // Test/dev-only escape hatch, double-gated so no staging/production
+      // profile can ever activate it: mock mode may return a deterministic
+      // fake lockbox ONLY under NZ_ENV_PROFILE=local with the explicit
+      // JSS_LOCKBOX_FACTORY_ALLOW_MOCK_READY flag (used by unit/e2e tests).
+      const allowMockReady =
+        mode === 'mock' &&
+        (process.env.NZ_ENV_PROFILE ?? 'local') === 'local' &&
+        /^(1|true)$/i.test((process.env.JSS_LOCKBOX_FACTORY_ALLOW_MOCK_READY ?? '').trim())
+      if (allowMockReady) {
+        const fakeContractId = `C${toBytes32Hex(idempotencyKey)
+          .toUpperCase()
+          .replace(/[^A-Z2-7]/g, 'A')
+          .slice(0, 55)
+          .padEnd(55, 'A')}`
+        this.userLockboxes.set(idempotencyKey, fakeContractId)
+        return {
+          status: 'ready',
+          mode,
+          factoryContractId: factoryContractId.trim() || null,
+          userLockboxContractId: fakeContractId,
+          idempotencyKey,
+          verifiedAt,
+          proofRootHex: canonical(input.proofRootHex),
+        }
+      }
       return {
         status: 'error',
         mode,

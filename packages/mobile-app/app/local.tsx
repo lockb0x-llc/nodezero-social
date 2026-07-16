@@ -24,7 +24,7 @@ import {
 import { useLocalSearchParams } from 'expo-router'
 import Constants from 'expo-constants'
 import { useDiscovery } from '../src/contexts/DiscoveryContext'
-import { useSolid } from '../src/contexts/SolidContext'
+import { useNodeZeroSession } from '../src/contexts/NodeZeroSessionContext'
 import { useWallet } from '../src/contexts/WalletContext'
 import { P2PChannel, SignalRelay, type SignalMessage } from '@nodezero/p2p-comms'
 import { getSolidPodSyncManagers } from '../src/solid/podSyncManagers'
@@ -56,7 +56,8 @@ function isValidRelayOverrideWebId(raw: string): boolean {
 
 export default function LocalNodeScreen(): JSX.Element {
   const { currentNode, surroundingNodes, locationStatus, requestAccess } = useDiscovery()
-  const { webId, isLoggedIn, isRestoring, session } = useSolid()
+  const { webId, status, authFetch } = useNodeZeroSession()
+  const isLoggedIn = status === 'authenticated'
   const { attestationStatus } = useWallet()
   const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
   const params = useLocalSearchParams<{
@@ -74,7 +75,7 @@ export default function LocalNodeScreen(): JSX.Element {
   const effectiveWebId = qaRelayWebId ?? webId
   const qaBypassLocation =
     qaOverridesEnabled && ['1', 'true', 'yes'].includes(firstParam(params.qaBypassLocation).toLowerCase())
-  const authModeLabel = 'OIDC Redirect'
+  const authModeLabel = 'NodeZero Session'
 
   const [message, setMessage] = useState('')
   const [targetWebId, setTargetWebId] = useState('')
@@ -202,7 +203,7 @@ export default function LocalNodeScreen(): JSX.Element {
       return
     }
 
-    const { socialGraph } = getSolidPodSyncManagers(session)
+    const { socialGraph } = getSolidPodSyncManagers({ fetch: authFetch })
     const podRoot = webId.split('/profile/')[0] + '/'
 
     void socialGraph
@@ -213,7 +214,7 @@ export default function LocalNodeScreen(): JSX.Element {
       .catch(() => {
         setKnownPeers([])
       })
-  }, [isLoggedIn, session, webId])
+  }, [authFetch, isLoggedIn, webId])
 
   const sendMessage = useCallback(async () => {
     if (!message.trim() || !effectiveWebId || !targetWebId.trim()) return
@@ -254,7 +255,7 @@ export default function LocalNodeScreen(): JSX.Element {
     }
   }, [effectiveWebId, message, openPeers, relayState, targetWebId, upsertChannel])
 
-  if (isRestoring) {
+  if (status === 'restoring') {
     return (
       <View style={styles.centred}>
         <ActivityIndicator color="#6C63FF" size="large" />

@@ -21,7 +21,7 @@ import {
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import Slider from '@react-native-community/slider'
-import { useSolid } from '../src/contexts/SolidContext'
+import { useNodeZeroSession } from '../src/contexts/NodeZeroSessionContext'
 import { useWallet } from '../src/contexts/WalletContext'
 import { useRouter } from 'expo-router'
 import { createSyncState, mergeAndQueryActivities, type QueryableStreamItem, type StreamItem } from '@nodezero/solid-pod-sync'
@@ -40,10 +40,11 @@ interface FeedPost {
 }
 
 export default function GlobalFeedScreen(): JSX.Element {
-  const { isLoggedIn, isRestoring, session, webId } = useSolid()
+  const { status, authFetch, webId } = useNodeZeroSession()
+  const isLoggedIn = status === 'authenticated'
   const { attestationStatus } = useWallet()
   const router = useRouter()
-  const authModeLabel = 'OIDC Redirect'
+  const authModeLabel = 'NodeZero Session'
   const [posts, setPosts] = useState<FeedPost[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -91,7 +92,7 @@ export default function GlobalFeedScreen(): JSX.Element {
 
     try {
       const podRoot = webId.split('/profile/')[0] + '/'
-      const { socialGraph, profileManager, docustreamManager } = getSolidPodSyncManagers(session)
+      const { socialGraph, profileManager, docustreamManager } = getSolidPodSyncManagers({ fetch: authFetch })
       const connections = await socialGraph.listConnections(podRoot)
 
       const authorNames = new Map<string, string>()
@@ -172,7 +173,7 @@ export default function GlobalFeedScreen(): JSX.Element {
     } catch (err) {
       console.error('[GlobalFeedScreen] fetchFeed error:', err)
     }
-  }, [isLoggedIn, isSyncCheckpointReady, session, webId])
+  }, [authFetch, isLoggedIn, isSyncCheckpointReady, webId])
 
   useEffect(() => {
     if (!isSyncCheckpointReady) {
@@ -189,7 +190,7 @@ export default function GlobalFeedScreen(): JSX.Element {
     setRefreshing(false)
   }, [fetchFeed])
 
-  if (isRestoring) {
+  if (status === 'restoring') {
     return (
       <View style={styles.centred}>
         <ActivityIndicator color="#6C63FF" size="large" />

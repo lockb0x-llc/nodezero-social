@@ -17,11 +17,15 @@
  *   NZ_LOCKBOX_CONTRACT_ID  – Lockb0x contract ID on Testnet
  *   NZ_ZK_ARTIFACTS_URL     – Published ZK artifacts base URL
  *   NZ_ZK_MANIFEST_URL      – ZK artifact manifest URL
- *   NZ_NODEZERO_ISSUER_URL  – Node Zero Community Server OIDC issuer. This is
- *                             the DEFAULT identity provider shown in the app.
- *                             Local/staging default to the hosted staging
- *                             Community Server (https://solid.nodezero.social/);
+ *   NZ_NODEZERO_ISSUER_URL  – Node Zero Community Server origin (Pod host).
+ *                             Users never authenticate against it directly;
+ *                             all Pod traffic flows through the provisioner
+ *                             Pod Access Proxy. Local/staging default to the
+ *                             hosted staging Community Server
+ *                             (https://solid.nodezero.social/);
  *                             production-mainnet must set it explicitly.
+ *   NZ_JSS_PROVISIONER_URL  – NodeZero provisioner base URL (session issuance
+ *                             + Pod Access Proxy). Required for strict profiles.
  */
 
 /** @type {import('@expo/config').ExpoConfig} */
@@ -61,20 +65,15 @@ const lockboxContractId = process.env.NZ_LOCKBOX_CONTRACT_ID ?? ''
 const lockboxFactoryContractId = process.env.NZ_LOCKBOX_FACTORY_CONTRACT_ID ?? ''
 const zkArtifactsUrl = process.env.NZ_ZK_ARTIFACTS_URL ?? ''
 const zkManifestUrl = process.env.NZ_ZK_MANIFEST_URL ?? ''
-const solidOidcIssuerUrl = process.env.NZ_SOLID_OIDC_ISSUER_URL ?? ''
-// The Node Zero Community Server is the default identity provider for the
-// sign-in flow. Local and staging builds default to the hosted staging
-// Community Server; production-mainnet must configure its own issuer
-// explicitly (never inherit the staging URL).
+// The Node Zero Community Server hosts every user's Pod. Users never
+// authenticate against it directly — all Pod traffic flows through the
+// provisioner's Pod Access Proxy — but the origin is still needed to
+// recognise Pod URLs and derive the expected WebID at signup.
+// Production-mainnet must configure its own host explicitly (never inherit
+// the staging URL).
 const nodeZeroIssuerUrl =
   process.env.NZ_NODEZERO_ISSUER_URL ??
   (envProfile === 'production-mainnet' ? '' : 'https://solid.nodezero.social/')
-const solidSignupUrl = process.env.NZ_SOLID_SIGNUP_URL ?? ''
-const solidAccountPortalUrl = process.env.NZ_SOLID_ACCOUNT_PORTAL_URL ?? ''
-const solidSignupReturnMode = process.env.NZ_SOLID_SIGNUP_RETURN_MODE ?? 'auto'
-const solidSignupReturnParam = process.env.NZ_SOLID_SIGNUP_RETURN_PARAM ?? 'returnTo'
-const solidSignupStateParam = process.env.NZ_SOLID_SIGNUP_STATE_PARAM ?? 'nzSignupState'
-const solidSignupSupportsReturn = process.env.NZ_SOLID_SIGNUP_SUPPORTS_RETURN ?? 'false'
 const jssProvisionerUrl =
   process.env.NZ_JSS_PROVISIONER_URL ??
   (envProfile === 'staging-testnet' ? 'https://nodezero-social-staging-testnet-provisioner.azurewebsites.net' : '')
@@ -106,11 +105,13 @@ if (profile.enforceStrictVariables) {
   if (!zkArtifactsUrl || !zkManifestUrl) {
     throw new Error(`NZ_ZK_ARTIFACTS_URL and NZ_ZK_MANIFEST_URL are required for ${envProfile}.`)
   }
-  if (!solidOidcIssuerUrl || !solidSignupUrl) {
-    throw new Error(`NZ_SOLID_OIDC_ISSUER_URL and NZ_SOLID_SIGNUP_URL are required for ${envProfile}.`)
-  }
   if (!nodeZeroIssuerUrl) {
-    throw new Error(`NZ_NODEZERO_ISSUER_URL (Node Zero Community Server issuer) is required for ${envProfile}.`)
+    throw new Error(`NZ_NODEZERO_ISSUER_URL (Node Zero Community Server / Pod host) is required for ${envProfile}.`)
+  }
+  // The provisioner issues NodeZero sessions and proxies all Pod traffic;
+  // without it there is no authentication path at all (fail-closed).
+  if (!jssProvisionerUrl) {
+    throw new Error(`NZ_JSS_PROVISIONER_URL is required for ${envProfile}.`)
   }
 }
 
@@ -177,15 +178,8 @@ module.exports = {
 
   extra: {
     envProfile,
-    solidOidcIssuerUrl,
     nodeZeroIssuerUrl,
     nodeZeroDirectoryUrl,
-    solidSignupUrl,
-    solidAccountPortalUrl,
-    solidSignupReturnMode,
-    solidSignupReturnParam,
-    solidSignupStateParam,
-    solidSignupSupportsReturn,
     jssProvisionerUrl,
     qaLocalOverridesEnabled,
     seamlessOnboardingEnabled,

@@ -19,57 +19,33 @@ function createFixedStore(secret: string): ISecureStore {
   }
 }
 
-void test('deriveBootstrapPassword is deterministic for same wallet and inputs', async () => {
+void test('signAttestationChallenge produces a verifiable Ed25519 signature', async () => {
   const keypair = Keypair.random()
   const service = new WalletService(new EnclaveAdapter(createFixedStore(keypair.secret())))
-  const input = {
-    issuer: 'https://solid.nodezero.social/',
-    handle: 'alice',
-    notificationEmail: 'alice@example.com',
-    stellarPublicKey: keypair.publicKey(),
-  }
+  const payload = JSON.stringify({ nonce: 'abc123', stellarPublicKey: keypair.publicKey(), audience: 'nz-css-stellar-login-v1' })
 
-  const first = await service.deriveBootstrapPassword(input)
-  const second = await service.deriveBootstrapPassword(input)
+  const result = await service.signAttestationChallenge(payload)
 
-  assert.equal(first, second)
-  assert.ok(first.startsWith('Nz!'))
-  assert.ok(first.length >= 20)
+  assert.equal(result.stellarPublicKey, keypair.publicKey())
+  assert.equal(result.challengePayload, payload)
+  const valid = keypair.verify(Buffer.from(payload, 'utf8'), Buffer.from(result.signatureBase64, 'base64'))
+  assert.equal(valid, true)
 })
 
-void test('deriveBootstrapPassword changes when canonical input changes', async () => {
+void test('signAttestationChallenge rejects an empty payload', async () => {
   const keypair = Keypair.random()
   const service = new WalletService(new EnclaveAdapter(createFixedStore(keypair.secret())))
 
-  const first = await service.deriveBootstrapPassword({
-    issuer: 'https://solid.nodezero.social/',
-    handle: 'alice',
-    notificationEmail: 'alice@example.com',
-    stellarPublicKey: keypair.publicKey(),
-  })
-
-  const second = await service.deriveBootstrapPassword({
-    issuer: 'https://solid.nodezero.social/',
-    handle: 'alice2',
-    notificationEmail: 'alice@example.com',
-    stellarPublicKey: keypair.publicKey(),
-  })
-
-  assert.notEqual(first, second)
+  await assert.rejects(service.signAttestationChallenge('   '), /required/)
 })
 
-void test('deriveBootstrapPassword rejects mismatched public key', async () => {
+void test('signAttestationChallenge is deterministic for identical payloads', async () => {
   const keypair = Keypair.random()
-  const otherKeypair = Keypair.random()
   const service = new WalletService(new EnclaveAdapter(createFixedStore(keypair.secret())))
+  const payload = 'NZ_TEST_PAYLOAD|stable'
 
-  await assert.rejects(
-    service.deriveBootstrapPassword({
-      issuer: 'https://solid.nodezero.social/',
-      handle: 'alice',
-      notificationEmail: 'alice@example.com',
-      stellarPublicKey: otherKeypair.publicKey(),
-    }),
-    /does not match local wallet/,
-  )
+  const first = await service.signAttestationChallenge(payload)
+  const second = await service.signAttestationChallenge(payload)
+
+  assert.equal(first.signatureBase64, second.signatureBase64)
 })

@@ -31,7 +31,6 @@ import type {
   TransactionResult,
   IdentityHashPayload,
   AttestationSignature,
-  BootstrapPasswordInput,
 } from './types.js'
 
 /** Horizon / Soroban RPC endpoint constants. */
@@ -44,42 +43,6 @@ const TESTNET_FRIENDBOT_URL = 'https://friendbot.stellar.org'
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-function normalizeBootstrapField(value: string): string {
-  return value.trim().toLowerCase()
-}
-
-function toBase64Url(value: string): string {
-  return value.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
-}
-
-function bytesToBase64(bytes: Uint8Array): string {
-  const maybeBuffer = (globalThis as { Buffer?: { from: (input: Uint8Array) => { toString: (encoding: string) => string } } }).Buffer
-  if (maybeBuffer) {
-    return maybeBuffer.from(bytes).toString('base64')
-  }
-
-  let binary = ''
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte)
-  }
-  return btoa(binary)
-}
-
-async function sha256Base64(input: Uint8Array): Promise<string> {
-  const subtle = globalThis.crypto?.subtle
-  if (subtle) {
-    const digestInput =
-      input.byteOffset === 0 && input.byteLength === input.buffer.byteLength
-        ? (input.buffer as ArrayBuffer)
-        : input.slice().buffer
-    const digest = await subtle.digest('SHA-256', digestInput)
-    return bytesToBase64(new Uint8Array(digest))
-  }
-
-  const { createHash } = await import('crypto')
-  return createHash('sha256').update(input).digest('base64')
 }
 
 function bytesLikeToHex(value: unknown): string | null {
@@ -231,44 +194,6 @@ export class WalletService {
       challengePayload: trimmedPayload,
       signatureBase64: Buffer.from(signatureBytes).toString('base64'),
     }
-  }
-
-  /**
-   * Derives a deterministic bootstrap password from a Stellar signature.
-   *
-   * This is used only for initial seamless onboarding login/bootstrap.
-   * The output is stable for identical inputs and wallet secret.
-   */
-  async deriveBootstrapPassword(input: BootstrapPasswordInput): Promise<string> {
-    const issuer = normalizeBootstrapField(input.issuer)
-    const handle = normalizeBootstrapField(input.handle)
-    const email = normalizeBootstrapField(input.notificationEmail)
-    const publicKey = input.stellarPublicKey.trim().toUpperCase()
-
-    if (!issuer || !handle || !email || !publicKey) {
-      throw new Error('Bootstrap password input is incomplete.')
-    }
-
-    const secret = await this.adapter.loadOrCreate()
-    const keypair = Keypair.fromSecret(secret)
-    if (keypair.publicKey() !== publicKey) {
-      throw new Error('Bootstrap password input public key does not match local wallet.')
-    }
-
-    const canonicalMessage = [
-      'NZ_BOOTSTRAP_PASSWORD_V1',
-      issuer,
-      handle,
-      email,
-      publicKey,
-    ].join('|')
-
-    const signature = keypair.sign(Buffer.from(canonicalMessage, 'utf8'))
-    const digest = await sha256Base64(signature)
-    const encoded = toBase64Url(digest)
-
-    // Ensure a CSS-compatible high-entropy password with stable prefix.
-    return `Nz!${encoded}`
   }
 
   /**

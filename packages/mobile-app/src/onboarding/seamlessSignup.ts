@@ -2,9 +2,10 @@
  * @module seamlessSignup
  *
  * In-app "Create Your Node" flow that provisions a Solid account + Pod via the
- * NodeZero provisioner `POST /v1/solid-account` endpoint, with no browser
- * redirect. Gated behind the `seamlessOnboardingEnabled` app config flag; when
- * disabled the legacy redirect flow (see signupBridge) is used instead.
+ * NodeZero provisioner `POST /v1/solid-account` endpoint. There is no browser
+ * redirect and no password anywhere in the contract: the CSS account password
+ * is generated and discarded server-side, and the response carries a ready
+ * NodeZero session — the user lands in the app already authenticated.
  *
  * The user's preferred notification email is captured here so a later Azure
  * Email Communication Services integration can reach them. The Stellar public
@@ -13,6 +14,7 @@
  */
 
 import Constants from 'expo-constants'
+import type { SessionLockboxInfo, SessionTokens } from '../contexts/NodeZeroSessionContext'
 
 export interface SeamlessSignupConfig {
   enabled: boolean
@@ -24,9 +26,7 @@ export interface CreateNodeInput {
   handle: string
   /** User's preferred notification email (also used as the CSS login email). */
   notificationEmail: string
-  /** Deterministic bootstrap password derived from Stellar signature. */
-  password: string
-  /** Stellar public key to anchor the WebID pairing on-chain (optional). */
+  /** Stellar public key to anchor the WebID pairing on-chain. */
   stellarPublicKey?: string
   /** 32-byte hex identity commitment (Poseidon(identitySecret)) to anchor on-chain. */
   accountCommitmentHex?: string
@@ -40,17 +40,14 @@ export interface CreateNodeResult {
   podUrl: string
   stellarPublicKey: string | null
   accountDocumentUrl: string | null
-  oidcBridge?: {
-    token: string
-    expiresAt: string
-    consumeUrl: string
-  }
-  lockbox: {
+  /** Ready NodeZero session — fail-closed verified before issuance. */
+  session: SessionTokens
+  lockbox: (SessionLockboxInfo & {
     status: string
     userLockboxContractId: string | null
     factoryContractId: string | null
     proofRootHex?: string
-  } | null
+  }) | null
   attestation: {
     accountCommitmentHex: string
     ciphertextSha256Hex: string
@@ -127,10 +124,6 @@ export async function createSeamlessNode(input: CreateNodeInput): Promise<Create
   if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
     throw new Error('Enter a valid notification email address.')
   }
-  const password = input.password.trim()
-  if (password.length < 12) {
-    throw new Error('Password must be at least 12 characters.')
-  }
 
   // Fail-closed: a valid Stellar public key is mandatory. Without it the
   // provisioner cannot anchor the WebID<->Stellar pairing on-chain, which
@@ -143,7 +136,6 @@ export async function createSeamlessNode(input: CreateNodeInput): Promise<Create
   const body: Record<string, string> = {
     name: handle,
     email,
-    password,
     stellarPublicKey,
   }
 

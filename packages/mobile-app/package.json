@@ -18,7 +18,6 @@
   },
   "dependencies": {
     "@babel/runtime": "^7.24.7",
-    "@inrupt/solid-client-authn-browser": "^5.0.0",
     "@nodezero/embedded-wallet": "workspace:*",
     "@nodezero/geo-discovery": "workspace:*",
     "@nodezero/p2p-comms": "workspace:*",

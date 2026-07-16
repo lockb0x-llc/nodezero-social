@@ -15,8 +15,7 @@ import {
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import * as rssParser from 'react-native-rss-parser'
-import Constants from 'expo-constants'
-import { useSolid } from '../src/contexts/SolidContext'
+import { useNodeZeroSession } from '../src/contexts/NodeZeroSessionContext'
 import {
   createSyncState,
   mergeAndQueryActivities,
@@ -157,7 +156,8 @@ async function fetchRssXmlViaProvisioner(sourceUrl: string): Promise<string> {
 }
 
 export default function DocustreamScreen(): JSX.Element {
-  const { isLoggedIn, isSessionReady, webId, nodeSession, session, signIn } = useSolid()
+  const { status, webId, authFetch } = useNodeZeroSession()
+  const isLoggedIn = status === 'authenticated'
   const [filter, setFilter] = useState<FilterType>('all')
   const [items, setItems] = useState<QueryableStreamItem[]>([])
   const [savingItemId, setSavingItemId] = useState<string | null>(null)
@@ -173,42 +173,34 @@ export default function DocustreamScreen(): JSX.Element {
 
   const syncStateRef = useRef(createSyncState())
 
-  const effectiveWebId = useMemo(() => webId ?? nodeSession?.webId ?? null, [nodeSession, webId])
+  const effectiveWebId = webId
 
   const podRoot = useMemo(() => {
     if (!effectiveWebId) return ''
     return `${effectiveWebId.split('/profile/')[0]}/`
   }, [effectiveWebId])
 
-  const hasNodeSessionFallback = useMemo(() => {
-    if (!nodeSession?.webId) return false
-    if (!webId) return true
-    return nodeSession.webId === webId
-  }, [nodeSession, webId])
-
-  // WebID continuity is sufficient to keep Docustream usable while Solid OIDC
-  // session restoration settles in the background.
-  const hasUsableWebIdentity = isLoggedIn && Boolean(effectiveWebId)
-  const canOperateDocustream = isSessionReady || hasNodeSessionFallback || hasUsableWebIdentity
+  // Session invariant: authenticated ⇔ live Pod access through the proxy.
+  // The old canOperateDocustream / nodeSession fallback lattice is gone.
 
   const loadSources = useCallback(async (): Promise<void> => {
-    if (!isLoggedIn || !isSessionReady || !podRoot) {
+    if (!isLoggedIn || !podRoot) {
       setSources([])
       return
     }
 
-    const { docustreamSourceManager } = getSolidPodSyncManagers(session)
+    const { docustreamSourceManager } = getSolidPodSyncManagers({ fetch: authFetch })
     const nextSources = await docustreamSourceManager.listSources(podRoot)
     setSources(nextSources)
-  }, [isLoggedIn, isSessionReady, podRoot, session])
+  }, [authFetch, isLoggedIn, podRoot])
 
   const loadDocustreamItems = useCallback(async (): Promise<void> => {
-    if (!isLoggedIn || !canOperateDocustream || !podRoot || !isSyncCheckpointReady || !effectiveWebId) {
+    if (!isLoggedIn || !podRoot || !isSyncCheckpointReady || !effectiveWebId) {
       setItems([])
       return
     }
 
-    const { docustreamManager } = getSolidPodSyncManagers(session)
+    const { docustreamManager } = getSolidPodSyncManagers({ fetch: authFetch })
     const podItems = await docustreamManager.listActivities(podRoot)
 
     const merged = mergeAndQueryActivities(
@@ -229,12 +221,12 @@ export default function DocustreamScreen(): JSX.Element {
     syncStateRef.current = merged.sync.nextState
     await saveSyncCheckpoint(effectiveWebId, 'docustream', syncStateRef.current)
     setItems(merged.items)
-  }, [canOperateDocustream, effectiveWebId, isLoggedIn, isSyncCheckpointReady, podRoot, session])
+  }, [authFetch, effectiveWebId, isLoggedIn, isSyncCheckpointReady, podRoot])
 
   const ingestOneSource = useCallback(async (source: DocustreamSource): Promise<void> => {
-    if (!podRoot || !source.enabled || !canOperateDocustream) return
+    if (!podRoot || !source.enabled || !isLoggedIn) return
 
-    const { docustreamManager, docustreamSourceManager } = getSolidPodSyncManagers(session)
+    const { docustreamManager, docustreamSourceManager } = getSolidPodSyncManagers({ fetch: authFetch })
 
     try {
       let xml = ''
@@ -279,10 +271,10 @@ export default function DocustreamScreen(): JSX.Element {
       const message = error instanceof Error ? error.message : 'Unknown ingest error'
       await docustreamSourceManager.recordIngestionResult(podRoot, source.id, message)
     }
-  }, [canOperateDocustream, podRoot, session])
+  }, [authFetch, isLoggedIn, podRoot])
 
   const ingestEnabledSources = useCallback(async (sourceList: DocustreamSource[] = sources): Promise<void> => {
-    if (!isLoggedIn || !canOperateDocustream || !podRoot) return
+    if (!isLoggedIn || !podRoot) return
 
     const enabled = sourceList.filter((source) => source.enabled)
     if (enabled.length === 0) return
@@ -297,7 +289,7 @@ export default function DocustreamScreen(): JSX.Element {
     } finally {
       setIsIngesting(false)
     }
-  }, [canOperateDocustream, ingestOneSource, isLoggedIn, loadDocustreamItems, loadSources, podRoot, sources])
+  }, [ingestOneSource, isLoggedIn, loadDocustreamItems, loadSources, podRoot, sources])
 
   useEffect((): (() => void) => {
     let active = true
@@ -335,9 +327,9 @@ export default function DocustreamScreen(): JSX.Element {
   }, [loadSources])
 
   useEffect((): void => {
-    if (!isSourceModalOpen || !isSessionReady) return
+    if (!isSourceModalOpen) return
     void loadSources()
-  }, [isSourceModalOpen, isSessionReady, loadSources])
+  }, [isSourceModalOpen, loadSources])
 
   useEffect((): void => {
     void loadDocustreamItems()
@@ -345,9 +337,9 @@ export default function DocustreamScreen(): JSX.Element {
 
   useEffect((): void => {
     if (!isSyncCheckpointReady) return
-    if (!canOperateDocustream) return
+    if (!isLoggedIn) return
     void ingestEnabledSources()
-  }, [canOperateDocustream, ingestEnabledSources, isSyncCheckpointReady])
+  }, [ingestEnabledSources, isLoggedIn, isSyncCheckpointReady])
 
   useEffect((): void => {
     if (!isLoggedIn || !effectiveWebId || Platform.OS !== 'web') return
@@ -373,12 +365,12 @@ export default function DocustreamScreen(): JSX.Element {
     filter === 'all' ? items : queryStreamItems(items, { sources: [filter] })
 
   const handleSaveToPod = async (item: StreamItem): Promise<void> => {
-    if (!isLoggedIn || !canOperateDocustream || !effectiveWebId || !podRoot) {
+    if (!isLoggedIn || !effectiveWebId || !podRoot) {
       Alert.alert('Sign in required', 'Sign in to save Downstream items to your Pod.')
       return
     }
 
-    const { docustreamManager } = getSolidPodSyncManagers(session)
+    const { docustreamManager } = getSolidPodSyncManagers({ fetch: authFetch })
 
     setSavingItemId(item.id)
     try {
@@ -393,31 +385,15 @@ export default function DocustreamScreen(): JSX.Element {
   }
 
   const handleAddSource = useCallback(async (url: string, title?: string): Promise<void> => {
-    if (!isLoggedIn || !canOperateDocustream || !podRoot) {
-      setSourceModalError('Solid session is still restoring. If this persists, use Sign In once to re-establish Solid auth.')
+    if (!isLoggedIn || !podRoot) {
+      setSourceModalError('Sign in to manage Docustream sources.')
       Alert.alert('Sign in required', 'Sign in to manage Docustream sources.')
-      return
-    }
-
-    if (!isSessionReady) {
-      const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
-      const issuerBase = (appExtra?.nodeZeroIssuerUrl ?? '').replace(/\/+$/, '')
-      if (!issuerBase) {
-        setSourceModalError('Solid sign-in is required before sources can be saved. Please use Sign In and try again.')
-        return
-      }
-
-      setSourceModalError('Restoring Solid write access. Redirecting to sign-in...')
-      await signIn(issuerBase).catch((error) => {
-        const message = error instanceof Error ? error.message : 'Unable to start Solid sign-in.'
-        setSourceModalError(message)
-      })
       return
     }
 
     setSourceOperationId('new-source')
     try {
-      const { docustreamSourceManager } = getSolidPodSyncManagers(session)
+      const { docustreamSourceManager } = getSolidPodSyncManagers({ fetch: authFetch })
       const savedSource = await docustreamSourceManager.upsertSource(podRoot, {
         type: 'rss',
         url,
@@ -434,27 +410,12 @@ export default function DocustreamScreen(): JSX.Element {
       void ingestEnabledSources([savedSource])
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to add source.'
-      const isAuthFailure = /\bHTTP\s*401\b|www-authenticate|unauthorized|h401/i.test(message)
-
-      if (isAuthFailure) {
-        const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
-        const issuerBase = (appExtra?.nodeZeroIssuerUrl ?? '').replace(/\/+$/, '')
-        if (issuerBase) {
-          setSourceModalError('Solid session expired. Redirecting to sign-in to restore write access...')
-          await signIn(issuerBase).catch((signInError) => {
-            const signInMessage = signInError instanceof Error ? signInError.message : 'Unable to start Solid sign-in.'
-            setSourceModalError(signInMessage)
-          })
-          return
-        }
-      }
-
       setSourceModalError(message)
       Alert.alert('Add source failed', message)
     } finally {
       setSourceOperationId(null)
     }
-  }, [canOperateDocustream, ingestEnabledSources, isLoggedIn, isSessionReady, podRoot, session, signIn])
+  }, [authFetch, ingestEnabledSources, isLoggedIn, podRoot])
 
   const handleSourceInputChange = useCallback((nextValue: string): void => {
     setSourceUrlInput(nextValue)
@@ -469,11 +430,11 @@ export default function DocustreamScreen(): JSX.Element {
   }, [])
 
   const handleToggleSource = useCallback(async (source: DocustreamSource, nextEnabled: boolean): Promise<void> => {
-    if (!isLoggedIn || !canOperateDocustream || !podRoot) return
+    if (!isLoggedIn || !podRoot) return
 
     setSourceOperationId(source.id)
     try {
-      const { docustreamSourceManager } = getSolidPodSyncManagers(session)
+      const { docustreamSourceManager } = getSolidPodSyncManagers({ fetch: authFetch })
       await docustreamSourceManager.setSourceEnabled(podRoot, source.id, nextEnabled)
       await loadSources()
       if (nextEnabled) {
@@ -484,14 +445,14 @@ export default function DocustreamScreen(): JSX.Element {
     } finally {
       setSourceOperationId(null)
     }
-  }, [canOperateDocustream, ingestEnabledSources, isLoggedIn, loadSources, podRoot, session])
+  }, [authFetch, ingestEnabledSources, isLoggedIn, loadSources, podRoot])
 
   const handleRemoveSource = useCallback(async (source: DocustreamSource): Promise<void> => {
-    if (!isLoggedIn || !canOperateDocustream || !podRoot) return
+    if (!isLoggedIn || !podRoot) return
 
     setSourceOperationId(source.id)
     try {
-      const { docustreamSourceManager } = getSolidPodSyncManagers(session)
+      const { docustreamSourceManager } = getSolidPodSyncManagers({ fetch: authFetch })
       await docustreamSourceManager.removeSource(podRoot, source.id)
       await loadSources()
       await loadDocustreamItems()
@@ -500,7 +461,7 @@ export default function DocustreamScreen(): JSX.Element {
     } finally {
       setSourceOperationId(null)
     }
-  }, [canOperateDocustream, isLoggedIn, loadDocustreamItems, loadSources, podRoot, session])
+  }, [authFetch, isLoggedIn, loadDocustreamItems, loadSources, podRoot])
 
   const handleIngestSingleSource = useCallback(async (source: DocustreamSource): Promise<void> => {
     setSourceOperationId(source.id)
@@ -514,9 +475,7 @@ export default function DocustreamScreen(): JSX.Element {
   }, [ingestOneSource, loadDocustreamItems, loadSources])
 
   const emptyStateText = isLoggedIn
-    ? canOperateDocustream
-      ? 'No Docustream items yet. Add an RSS source to start filling your stream.'
-      : 'Restoring your authenticated Solid session in the background...'
+    ? 'No Docustream items yet. Add an RSS source to start filling your stream.'
     : 'Sign in to load your Docustream from your Pod.'
 
   return (
@@ -530,7 +489,7 @@ export default function DocustreamScreen(): JSX.Element {
           <TouchableOpacity
             onPress={() => void ingestEnabledSources()}
             style={styles.addButton}
-            disabled={isIngesting || !canOperateDocustream}
+            disabled={isIngesting || !isLoggedIn}
           >
             <Ionicons name="refresh" size={24} color={isIngesting ? aesthetic.color.textLow : aesthetic.color.accent} />
           </TouchableOpacity>

@@ -44,11 +44,3 @@ export interface AttestationSignature {
   /** Ed25519 signature encoded as base64. */
   signatureBase64: string
 }
-
-/** Inputs used to derive a deterministic bootstrap password. */
-export interface BootstrapPasswordInput {
-  issuer: string
-  handle: string
-  notificationEmail: string
-  stellarPublicKey: string
-}

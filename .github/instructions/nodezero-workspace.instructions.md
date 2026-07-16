@@ -36,8 +36,12 @@ Build and maintain NodeZero Social: a decentralized social app that integrates S
 	`packages/mobile-app/src/social/composeRecipients.ts`.
 - `pnpm qa:smoke:community-directory` provides tab-order and directory
 	acceptance evidence.
-- In CI, `pnpm qa:smoke:auth` remains the blocking identity gate and now
-	includes one controlled retry for transient auth timing issues.
+- Authentication is 100% internal (cutover complete): the provisioner issues
+	NodeZero sessions and proxies all Pod traffic (`/v1/pod-proxy/*`); the
+	browser never contacts the Community Server and there are no user-facing
+	passwords, OIDC redirects, or bridge tickets.
+- In CI, `pnpm qa:smoke:auth` remains the blocking identity gate; it runs
+	without retries because session issuance has no redirect-timing window.
 
 Keep edits constrained to the relevant package unless cross-package changes are explicitly required.
 
@@ -54,7 +58,7 @@ Hard rules:
 - Never target production domain from staging flows.
 - Never bypass production protection in staging scripts.
 - Never use example parameters file for real deployment.
-- The Node Zero Community Server (`https://solid.nodezero.social/`) is the default identity provider in all auth surfaces; `solidcommunity.net` is a secondary external-Pod option only. Never build/deploy a web bundle without `NZ_ENV_PROFILE` and `NZ_NODEZERO_ISSUER_URL` resolved (a `local`-profile bundle drops the Community Server from sign-in).
+- Authentication is internal-only (session invariant: signed in ⟺ the provisioner can mint a live Solid token now). Never reintroduce browser↔CSS auth surfaces: no `@inrupt/solid-client-authn-browser`, no OIDC redirect/bridge legs, no user-facing passwords. The Node Zero Community Server (`https://solid.nodezero.social/`) is the Pod host only. Never build/deploy a web bundle without `NZ_ENV_PROFILE`, `NZ_NODEZERO_ISSUER_URL`, and `NZ_JSS_PROVISIONER_URL` resolved.
 
 When modifying env or deploy logic, verify:
 - `scripts/policy/validate-env-isolation.sh` still passes.
@@ -101,9 +105,10 @@ For staging readiness or release work, additionally run:
 - Manual checks from `docs/staging-uat-checklist.md` (document PASS/FAIL)
 
 Keep concerns separated: `qa:smoke:auth` gates identity (Pod/WebID creation,
-lockb0x anchoring, ZK attestation, OIDC bridge sign-in, returning-user login);
-application-feature proofs (docustream/mashlib) run separately and must never
-be folded into the auth gate.
+lockb0x anchoring, ZK attestation, inline session issuance, returning one-tap
+Stellar sign-in, fail-closed session enforcement); application-feature proofs
+(docustream/mashlib) run separately and must never be folded into the auth
+gate.
 
 If full-suite execution is not feasible, run targeted package checks and explicitly state what was not run.
 

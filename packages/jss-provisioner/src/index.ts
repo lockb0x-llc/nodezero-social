@@ -1,12 +1,21 @@
 import { createServer } from 'node:http'
-import { createHash, timingSafeEqual } from 'node:crypto'
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { subtle } from 'node:crypto'
 import { lookup } from 'node:dns/promises'
 import { isIP } from 'node:net'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { ProvisionStore } from './store.js'
 import { verifyAttestation } from './attestation.js'
-import { createSolidAccount, patchPodProfileAnchor, writePodAccountDocument } from './solidAccount.js'
+import {
+  createSolidAccount,
+  mintPodAccessToken,
+  patchPodProfileAnchor,
+  probePodAccess,
+  writePodAccountDocument,
+} from './solidAccount.js'
+import { CredentialStore } from './credentialStore.js'
+import { SessionTokenManager } from './sessionTokens.js'
+import { handlePodProxyRequest, POD_PROXY_PREFIX, evictPodTokenCache } from './podProxy.js'
 import { treasuryCreateAccount } from './treasuryCreateAccount.js'
 import { anchorAttestation } from './attestationAnchor.js'
 import {
@@ -46,13 +55,10 @@ import type {
   ProvisionResult,
   StellarChallengeRequest,
   StellarTokenRequest,
-  StellarVerifyRequest,
 } from './types.js'
 
 const PORT = Number(process.env.PORT ?? process.env.JSS_PROVISIONER_PORT ?? 8181)
 const ISSUER = process.env.JSS_ISSUER_URL ?? 'https://staging.nodezero.social'
-const PUBLIC_PROVISIONER_BASE_URL =
-  (process.env.JSS_PUBLIC_PROVISIONER_BASE_URL ?? ISSUER).trim().replace(/\/+$/, '')
 const SOLID_CSS_BASE_URL = (process.env.JSS_SOLID_CSS_BASE_URL ?? '').trim().replace(/\/+$/, '')
 const LOCKBOX_FACTORY_CONTRACT_ID =
   process.env.JSS_LOCKBOX_FACTORY_CONTRACT_ID ?? process.env.NZ_LOCKBOX_FACTORY_CONTRACT_ID ?? ''
@@ -73,6 +79,8 @@ const ALLOWED_ORIGINS = (process.env.JSS_ALLOWED_ORIGINS ?? 'https://staging.nod
   .filter((origin) => origin.length > 0)
 const store = new ProvisionStore()
 const communityDirectory = new CommunityDirectoryStore()
+const credentialStore = new CredentialStore()
+const sessions = new SessionTokenManager({ issuer: ISSUER })
 const knownSolidAccountEmails = new Set<string>()
 const notificationPublisher = createNotificationEventPublisherFromEnv()
 const DOCUSTREAM_RSS_FETCH_TIMEOUT_MS = Number(process.env.JSS_DOCUSTREAM_RSS_FETCH_TIMEOUT_MS ?? 12000)
@@ -84,11 +92,7 @@ const DOCUSTREAM_ALLOWED_CONTENT_TYPES = [
   'text/xml',
   'application/atom+xml',
 ]
-const OIDC_BRIDGE_AUDIENCE = 'nz-solid-css-login-v1'
 const STELLAR_AUTH_AUDIENCE = 'nz-css-stellar-login-v1'
-// Shared HMAC secret with the CSS StellarLoginHandler plugin.
-// Must be set for the stellar-verify endpoint to accept callbacks from CSS.
-const STELLAR_AUTH_SHARED_SECRET = (process.env.NZ_STELLAR_AUTH_SHARED_SECRET ?? '').trim()
 
 class DocustreamRssFetchError extends Error {
   constructor(
@@ -127,8 +131,14 @@ function isValidEmail(email: string): boolean {
   return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)
 }
 
-function isValidProvisioningPassword(password: string): boolean {
-  return password.trim().length >= 12
+/**
+ * Generates the ephemeral CSS account password. It exists only because the
+ * CSS account API requires one; it is discarded immediately after client
+ * credentials are minted and is never stored, returned, or user-visible.
+ * The user's sole credential is their Stellar keypair.
+ */
+function generateEphemeralCssPassword(): string {
+  return randomBytes(24).toString('base64url')
 }
 
 function rememberKnownSolidEmail(email: string): void {
@@ -152,8 +162,10 @@ function corsHeaders(req: IncomingMessage): Record<string, string> {
 
   return {
     'access-control-allow-origin': allowOrigin,
-    'access-control-allow-methods': 'GET,POST,OPTIONS',
-    'access-control-allow-headers': 'content-type,authorization,x-nz-internal-key',
+    'access-control-allow-methods': 'GET,HEAD,POST,PUT,PATCH,DELETE,OPTIONS',
+    'access-control-allow-headers':
+      'content-type,authorization,x-nz-internal-key,accept,if-match,if-none-match,slug,link',
+    'access-control-expose-headers': 'etag,location,link,wac-allow,accept-patch,allow',
     vary: 'origin',
   }
 }
@@ -180,14 +192,6 @@ async function readJsonBody<T>(req: IncomingMessage): Promise<T> {
 
 function isNonEmpty(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0
-}
-
-function toOrigin(rawUrl: string): string | null {
-  try {
-    return new URL(rawUrl).origin
-  } catch {
-    return null
-  }
 }
 
 function isLoopbackOrPrivateAddress(address: string): boolean {
@@ -358,12 +362,46 @@ function validateProvisionRequest(body: ProvisionRequest): void {
   if (!Array.isArray(body.publicSignals)) throw new Error('publicSignals is required.')
 }
 
+/**
+ * Fail-closed session issuance: mints a live Solid token from stored client
+ * credentials and probes the Pod BEFORE any NodeZero session is created.
+ * Throws when the invariant cannot be proven.
+ */
+async function issueVerifiedSession(input: {
+  webId: string
+  podUrl: string
+  stellarPublicKey?: string | null
+  credentials: { id: string; secret: string }
+}): Promise<ReturnType<SessionTokenManager['issue']>> {
+  const token = await mintPodAccessToken(SOLID_CSS_BASE_URL, input.credentials)
+  await probePodAccess(token, input.podUrl)
+  return sessions.issue({
+    webId: input.webId,
+    podUrl: input.podUrl,
+    stellarPublicKey: input.stellarPublicKey ?? null,
+  })
+}
+
 export async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const url = new URL(req.url ?? '/', 'http://localhost')
 
   if (req.method === 'OPTIONS') {
     res.writeHead(204, corsHeaders(req))
     res.end()
+    return
+  }
+
+  // Pod Access Proxy: the only runtime path between clients and CSS.
+  if (url.pathname.startsWith(POD_PROXY_PREFIX)) {
+    await handlePodProxyRequest(req, res, {
+      cssBaseUrl: SOLID_CSS_BASE_URL,
+      credentialStore,
+      sessions,
+      corsHeaders,
+      auditLog: (event, detail) => {
+        console.log(`[pod-proxy:audit] ${event}`, JSON.stringify(detail))
+      },
+    })
     return
   }
 
@@ -380,6 +418,11 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
       solidAccount: {
         configured: Boolean(SOLID_CSS_BASE_URL),
         cssBaseUrl: SOLID_CSS_BASE_URL || null,
+      },
+      session: {
+        signingKeyConfigured: !sessions.usesEphemeralKey,
+        credentialBackend: credentialStore.backendKind,
+        credentialKeyConfigured: !credentialStore.usesEphemeralKey,
       },
       treasuryCreateAccount: {
         enabled: Boolean(INTERNAL_API_KEY),
@@ -496,16 +539,10 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
       sendJson(req, res, 503, { error: 'Solid account provisioning is not configured (JSS_SOLID_CSS_BASE_URL).' })
       return
     }
-    const cssConsumerOrigin = toOrigin(SOLID_CSS_BASE_URL)
-    if (!cssConsumerOrigin) {
-      sendJson(req, res, 503, { error: 'Solid account provisioning has an invalid CSS base URL.' })
-      return
-    }
 
     const body = await readJsonBody<{
       name?: string
       email?: string
-      password?: string
       stellarPublicKey?: string
       accountCommitmentHex?: string
       ciphertextHex?: string
@@ -516,10 +553,6 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
     }
     if (!isNonEmpty(body.email)) {
       sendJson(req, res, 400, { error: 'email is required.' })
-      return
-    }
-    if (!isNonEmpty(body.password)) {
-      sendJson(req, res, 400, { error: 'password is required.' })
       return
     }
     // Fail-closed: seamless onboarding must anchor the WebID<->Stellar pairing
@@ -545,14 +578,13 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
 
     try {
       const email = normalizeEmail(body.email)
-      const password = body.password.trim()
+      // The CSS account password is internal machinery only: generated here,
+      // used once against the account API, then discarded. All ongoing Solid
+      // access flows through stored client credentials via the Pod proxy.
+      const password = generateEphemeralCssPassword()
       let treasuryFunded = false
       if (!isValidEmail(email)) {
         sendJson(req, res, 400, { error: 'email must be a valid email address.' })
-        return
-      }
-      if (!isValidProvisioningPassword(password)) {
-        sendJson(req, res, 400, { error: 'password must be at least 12 characters.' })
         return
       }
       if (knownSolidAccountEmails.has(email)) {
@@ -645,6 +677,22 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
         }
       }
 
+      // Persist the per-user client credentials (encrypted) together with the
+      // on-chain anchor metadata. These are the only durable Solid access
+      // material; deleting this record is the server-side revocation path for
+      // every session of this user, and the lockbox fields let returning-user
+      // login return the anchor for the client-side fail-closed check.
+      await credentialStore.save({
+        webId: account.webId,
+        podUrl: account.podUrl,
+        stellarPublicKey,
+        clientCredentialsId: account.clientCredentialsId,
+        clientCredentialsSecret: account.clientCredentialsSecret,
+        userLockboxContractId: lockbox?.userLockboxContractId ?? null,
+        lockboxFactoryContractId: lockbox?.factoryContractId ?? null,
+        proofRootHex: lockbox?.proofRootHex ?? null,
+      })
+
       // Persist the account profile (WebID <-> Stellar pairing + on-chain
       // lockb0x references) into the user's own Pod, so the data lives with the
       // user from creation. Best-effort: the on-chain lockb0x remains the source
@@ -701,24 +749,35 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
         }
       }
 
+      // Session invariant (fail-closed): the response only reports success
+      // after the stored credentials produced a live Solid token AND the Pod
+      // answered a probe. The user lands in the app already authenticated —
+      // there is no separate login leg and no browser↔CSS interaction.
+      let session: ReturnType<SessionTokenManager['issue']>
+      try {
+        session = await issueVerifiedSession({
+          webId: account.webId,
+          podUrl: account.podUrl,
+          stellarPublicKey,
+          credentials: { id: account.clientCredentialsId, secret: account.clientCredentialsSecret },
+        })
+      } catch (sessionErr) {
+        const message = sessionErr instanceof Error ? sessionErr.message : 'Session issuance failed.'
+        sendJson(req, res, 502, {
+          error: `Account was created but Solid access could not be verified: ${message}`,
+          webId: account.webId,
+          podUrl: account.podUrl,
+        })
+        return
+      }
+
       sendJson(req, res, 200, {
         status: 'ready',
         webId: account.webId,
         podUrl: account.podUrl,
         stellarPublicKey: stellarPublicKey || null,
         accountDocumentUrl,
-        oidcBridge: {
-          ...store.issueOidcBridgeTicket({
-            email,
-            password,
-            webId: account.webId,
-            podUrl: account.podUrl,
-            audience: OIDC_BRIDGE_AUDIENCE,
-            consumerOrigin: cssConsumerOrigin,
-            issuer: ISSUER,
-          }),
-          consumeUrl: `${PUBLIC_PROVISIONER_BASE_URL}/v1/oidc-bridge/consume`,
-        },
+        session,
         lockbox: lockbox ?? null,
         attestation,
       })
@@ -748,46 +807,8 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
     return
   }
 
-  if (req.method === 'POST' && url.pathname === '/v1/oidc-bridge/consume') {
-    const body = await readJsonBody<{ token?: string; audience?: string }>(req)
-    if (!isNonEmpty(body.token)) {
-      sendJson(req, res, 400, { error: 'token is required.' })
-      return
-    }
-    if (!isNonEmpty(body.audience)) {
-      sendJson(req, res, 400, { error: 'audience is required.' })
-      return
-    }
-
-    const requestOrigin = typeof req.headers.origin === 'string' ? req.headers.origin.trim() : ''
-    if (!requestOrigin) {
-      sendJson(req, res, 400, { error: 'origin header is required.' })
-      return
-    }
-
-    const ticket = store.consumeOidcBridgeTicket({
-      token: body.token,
-      audience: body.audience,
-      consumerOrigin: requestOrigin,
-      issuer: ISSUER,
-    })
-    if (!ticket) {
-      sendJson(req, res, 400, { error: 'OIDC bridge token is invalid or expired.' })
-      return
-    }
-
-    sendJson(req, res, 200, {
-      email: ticket.email,
-      password: ticket.password,
-      webId: ticket.webId,
-      podUrl: ticket.podUrl,
-      expiresAt: ticket.expiresAt,
-    })
-    return
-  }
-
   // ---------------------------------------------------------------------------
-  // Stellar Auth: challenge / token / verify endpoints
+  // Stellar Auth: challenge / login / refresh / logout endpoints
   // ---------------------------------------------------------------------------
 
   if (req.method === 'POST' && url.pathname === '/v1/auth/stellar-challenge') {
@@ -796,29 +817,16 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
       sendJson(req, res, 400, { error: 'stellarPublicKey is required.' })
       return
     }
-    if (!isNonEmpty(body.webId)) {
-      sendJson(req, res, 400, { error: 'webId is required.' })
-      return
-    }
     // Validate G-key format (Stellar public key: 56 chars, starts with G).
     const pk = body.stellarPublicKey.trim()
     if (pk.length !== 56 || !pk.startsWith('G')) {
       sendJson(req, res, 400, { error: 'stellarPublicKey must be a valid Stellar G-key (56 chars).' })
       return
     }
-    // Basic webId sanity check.
-    let parsedWebId: URL
-    try {
-      parsedWebId = new URL(body.webId.trim())
-    } catch {
-      sendJson(req, res, 400, { error: 'webId must be a valid HTTPS URL.' })
-      return
-    }
-    if (parsedWebId.protocol !== 'https:') {
-      sendJson(req, res, 400, { error: 'webId must use https.' })
-      return
-    }
-    const challenge = store.issueStellarChallenge({ stellarPublicKey: pk, webId: body.webId.trim() })
+    // The Stellar keypair is the sole user credential: no webId is required.
+    // Identity resolution happens server-side via the credential index after
+    // the signature verifies.
+    const challenge = store.issueStellarChallenge({ stellarPublicKey: pk })
     sendJson(req, res, 200, challenge)
     return
   }
@@ -866,49 +874,131 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
       return
     }
 
-    const loginToken = store.issueStellarLoginToken(challenge.webId)
-    sendJson(req, res, 200, {
-      loginToken: loginToken.tokenId,
-      tokenVerifyUrl: `${PUBLIC_PROVISIONER_BASE_URL}/v1/auth/stellar-verify`,
-      expiresAt: loginToken.expiresAt,
-    })
+    // Fail-closed login: a NodeZero session is issued only when stored client
+    // credentials exist AND they produce a live Solid token AND the Pod
+    // answers a probe. Anything else is 401 — there is no degraded state.
+    const credentials = await credentialStore
+      .findByStellarPublicKey(challenge.stellarPublicKey)
+      .catch(() => null)
+    if (!credentials) {
+      sendJson(req, res, 401, {
+        error: 'No NodeZero account exists for this identity. Create your node to continue.',
+        code: 'no_account',
+      })
+      return
+    }
+
+    try {
+      const session = await issueVerifiedSession({
+        webId: credentials.webId,
+        podUrl: credentials.podUrl,
+        stellarPublicKey: challenge.stellarPublicKey,
+        credentials: { id: credentials.clientCredentialsId, secret: credentials.clientCredentialsSecret },
+      })
+      sendJson(req, res, 200, {
+        session,
+        webId: credentials.webId,
+        podUrl: credentials.podUrl,
+        lockbox: {
+          userLockboxContractId: credentials.userLockboxContractId,
+          factoryContractId: credentials.lockboxFactoryContractId,
+          proofRootHex: credentials.proofRootHex,
+        },
+      })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Solid access verification failed.'
+      console.warn('[auth:stellar-token] session issuance failed:', message)
+      sendJson(req, res, 401, {
+        error: 'Solid access could not be verified for this account.',
+        code: 'session_unavailable',
+      })
+    }
     return
   }
 
-  if (req.method === 'POST' && url.pathname === '/v1/auth/stellar-verify') {
-    // This endpoint is called exclusively by the CSS StellarLoginHandler plugin,
-    // not by browser clients. It is HMAC-authenticated.
-    if (!STELLAR_AUTH_SHARED_SECRET) {
-      sendJson(req, res, 503, { error: 'Stellar auth is not configured (NZ_STELLAR_AUTH_SHARED_SECRET).' })
-      return
-    }
-    const body = await readJsonBody<StellarVerifyRequest>(req)
-    if (!isNonEmpty(body.token)) {
-      sendJson(req, res, 400, { error: 'token is required.' })
-      return
-    }
-    if (!isNonEmpty(body.audience)) {
-      sendJson(req, res, 400, { error: 'audience is required.' })
+  if (req.method === 'POST' && url.pathname === '/v1/auth/refresh') {
+    const body = await readJsonBody<{ refreshToken?: string }>(req)
+    if (!isNonEmpty(body.refreshToken)) {
+      sendJson(req, res, 400, { error: 'refreshToken is required.' })
       return
     }
 
-    const hmacHeader = Array.isArray(req.headers['x-nz-stellar-auth'])
-      ? (req.headers['x-nz-stellar-auth'][0] ?? '')
-      : (req.headers['x-nz-stellar-auth'] ?? '')
-
-    const result = store.consumeStellarLoginToken({
-      tokenId: body.token.trim(),
-      audience: body.audience.trim(),
-      hmacHeader: hmacHeader.trim(),
-      sharedSecret: STELLAR_AUTH_SHARED_SECRET,
-    })
-
-    if (!result) {
-      sendJson(req, res, 200, { valid: false })
+    const identity = sessions.consumeRefreshToken(body.refreshToken.trim())
+    if (!identity) {
+      sendJson(req, res, 401, { error: 'Refresh token is invalid or expired.', code: 'session_invalid' })
       return
     }
 
-    sendJson(req, res, 200, { valid: true, webId: result.webId })
+    // Refresh re-proves the invariant: credentials must still resolve and
+    // still mint a working Solid token. Revoked users cannot refresh.
+    const credentials = await credentialStore.findByWebId(identity.webId).catch(() => null)
+    if (!credentials) {
+      sendJson(req, res, 401, { error: 'This session has been revoked.', code: 'session_invalid' })
+      return
+    }
+
+    try {
+      const session = await issueVerifiedSession({
+        webId: credentials.webId,
+        podUrl: credentials.podUrl,
+        stellarPublicKey: identity.stellarPublicKey,
+        credentials: { id: credentials.clientCredentialsId, secret: credentials.clientCredentialsSecret },
+      })
+      sendJson(req, res, 200, {
+        session,
+        webId: credentials.webId,
+        podUrl: credentials.podUrl,
+        lockbox: {
+          userLockboxContractId: credentials.userLockboxContractId,
+          factoryContractId: credentials.lockboxFactoryContractId,
+          proofRootHex: credentials.proofRootHex,
+        },
+      })
+    } catch {
+      sendJson(req, res, 401, {
+        error: 'Solid access could not be verified for this account.',
+        code: 'session_invalid',
+      })
+    }
+    return
+  }
+
+  if (req.method === 'POST' && url.pathname === '/v1/auth/logout') {
+    const body = await readJsonBody<{ refreshToken?: string; webId?: string }>(req).catch(() => ({}) as { refreshToken?: string; webId?: string })
+    if (isNonEmpty(body.refreshToken)) {
+      sessions.consumeRefreshToken(body.refreshToken.trim())
+    }
+    if (isNonEmpty(body.webId)) {
+      sessions.revokeByWebId(body.webId.trim())
+    }
+    sendJson(req, res, 200, { status: 'ok' })
+    return
+  }
+
+  if (req.method === 'POST' && url.pathname === '/v1/auth/revoke') {
+    // Server-side session revocation (operator action): deletes the stored
+    // client credentials so every live and future session for the WebID fails
+    // closed at the proxy / refresh / login. Internal-key protected.
+    if (!INTERNAL_API_KEY) {
+      sendJson(req, res, 503, { error: 'Session revocation is not enabled (JSS_INTERNAL_API_KEY).' })
+      return
+    }
+    if (!hasValidInternalKey(req)) {
+      sendJson(req, res, 401, { error: 'A valid x-nz-internal-key header is required.' })
+      return
+    }
+
+    const body = await readJsonBody<{ webId?: string }>(req)
+    if (!isNonEmpty(body.webId)) {
+      sendJson(req, res, 400, { error: 'webId is required.' })
+      return
+    }
+
+    const webId = body.webId.trim()
+    const credentialsRemoved = await credentialStore.revokeByWebId(webId)
+    const refreshTokensRevoked = sessions.revokeByWebId(webId)
+    evictPodTokenCache(webId)
+    sendJson(req, res, 200, { status: 'ok', credentialsRemoved, refreshTokensRevoked })
     return
   }
 

@@ -19,5 +19,4 @@ export type {
 	TransactionResult,
 	IdentityHashPayload,
 	AttestationSignature,
-	BootstrapPasswordInput,
 } from './types.js'

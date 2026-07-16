@@ -20,13 +20,9 @@ import { Platform } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { EnclaveAdapter, WalletService, type WalletInfo } from '@nodezero/embedded-wallet'
 import { produceSeamlessAttestation, type SeamlessAttestation } from '../onboarding/attestation'
-import { clearSignupIntent } from '../onboarding/signupBridge'
-import { clearNodeSession } from '../onboarding/nodeSession'
-import { resolvePodOwnershipArtifacts } from '../onboarding/zkArtifacts'
 import type { ProgressStep } from '../components/ProgressStepLadder'
-import type { PodOwnershipClaim } from '@nodezero/zk-crypto/pod-ownership'
 import Constants from 'expo-constants'
-import { useSolid } from './SolidContext'
+import { useNodeZeroSession } from './NodeZeroSessionContext'
 
 type AttestationStatus = 'idle' | 'verifying' | 'verified' | 'unlinked' | 'error'
 
@@ -43,32 +39,6 @@ interface AttestationDetails {
   proofRootHex: string | null
 }
 
-interface CustodyReceipt {
-  jobId: string
-  challengeId: string
-  verifiedAt: string
-  claimHash: string
-  proofHashHex?: string
-  proofRootHex?: string
-}
-
-interface PairingAttestationRecord {
-  proofVersion: number
-  webId: string
-  stellarPublicKey: string
-  identityContractId: string
-  lockboxContractId: string
-  lockboxStateRoot: string
-  registerTxHash: string
-  verifiedAt: string
-  custodyReceipt?: CustodyReceipt
-  lockboxFactoryContractId?: string
-  userLockboxContractId?: string
-  lockboxIdempotencyKey?: string
-  proofHashHex?: string
-  proofRootHex?: string
-}
-
 const PAIRING_ATTESTATION_STORAGE_KEY = 'attestation.pairing.v1'
 const SOLID_WEBID_STORAGE_KEY = 'solid.webId.v1'
 
@@ -79,290 +49,12 @@ interface DeleteNodeDataResult {
   warnings: string[]
 }
 
-interface PairingProofInputs {
-  webId: string
-  stellarPublicKey: string
-  identityContractId: string
-  lockboxContractId: string
-  lockboxStateRoot: string
-}
-
-function normalizeRoot(root: string): string {
-  return root.trim().toLowerCase()
-}
-
-function hasMatchingProof(record: PairingAttestationRecord, inputs: PairingProofInputs): boolean {
-  return (
-    record.proofVersion >= 1 &&
-    record.webId === inputs.webId &&
-    record.stellarPublicKey === inputs.stellarPublicKey &&
-    record.identityContractId === inputs.identityContractId &&
-    record.lockboxContractId === inputs.lockboxContractId &&
-    normalizeRoot(record.lockboxStateRoot) === normalizeRoot(inputs.lockboxStateRoot)
-  )
-}
-
-async function loadPairingRecord(): Promise<PairingAttestationRecord | null> {
-  const raw = await AsyncStorage.getItem(PAIRING_ATTESTATION_STORAGE_KEY)
-  if (!raw) return null
-
-  try {
-    const parsed = JSON.parse(raw) as Partial<PairingAttestationRecord>
-    if (
-      typeof parsed.webId !== 'string' ||
-      typeof parsed.stellarPublicKey !== 'string' ||
-      typeof parsed.identityContractId !== 'string' ||
-      typeof parsed.lockboxContractId !== 'string' ||
-      typeof parsed.lockboxStateRoot !== 'string' ||
-      typeof parsed.verifiedAt !== 'string' ||
-      typeof parsed.proofVersion !== 'number'
-    ) {
-      return null
-    }
-
-    return {
-      proofVersion: parsed.proofVersion,
-      webId: parsed.webId,
-      stellarPublicKey: parsed.stellarPublicKey,
-      identityContractId: parsed.identityContractId,
-      lockboxContractId: parsed.lockboxContractId,
-      lockboxStateRoot: parsed.lockboxStateRoot,
-      registerTxHash: typeof parsed.registerTxHash === 'string' ? parsed.registerTxHash : '',
-      verifiedAt: parsed.verifiedAt,
-      lockboxFactoryContractId:
-        typeof parsed.lockboxFactoryContractId === 'string' ? parsed.lockboxFactoryContractId : undefined,
-      userLockboxContractId:
-        typeof parsed.userLockboxContractId === 'string' ? parsed.userLockboxContractId : undefined,
-      lockboxIdempotencyKey:
-        typeof parsed.lockboxIdempotencyKey === 'string' ? parsed.lockboxIdempotencyKey : undefined,
-      proofHashHex: typeof parsed.proofHashHex === 'string' ? parsed.proofHashHex : undefined,
-      proofRootHex: typeof parsed.proofRootHex === 'string' ? parsed.proofRootHex : undefined,
-      custodyReceipt:
-        parsed.custodyReceipt &&
-        typeof parsed.custodyReceipt.jobId === 'string' &&
-        typeof parsed.custodyReceipt.challengeId === 'string' &&
-        typeof parsed.custodyReceipt.verifiedAt === 'string' &&
-        typeof parsed.custodyReceipt.claimHash === 'string'
-          ? {
-              jobId: parsed.custodyReceipt.jobId,
-              challengeId: parsed.custodyReceipt.challengeId,
-              verifiedAt: parsed.custodyReceipt.verifiedAt,
-              claimHash: parsed.custodyReceipt.claimHash,
-              proofHashHex:
-                typeof parsed.custodyReceipt.proofHashHex === 'string' ? parsed.custodyReceipt.proofHashHex : undefined,
-              proofRootHex:
-                typeof parsed.custodyReceipt.proofRootHex === 'string' ? parsed.custodyReceipt.proofRootHex : undefined,
-            }
-          : undefined,
-    }
-  } catch {
-    return null
-  }
-}
-
-interface ProvisionerChallenge {
-  challengeId: string
-  nonce: string
-  domain: string
-  expiresAt: string
-  envProfile: string
-  handle: string
-  webId: string
-  podUrl: string
-}
-
-interface ProvisionerSubmitResponse {
-  status: 'ready' | 'pending'
-  jobId: string
-  claimHash?: string
-  proofHashHex?: string
-  proofRootHex?: string
-}
-
-interface ProvisionerStatusReady {
-  status: 'ready'
-  jobId: string
-  lockbox?: {
-    status: 'ready' | 'skipped' | 'error'
-    mode: 'mock' | 'disabled' | 'soroban'
-    factoryContractId: string | null
-    userLockboxContractId: string | null
-    idempotencyKey: string
-    verifiedAt: string
-    error?: string
-  }
-  custodyReceipt?: {
-    challengeId: string
-    verifiedAt: string
-    claimHash: string
-    proofHashHex?: string
-    proofRootHex?: string
-  }
-}
-
-interface CustodyProvisioningResult {
-  custodyReceipt: CustodyReceipt
-  lockbox?: {
-    factoryContractId: string | null
-    userLockboxContractId: string | null
-    idempotencyKey: string
-  }
-}
-
-function extractPodIdentity(webId: string): { handle: string; podUrl: string; podSlug: string } {
-  const parsed = new URL(webId)
-  const hostname = parsed.hostname
-  const hostLabel = hostname.split('.')[0] ?? 'nodezero'
-  const cleaned = hostLabel.toLowerCase().replace(/[^a-z0-9-]/g, '-')
-  const handle = cleaned.length > 0 ? cleaned : 'nodezero'
-  return {
-    handle,
-    podSlug: handle,
-    podUrl: `${parsed.origin}/`,
-  }
-}
-
-function buildAttestationChallengePayload(challenge: ProvisionerChallenge): string {
-  return [
-    'NZ_ATTEST_V1',
-    challenge.domain,
-    challenge.envProfile,
-    challenge.nonce,
-    challenge.expiresAt,
-    challenge.handle,
-    challenge.webId,
-    challenge.podUrl,
-  ].join('|')
-}
-
-async function parseJsonResponse<T>(response: Response): Promise<T> {
-  const body = (await response.json()) as T
-  if (!response.ok) {
-    const maybeError = body as { error?: string }
-    throw new Error(maybeError.error ?? `Provisioner request failed (${response.status}).`)
-  }
-  return body
-}
-
-async function runCustodyProvisioning(params: {
-  provisionerUrl: string
-  webId: string
-  walletInfo: WalletInfo
-  wallet: WalletService
-  appExtra: Record<string, string> | undefined
-}): Promise<CustodyProvisioningResult> {
-  const { provisionerUrl, webId, wallet, walletInfo, appExtra } = params
-  const baseUrl = provisionerUrl.replace(/\/$/, '')
-  const identity = extractPodIdentity(webId)
-  const identityContractId = appExtra?.identityContractId ?? ''
-  const lockboxFactoryContractId = appExtra?.lockboxFactoryContractId ?? ''
-  const envProfile = appExtra?.envProfile ?? 'local'
-  const stellarNetworkPassphrase = appExtra?.stellarNetworkPassphrase ?? 'Test SDF Network ; September 2015'
-  const zkArtifactsUrl = appExtra?.zkArtifactsUrl ?? ''
-  const zkManifestUrl = appExtra?.zkManifestUrl ?? ''
-
-  if (!identityContractId || !lockboxFactoryContractId) {
-    throw new Error('Identity and lockbox factory contract IDs are required for proof-backed provisioning.')
-  }
-  if (!zkArtifactsUrl || !zkManifestUrl) {
-    throw new Error('ZK artifact URLs are required for proof-backed provisioning.')
-  }
-
-  const challengeResponse = await fetch(`${baseUrl}/v1/bootstrap-challenge`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      handle: identity.handle,
-      webId,
-      podUrl: identity.podUrl,
-    }),
-  })
-  const challenge = await parseJsonResponse<ProvisionerChallenge>(challengeResponse)
-  const challengePayload = buildAttestationChallengePayload(challenge)
-  const signature = await wallet.signAttestationChallenge(challengePayload)
-  const secret = await _adapter?.loadOrCreate()
-  if (!secret) throw new Error('Embedded wallet secret is unavailable for proof generation.')
-  const artifactPaths = await resolvePodOwnershipArtifacts({ zkArtifactsUrl, zkManifestUrl })
-  const claim: PodOwnershipClaim = {
-    envProfile,
-    stellarNetworkPassphrase,
-    webId,
-    podUrl: identity.podUrl,
-    stellarPublicKey: walletInfo.publicKey,
-    identityContractId,
-    lockboxFactoryContractId,
-    challengeId: challenge.challengeId,
-    nonce: challenge.nonce,
-    expiresAt: challenge.expiresAt,
-  }
-  const { generatePodOwnershipProof } = await import('@nodezero/zk-crypto/pod-ownership')
-  const podProof = await generatePodOwnershipProof({
-    stellarSecretKey: secret,
-    claim,
-    wasmPath: artifactPaths.wasmPath,
-    zkeyPath: artifactPaths.zkeyPath,
-  })
-
-  const submitResponse = await fetch(`${baseUrl}/v1/provision`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      handle: identity.handle,
-      podSlug: identity.podSlug,
-      webId,
-      podUrl: identity.podUrl,
-      stellarPublicKey: signature.stellarPublicKey,
-      identityContractId,
-      lockboxFactoryContractId,
-      challengeId: challenge.challengeId,
-      signatureBase64: signature.signatureBase64,
-      proofVersion: 1,
-      claimHash: podProof.claimHash.toString(),
-      proofHex: podProof.proofHex,
-      proofHashHex: podProof.proofHashHex,
-      proofRootHex: podProof.proofRootHex,
-      publicSignals: podProof.publicSignals,
-    }),
-  })
-  const submit = await parseJsonResponse<ProvisionerSubmitResponse>(submitResponse)
-
-  const statusResponse = await fetch(`${baseUrl}/v1/provision/${submit.jobId}`)
-  const status = await parseJsonResponse<ProvisionerStatusReady>(statusResponse)
-
-  if (status.status !== 'ready' || !status.custodyReceipt) {
-    throw new Error('Provisioner did not return a ready custody receipt.')
-  }
-  if (!status.lockbox || status.lockbox.mode !== 'soroban' || !status.lockbox.userLockboxContractId) {
-    throw new Error('Provisioner did not return a per-user lockbox contract.')
-  }
-
-  return {
-    custodyReceipt: {
-      jobId: status.jobId,
-      challengeId: status.custodyReceipt.challengeId,
-      verifiedAt: status.custodyReceipt.verifiedAt,
-      claimHash: status.custodyReceipt.claimHash,
-      proofHashHex: status.custodyReceipt.proofHashHex ?? submit.proofHashHex ?? podProof.proofHashHex,
-      proofRootHex: status.custodyReceipt.proofRootHex ?? submit.proofRootHex ?? podProof.proofRootHex,
-    },
-    lockbox: status.lockbox
-      ? {
-          factoryContractId: status.lockbox.factoryContractId,
-          userLockboxContractId: status.lockbox.userLockboxContractId,
-          idempotencyKey: status.lockbox.idempotencyKey,
-        }
-      : undefined,
-  }
-}
-
 /** Shape of the wallet context value. */
 interface WalletContextValue {
   /** Basic wallet info (public key, funded status), or `null` while loading. */
   walletInfo: WalletInfo | null
   /** Whether the wallet is currently loading / initialising. */
   isLoading: boolean
-  /** Registers the user's WebID on-chain against their Stellar public key. */
-  registerIdentity: (webId: string, contractId?: string) => Promise<string>
   /** Current pairing verification status for this session. */
   attestationStatus: AttestationStatus
   /** Human-readable status detail for pairing checks. */
@@ -387,16 +79,6 @@ interface WalletContextValue {
     podUrl: string,
     stellarPublicKey: string,
   ) => Promise<SeamlessAttestation>
-  /**
-   * Derives the deterministic bootstrap password from the local Stellar key.
-   * Used by seamless onboarding before OIDC bridge hand-off.
-   */
-  createBootstrapPassword: (input: {
-    issuer: string
-    handle: string
-    notificationEmail: string
-    stellarPublicKey: string
-  }) => Promise<string>
   /**
    * Signs an arbitrary UTF-8 string with the device Stellar keypair and
    * returns the base64-encoded signature together with the public key.
@@ -474,7 +156,7 @@ function getWalletService(): WalletService {
  * Provisions and exposes the embedded Stellar wallet.
  */
 export function WalletProvider({ children }: { children: ReactNode }): JSX.Element {
-  const { isLoggedIn, isRestoring, webId, nodeSession } = useSolid()
+  const { status: sessionStatus, webId, lockbox, sessionCreatedAt } = useNodeZeroSession()
   const [walletInfo, setWalletInfo] = useState<WalletInfo | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [attestationStatus, setAttestationStatus] = useState<AttestationStatus>('idle')
@@ -552,28 +234,16 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
     })()
   }, [])
 
-  const registerIdentity = useCallback(async (webId: string, contractId?: string): Promise<string> => {
-    const service = getWalletService()
-    const info = walletInfo ?? (await service.getWalletInfo())
-    const defaultContractId =
-      (Constants.expoConfig?.extra as Record<string, string> | undefined)?.identityContractId ?? ''
-    const resolvedContractId = contractId ?? defaultContractId
-
-    if (!resolvedContractId) {
-      throw new Error('Missing identity contract ID. Set NZ_IDENTITY_CONTRACT_ID in app configuration.')
-    }
-
-    const result = await service.registerIdentityOnChain(
-      { webId, stellarPublicKey: info.publicKey },
-      resolvedContractId
-    )
-    return result.hash
-  }, [walletInfo])
-
+  // Fail-closed post-login verification (single path): every account is
+  // provisioned with an on-chain per-user lockb0x, and the session carries the
+  // anchor metadata. Prove the device still controls the ZK identity anchored
+  // on-chain by deriving Poseidon(identitySecret) locally and comparing it to
+  // Lockb0x.get_account_commitment(). This runs entirely client-side against
+  // chain RPC — the provisioner is not in the loop.
   useEffect(() => {
-    if (isRestoring) return
+    if (sessionStatus === 'restoring') return
 
-    if (!isLoggedIn || !webId) {
+    if (sessionStatus !== 'authenticated' || !webId) {
       setAttestationStatus('idle')
       setAttestationMessage(null)
       setVerificationSteps([])
@@ -593,406 +263,127 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
       return
     }
 
-    // Seamless node sessions already had their WebID<->Stellar pairing anchored
-    // on-chain server-side during provisioning. Skip the in-browser on-chain
-    // verification (which needs Node-only crypto) and surface the verified
-    // state directly from the node session record.
-    if (nodeSession) {
-      initVerificationSteps([
-        ['session', 'Load your node session'],
-        ['anchor', 'Read your on-chain identity anchor'],
-        ['identity', 'Confirm this device controls the anchored identity'],
-      ])
-      advanceVerificationStep('session')
-      // Fail-closed: a node session is only verified when it carries an
-      // on-chain per-user lockb0x contract. A session without one means
-      // provisioning did not complete; never report it as verified.
-      if (!nodeSession.userLockboxContractId) {
-        setAttestationStatus('error')
-        setAttestationMessage(
-          'Your node session is missing its on-chain lockb0x. Re-create your node to finish onboarding.',
-        )
-        setAttestationDetails({
-          registeredWebId: nodeSession.webId,
-          lockboxStateRoot: null,
-          registerTxHash: null,
-          verifiedAt: null,
-          custodyClaimHash: null,
-          lockboxFactoryContractId: nodeSession.lockboxFactoryContractId,
-          userLockboxContractId: null,
-          lockboxIdempotencyKey: null,
-          proofHashHex: null,
-          proofRootHex: nodeSession.proofRootHex,
-        })
-        lastCheckedKeyRef.current = `node:${nodeSession.webId}`
-        return
-      }
+    const lockboxId = lockbox?.userLockboxContractId ?? null
+    const checkKey = `session:${webId}|${lockboxId ?? 'none'}`
+    if (lastCheckedKeyRef.current === checkKey) return
+    lastCheckedKeyRef.current = checkKey
 
-      // Fail-closed on-return verification: prove the device still controls the
-      // ZK identity anchored on-chain. Derive Poseidon(identitySecret) locally
-      // and compare against Lockb0x.get_account_commitment().
-      const lockboxId = nodeSession.userLockboxContractId
-      setAttestationStatus('verifying')
-      setAttestationMessage('Verifying your on-chain identity attestation…')
-      lastCheckedKeyRef.current = `node:${nodeSession.webId}`
+    initVerificationSteps([
+      ['session', 'Load your node session'],
+      ['anchor', 'Read your on-chain identity anchor'],
+      ['identity', 'Confirm this device controls the anchored identity'],
+    ])
+    advanceVerificationStep('session')
 
-      void (async (): Promise<void> => {
-        const setVerified = (message: string): void => {
-          setAttestationStatus('verified')
-          setAttestationMessage(message)
-          setAttestationDetails({
-            registeredWebId: nodeSession.webId,
-            lockboxStateRoot: nodeSession.proofRootHex,
-            registerTxHash: null,
-            verifiedAt: nodeSession.createdAt,
-            custodyClaimHash: null,
-            lockboxFactoryContractId: nodeSession.lockboxFactoryContractId,
-            userLockboxContractId: lockboxId,
-            lockboxIdempotencyKey: null,
-            proofHashHex: null,
-            proofRootHex: nodeSession.proofRootHex,
-          })
-        }
-        try {
-          const onchain = await getWalletService().getLockboxAccountCommitment(lockboxId)
-          advanceVerificationStep('anchor')
-          if (!onchain) {
-            setAttestationStatus('unlinked')
-            setAttestationMessage(
-              'Your node is missing an on-chain attestation anchor. Complete migration to create and link a new lockb0x attestation before continuing.',
-            )
-            setAttestationDetails({
-              registeredWebId: nodeSession.webId,
-              lockboxStateRoot: nodeSession.proofRootHex,
-              registerTxHash: null,
-              verifiedAt: null,
-              custodyClaimHash: null,
-              lockboxFactoryContractId: nodeSession.lockboxFactoryContractId,
-              userLockboxContractId: lockboxId,
-              lockboxIdempotencyKey: null,
-              proofHashHex: null,
-              proofRootHex: nodeSession.proofRootHex,
-            })
-            return
-          }
-          const secret = await _adapter?.loadOrCreate()
-          if (!secret) throw new Error('wallet secret unavailable')
-          const { deriveAccountCommitmentHex } = await import('@nodezero/zk-crypto/attestation-cipher')
-          const deviceCommitment = await deriveAccountCommitmentHex(secret)
-          const norm = (h: string): string => h.trim().toLowerCase().replace(/^0x/, '')
-          if (norm(deviceCommitment) === norm(onchain)) {
-            advanceVerificationStep('identity')
-            setVerified('On-chain ZK identity attestation verified.')
-          } else {
-            // Fail-closed: the device does not control the anchored identity.
-            setAttestationStatus('error')
-            setAttestationMessage(
-              'Your device identity does not match the on-chain attestation. Re-create your node to continue.',
-            )
-            setAttestationDetails({
-              registeredWebId: nodeSession.webId,
-              lockboxStateRoot: nodeSession.proofRootHex,
-              registerTxHash: null,
-              verifiedAt: null,
-              custodyClaimHash: null,
-              lockboxFactoryContractId: nodeSession.lockboxFactoryContractId,
-              userLockboxContractId: lockboxId,
-              lockboxIdempotencyKey: null,
-              proofHashHex: null,
-              proofRootHex: nodeSession.proofRootHex,
-            })
-          }
-        } catch (err) {
-          setAttestationStatus('error')
-          setAttestationMessage(
-            err instanceof Error
-              ? `Attestation verification failed: ${err.message}`
-              : 'Attestation verification failed. Complete migration to relink your on-chain lockb0x.',
-          )
-          setAttestationDetails({
-            registeredWebId: nodeSession.webId,
-            lockboxStateRoot: nodeSession.proofRootHex,
-            registerTxHash: null,
-            verifiedAt: null,
-            custodyClaimHash: null,
-            lockboxFactoryContractId: nodeSession.lockboxFactoryContractId,
-            userLockboxContractId: lockboxId,
-            lockboxIdempotencyKey: null,
-            proofHashHex: null,
-            proofRootHex: nodeSession.proofRootHex,
-          })
-        }
-      })()
+    // Fail-closed: a session is only verified when it carries an on-chain
+    // per-user lockb0x contract. A session without one means provisioning did
+    // not complete; never report it as verified.
+    if (!lockboxId) {
+      setAttestationStatus('error')
+      setAttestationMessage(
+        'Your session is missing its on-chain lockb0x anchor. Re-create your node to finish onboarding.',
+      )
+      setAttestationDetails({
+        registeredWebId: webId,
+        lockboxStateRoot: null,
+        registerTxHash: null,
+        verifiedAt: null,
+        custodyClaimHash: null,
+        lockboxFactoryContractId: lockbox?.factoryContractId ?? null,
+        userLockboxContractId: null,
+        lockboxIdempotencyKey: null,
+        proofHashHex: null,
+        proofRootHex: lockbox?.proofRootHex ?? null,
+      })
       return
     }
 
+    setAttestationStatus('verifying')
+    setAttestationMessage('Verifying your on-chain identity attestation…')
+
     void (async (): Promise<void> => {
-      const service = getWalletService()
-      const info = walletInfo ?? (await service.getWalletInfo())
-      const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
-      const identityContractId = appExtra?.identityContractId ?? ''
-      const lockboxContractId = appExtra?.lockboxContractId ?? ''
-      const lockboxFactoryContractIdFromConfig = appExtra?.lockboxFactoryContractId ?? ''
-      const provisionerUrl = appExtra?.jssProvisionerUrl ?? ''
-
-      if (!identityContractId || !lockboxContractId) {
-        setAttestationStatus('error')
-        setAttestationMessage('Missing identity or lockbox contract ID in app configuration.')
-        setAttestationDetails({
-          registeredWebId: null,
-          lockboxStateRoot: null,
-          registerTxHash: null,
-          verifiedAt: null,
-          custodyClaimHash: null,
-          lockboxFactoryContractId: null,
-          userLockboxContractId: null,
-          lockboxIdempotencyKey: null,
-          proofHashHex: null,
-          proofRootHex: null,
-        })
-        return
-      }
-
-      const checkKey = `${webId}|${info.publicKey}|${identityContractId}|${lockboxContractId}`
-      if (lastCheckedKeyRef.current === checkKey) return
-      lastCheckedKeyRef.current = checkKey
-
-      setAttestationStatus('verifying')
-      setAttestationMessage('Validating Stellar<->Solid pairing attestation...')
-      initVerificationSteps([
-        ['registration', 'Check on-chain identity registration'],
-        ['custody', 'Provision & confirm your custody lockb0x'],
-        ['root', 'Verify the lockb0x state root'],
-        ['proof', 'Verify your pairing attestation'],
-      ])
-
+      const details = (overrides: Partial<AttestationDetails>): AttestationDetails => ({
+        registeredWebId: webId,
+        lockboxStateRoot: lockbox?.proofRootHex ?? null,
+        registerTxHash: null,
+        verifiedAt: null,
+        custodyClaimHash: null,
+        lockboxFactoryContractId: lockbox?.factoryContractId ?? null,
+        userLockboxContractId: lockboxId,
+        lockboxIdempotencyKey: null,
+        proofHashHex: null,
+        proofRootHex: lockbox?.proofRootHex ?? null,
+        ...overrides,
+      })
       try {
-        const mappedBeforeRegistration = await service.getRegisteredWebId(identityContractId)
-        let mappedWebId = mappedBeforeRegistration
-        const priorRecord = await loadPairingRecord()
-        const hasPriorForPrincipal =
-          priorRecord?.webId === webId &&
-          priorRecord.stellarPublicKey === info.publicKey &&
-          priorRecord.identityContractId === identityContractId
+        // Fresh sessions (< 10 min) may hit Stellar RPC propagation lag where a
+        // newly-created lockbox contract hasn't been indexed yet. Retry with
+        // exponential backoff before treating a null result as 'unlinked'.
+        const SESSION_FRESH_MS = 10 * 60 * 1000
+        const isFreshSession = sessionCreatedAt
+          ? Date.now() - new Date(sessionCreatedAt).getTime() < SESSION_FRESH_MS
+          : false
+        const MAX_RETRIES = isFreshSession ? 5 : 1
+        const RETRY_BASE_MS = 3_000
 
-        let registerTxHash = ''
-        let custodyReceipt = priorRecord?.custodyReceipt
-        let lockboxFactoryContractId = priorRecord?.lockboxFactoryContractId ?? lockboxFactoryContractIdFromConfig
-        let userLockboxContractId = priorRecord?.userLockboxContractId
-        let lockboxIdempotencyKey = priorRecord?.lockboxIdempotencyKey
-        let proofHashHex = priorRecord?.proofHashHex ?? priorRecord?.custodyReceipt?.proofHashHex
-        let proofRootHex = priorRecord?.proofRootHex ?? priorRecord?.custodyReceipt?.proofRootHex
-        let didProvisionThisSession = false
-        const didRegisterIdentityThisSession = mappedBeforeRegistration !== webId
-
-        if (mappedWebId !== webId) {
-          registerTxHash = await registerIdentity(webId, identityContractId)
-          mappedWebId = await service.getRegisteredWebId(identityContractId)
+        let onchain: string | null | undefined
+        let lastRpcError: unknown
+        for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+          try {
+            onchain = await getWalletService().getLockboxAccountCommitment(lockboxId)
+            lastRpcError = undefined
+            if (onchain) break
+          } catch (rpcErr) {
+            lastRpcError = rpcErr
+            onchain = undefined
+          }
+          if (attempt < MAX_RETRIES - 1) {
+            const delay = RETRY_BASE_MS * Math.pow(2, attempt)
+            setAttestationMessage(`Waiting for on-chain confirmation… (attempt ${attempt + 2}/${MAX_RETRIES})`)
+            await new Promise<void>((res) => setTimeout(res, delay))
+          }
         }
-        advanceVerificationStep('registration')
-
-        if (!userLockboxContractId && lockboxFactoryContractId) {
-          const factoryMappedLockbox = await service.getFactoryUserLockbox(lockboxFactoryContractId, info.publicKey)
-          userLockboxContractId = factoryMappedLockbox ?? undefined
+        if (lastRpcError !== undefined) {
+          throw lastRpcError as Error
         }
-
-        if (!userLockboxContractId && provisionerUrl) {
-          const provisioning = await runCustodyProvisioning({
-            provisionerUrl,
-            webId,
-            walletInfo: info,
-            wallet: service,
-            appExtra,
-          })
-          didProvisionThisSession = true
-          custodyReceipt = provisioning.custodyReceipt
-          const provisionedFactoryContractId = provisioning.lockbox?.factoryContractId
-          const provisionedUserLockboxContractId = provisioning.lockbox?.userLockboxContractId
-          lockboxFactoryContractId = provisionedFactoryContractId ?? lockboxFactoryContractId
-          userLockboxContractId = provisionedUserLockboxContractId ?? undefined
-          lockboxIdempotencyKey = provisioning.lockbox?.idempotencyKey ?? undefined
-          proofHashHex = provisioning.custodyReceipt.proofHashHex
-          proofRootHex = provisioning.custodyReceipt.proofRootHex
+        advanceVerificationStep('anchor')
+        if (!onchain) {
+          setAttestationStatus('unlinked')
+          setAttestationMessage(
+            'Your node is missing an on-chain attestation anchor. Re-create your node to link a lockb0x attestation before continuing.',
+          )
+          setAttestationDetails(details({}))
+          return
         }
-
-        if (!userLockboxContractId) {
+        const secret = await _adapter?.loadOrCreate()
+        if (!secret) throw new Error('wallet secret unavailable')
+        const { deriveAccountCommitmentHex } = await import('@nodezero/zk-crypto/attestation-cipher')
+        const deviceCommitment = await deriveAccountCommitmentHex(secret)
+        const norm = (h: string): string => h.trim().toLowerCase().replace(/^0x/, '')
+        if (norm(deviceCommitment) === norm(onchain)) {
+          advanceVerificationStep('identity')
+          setAttestationStatus('verified')
+          setAttestationMessage('On-chain ZK identity attestation verified.')
+          setAttestationDetails(details({ verifiedAt: sessionCreatedAt ?? new Date().toISOString() }))
+        } else {
+          // Fail-closed: the device does not control the anchored identity.
           setAttestationStatus('error')
-          setAttestationMessage('Per-user lockbox provisioning is required and no user lockbox contract was returned.')
-          setAttestationDetails({
-            registeredWebId: mappedWebId,
-            lockboxStateRoot: null,
-            registerTxHash: registerTxHash || null,
-            verifiedAt: null,
-            custodyClaimHash: custodyReceipt?.claimHash ?? null,
-            lockboxFactoryContractId: lockboxFactoryContractId ?? null,
-            userLockboxContractId: null,
-            lockboxIdempotencyKey: lockboxIdempotencyKey ?? null,
-            proofHashHex: proofHashHex ?? null,
-            proofRootHex: proofRootHex ?? null,
-          })
-          return
+          setAttestationMessage(
+            'Your device identity does not match the on-chain attestation. Re-create your node to continue.',
+          )
+          setAttestationDetails(details({}))
         }
-
-        const effectiveLockboxContractId = userLockboxContractId
-        advanceVerificationStep('custody')
-        const lockboxRoot = await service.getLockboxStateRoot(effectiveLockboxContractId)
-
-        if (mappedWebId !== webId) {
-          setAttestationStatus('unlinked')
-          setAttestationMessage('Wallet/WebID on-chain mapping mismatch. Please relink your identity.')
-          setAttestationDetails({
-            registeredWebId: mappedWebId,
-            lockboxStateRoot: lockboxRoot,
-            registerTxHash: registerTxHash || null,
-            verifiedAt: null,
-            custodyClaimHash: custodyReceipt?.claimHash ?? null,
-            lockboxFactoryContractId: lockboxFactoryContractId ?? null,
-            userLockboxContractId: userLockboxContractId ?? null,
-            lockboxIdempotencyKey: lockboxIdempotencyKey ?? null,
-            proofHashHex: proofHashHex ?? null,
-            proofRootHex: proofRootHex ?? null,
-          })
-          return
-        }
-
-        const shouldEnforceFreshProofRoot = didProvisionThisSession && didRegisterIdentityThisSession
-        if (
-          shouldEnforceFreshProofRoot &&
-          proofRootHex &&
-          lockboxRoot &&
-          lockboxRoot.toLowerCase() !== proofRootHex.toLowerCase()
-        ) {
-          setAttestationStatus('unlinked')
-          setAttestationMessage('User lockbox root does not match the browser-generated proof root. Relink required.')
-          setAttestationDetails({
-            registeredWebId: mappedWebId,
-            lockboxStateRoot: lockboxRoot,
-            registerTxHash: registerTxHash || null,
-            verifiedAt: null,
-            custodyClaimHash: custodyReceipt?.claimHash ?? null,
-            lockboxFactoryContractId: lockboxFactoryContractId ?? null,
-            userLockboxContractId: userLockboxContractId ?? null,
-            lockboxIdempotencyKey: lockboxIdempotencyKey ?? null,
-            proofHashHex: proofHashHex ?? null,
-            proofRootHex: proofRootHex ?? null,
-          })
-          return
-        }
-
-        if (!lockboxRoot) {
-          setAttestationStatus('unlinked')
-          setAttestationMessage('No attested lockbox root found yet for pairing verification.')
-          setAttestationDetails({
-            registeredWebId: mappedWebId,
-            lockboxStateRoot: null,
-            registerTxHash: registerTxHash || null,
-            verifiedAt: null,
-            custodyClaimHash: custodyReceipt?.claimHash ?? null,
-            lockboxFactoryContractId: lockboxFactoryContractId ?? null,
-            userLockboxContractId: userLockboxContractId ?? null,
-            lockboxIdempotencyKey: lockboxIdempotencyKey ?? null,
-            proofHashHex: proofHashHex ?? null,
-            proofRootHex: proofRootHex ?? null,
-          })
-          return
-        }
-
-        const proofInputs: PairingProofInputs = {
-          webId,
-          stellarPublicKey: info.publicKey,
-          identityContractId,
-          lockboxContractId: effectiveLockboxContractId,
-          lockboxStateRoot: lockboxRoot,
-        }
-        advanceVerificationStep('root')
-
-        if (hasPriorForPrincipal && priorRecord && !hasMatchingProof(priorRecord, proofInputs)) {
-          setAttestationStatus('unlinked')
-          setAttestationMessage('Stored pairing proof no longer matches the current lockbox root. Relink required.')
-          setAttestationDetails({
-            registeredWebId: mappedWebId,
-            lockboxStateRoot: lockboxRoot,
-            registerTxHash: priorRecord.registerTxHash || null,
-            verifiedAt: priorRecord.verifiedAt,
-            custodyClaimHash: priorRecord.custodyReceipt?.claimHash ?? null,
-            lockboxFactoryContractId: priorRecord.lockboxFactoryContractId ?? null,
-            userLockboxContractId: priorRecord.userLockboxContractId ?? null,
-            lockboxIdempotencyKey: priorRecord.lockboxIdempotencyKey ?? null,
-            proofHashHex: priorRecord.proofHashHex ?? priorRecord.custodyReceipt?.proofHashHex ?? null,
-            proofRootHex: priorRecord.proofRootHex ?? priorRecord.custodyReceipt?.proofRootHex ?? null,
-          })
-          return
-        }
-
-        const verifiedAt = new Date().toISOString()
-
-        const record: PairingAttestationRecord = {
-          proofVersion: 2,
-          webId,
-          stellarPublicKey: info.publicKey,
-          identityContractId,
-          lockboxContractId: effectiveLockboxContractId,
-          lockboxStateRoot: lockboxRoot,
-          registerTxHash,
-          verifiedAt,
-          custodyReceipt,
-        }
-
-        if (lockboxFactoryContractId) {
-          record.lockboxFactoryContractId = lockboxFactoryContractId
-        }
-        if (userLockboxContractId) {
-          record.userLockboxContractId = userLockboxContractId
-        }
-        if (lockboxIdempotencyKey) {
-          record.lockboxIdempotencyKey = lockboxIdempotencyKey
-        }
-        if (proofHashHex) {
-          record.proofHashHex = proofHashHex
-        }
-        if (proofRootHex) {
-          record.proofRootHex = proofRootHex
-        }
-        await AsyncStorage.setItem(PAIRING_ATTESTATION_STORAGE_KEY, JSON.stringify(record))
-
-        setAttestationStatus('verified')
-        setAttestationDetails({
-          registeredWebId: mappedWebId,
-          lockboxStateRoot: lockboxRoot,
-          registerTxHash: registerTxHash || priorRecord?.registerTxHash || null,
-          verifiedAt,
-          custodyClaimHash: custodyReceipt?.claimHash ?? null,
-          lockboxFactoryContractId: lockboxFactoryContractId ?? null,
-          userLockboxContractId: userLockboxContractId ?? null,
-          lockboxIdempotencyKey: lockboxIdempotencyKey ?? null,
-          proofHashHex: proofHashHex ?? null,
-          proofRootHex: proofRootHex ?? null,
-        })
-        setAttestationMessage(
-          hasPriorForPrincipal
-            ? 'Returning sign-in proof verified against current lockbox root.'
-            : mappedBeforeRegistration === webId
-              ? 'Recovered pairing from your existing on-chain lockbox root.'
-            : 'Pairing attestation verified against current lockbox root.'
-        )
       } catch (err) {
         setAttestationStatus('error')
-        setAttestationMessage(err instanceof Error ? err.message : 'Pairing verification failed.')
-        setAttestationDetails({
-          registeredWebId: null,
-          lockboxStateRoot: null,
-          registerTxHash: null,
-          verifiedAt: null,
-          custodyClaimHash: null,
-          lockboxFactoryContractId: null,
-          userLockboxContractId: null,
-          lockboxIdempotencyKey: null,
-          proofHashHex: null,
-          proofRootHex: null,
-        })
+        setAttestationMessage(
+          err instanceof Error
+            ? `Attestation verification failed: ${err.message}`
+            : 'Attestation verification failed.',
+        )
+        setAttestationDetails(details({}))
       }
     })()
-  }, [advanceVerificationStep, initVerificationSteps, isLoggedIn, isRestoring, nodeSession, registerIdentity, walletInfo, webId])
+  }, [advanceVerificationStep, initVerificationSteps, lockbox, sessionCreatedAt, sessionStatus, webId])
 
   const exportRecoveryBundle = useCallback(async (): Promise<{ fileName: string; json: string }> => {
     const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
@@ -1050,8 +441,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
       if (clearAllLocalCache) {
         await AsyncStorage.removeItem(PAIRING_ATTESTATION_STORAGE_KEY)
         await AsyncStorage.removeItem(SOLID_WEBID_STORAGE_KEY)
-        await clearSignupIntent()
-        await clearNodeSession()
+        await AsyncStorage.removeItem('nz.session.v2')
       } else {
         await AsyncStorage.removeItem(PAIRING_ATTESTATION_STORAGE_KEY)
       }
@@ -1100,18 +490,6 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
     []
   )
 
-  const createBootstrapPassword = useCallback(
-    async (input: {
-      issuer: string
-      handle: string
-      notificationEmail: string
-      stellarPublicKey: string
-    }): Promise<string> => {
-      return getWalletService().deriveBootstrapPassword(input)
-    },
-    []
-  )
-
   const signAttestationChallenge = useCallback(
     async (challengePayload: string) => {
       return getWalletService().signAttestationChallenge(challengePayload)
@@ -1123,7 +501,6 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
     <WalletContext.Provider value={{
       walletInfo,
       isLoading,
-      registerIdentity,
       attestationStatus,
       attestationMessage,
       verificationSteps,
@@ -1131,7 +508,6 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
       exportRecoveryBundle,
       deleteNodeData,
       createSeamlessAttestation,
-      createBootstrapPassword,
       signAttestationChallenge,
     }}>
       {children}

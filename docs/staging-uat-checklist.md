@@ -19,9 +19,10 @@ code.
    ```sh
    STAGING_BASE_URL=https://staging.nodezero.social pnpm qa:smoke:auth
    ```
-   PASS requires both journeys green: new-user create (Pod + WebID +
-   on-chain lockb0x + bridge auto sign-in + consent + session) and
-   returning-user credential login with the same WebID.
+   PASS requires all three journeys green: new-user create (Pod + WebID +
+   on-chain lockb0x + inline NodeZero session, zero browser↔CSS requests),
+   returning one-tap Stellar sign-in with the same WebID, and the negative
+   fail-closed path (tampered session → sign-in page).
 4. Work through the manual journeys below. Record PASS/FAIL and notes per row.
 
 ## Preconditions
@@ -35,23 +36,23 @@ code.
 
 | # | Check | Expected | Result |
 |---|-------|----------|--------|
-| A1 | `pnpm qa:smoke` landing markers | `NodeZero` + `Sign in with Solid Pod` present | **PASS** |
+| A1 | `pnpm qa:smoke` landing markers | `NodeZero` + `Sign in to your node` present | RE-RUN REQUIRED (cutover) |
 | A2 | `pnpm qa:smoke` routes | `/feed`, `/local`, `/profile`, `/settings` reachable | **PASS** |
 | A3 | TLS enforced | Base URL rejected unless `https` | **PASS** |
 
 ## Manual journeys
 
-### Authentication (Solid)
+### Authentication (internal NodeZero sessions — cutover)
 
 | # | Step | Expected | Result | Notes |
 |---|------|----------|--------|-------|
-| AU1 | Sign in with a valid Solid IdP (`https://solidcommunity.net`) | Redirects to IdP, returns authenticated, lands on feed | **PASS (2026-06-28 headed validation)** | Full OIDC loop confirmed: staging sign-in redirected to Solid consent and returned to authenticated `/feed` with `OIDC Redirect` auth chip. |
-| AU2 | Submit an empty IdP URL | Actionable error: a provider URL is required | **PASS (2026-06-28 headed validation)** | Landing sign-in panel now shows explicit message: `Enter your Identity Provider URL.` |
-| AU3 | Submit an `http://` non-localhost IdP | Actionable error: provider must use https | **PASS (2026-06-28 headed validation)** | Landing sign-in panel now shows explicit message: `URL must start with https://` |
-| AU4 | Sign out via Profile → Settings | Session cleared, returns to landing | — | Navigate to `/profile` while authenticated → tap ⚙ gear icon → `/settings` opens → tap **Sign Out** → session cleared and landing `/` restored. *(Settings tab removed from nav bar; gear icon on Profile is the new access path.)* |
-| AU5 | New-user seamless onboarding: handle + email + password (min 12) → Create Your Node | ZK proof → Pod + WebID created → lockb0x anchored on-chain → bridge auto sign-in → consent → authenticated at `/local` with no manual credential entry | **PASS (2026-07-10 `qa:smoke:auth`, staging run #46)** | Automated by `scripts/qa/staging-auth-evidence.mjs` (new-user journey); on-chain lockb0x contract ID + proof root asserted. |
-| AU6 | Returning user: manual sign-in with onboarding credentials (fresh browser) | IdP login → consent → authenticated session with the same WebID | **PASS (2026-07-10 `qa:smoke:auth`, staging run #46)** | Automated by `scripts/qa/staging-auth-evidence.mjs` (returning-user journey); WebID equality across journeys asserted. |
-| AU7 | Bridge failure fallback: bridge consume fails on the IdP login page | Login form re-enabled with fallback message; manual credentials complete sign-in | — | Fallback copy: “Secure sign-in could not be completed automatically…”. The user-chosen password guarantees no dead end. |
+| AU1 | Returning user taps **Sign In** (device with existing wallet) | One-tap Stellar signature login → authenticated feed. No IdP page, no password, no redirect leg, zero requests to `solid.nodezero.social` | RE-RUN REQUIRED (cutover) | Automated by `scripts/qa/staging-auth-evidence.mjs` (Journey 2). |
+| AU2 | Sign In on a device with no NodeZero account | Actionable error: no node exists for this device key; user is pointed to Create Your Node | RE-RUN REQUIRED (cutover) | Provisioner returns `401 no_account`; no fallback auth path exists. |
+| AU3 | Landing page audit | No password inputs, no identity-provider picker, no `solidcommunity.net` mention anywhere | RE-RUN REQUIRED (cutover) | Playwright `auth-invariant.spec.ts` (I5). |
+| AU4 | Sign out via Profile → Settings | Session destroyed (`nz.session.v2` cleared), returns to landing; every deep link redirects to `/` | RE-RUN REQUIRED (cutover) | Navigate `/profile` → ⚙ → `/settings` → **Sign Out**. |
+| AU5 | New-user seamless onboarding: handle + email → Create Your Node | ZK proof → Pod + WebID created → lockb0x anchored on-chain → **inline NodeZero session** → authenticated feed with no redirect leg and no password anywhere | RE-RUN REQUIRED (cutover) | Automated by `scripts/qa/staging-auth-evidence.mjs` (Journey 1); on-chain lockb0x asserted via stellar.expert. |
+| AU6 | Returning sign-in restores the same identity | Same WebID as onboarding; session carries lockb0x anchor metadata; client-side attestation check verifies | RE-RUN REQUIRED (cutover) | Automated (Journey 2); WebID equality asserted. |
+| AU7 | Fail-closed enforcement: tamper/clear the stored session, deep-link `/feed` | App lands on the sign-in page; forged record destroyed; no zombie state | RE-RUN REQUIRED (cutover) | Automated (Journey 3) + Playwright `auth-invariant.spec.ts` (I2). |
 
 ### Navigation UX (nav overflow fix + Settings-via-Profile)
 

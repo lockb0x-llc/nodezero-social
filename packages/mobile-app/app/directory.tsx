@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView, Platform } from 'react-native'
 import type { ProfileManager } from '@nodezero/solid-pod-sync'
-import { useSolid } from '../src/contexts/SolidContext'
+import { useNodeZeroSession } from '../src/contexts/NodeZeroSessionContext'
 import { getSolidPodSyncManagers } from '../src/solid/podSyncManagers'
 import { aesthetic } from '../src/theme/aesthetic'
 import { deriveNameFromWebId, parseDirectoryRecords, resolveDirectoryEndpoint } from '../src/directory/directorySource'
@@ -14,9 +14,10 @@ import {
 } from '../src/social/trustCircleStore'
 
 export default function CommunityDirectoryScreen(): JSX.Element {
-  const { session, webId, nodeSession, isLoggedIn, isSessionReady, signIn } = useSolid()
+  const { status, webId, authFetch } = useNodeZeroSession()
+  const isLoggedIn = status === 'authenticated'
   const managerRef = useRef<ProfileManager | null>(null)
-  const effectiveWebId = webId ?? nodeSession?.webId ?? null
+  const effectiveWebId = webId
 
   const [directoryLoading, setDirectoryLoading] = useState(false)
   const [communityDirectory, setCommunityDirectory] = useState<DirectoryEntry[]>([])
@@ -36,9 +37,9 @@ export default function CommunityDirectoryScreen(): JSX.Element {
 
       if (directoryEndpoint) {
         try {
-          const response = await session.fetch(directoryEndpoint)
+          const response = await authFetch(directoryEndpoint)
           if (response.ok) {
-            const payload = await response.json()
+            const payload = (await response.json()) as unknown
             for (const candidate of parseDirectoryRecords(payload)) {
               if (candidate.listed === false) continue
               seed.add(candidate.webId)
@@ -68,7 +69,7 @@ export default function CommunityDirectoryScreen(): JSX.Element {
     } finally {
       setDirectoryLoading(false)
     }
-  }, [effectiveWebId, session])
+  }, [authFetch, effectiveWebId])
 
   const {
     connections,
@@ -79,9 +80,7 @@ export default function CommunityDirectoryScreen(): JSX.Element {
     addConnection,
   } = useConnections({
     effectiveWebId,
-    session,
-    isSessionReady,
-    signIn,
+    authFetch,
     onConnectionsChanged: async () => {
       await loadCommunityDirectory(connections)
     },
@@ -94,9 +93,9 @@ export default function CommunityDirectoryScreen(): JSX.Element {
       return
     }
 
-    managerRef.current = getSolidPodSyncManagers(session).profileManager
+    managerRef.current = getSolidPodSyncManagers({ fetch: authFetch }).profileManager
     void loadConnections()
-  }, [isLoggedIn, loadConnections, session])
+  }, [authFetch, isLoggedIn, loadConnections])
 
   useEffect(() => {
     if (!isLoggedIn || !effectiveWebId || !managerRef.current) {

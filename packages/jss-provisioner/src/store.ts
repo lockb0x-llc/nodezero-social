@@ -1,35 +1,15 @@
-import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import { LockboxFactoryProvisioner } from './lockboxFactory.js'
 import type {
   BootstrapChallenge,
   BootstrapChallengeRequest,
   LockboxProvisioning,
-  OidcBridgeTicket,
   ProvisionStatus,
   StellarAuthChallenge,
-  StellarLoginToken,
 } from './types.js'
 
 const CHALLENGE_TTL_MS = Number(process.env.JSS_CHALLENGE_TTL_MS ?? 5 * 60_000)
 const STELLAR_CHALLENGE_TTL_MS = Number(process.env.JSS_STELLAR_CHALLENGE_TTL_MS ?? 5 * 60_000)
-const STELLAR_TOKEN_TTL_MS = Number(process.env.JSS_STELLAR_TOKEN_TTL_MS ?? 10 * 60_000)
-
-function resolveOidcBridgeTtlMs(): number {
-  const raw = Number(process.env.JSS_OIDC_BRIDGE_TTL_MS ?? 15 * 60_000)
-  return Number.isFinite(raw) && raw > 0 ? raw : 15 * 60_000
-}
-
-interface OidcBridgeRecord {
-  token: string
-  email: string
-  password: string
-  webId: string
-  podUrl: string
-  audience: string
-  consumerOrigin: string
-  issuer: string
-  expiresAt: string
-}
 
 function randomNonce(): string {
   return randomUUID().replace(/-/g, '')
@@ -50,11 +30,8 @@ function canonical(input: string): string {
 export class ProvisionStore {
   private challenges = new Map<string, BootstrapChallenge>()
   private jobs = new Map<string, ProvisionStatus>()
-  private oidcBridgeTickets = new Map<string, OidcBridgeRecord>()
-  private oidcBridgeTtlMs = resolveOidcBridgeTtlMs()
   private lockboxFactory = new LockboxFactoryProvisioner()
   private stellarChallenges = new Map<string, StellarAuthChallenge>()
-  private stellarLoginTokens = new Map<string, StellarLoginToken>()
 
   issueChallenge(input: BootstrapChallengeRequest): BootstrapChallenge {
     const now = new Date()
@@ -155,73 +132,15 @@ export class ProvisionStore {
     return this.jobs.get(jobId) ?? null
   }
 
-  issueOidcBridgeTicket(input: {
-    email: string
-    password: string
-    webId: string
-    podUrl: string
-    audience: string
-    consumerOrigin: string
-    issuer: string
-  }): OidcBridgeTicket {
-    const now = new Date()
-    const ticket: OidcBridgeRecord = {
-      token: randomNonce(),
-      email: canonical(input.email),
-      password: input.password,
-      webId: canonical(input.webId),
-      podUrl: canonical(input.podUrl),
-      audience: canonical(input.audience),
-      consumerOrigin: canonical(input.consumerOrigin),
-      issuer: canonical(input.issuer),
-      expiresAt: addMs(now, this.oidcBridgeTtlMs).toISOString(),
-    }
-
-    this.oidcBridgeTickets.set(ticket.token, ticket)
-    return {
-      token: ticket.token,
-      expiresAt: ticket.expiresAt,
-    }
-  }
-
-  consumeOidcBridgeTicket(input: {
-    token: string
-    audience: string
-    consumerOrigin: string
-    issuer: string
-  }): OidcBridgeRecord | null {
-    const key = canonical(input.token)
-    const ticket = this.oidcBridgeTickets.get(key) ?? null
-    if (!ticket) return null
-
-    if (ticket.audience !== canonical(input.audience)) {
-      return null
-    }
-    if (ticket.consumerOrigin !== canonical(input.consumerOrigin)) {
-      return null
-    }
-    if (ticket.issuer !== canonical(input.issuer)) {
-      return null
-    }
-
-    this.oidcBridgeTickets.delete(key)
-    if (new Date(ticket.expiresAt).getTime() < Date.now()) {
-      return null
-    }
-
-    return ticket
-  }
-
   // ---------------------------------------------------------------------------
-  // Stellar Auth — challenge / token lifecycle
+  // Stellar Auth — challenge lifecycle
   // ---------------------------------------------------------------------------
 
-  issueStellarChallenge(input: { stellarPublicKey: string; webId: string }): StellarAuthChallenge {
+  issueStellarChallenge(input: { stellarPublicKey: string }): StellarAuthChallenge {
     const challenge: StellarAuthChallenge = {
       challengeId: randomUUID(),
       nonce: randomNonce(),
       stellarPublicKey: canonical(input.stellarPublicKey),
-      webId: canonical(input.webId),
       expiresAt: addMs(new Date(), STELLAR_CHALLENGE_TTL_MS).toISOString(),
     }
     this.stellarChallenges.set(challenge.challengeId, challenge)
@@ -234,54 +153,5 @@ export class ProvisionStore {
     this.stellarChallenges.delete(challengeId)
     if (new Date(challenge.expiresAt).getTime() < Date.now()) return null
     return challenge
-  }
-
-  issueStellarLoginToken(webId: string): StellarLoginToken {
-    const token: StellarLoginToken = {
-      tokenId: randomUUID(),
-      webId: canonical(webId),
-      expiresAt: addMs(new Date(), STELLAR_TOKEN_TTL_MS).toISOString(),
-    }
-    this.stellarLoginTokens.set(token.tokenId, token)
-    return token
-  }
-
-  /**
-   * Validates the CSS plugin's HMAC-authenticated verify request and returns
-   * the webId for the token. Single-use: the token is deleted on success.
-   *
-   * @param tokenId    The raw UUID token value sent by the CSS plugin.
-   * @param audience   Must equal 'nz-css-stellar-login-v1'.
-   * @param hmacHeader The `x-nz-stellar-auth` header value from the CSS request.
-   * @param sharedSecret The HMAC key configured in both the CSS plugin and here.
-   */
-  consumeStellarLoginToken(input: {
-    tokenId: string
-    audience: string
-    hmacHeader: string
-    sharedSecret: string
-  }): { webId: string } | null {
-    const expectedAudience = 'nz-css-stellar-login-v1'
-    if (canonical(input.audience) !== expectedAudience) return null
-
-    // Verify HMAC — the CSS plugin signs `tokenId:audience` with the shared secret.
-    const expectedHmac = createHmac('sha256', input.sharedSecret)
-      .update(`${canonical(input.tokenId)}:${expectedAudience}`)
-      .digest('hex')
-    const providedHmac = Buffer.from(canonical(input.hmacHeader), 'utf8')
-    const expectedBuf = Buffer.from(expectedHmac, 'utf8')
-    if (
-      providedHmac.length !== expectedBuf.length ||
-      !timingSafeEqual(providedHmac, expectedBuf)
-    ) {
-      return null
-    }
-
-    const record = this.stellarLoginTokens.get(canonical(input.tokenId)) ?? null
-    if (!record) return null
-    this.stellarLoginTokens.delete(canonical(input.tokenId))
-    if (new Date(record.expiresAt).getTime() < Date.now()) return null
-
-    return { webId: record.webId }
   }
 }

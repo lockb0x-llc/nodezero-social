@@ -10,7 +10,7 @@
  * icon on the Profile screen.
  */
 
-import { SolidProvider, useSolid } from '../src/contexts/SolidContext'
+import { NodeZeroSessionProvider, useNodeZeroSession } from '../src/contexts/NodeZeroSessionContext'
 import { DiscoveryProvider } from '../src/contexts/DiscoveryContext'
 import { WalletProvider, useWallet } from '../src/contexts/WalletContext'
 import { Stack, Link, usePathname, useRouter } from 'expo-router'
@@ -23,16 +23,6 @@ import * as mashlibPaneProvider from '../src/solid/mashlibPaneProvider'
 
 const PUBLIC_ROUTES = new Set(['/'])
 const TRANSITION_ROUTES = new Set(['/onboarding'])
-const NODE_SESSION_VERIFICATION_ALLOWED_ROUTES = new Set([
-  '/local',
-  '/compose',
-  '/docustream',
-  '/feed',
-  '/directory',
-  '/backpack',
-  '/profile',
-  '/settings',
-])
 
 function normalizeRoute(pathname: string): string {
   if (!pathname) return '/'
@@ -40,11 +30,16 @@ function normalizeRoute(pathname: string): string {
 }
 
 /**
- * Global auth gate: authenticated users must also have a verified pairing
- * before entering protected surfaces.
+ * Global auth gate — the SINGLE authorization decision point.
+ *
+ * Session invariant: `status === 'authenticated'` means the backend proved
+ * live Solid access when the session was issued. Unauthenticated visitors are
+ * always returned to the home sign-in page; authenticated users must also
+ * pass the client-side on-chain lockb0x attestation check before entering
+ * protected surfaces. There is no other state.
  */
 function RouteGuard(): null {
-  const { isLoggedIn, isRestoring, nodeSession, signOut } = useSolid()
+  const { status, signOut } = useNodeZeroSession()
   const { attestationStatus } = useWallet()
   const pathname = usePathname()
   const router = useRouter()
@@ -52,11 +47,11 @@ function RouteGuard(): null {
   const pendingProtectedRouteRef = React.useRef<string | null>(null)
 
   React.useEffect(() => {
-    if (isRestoring) return
+    if (status === 'restoring') return
 
     const route = normalizeRoute(pathname)
 
-    if (!isLoggedIn) {
+    if (status === 'unauthenticated') {
       isSignOutInFlightRef.current = false
       pendingProtectedRouteRef.current = null
       if (!PUBLIC_ROUTES.has(route)) {
@@ -67,11 +62,10 @@ function RouteGuard(): null {
 
     if (attestationStatus === 'verified') {
       isSignOutInFlightRef.current = false
-      const defaultTarget = nodeSession ? '/local' : '/feed'
       const pendingTarget = pendingProtectedRouteRef.current
 
       if (PUBLIC_ROUTES.has(route) || TRANSITION_ROUTES.has(route)) {
-        router.replace(pendingTarget ?? defaultTarget)
+        router.replace(pendingTarget ?? '/feed')
         pendingProtectedRouteRef.current = null
       }
 
@@ -82,7 +76,9 @@ function RouteGuard(): null {
       return
     }
 
-    if (attestationStatus === 'unlinked' || attestationStatus === 'error') {
+    if (attestationStatus === 'unlinked') {
+      // 'unlinked' means the lockbox is confirmed absent after retries — sign
+      // out and clear local state so the user can re-onboard cleanly.
       pendingProtectedRouteRef.current = null
       if (!isSignOutInFlightRef.current) {
         isSignOutInFlightRef.current = true
@@ -94,31 +90,35 @@ function RouteGuard(): null {
       return
     }
 
-    // During post-login attestation checks, keep node-session users on the
-    // requested feature route instead of bouncing through onboarding/local.
-    // This avoids route churn while verification settles and preserves intent.
-    if (nodeSession && NODE_SESSION_VERIFICATION_ALLOWED_ROUTES.has(route)) {
+    if (attestationStatus === 'error') {
+      // 'error' is a transient failure (network, RPC timeout) — do NOT sign out
+      // or clear the session.  Keep the user on the onboarding screen where they
+      // can see the error message and choose to return to sign-in.
+      pendingProtectedRouteRef.current = null
+      if (!TRANSITION_ROUTES.has(route) && !PUBLIC_ROUTES.has(route)) {
+        router.replace('/onboarding')
+      }
       return
     }
 
-    // Logged in but not yet verified: only onboarding is allowed.
+    // Authenticated but attestation still verifying: only onboarding is allowed.
     if (!TRANSITION_ROUTES.has(route)) {
       pendingProtectedRouteRef.current = route
       router.replace('/onboarding')
     }
-  }, [attestationStatus, isLoggedIn, isRestoring, nodeSession, pathname, router, signOut])
+  }, [attestationStatus, pathname, router, signOut, status])
 
   return null
 }
 
 /** Navigation bar rendered at the bottom of the screen on web only. */
 function WebNavBar(): JSX.Element | null {
-  const { isLoggedIn } = useSolid()
+  const { status } = useNodeZeroSession()
   const { attestationStatus } = useWallet()
   const pathname = usePathname()
 
   // Only render on web and only when the user is authenticated.
-  if (Platform.OS !== 'web' || !isLoggedIn || attestationStatus !== 'verified') return null
+  if (Platform.OS !== 'web' || status !== 'authenticated' || attestationStatus !== 'verified') return null
 
   // Settings is intentionally excluded: it is accessed via the gear icon
   // on the Profile screen, keeping the nav bar to 6 items and ensuring
@@ -222,7 +222,7 @@ export default function RootLayout(): JSX.Element {
   }, [])
 
   return (
-    <SolidProvider>
+    <NodeZeroSessionProvider>
       <DiscoveryProvider>
         <WalletProvider>
           <RouteGuard />
@@ -248,7 +248,7 @@ export default function RootLayout(): JSX.Element {
           <WebNavBar />
         </WalletProvider>
       </DiscoveryProvider>
-    </SolidProvider>
+    </NodeZeroSessionProvider>
   )
 }
 

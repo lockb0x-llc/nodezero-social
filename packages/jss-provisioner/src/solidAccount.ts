@@ -157,11 +157,17 @@ async function createDpopSigner(): Promise<DpopSigner> {
   }
 }
 
+interface TokenExchangeResult {
+  accessToken: string
+  /** Epoch ms when the access token expires (best-effort from expires_in). */
+  expiresAtMs: number
+}
+
 async function exchangeClientCredentials(
   baseUrl: string,
   credentials: ClientCredentials,
   signer: DpopSigner,
-): Promise<string> {
+): Promise<TokenExchangeResult> {
   const tokenUrl = `${baseUrl}/.oidc/token`
   const basic = Buffer.from(
     `${encodeURIComponent(credentials.id)}:${encodeURIComponent(credentials.secret)}`,
@@ -175,11 +181,62 @@ async function exchangeClientCredentials(
     },
     body: 'grant_type=client_credentials&scope=webid',
   })
-  const body = (await res.json()) as { access_token?: string }
+  const body = (await res.json()) as { access_token?: string; expires_in?: number }
   if (!res.ok || !body.access_token) {
     throw new Error(`CSS token exchange failed (${res.status}): ${JSON.stringify(body)}`)
   }
-  return body.access_token
+  const expiresInSec = typeof body.expires_in === 'number' && body.expires_in > 0 ? body.expires_in : 600
+  return {
+    accessToken: body.access_token,
+    expiresAtMs: Date.now() + expiresInSec * 1000,
+  }
+}
+
+export interface PodAccessToken {
+  accessToken: string
+  expiresAtMs: number
+  /** Builds a per-request DPoP proof bound to this access token. */
+  proof: (htu: string, htm: string) => string
+}
+
+/**
+ * Exchanges stored client credentials for a live DPoP-bound access token.
+ * This is the *only* way any component obtains Solid access — a failure here
+ * means the session invariant does not hold and callers must fail closed.
+ */
+export async function mintPodAccessToken(
+  baseUrl: string,
+  credentials: ClientCredentials,
+): Promise<PodAccessToken> {
+  const { createHash } = await import('node:crypto')
+  const normalizedBase = baseUrl.replace(/\/+$/, '')
+  const signer = await createDpopSigner()
+  const exchange = await exchangeClientCredentials(normalizedBase, credentials, signer)
+  const ath = b64url(createHash('sha256').update(exchange.accessToken).digest())
+  return {
+    accessToken: exchange.accessToken,
+    expiresAtMs: exchange.expiresAtMs,
+    proof: (htu, htm) => signer.proof(htu, htm, ath),
+  }
+}
+
+/**
+ * Fail-closed Pod probe: verifies the minted token can actually read the Pod
+ * root. Used at session issuance so a NodeZero session is never handed out
+ * without live, working Solid access.
+ */
+export async function probePodAccess(token: PodAccessToken, podUrl: string): Promise<void> {
+  const target = podUrl.endsWith('/') ? podUrl : `${podUrl}/`
+  const res = await fetch(target, {
+    method: 'HEAD',
+    headers: {
+      authorization: `DPoP ${token.accessToken}`,
+      dpop: token.proof(target, 'HEAD'),
+    },
+  })
+  if (!res.ok) {
+    throw new Error(`Pod access probe failed (${res.status}) for ${target}`)
+  }
 }
 
 /**
@@ -191,17 +248,13 @@ export async function writePodDocument(
   credentials: ClientCredentials,
   options: { resourceUrl: string; contentType: string; body: string },
 ): Promise<string> {
-  const { createHash } = await import('node:crypto')
-  const normalizedBase = baseUrl.replace(/\/+$/, '')
-  const signer = await createDpopSigner()
-  const accessToken = await exchangeClientCredentials(normalizedBase, credentials, signer)
-  const ath = b64url(createHash('sha256').update(accessToken).digest())
+  const token = await mintPodAccessToken(baseUrl, credentials)
 
   const res = await fetch(options.resourceUrl, {
     method: 'PUT',
     headers: {
-      authorization: `DPoP ${accessToken}`,
-      dpop: signer.proof(options.resourceUrl, 'PUT', ath),
+      authorization: `DPoP ${token.accessToken}`,
+      dpop: token.proof(options.resourceUrl, 'PUT'),
       'content-type': options.contentType,
     },
     body: options.body,
@@ -248,12 +301,8 @@ export async function patchPodProfileAnchor(
   webId: string,
   anchor: { lockboxContractId: string; stellarPublicKey: string; accountCommitmentHex: string },
 ): Promise<string> {
-  const { createHash } = await import('node:crypto')
-  const normalizedBase = baseUrl.replace(/\/+$/, '')
   const cardUrl = webId.split('#')[0]
-  const signer = await createDpopSigner()
-  const accessToken = await exchangeClientCredentials(normalizedBase, credentials, signer)
-  const ath = b64url(createHash('sha256').update(accessToken).digest())
+  const token = await mintPodAccessToken(baseUrl, credentials)
 
   const lit = (s: string): string => `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
   const sparql =
@@ -267,8 +316,8 @@ export async function patchPodProfileAnchor(
   const res = await fetch(cardUrl, {
     method: 'PATCH',
     headers: {
-      authorization: `DPoP ${accessToken}`,
-      dpop: signer.proof(cardUrl, 'PATCH', ath),
+      authorization: `DPoP ${token.accessToken}`,
+      dpop: token.proof(cardUrl, 'PATCH'),
       'content-type': 'application/sparql-update',
     },
     body: sparql,

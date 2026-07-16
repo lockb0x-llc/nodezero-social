@@ -22,8 +22,7 @@ import {
   Platform,
 } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
-import Constants from 'expo-constants'
-import { useSolid } from '../src/contexts/SolidContext'
+import { useNodeZeroSession } from '../src/contexts/NodeZeroSessionContext'
 import type { ProfileManager, UserProfile } from '@nodezero/solid-pod-sync'
 import { getSolidPodSyncManagers } from '../src/solid/podSyncManagers'
 import { Ionicons } from '@expo/vector-icons'
@@ -40,7 +39,8 @@ const EMPTY_PROFILE: UserProfile = {
 }
 
 export default function ProfileScreen(): JSX.Element {
-  const { session, webId, nodeSession, isLoggedIn, isSessionReady, signIn } = useSolid()
+  const { status, webId, authFetch } = useNodeZeroSession()
+  const isLoggedIn = status === 'authenticated'
   const managerRef = useRef<ProfileManager | null>(null)
 
   const [profile, setProfile] = useState<UserProfile>(EMPTY_PROFILE)
@@ -54,9 +54,7 @@ export default function ProfileScreen(): JSX.Element {
 
   const { peerWebId } = useLocalSearchParams<{ peerWebId?: string }>()
   const router = useRouter()
-  const effectiveWebId = webId ?? nodeSession?.webId ?? null
-  // Pod writes require an authenticated OIDC fetch context; node-session data is identity metadata only.
-  const canWriteProfile = isSessionReady
+  const effectiveWebId = webId
 
   const {
     connectionsLoading,
@@ -68,34 +66,13 @@ export default function ProfileScreen(): JSX.Element {
     removeConnection,
   } = useConnections({
     effectiveWebId,
-    session,
-    isSessionReady,
-    signIn,
+    authFetch,
   })
-
-  const ensureSolidWriteReady = useCallback(async (forceReauth = false): Promise<boolean> => {
-    if (!forceReauth && canWriteProfile) return true
-
-    const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
-    const issuerBase = (appExtra?.nodeZeroIssuerUrl ?? '').replace(/\/+$/, '')
-    if (!issuerBase) {
-      Alert.alert('Sign in required', 'Solid session is still restoring. Please use Sign In and try again.')
-      return false
-    }
-
-    try {
-      await signIn(issuerBase)
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unable to start sign-in.'
-      Alert.alert('Sign in required', message)
-    }
-    return false
-  }, [canWriteProfile, signIn])
 
   // Peer view: load semantic overlap when viewing another user's profile.
   useEffect(() => {
     if (!peerWebId || !isLoggedIn) return
-    getSolidPodSyncManagers(session)
+    getSolidPodSyncManagers({ fetch: authFetch })
       .socialGraph
       .findSemanticOverlap(peerWebId, profile.interests)
       .then((threads) => {
@@ -104,17 +81,17 @@ export default function ProfileScreen(): JSX.Element {
       .catch(() => {
         setSharedThreads([])
       })
-  }, [peerWebId, isLoggedIn, profile.interests, session])
+  }, [authFetch, peerWebId, isLoggedIn, profile.interests])
 
-  // Initialise ProfileManager once session is available.
+  // Initialise ProfileManager once the session is available.
   useEffect(() => {
     if (!isLoggedIn) {
       return
     }
 
-    managerRef.current = getSolidPodSyncManagers(session).profileManager
+    managerRef.current = getSolidPodSyncManagers({ fetch: authFetch }).profileManager
     void loadConnections()
-  }, [isLoggedIn, loadConnections, session])
+  }, [authFetch, isLoggedIn, loadConnections])
 
   // Load profile from Pod.
   useEffect(() => {
@@ -140,26 +117,8 @@ export default function ProfileScreen(): JSX.Element {
   const saveProfile = useCallback(async () => {
     if (!effectiveWebId || !managerRef.current) return
 
-    if (!canWriteProfile) {
-      const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
-      const issuerBase = (appExtra?.nodeZeroIssuerUrl ?? '').replace(/\/+$/, '')
-      if (!issuerBase) {
-        Alert.alert('Sign in required', 'Solid session is still restoring. Please use Sign In and try again.')
-        return
-      }
-
-      setSaving(true)
-      try {
-        await signIn(issuerBase)
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unable to start sign-in.'
-        Alert.alert('Sign in required', message)
-      } finally {
-        setSaving(false)
-      }
-      return
-    }
-
+    // Session invariant: being authenticated guarantees a live Pod write
+    // path through the proxy — there is no "restoring" write state anymore.
     const podRoot = effectiveWebId.split('/profile/')[0] + '/'
     const updatedProfile: UserProfile = {
       ...profile,
@@ -186,7 +145,7 @@ export default function ProfileScreen(): JSX.Element {
     } finally {
       setSaving(false)
     }
-  }, [canWriteProfile, effectiveWebId, interestsInput, profile, signIn])
+  }, [effectiveWebId, interestsInput, profile])
 
   if (!isLoggedIn) {
     return (

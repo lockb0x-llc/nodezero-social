@@ -12,7 +12,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useSolid } from '../src/contexts/SolidContext';
+import { useNodeZeroSession } from '../src/contexts/NodeZeroSessionContext';
 import { useDiscovery } from '../src/contexts/DiscoveryContext';
 import { useWallet } from '../src/contexts/WalletContext';
 import { P2PChannel } from '@nodezero/p2p-comms';
@@ -40,7 +40,7 @@ export default function ComposeScreen() {
   const [audience, setAudience] = useState<AudienceType>('verified');
   const [sending, setSending] = useState(false);
 
-  const { session, webId } = useSolid();
+  const { authFetch, webId } = useNodeZeroSession();
   const { surroundingNodes } = useDiscovery();
   // verifyPoH may not exist on the wallet context type; cast as a stub if absent
   const walletCtx = useWallet() as { verifyPoH?: (webId: string) => Promise<boolean> };
@@ -65,9 +65,9 @@ export default function ComposeScreen() {
           })
         );
       } else if (audience === 'foaf') {
-        // Write payload to Pod /outbox/ container via session.fetch
+        // Write payload to Pod /outbox/ container via the authenticated proxy fetch
         const podRoot = (webId ?? '').split('/profile/')[0] + '/';
-        const { socialGraph: graph } = getSolidPodSyncManagers(session);
+        const { socialGraph: graph } = getSolidPodSyncManagers({ fetch: authFetch });
         const connections = toWebIdList(await graph.listConnections(podRoot).catch(() => []));
         const trustCircleMembers = webId ? await listTrustCircleMembers(webId) : [];
         const recipientIds = resolveAudienceRecipients({
@@ -78,7 +78,7 @@ export default function ComposeScreen() {
         const payload = JSON.stringify({ text: postText, audience, ts: Date.now() });
         await Promise.allSettled(
           recipientIds.map(() =>
-            session.fetch(
+            authFetch(
               podRoot +
                 'outbox/' +
                 Date.now() +
@@ -96,7 +96,7 @@ export default function ComposeScreen() {
       } else if (audience === 'verified') {
         // Same as foaf but guard each recipient with verifyPoH check
         const podRoot = (webId ?? '').split('/profile/')[0] + '/';
-        const { socialGraph: graph } = getSolidPodSyncManagers(session);
+        const { socialGraph: graph } = getSolidPodSyncManagers({ fetch: authFetch });
         const connections = toWebIdList(await graph.listConnections(podRoot).catch(() => []));
         const trustCircleMembers = webId ? await listTrustCircleMembers(webId) : [];
         const recipientIds = resolveAudienceRecipients({
@@ -112,7 +112,7 @@ export default function ComposeScreen() {
               console.warn('[compose] skipping unverified recipient', recipientWebId);
               return;
             }
-            return session.fetch(
+            return authFetch(
               podRoot +
                 'outbox/' +
                 Date.now() +

@@ -20,10 +20,10 @@ import { test, expect } from '@playwright/test'
 // Unauthenticated users must not access protected surfaces.
 test('T1: unauthenticated /settings navigation is redirected to landing', async ({ page }) => {
   await page.goto('/settings')
-  await page.waitForLoadState('networkidle')
-  expect(page.url()).toMatch(/\/$/)
+  // The guard redirect is client-side; wait for the URL to settle on '/'.
+  await page.waitForURL((url) => url.pathname === '/' || url.pathname === '', { timeout: 30_000 })
   await expect(page.locator('#root')).toBeAttached()
-  await expect(page.getByText('Sign in with your Solid Pod')).toBeVisible()
+  await expect(page.getByText('Sign in to your node').first()).toBeVisible()
 })
 
 // ─── T2: Nav bar contains no Settings anchor when unauthenticated ────────────
@@ -31,8 +31,8 @@ test('T1: unauthenticated /settings navigation is redirected to landing', async 
 // in the rendered DOM when the user is not logged in.
 test('T2: unauthenticated page has no nav Settings link', async ({ page }) => {
   await page.goto('/feed')
-  await page.waitForLoadState('networkidle')
-  expect(page.url()).toMatch(/\/$/)
+  // The guard redirect is client-side; wait for the URL to settle on '/'.
+  await page.waitForURL((url) => url.pathname === '/' || url.pathname === '', { timeout: 30_000 })
   // Check that no anchor pointing to /settings exists in the nav bar.
   // The nav bar renders only for authenticated users; this asserts the
   // unauthenticated state is safe and correct.
@@ -62,8 +62,8 @@ test('T4: no horizontal overflow at 320px viewport width', async ({ page }) => {
 test('T5: /profile renders app shell at 375px without overflow', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 })
   await page.goto('/profile')
-  await page.waitForLoadState('networkidle')
-  expect(page.url()).toMatch(/\/$/)
+  // The guard redirect is client-side; wait for the URL to settle on '/'.
+  await page.waitForURL((url) => url.pathname === '/' || url.pathname === '', { timeout: 30_000 })
   await expect(page.locator('#root')).toBeAttached()
   const scrollWidth = await page.evaluate(() => document.body.scrollWidth)
   expect(scrollWidth).toBeLessThanOrEqual(375)
@@ -85,13 +85,15 @@ test('T6: /feed renders app shell at 1280px without JS errors', async ({ page })
 })
 
 // ─── T7: Landing shows always-visible sign-in card ─────────────────────────
-test('T7: landing shows Solid sign-in card by default', async ({ page }) => {
+test('T7: landing shows the NodeZero sign-in card by default', async ({ page }) => {
   await page.goto('/')
   await page.waitForLoadState('networkidle')
 
-  await expect(page.getByText('Sign in with your Solid Pod')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Identity provider' })).toBeVisible()
-  await expect(page.getByText('Sign In', { exact: true })).toBeVisible()
+  await expect(page.getByText('Sign in to your node').first()).toBeVisible()
+  // Cutover contract: no identity-provider picker and no password field exist.
+  await expect(page.getByRole('button', { name: 'Identity provider' })).toHaveCount(0)
+  await expect(page.locator('input[type="password"]')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Sign In' }).first()).toBeVisible()
 })
 
 // ─── T8: Legacy hero buttons are removed from landing ──────────────────────
@@ -106,8 +108,8 @@ test('T8: landing no longer renders legacy hero toggle buttons', async ({ page }
 // ─── T9: unauthenticated /settings hides protected wallet metadata ──────────
 test('T9: unauthenticated /settings does not expose protected wallet rows', async ({ page }) => {
   await page.goto('/settings')
-  await page.waitForLoadState('networkidle')
-  expect(page.url()).toMatch(/\/$/)
+  // The guard redirect is client-side; wait for the URL to settle on '/'.
+  await page.waitForURL((url) => url.pathname === '/' || url.pathname === '', { timeout: 30_000 })
 
   await expect(page.getByText('Lockb0x Factory')).toHaveCount(0)
   await expect(page.getByText('User Lockb0x')).toHaveCount(0)
@@ -117,8 +119,8 @@ test('T9: unauthenticated /settings does not expose protected wallet rows', asyn
 // ─── T10: unauthenticated /settings hides protected data-management actions ──
 test('T10: unauthenticated /settings does not expose node-data actions', async ({ page }) => {
   await page.goto('/settings')
-  await page.waitForLoadState('networkidle')
-  expect(page.url()).toMatch(/\/$/)
+  // The guard redirect is client-side; wait for the URL to settle on '/'.
+  await page.waitForURL((url) => url.pathname === '/' || url.pathname === '', { timeout: 30_000 })
 
   await expect(page.getByText('Export Recovery Bundle')).toHaveCount(0)
   await expect(page.getByText('Delete Node Data')).toHaveCount(0)

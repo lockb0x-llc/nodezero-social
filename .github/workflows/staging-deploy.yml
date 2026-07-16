@@ -106,22 +106,6 @@ jobs:
             exit 1
           fi
 
-      - name: Verify Solid login template bridge markers (non-blocking)
-        continue-on-error: true
-        run: |
-          set -euo pipefail
-
-          login_url="https://solid.nodezero.social/.account/login/password/"
-          echo "Checking login template at $login_url"
-
-          body="$(curl -sS --max-time 20 "$login_url")"
-          printf '%s' "$body" > /tmp/solid-login.html
-
-          grep -q 'nz-solid-css-login-v1' /tmp/solid-login.html
-          grep -q 'Secure sign-in could not be completed automatically' /tmp/solid-login.html
-
-          echo "Login template marker verification passed."
-
       - name: Build JSS provisioner
         run: pnpm --filter @nodezero/jss-provisioner build
 
@@ -146,7 +130,9 @@ jobs:
               JSS_ISSUER_URL="https://solid.nodezero.social" \
               JSS_PUBLIC_PROVISIONER_BASE_URL="https://${JSS_PROVISIONER_APP_NAME}.azurewebsites.net" \
               JSS_SOLID_CSS_BASE_URL="https://solid.nodezero.social" \
-              JSS_OIDC_BRIDGE_TTL_MS="900000" \
+              JSS_SESSION_SIGNING_KEY="${{ secrets.JSS_SESSION_SIGNING_KEY }}" \
+              JSS_CREDENTIALS_ENC_KEY="${{ secrets.JSS_CREDENTIALS_ENC_KEY }}" \
+              JSS_CREDENTIALS_TABLE_SAS_URL="${{ secrets.JSS_CREDENTIALS_TABLE_SAS_URL }}" \
               JSS_ALLOWED_ORIGINS="https://staging.nodezero.social,https://nodezero.social,https://www.nodezero.social,https://solid.nodezero.social,http://localhost:19006,http://localhost:8081"
 
       - name: Deploy JSS provisioner to App Service
@@ -226,9 +212,6 @@ jobs:
           NZ_ZK_MANIFEST_URL: https://stki7yquyjmnskg.blob.core.windows.net/zk-artifacts/zk-testnet-artifacts.json
           NZ_NODEZERO_ISSUER_URL: https://solid.nodezero.social/
           NZ_NODEZERO_DIRECTORY_URL: https://solid.nodezero.social/public/nodezero-pod-holders.json
-          NZ_SOLID_OIDC_ISSUER_URL: https://solidcommunity.net/
-          NZ_SOLID_SIGNUP_URL: https://solidcommunity.net/register
-          NZ_SOLID_ACCOUNT_PORTAL_URL: https://solidcommunity.net/
           NZ_SEAMLESS_ONBOARDING_ENABLED: 'true'
           NZ_JSS_PROVISIONER_URL: https://nodezero-social-staging-testnet-provisioner.azurewebsites.net
           NZ_SOLID_BOOTSTRAP_ENABLED: 'true'
@@ -353,40 +336,16 @@ jobs:
           exit 1
 
       # BLOCKING auth release gate: new-user onboarding (Pod + WebID + Stellar
-      # lockb0x anchor + ZK attestation + OIDC bridge sign-in) and
-      # returning-user credential authentication, end-to-end on staging.
+      # lockb0x anchor + ZK attestation + inline NodeZero session), returning
+      # one-tap Stellar sign-in, and fail-closed session enforcement —
+      # end-to-end on staging. The browser must never contact the CSS origin.
+      # No retry: session issuance is a single server round-trip with no
+      # redirect-timing window.
       - name: Run onboarding/authentication E2E gate
         env:
           STAGING_BASE_URL: https://staging.nodezero.social
-          AUTH_E2E_REDIRECT_TIMEOUT_MS: '480000'
           AUTH_E2E_SESSION_TIMEOUT_MS: '360000'
-          AUTH_E2E_BRIDGE_GRACE_MS: '30000'
-          AUTH_E2E_BRIDGE_STALL_MS: '60000'
-        run: |
-          set -euo pipefail
-
-          for attempt in 1 2; do
-            echo "[auth-gate] Attempt ${attempt}/2"
-            attempt_log="/tmp/auth-gate-attempt-${attempt}.log"
-            if pnpm qa:smoke:auth 2>&1 | tee "$attempt_log"; then
-              echo "[auth-gate] PASS on attempt ${attempt}."
-              exit 0
-            fi
-
-            tail_compact="$(grep -E '\[auth-evidence\]|FAIL:' "$attempt_log" | tail -n 12 | tr '\n' '|' | sed 's/|$//')"
-            if [ -z "$tail_compact" ]; then
-              tail_compact="$(tail -n 12 "$attempt_log" | tr '\n' '|' | sed 's/|$//')"
-            fi
-            echo "::error title=Auth gate attempt ${attempt} failed::${tail_compact}"
-
-            if [ "$attempt" -lt 2 ]; then
-              echo "[auth-gate] Attempt ${attempt} failed. Waiting 20s before retry..."
-              sleep 20
-            fi
-          done
-
-          echo "[auth-gate] FAIL after 2 attempts."
-          exit 1
+        run: pnpm qa:smoke:auth
 
       # Application-feature proofs (DocuStream/mashlib). NOT part of the auth
       # release gate — failures surface for triage without blocking identity.
@@ -399,9 +358,8 @@ jobs:
           NZ_LOCKBOX_CONTRACT_ID: CB36LY5WZLJNMY4DHRXQER6LU3L4E5MGFYT2XSJG7ZJZV5SIIOKODT2H
           NZ_ZK_ARTIFACTS_URL: https://stki7yquyjmnskg.blob.core.windows.net/zk-artifacts/
           NZ_ZK_MANIFEST_URL: https://stki7yquyjmnskg.blob.core.windows.net/zk-artifacts/zk-testnet-artifacts.json
-          NZ_SOLID_OIDC_ISSUER_URL: https://solidcommunity.net/
-          NZ_SOLID_SIGNUP_URL: https://solidcommunity.net/register
           NZ_NODEZERO_ISSUER_URL: https://solid.nodezero.social/
+          NZ_JSS_PROVISIONER_URL: https://nodezero-social-staging-testnet-provisioner.azurewebsites.net
           NZ_SOLID_BOOTSTRAP_ENABLED: 'true'
           NZ_MASHLIB_EXPLORER_ENABLED: 'true'
           NZ_MASHLIB_MODULE_ID: nodezero:mashlib-pane-provider

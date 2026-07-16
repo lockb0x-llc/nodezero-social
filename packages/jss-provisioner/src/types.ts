@@ -76,11 +76,6 @@ export interface OidcBridgeTicket {
   expiresAt: string
 }
 
-export interface OidcBridgeConsumeRequest {
-  token: string
-  audience: string
-}
-
 // ---------------------------------------------------------------------------
 // Stellar Auth
 // ---------------------------------------------------------------------------
@@ -90,29 +85,15 @@ export interface StellarAuthChallenge {
   challengeId: string
   nonce: string
   stellarPublicKey: string
-  webId: string
-  expiresAt: string
-}
-
-/** In-memory record for a minted login token awaiting verify callback from CSS. */
-export interface StellarLoginToken {
-  tokenId: string
-  webId: string
   expiresAt: string
 }
 
 export interface StellarChallengeRequest {
   stellarPublicKey: string
-  webId: string
 }
 
 export interface StellarTokenRequest {
   challengeId: string
   stellarPublicKey: string
   signatureBase64: string
-}
-
-export interface StellarVerifyRequest {
-  token: string
-  audience: string
 }

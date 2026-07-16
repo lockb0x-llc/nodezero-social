@@ -1,7 +1,7 @@
 import React from 'react'
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useRouter } from 'expo-router'
-import { useSolid } from '../src/contexts/SolidContext'
+import { useNodeZeroSession } from '../src/contexts/NodeZeroSessionContext'
 import { useWallet } from '../src/contexts/WalletContext'
 import { ProgressStepLadder } from '../src/components/ProgressStepLadder'
 import { aesthetic } from '../src/theme/aesthetic'
@@ -15,17 +15,17 @@ const STATUS_TEXT: Record<string, string> = {
 }
 
 export default function OnboardingScreen(): JSX.Element {
-  const { isLoggedIn, isRestoring, signOut } = useSolid()
+  const { status, signOut } = useNodeZeroSession()
   const { attestationStatus, attestationMessage, verificationSteps } = useWallet()
   const router = useRouter()
 
   React.useEffect(() => {
-    if (isRestoring) return
+    if (status === 'restoring') return
 
-    if (!isLoggedIn) {
+    if (status === 'unauthenticated') {
       router.replace('/')
     }
-  }, [isLoggedIn, isRestoring, router])
+  }, [router, status])
 
   return (
     <View style={styles.root}>

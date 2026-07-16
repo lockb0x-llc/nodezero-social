@@ -35,8 +35,11 @@ Primary packages and responsibilities:
   connections.
 - `pnpm qa:smoke:community-directory` provides acceptance evidence for tab
   sequence and directory availability.
-- The staging deploy workflow keeps `pnpm qa:smoke:auth` as a blocking gate,
-  with one controlled retry for transient IdP/OIDC timing failures.
+- Authentication is 100% internal (cutover complete): NodeZero sessions are
+  issued by the provisioner and all Pod traffic flows through the Pod Access
+  Proxy (`/v1/pod-proxy/*`). The staging deploy workflow keeps
+  `pnpm qa:smoke:auth` as a blocking gate (no retry — session issuance has
+  no redirect-timing window).
 
 ## Mandatory policy constraints
 Preserve environment isolation at all times:
@@ -47,33 +50,41 @@ Preserve environment isolation at all times:
 - Do not deploy with `infrastructure/azure/main.parameters.example.json`.
 
 ## Identity provider policy
-- NodeZero operates its own hosted Solid server: the **Node Zero Community Server** at `https://solid.nodezero.social/` (Community Solid Server on Azure Container Apps, `infrastructure/azure/solid-server.bicep`).
-- The Node Zero Community Server is the **default identity provider** in every sign-in and signup surface. `solidcommunity.net` is only a secondary option for users with an external Solid Pod — never the default.
-- `NZ_NODEZERO_ISSUER_URL` drives this. `app.config.js` defaults it to the hosted staging Community Server for local/staging; strict profiles fail the build if it is missing.
-- Web bundles MUST be built with `NZ_ENV_PROFILE=staging-testnet` (or production) and the full variable set — a bundle built under the `local` profile silently drops the Community Server from the sign-in options. The staging workflow's "Build Expo web artifact" step is the reference variable set.
+- NodeZero operates its own hosted Solid server: the **Node Zero Community Server** at `https://solid.nodezero.social/` (Community Solid Server on Azure Container Apps, `infrastructure/azure/solid-server.bicep`). It is the Pod host — **users never authenticate against it**.
+- Authentication is internal-only: the provisioner (`packages/jss-provisioner`) is the sole identity authority. `solidcommunity.net`/external IdPs are not offered anywhere.
+- `NZ_NODEZERO_ISSUER_URL` identifies the Pod host origin (URL recognition + WebID derivation). `NZ_JSS_PROVISIONER_URL` identifies the session/proxy authority. `app.config.js` fails strict-profile builds if either is missing.
+- Web bundles MUST be built with `NZ_ENV_PROFILE=staging-testnet` (or production) and the full variable set. The staging workflow's "Build Expo web artifact" step is the reference variable set.
 
 ## Authentication flow contract (separation of concerns)
 Onboarding/authentication is a standalone concern, separate from application
 features (feed, docustream, backpack, etc.). Application features consume an
 authenticated session; they never participate in establishing one.
 
-- Onboarding requires a **user-chosen password** (min 12 chars). The
-  provisioner `POST /v1/solid-account` rejects missing/short passwords; never
-  reintroduce server-generated credentials the user does not know.
-- The OIDC bridge auto sign-in uses an **explicit handoff leg**: app → IdP
-  login page with `nz_oidc_bridge` + `nz_oidc_bridge_consume` + validated
-  `nz_return` as top-level query params → template consumes ticket and logs in
-  via the CSS **account API** (never native `form.submit()`, which is
-  DOM-clobbered) → back to app → automatic OIDC resume (`nz_bridge_return=1`).
-  Bridge params buried inside the OIDC `redirect_uri` are NOT discoverable by
-  the login page — do not regress to that design.
-- Every bridge failure must leave the login form usable for manual
-  credentials (fallback path). See `docs/architecture.md` → "Authentication
-  and session handoff" for the full flow.
+- **Session invariant (fail-closed):** signed in ⟺ the provisioner can mint
+  a live DPoP-bound Solid token for the user's Pod right now. Issuance
+  requires a successful token mint + Pod probe; the Pod Access Proxy
+  revalidates on every request; `401 session_invalid` destroys the client
+  session and returns the user to the sign-in page. There is no degraded or
+  half-authenticated state.
+- The user's only credential is the device Stellar keypair (challenge →
+  on-device Ed25519 signature → session). There are **no user-facing
+  passwords**: the CSS account password is generated server-side at
+  provisioning, used once, and discarded. Never reintroduce password inputs,
+  OIDC redirects, bridge tickets, or `@inrupt/solid-client-authn-browser`.
+- The browser never contacts the CSS origin. All Pod reads/writes flow
+  through `/v1/pod-proxy/*` with the NodeZero bearer token; per-user client
+  credentials live encrypted (AES-256-GCM) in the provisioner credential
+  store and never reach the client.
+- The client-side on-chain lockb0x attestation check
+  (`attestationStatus === 'verified'`) remains a second, independent gate
+  after session issuance. See `docs/architecture.md` → "Authentication and
+  session handoff".
 - `pnpm qa:smoke:auth` (`scripts/qa/staging-auth-evidence.mjs`) is the
-  **blocking** identity gate in `staging-deploy.yml`, with one retry to absorb
-  transient auth timing churn. DocuStream/mashlib proofs are application
-  checks and run non-blocking — keep them out of the auth gate and vice versa.
+  **blocking** identity gate in `staging-deploy.yml` (no retry). It asserts
+  onboarding, returning one-tap sign-in, fail-closed rejection, on-chain
+  evidence, and a zero-CSS-contact request embargo. DocuStream/mashlib
+  proofs are application checks and run non-blocking — keep them out of the
+  auth gate and vice versa.
 
 When touching deployment or environment code, ensure these pass:
 - `pnpm policy:validate-env`
