@@ -130,10 +130,27 @@ jobs:
               JSS_ISSUER_URL="https://solid.nodezero.social" \
               JSS_PUBLIC_PROVISIONER_BASE_URL="https://${JSS_PROVISIONER_APP_NAME}.azurewebsites.net" \
               JSS_SOLID_CSS_BASE_URL="https://solid.nodezero.social" \
-              JSS_SESSION_SIGNING_KEY="${{ secrets.JSS_SESSION_SIGNING_KEY }}" \
-              JSS_CREDENTIALS_ENC_KEY="${{ secrets.JSS_CREDENTIALS_ENC_KEY }}" \
-              JSS_CREDENTIALS_TABLE_SAS_URL="${{ secrets.JSS_CREDENTIALS_TABLE_SAS_URL }}" \
               JSS_ALLOWED_ORIGINS="https://staging.nodezero.social,https://nodezero.social,https://www.nodezero.social,https://solid.nodezero.social,http://localhost:19006,http://localhost:8081"
+
+          # Session/credential secrets: only overwrite when the GitHub secret is
+          # configured, so values managed directly on the App Service (e.g. set
+          # via az during cutover) are never clobbered with empty strings.
+          extra_settings=()
+          if [ -n "${{ secrets.JSS_SESSION_SIGNING_KEY }}" ]; then
+            extra_settings+=(JSS_SESSION_SIGNING_KEY="${{ secrets.JSS_SESSION_SIGNING_KEY }}")
+          fi
+          if [ -n "${{ secrets.JSS_CREDENTIALS_ENC_KEY }}" ]; then
+            extra_settings+=(JSS_CREDENTIALS_ENC_KEY="${{ secrets.JSS_CREDENTIALS_ENC_KEY }}")
+          fi
+          if [ -n "${{ secrets.JSS_CREDENTIALS_TABLE_SAS_URL }}" ]; then
+            extra_settings+=(JSS_CREDENTIALS_TABLE_SAS_URL="${{ secrets.JSS_CREDENTIALS_TABLE_SAS_URL }}")
+          fi
+          if [ "${#extra_settings[@]}" -gt 0 ]; then
+            az webapp config appsettings set \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --name "$JSS_PROVISIONER_APP_NAME" \
+              --settings "${extra_settings[@]}"
+          fi
 
       - name: Deploy JSS provisioner to App Service
         run: |
