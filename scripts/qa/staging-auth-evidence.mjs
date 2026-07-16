@@ -179,6 +179,7 @@ async function main() {
       const buttons = Array.from(document.querySelectorAll('div[role="button"], button'))
       return buttons.some((el) => (el.textContent || '').includes('Create Your Node'))
     },
+    undefined,
     { timeout: 120_000 },
   )
   await page.getByText('Create Your Node', { exact: true }).first().click()
@@ -222,6 +223,7 @@ async function main() {
       const buttons = Array.from(document.querySelectorAll('div[role="button"], button'))
       return buttons.some((el) => (el.textContent || '').trim() === 'Sign In')
     },
+    undefined,
     { timeout: 120_000 },
   )
   await page.getByText('Sign In', { exact: true }).first().click()
