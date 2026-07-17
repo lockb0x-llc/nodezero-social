@@ -67,7 +67,7 @@ export default function SettingsScreen(): JSX.Element {
     await AsyncStorage.setItem(SHOW_NSFW_KEY, String(val))
   }, [])
 
-  const clearCache = useCallback(() => {
+  const clearCache = useCallback((): void => {
     Alert.alert(
       'Clear Local Cache',
       'This will delete all locally cached data. Your Solid Pod data will not be affected.',
@@ -76,7 +76,7 @@ export default function SettingsScreen(): JSX.Element {
         {
           text: 'Clear',
           style: 'destructive',
-          onPress: () => {
+          onPress: (): void => {
             void AsyncStorage.clear().then(() => {
               Alert.alert('Done', 'Local cache cleared.')
             })

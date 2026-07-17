@@ -15,7 +15,7 @@ import { DiscoveryProvider } from '../src/contexts/DiscoveryContext'
 import { WalletProvider, useWallet } from '../src/contexts/WalletContext'
 import { Stack, Link, usePathname, useRouter } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
-import { View, Text, StyleSheet, Platform, ScrollView } from 'react-native'
+import { View, Text, StyleSheet, Platform, ScrollView, type ViewStyle } from 'react-native'
 import Constants from 'expo-constants'
 import React from 'react'
 import { aesthetic } from '../src/theme/aesthetic'
@@ -153,7 +153,7 @@ function WebNavBar(): JSX.Element | null {
           Uses a react-native-web CSS passthrough for backgroundImage — this
           component is web-only (Platform.OS !== 'web' guard above). The cast
           to any is necessary because backgroundImage is not in RN ViewStyle. */}
-      <View pointerEvents="none" style={[styles.navBarFadeRight, { backgroundImage: `linear-gradient(to right, transparent, ${aesthetic.color.surface})` } as any]} />
+      <View pointerEvents="none" style={[styles.navBarFadeRight, { backgroundImage: `linear-gradient(to right, transparent, ${aesthetic.color.surface})` } as ViewStyle]} />
     </View>
   )
 }

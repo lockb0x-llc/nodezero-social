@@ -35,7 +35,7 @@ function toWebIdList(connections: Array<unknown>): string[] {
     .filter((webId) => webId.length > 0);
 }
 
-export default function ComposeScreen() {
+export default function ComposeScreen(): JSX.Element {
   const [postText, setPostText] = useState('');
   const [audience, setAudience] = useState<AudienceType>('verified');
   const [sending, setSending] = useState(false);
@@ -45,7 +45,7 @@ export default function ComposeScreen() {
   // verifyPoH may not exist on the wallet context type; cast as a stub if absent
   const walletCtx = useWallet() as { verifyPoH?: (webId: string) => Promise<boolean> };
   const verifyPoH: (webId: string) => Promise<boolean> =
-    walletCtx.verifyPoH ?? ((_: string) => Promise.resolve(false));
+    walletCtx.verifyPoH ?? ((_: string): Promise<boolean> => Promise.resolve(false));
 
   const handlePost = async (): Promise<void> => {
     if (!postText.trim()) return;
@@ -136,7 +136,7 @@ export default function ComposeScreen() {
     }
   };
 
-  const getAudienceDescription = () => {
+  const getAudienceDescription = (): string => {
     switch (audience) {
       case 'foaf': return 'Close Ties (Your FOAF Network)';
       case 'verified': return 'Verified Humans in your Grid';

@@ -80,7 +80,7 @@ Validate the nav bar overflow fix and the Settings access path change introduced
 
 | # | Step | Expected | Result | Notes |
 |---|------|----------|--------|-------|
-| FE1 | Open the global feed while authenticated | Feed renders without runtime errors | **PASS (2026-06-28 headed validation)** | Authenticated return landed directly on `/feed`; feed shell rendered (`Global Feed`, `OIDC Redirect`, quiet-feed empty state). Console showed a non-blocking `401` fetch error during background requests. |
+| FE1 | Open the global feed while authenticated | Feed renders without runtime errors | **PASS (2026-06-28 headed validation)** | Authenticated return landed directly on `/feed`; feed shell rendered (`Global Feed`, `NodeZero Session`, quiet-feed empty state). Console showed a non-blocking `401` fetch error during background requests. |
 
 ### Docustream (stream + source management)
 
@@ -93,7 +93,7 @@ Validate the nav bar overflow fix and the Settings access path change introduced
 
 | # | Step | Expected | Result | Notes |
 |---|------|----------|--------|-------|
-| PR1 | Authenticated user updates Profile fields and taps Save to Solid Pod | Save succeeds, profile reload reflects persisted values, and no silent failure occurs during session-restore windows | **PARTIAL PASS (2026-07-09 headed validation)** | Tested with account `pakana-10@pakana.net`: profile values saved and later reloaded (`Display Name`/`Bio` values present after auth round-trip). One transient `PATCH ... net::ERR_ABORTED` was observed during OIDC restore churn; stale-session-forced re-auth branch was not deterministically reproduced in this manual pass. |
+| PR1 | Authenticated user updates Profile fields and taps Save to Solid Pod | Save succeeds, profile reload reflects persisted values, and no silent failure occurs during session-restore windows | **PARTIAL PASS (2026-07-09 headed validation)** | Tested with account `pakana-10@pakana.net`: profile values saved and later reloaded (`Display Name`/`Bio` values present after auth round-trip). One transient `PATCH ... net::ERR_ABORTED` was observed during session refresh churn; stale-session-forced re-auth branch was not deterministically reproduced in this manual pass. |
 | PR2 | In Profile, add a valid contact WebID then remove it | Added WebID appears in Connections list and remove action updates list consistently | **PASS (2026-07-09 live staging rerun)** | With account `https://solid.nodezero.social/qa-conn-20260709-1/profile/card#me`, adding `https://solid.nodezero.social/pakana-10/profile/card#me` immediately rendered a Connections row and status `Connection added successfully.`; removing it returned to empty state and status `Connection removed.`. |
 | PR3 | Open Directory tab and connect to an entry | Directory list renders, connect action adds relationship unless entry is self/already connected | — | Supersedes legacy Profile-embedded directory flow; execute from dedicated `/directory` tab. |
 
@@ -269,21 +269,18 @@ Current LM status:
 - LM1: **BLOCKED (environmental)** pending manual geolocation allow in a normal browser session.
 - LM2: **BLOCKED** until LM1 proceeds with location-enabled `/local` access on two authenticated clients.
 
-## 2026-06-28 staging OIDC onboarding baseline
+## 2026-07 internal-session cutover baseline
 
 Purpose:
 
-- Enforce a single real onboarding path in staging: Solid OIDC redirect with real Pod identity.
-- Remove local bootstrap auth behavior from runtime configuration and UI messaging.
+- Enforce the internal-only NodeZero session flow in staging: no browser-side CSS authentication, no user-facing password flow, and no OIDC redirect leg.
+- Keep onboarding and returning sign-in tied to device-key challenge signing plus provisioner-issued NodeZero sessions.
 
 Required mobile-app build env values:
 
-- Detailed build/deploy procedure: `docs/dev-only/oidc-refactoring/staging-oidc-deploy-verify.md`
-
 - `NZ_ENV_PROFILE=staging-testnet`
-- `NZ_SOLID_OIDC_ISSUER_URL=<staging-approved issuer url>`
-- `NZ_SOLID_SIGNUP_URL=<staging-approved pod signup url>`
-- `NZ_SOLID_ACCOUNT_PORTAL_URL=<staging-approved account portal url>`
+- `NZ_NODEZERO_ISSUER_URL=https://solid.nodezero.social/`
+- `NZ_JSS_PROVISIONER_URL=<staging provisioner url>`
 - `NZ_RELAY_URL=wss://nodezero-social-staging-testnet-relay.azurewebsites.net`
 - `NZ_STELLAR_RPC_URL=https://soroban-testnet.stellar.org`
 - `NZ_STELLAR_NETWORK_PASSPHRASE=Test SDF Network ; September 2015`
@@ -292,38 +289,13 @@ Required mobile-app build env values:
 
 Expected behavior:
 
-- Landing page primary CTA opens the configured Solid signup URL.
-- Returning-user sign-in always uses OIDC provider redirect.
-- Feed, Local, and Settings auth mode labels show `OIDC Redirect`.
-- No runtime dependency on legacy local-bootstrap auth flags.
+- Landing exposes one-tap sign-in and Create Your Node with no IdP picker.
+- Returning-user sign-in uses one tap (device key challenge signature) and lands in authenticated surfaces without redirect legs.
+- Feed, Local, and Settings auth mode labels show `NodeZero Session`.
+- Browser never talks directly to `solid.nodezero.social`; Pod access flows through `/v1/pod-proxy/*`.
 
 Validation snapshot:
 
-- File diagnostics clean for `app.config.js`, `app/index.tsx`, `app/feed.tsx`, `app/local.tsx`, `app/settings.tsx`, and `src/contexts/SolidContext.tsx`.
-- Source scan across `packages/mobile-app/app/**` and `packages/mobile-app/src/**` confirms no remaining local-bootstrap auth references.
-
-## 2026-06-28 OIDC rollout closeout evidence
-
-Execution evidence captured:
-
-- OIDC build exported (`expo export --clear`) and deployed to SWA production with `@azure/static-web-apps-cli@2.0.7`; deploy returned success for `https://mango-glacier-0abee9e0f.7.azurestaticapps.net`.
-- Headed browser validation on `https://staging.nodezero.social` confirms OIDC landing copy and controls are live (`Create a real Solid account...`, `Sign In`, no JSS-mode wording).
-- Headed AU1 validation confirms redirect initiation to Solid CSS login UI at `https://solidcommunity.net/.account/login/password/`.
-- Staging landing route copy and controls align to real Pod signup plus OIDC sign-in.
-- Staging `/feed` header auth chip reads `OIDC Redirect` with OIDC explainer text.
-- Staging `/settings` renders `Auth Mode` row with `OIDC Redirect` badge and OIDC explainer.
-- Staging `/local` header auth chip reads `OIDC Redirect` with OIDC explainer.
-- Headed auth-form validation confirms actionable client-side errors for AU2/AU3 (`Enter your Identity Provider URL.` and `URL must start with https://`).
-- Relay health remains green (`/health` HTTP 200 JSON on `nodezero-social-staging-testnet-relay.azurewebsites.net`).
-- Headed authenticated validation now confirms AU1 full OIDC return to `/feed`, AU4 sign-out to `/`, and FE1 authenticated feed render.
-- LM1 in headed harness reaches authenticated Local Node route but is blocked at browser geolocation permission gate in this run.
-- Two concurrent browser tabs now both reach authenticated `/local`; both show the same geolocation permission gate, preventing relay offer/answer exchange in this harness.
-- Both concurrent sessions currently authenticate as the same WebID (`https://nodezero-qa.solidcommunity.net/profile/card#me`), so distinct-identity exchange evidence is not yet possible.
-- Attempt to create a second pod/WebID from Solid account portal (`/.account/account/.../pod/`) failed twice with provider-side error `Lock expired after 6000ms`.
-- Relay signaling path is independently verified from this workspace via `node scripts/qa/relay-signal-e2e.mjs` with PASS output for forwarded `offer`, `answer`, and `ice-candidate` message types on `wss://nodezero-social-staging-testnet-relay.azurewebsites.net`.
-- Headed browser LM2 now PASSes end-to-end using the QA-only local override route with peer identities `nodezero-lm2-a` and `nodezero-lm2-b`; both sessions rendered delivered messages after two-way exchange.
-
-Closeout status:
-
-- OIDC-only auth mode rollout: **COMPLETE** for Landing, Feed, Local, and Settings source and diagnostics validation.
-- Two-client authenticated `/local` message exchange remains **PENDING** as a separate runtime validation step.
+- `pnpm qa:smoke:auth` is the blocking identity gate and must pass all three journeys.
+- `auth-invariant.spec.ts` confirms no password field, no IdP picker, and no legacy bridge params.
+- Session invariant remains fail-closed (`session_invalid` clears session and returns to sign-in).

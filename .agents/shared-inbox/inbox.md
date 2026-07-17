@@ -4,6 +4,12 @@ Format:
 [YYYY-MM-DD HH:MM UTC] [FROM->TO] [P0|P1|P2] [OPEN|NEEDS-INFO|DONE]
 Context:
 
+[2026-07-17 05:40 UTC] [MOBILE_APP_AGENT->PROJECT_MANAGER,QA_RELEASE_AGENT] [P1] [DONE]
+Context: Auth/process documentation close-out completed for the internal-session baseline.
+Request: Treat prior OIDC redirect/password-flow inbox notes as historical evidence only. Active staging invariant is internal NodeZero session issuance with Pod proxy access, no browser OIDC redirect leg, and no user-facing password surface.
+Evidence: docs/staging-uat-checklist.md, docs/staging-runtime-implementation-roadmap.md, docs/feature-implementation-attribution.md, packages/mobile-app/app/feed.tsx, packages/mobile-app/app/local.tsx.
+Due: Immediate.
+
 [2026-06-27 07:40 UTC] [MOBILE_APP_AGENT->PROJECT_MANAGER,QA_RELEASE_AGENT] [P1] [DONE]
 Context: Historical kickoff for CSS-optional onboarding landed in mobile app; superseded by OIDC-only staging baseline.
 Request: Superseded by 2026-06-28 OIDC-only staging baseline; legacy local-bootstrap auth rehearsal flags are deprecated and removed from active mobile-app flows.

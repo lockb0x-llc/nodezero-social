@@ -20,7 +20,7 @@ const CONTAINER_PATHS: Record<string, string> = {
   location: '/location/',
 };
 
-export default function BackpackScreen() {
+export default function BackpackScreen(): JSX.Element {
   const { authFetch } = useNodeZeroSession();
   const [permissions, setPermissions] = useState({
     profile: true,
@@ -29,7 +29,7 @@ export default function BackpackScreen() {
   });
   const [updating, setUpdating] = useState<string | null>(null);
 
-  const togglePermission = (key: keyof typeof permissions) => {
+  const togglePermission = (key: keyof typeof permissions): void => {
     const newValue = !permissions[key];
     setPermissions(prev => ({ ...prev, [key]: newValue }));
     setUpdating(key);

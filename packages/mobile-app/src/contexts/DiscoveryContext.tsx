@@ -47,7 +47,7 @@ export function DiscoveryProvider({ children }: { children: ReactNode }): JSX.El
   const [locationStatus, setLocationStatus] = useState<DiscoveryContextValue['locationStatus']>('idle')
   const watchRef = useRef<Location.LocationSubscription | null>(null)
 
-  const applyPosition = useCallback((lat: number, lng: number) => {
+  const applyPosition = useCallback((lat: number, lng: number): void => {
     grid.updatePosition(lat, lng)
     const result: SurroundingNodesResult = grid.getSurroundingNodes()
     setCurrentNode(result.originNode)
@@ -89,8 +89,8 @@ export function DiscoveryProvider({ children }: { children: ReactNode }): JSX.El
     await refresh()
   }, [refresh, startWatching])
 
-  useEffect(() => {
-    void (async () => {
+  useEffect((): (() => void) => {
+    void (async (): Promise<void> => {
       const { status } = await Location.getForegroundPermissionsAsync()
 
       if (status === Location.PermissionStatus.GRANTED) {

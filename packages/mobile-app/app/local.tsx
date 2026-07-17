@@ -127,7 +127,7 @@ export default function LocalNodeScreen(): JSX.Element {
     return channel
   }, [effectiveWebId])
 
-  useEffect(() => {
+  useEffect((): (() => void) | void => {
     if (!isLoggedIn || !effectiveWebId || !relayUrl) {
       setRelayState('idle')
       return
@@ -369,7 +369,7 @@ export default function LocalNodeScreen(): JSX.Element {
         </View>
         {showAuthModeHint ? (
           <Text style={styles.authModeHintText}>
-            {'Sign-in uses the configured Solid OIDC provider redirect flow.'}
+            {'Your device Stellar key signs you in through a NodeZero session. Pod access stays behind the NodeZero proxy with no passwords or redirects.'}
           </Text>
         ) : null}
         {currentNode && (

@@ -56,7 +56,7 @@ export default function GlobalFeedScreen(): JSX.Element {
   const [isSyncCheckpointReady, setIsSyncCheckpointReady] = useState(false)
   const syncStateRef = useRef(createSyncState())
 
-  useEffect(() => {
+  useEffect((): (() => void) => {
     let active = true
     syncStateRef.current = createSyncState()
     setIsSyncCheckpointReady(false)
@@ -87,7 +87,7 @@ export default function GlobalFeedScreen(): JSX.Element {
     }
   }, [webId])
 
-  const fetchFeed = useCallback(async () => {
+  const fetchFeed = useCallback(async (): Promise<void> => {
     if (!isLoggedIn || !webId || !isSyncCheckpointReady) return
 
     try {
@@ -271,7 +271,7 @@ export default function GlobalFeedScreen(): JSX.Element {
       {showAuthModeHint ? (
         <View style={styles.authModeHintWrap}>
           <Text style={styles.authModeHintText}>
-                {'Sign-in uses the configured Solid OIDC provider redirect flow.'}
+            {'Your device Stellar key signs you in through a NodeZero session. Pod access stays behind the NodeZero proxy with no passwords or redirects.'}
           </Text>
         </View>
       ) : null}

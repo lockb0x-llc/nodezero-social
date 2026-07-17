@@ -28,6 +28,7 @@
 
 ## Milestone E: Validation and launch
 - [DONE] E1: End-to-end smoke suite and manual UAT checklist. (merged to main: scripts/qa/staging-smoke.sh + docs/staging-uat-checklist.md + qa:smoke)
+- [DONE] E1b: Internal-session auth closeout alignment across app copy, runbook evidence, and roadmap attribution.
 - [TODO] E2: Staging sign-off and release announcement.
 
 ## Milestone F: Multi-agent parallel delivery ops

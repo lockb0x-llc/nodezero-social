@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
 import { Alert } from 'react-native'
 import { getSolidPodSyncManagers } from '../solid/podSyncManagers'
 import { isLikelyWebId } from '../directory/directorySource'
@@ -23,7 +23,16 @@ export function useConnections({
   effectiveWebId,
   authFetch,
   onConnectionsChanged,
-}: UseConnectionsArgs) {
+}: UseConnectionsArgs): {
+  connectionsLoading: boolean
+  connections: string[]
+  connectionBusyWebId: string | null
+  connectionStatus: ConnectionStatus | null
+  loadConnections: () => Promise<void>
+  addConnection: (targetWebId: string) => Promise<boolean>
+  removeConnection: (targetWebId: string) => Promise<boolean>
+  setConnectionStatus: Dispatch<SetStateAction<ConnectionStatus | null>>
+} {
   const [connectionsLoading, setConnectionsLoading] = useState(false)
   const [connections, setConnections] = useState<string[]>([])
   const [connectionBusyWebId, setConnectionBusyWebId] = useState<string | null>(null)

@@ -113,7 +113,7 @@ This is the correlation layer: what workflow/artifact deploys what, and what use
 | App feature | App code entry point | CI/CD artifact | Runtime resource(s) | Smoke/UAT gate |
 |---|---|---|---|---|
 | Landing page, all routes | `packages/mobile-app/app/*.tsx` | SWA publish — [staging-deploy.yml#L136](../.github/workflows/staging-deploy.yml) | W1 (`…-web`) | A1, A2 smoke + UAT AU1–AU3 |
-| OIDC Solid sign-in (redirect) | [SolidContext.tsx](../packages/mobile-app/src/contexts/SolidContext.tsx) | Build env: `NZ_SOLID_OIDC_ISSUER_URL` baked into Expo bundle | W1 (SWA) + external Solid IdP | UAT AU1 — **PASS 2026-06-28** |
+| Internal NodeZero session sign-in (passwordless, no redirect) | [NodeZeroSessionContext.tsx](../packages/mobile-app/src/contexts/NodeZeroSessionContext.tsx) | Build env: `NZ_NODEZERO_ISSUER_URL` + `NZ_JSS_PROVISIONER_URL` baked into Expo bundle | W1 (SWA) + S1 (provisioner) + I1 (CSS Pod host via proxy) | `qa:smoke:auth` blocking gate — **PASS** |
 | Seamless "Create Your Node" | [seamlessSignup.ts](../packages/mobile-app/src/onboarding/seamlessSignup.ts) → provisioner | SWA publish + `NZ_JSS_PROVISIONER_URL` env in build | W1 (SWA) → S1 (provisioner) → I1 (CSS) | QA: [solid-account-endpoint-smoke.mjs](../scripts/qa/solid-account-endpoint-smoke.mjs) — **PASS 2026-06-29** |
 | Pod account creation + CSS account JSON API | [solidAccount.ts](../packages/jss-provisioner/src/solidAccount.ts) | Provisioner zip deploy — [staging-deploy.yml#L82](../.github/workflows/staging-deploy.yml#L82) | S1 (provisioner) → I1 (CSS) → I4 (storage) | Manual: `solid-pod-smoke.mjs` |
 | Stellar attestation anchoring + per-user Lockb0x | [lockboxFactory.ts](../packages/jss-provisioner/src/lockboxFactory.ts) | Provisioner deploy + `JSS_LOCKBOX_FACTORY_MODE=soroban` app setting | S1 (provisioner) + Stellar TestNet RPC (external) | QA: `soroban-provision-smoke.mjs` — **PASS 2026-06-29** |
@@ -250,7 +250,7 @@ Each row is a discrete unit of work. Mark ✅ when complete with evidence.
 | ID | Item | Status | Evidence / Notes |
 |---|---|---|---|
 | APP-01 | Landing page renders + sign-in form | ✅ Done | UAT A1 PASS |
-| APP-02 | OIDC sign-in round-trip returns authenticated session | ✅ Done | UAT AU1 PASS 2026-06-28 |
+| APP-02 | One-tap Stellar sign-in returns internal NodeZero session | ✅ Done | `qa:smoke:auth` Journey 2 PASS |
 | APP-03 | Seamless Create Your Node (no redirect) | ✅ Done | E2E PASS 2026-06-29 |
 | APP-04 | Wallet provisioning on web (localStorage fallback) | ✅ Done | UAT WR1 PASS |
 | APP-05 | WebID registration on-chain (`register_webid`) | ✅ Done | UAT AT1 PASS 2026-06-26 |
@@ -262,7 +262,7 @@ Each row is a discrete unit of work. Mark ✅ when complete with evidence.
 | APP-11 | Docustream list+save against real staging pod | ✅ Done | QA L7 evidence PASS |
 | APP-11b | Docustream source management + RSS ingest (add/toggle/delete + pull) | ✅ Done | Implemented in `app/docustream.tsx` + `DocustreamSourceManager`; sources persist in Pod and enabled feeds ingest into stream |
 | APP-12 | Backpack ACL toggle against CSS WAC | ⬜ To Do | Depends on SOLID-10 |
-| APP-13 | **Auth chip label accurate for node sessions** (currently hardcoded `OIDC Redirect`) | ⬜ To Do | Feed shows wrong label for seamless-node sessions |
+| APP-13 | **Auth chip label accurate for node sessions** (`NodeZero Session`) | ✅ Done | Feed/Local/Settings labels aligned with internal session flow |
 | APP-14 | **Semantic overlap (`findSemanticOverlap`) against staging pods** | ⬜ To Do | Code in profile.tsx; requires pods with real interests data |
 
 ### 6.6 Planning and governance (Data Backpack + DocuStream foundation)
@@ -285,7 +285,7 @@ Each row is a discrete unit of work. Mark ✅ when complete with evidence.
 | G3 | CI (`ci.yml`) does not run on `testnet` branch — no automated gate before staging-deploy | **Medium** | Add `testnet` to `on.push.branches` in `ci.yml`, or create a separate pre-deploy validation job in `staging-deploy.yml` (CICD-08) |
 | G4 | `verify-staging-drift.mjs` not scheduled or wired into pipeline | **Medium** | Add as a post-deploy step or scheduled workflow run (CICD-06) |
 | G5 | Alert email not wired — no automated incident notification | **Medium** | Set `alertEmailAddress` in `main.parameters.staging-testnet.json` (INF-10) |
-| G6 | Auth mode chip in Feed/Local hardcoded to `OIDC Redirect` — misleading for node sessions | **Low** | Use `nodeSession !== null` to conditionally set chip label (APP-13) |
+| G6 | Auth mode chip mismatch for node sessions | **Resolved** | Closed via APP-13 (`NodeZero Session` labels in Feed/Local/Settings) |
 | G7 | B1/B2 (real feed/social graph from Solid) still placeholder | **Low (current milestone)** | Post-hackathon scope; document as known gap |
 | G8 | ZK artifact checksum verification not in CI | **Low** | Wire `pnpm verify:checksums:testnet` into CI gate (ZK-08) |
 | G9 | CSS recovery mail can be misconfigured if SMTP secrets are absent in GitHub environment | **High** | Ensure `SOLID_SMTP_USERNAME` and `SOLID_SMTP_PASSWORD` are populated before redeploy; verify forgot-password smoke after each Solid redeploy |
