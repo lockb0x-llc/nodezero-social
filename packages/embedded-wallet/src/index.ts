@@ -16,6 +16,7 @@ export { EnclaveAdapter } from './EnclaveAdapter.js'
 export { WalletService } from './WalletService.js'
 export type {
 	WalletInfo,
+	WalletIdentity,
 	TransactionResult,
 	IdentityHashPayload,
 	AttestationSignature,

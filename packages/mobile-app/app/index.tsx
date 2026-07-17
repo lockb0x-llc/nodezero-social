@@ -108,7 +108,10 @@ interface LandingAuthCardProps {
   error: string | null
   errorAction: { label: string; url: string } | null
   isSigningIn: boolean
+  isIdentityBusy: boolean
   seamlessEnabled: boolean
+  identities: Array<{ keyId: string; label: string }>
+  activeIdentityKeyId: string | null
   nodeHandle: string
   notificationEmail: string
   isCreating: boolean
@@ -117,6 +120,8 @@ interface LandingAuthCardProps {
   createSteps: ProgressStep[]
   onNodeHandleChange: (value: string) => void
   onNotificationEmailChange: (value: string) => void
+  onSelectIdentity: (keyId: string) => Promise<void>
+  onCreateIdentity: () => Promise<void>
   onSignIn: () => Promise<void>
   onCreateNode: () => Promise<void>
 }
@@ -126,7 +131,10 @@ function LandingAuthCard({
   error,
   errorAction,
   isSigningIn,
+  isIdentityBusy,
   seamlessEnabled,
+  identities,
+  activeIdentityKeyId,
   nodeHandle,
   notificationEmail,
   isCreating,
@@ -135,9 +143,15 @@ function LandingAuthCard({
   createSteps,
   onNodeHandleChange,
   onNotificationEmailChange,
+  onSelectIdentity,
+  onCreateIdentity,
   onSignIn,
   onCreateNode,
 }: LandingAuthCardProps): JSX.Element {
+  const [isIdentityMenuOpen, setIsIdentityMenuOpen] = useState(false)
+  const selectedIdentity =
+    identities.find((identity) => identity.keyId === activeIdentityKeyId) ?? identities[0] ?? null
+
   void source
   return (
     <View style={styles.signInPanel}>
@@ -164,16 +178,77 @@ function LandingAuthCard({
           ) : null}
         </View>
       ) : null}
+      <View style={styles.dropdownWrap}>
+        <TouchableOpacity
+          style={styles.dropdownField}
+          onPress={() => setIsIdentityMenuOpen((open) => !open)}
+          activeOpacity={PRESS_OPACITY}
+          disabled={isIdentityBusy || identities.length === 0}
+          accessibilityRole="button"
+          accessibilityLabel="Select identity"
+        >
+          <View style={styles.dropdownFieldText}>
+            <View style={styles.dropdownLabelRow}>
+              <Text style={styles.dropdownMark}>⊙</Text>
+              <Text style={styles.dropdownLabel}>{selectedIdentity?.label ?? 'Preparing identity…'}</Text>
+            </View>
+            <Text style={styles.dropdownSub}>
+              {selectedIdentity ? 'Device identity key' : 'Loading local identities'}
+            </Text>
+          </View>
+          <Text style={styles.dropdownChevron}>{isIdentityMenuOpen ? '▲' : '▼'}</Text>
+        </TouchableOpacity>
+
+        {isIdentityMenuOpen && identities.length > 0 ? (
+          <View style={styles.dropdownMenu}>
+            {identities.map((identity, index) => {
+              const isActive = identity.keyId === activeIdentityKeyId
+              return (
+                <TouchableOpacity
+                  key={identity.keyId}
+                  style={[
+                    styles.dropdownOption,
+                    index < identities.length - 1 && styles.dropdownOptionDivider,
+                    isActive && styles.dropdownOptionActive,
+                  ]}
+                  onPress={() => {
+                    setIsIdentityMenuOpen(false)
+                    void onSelectIdentity(identity.keyId)
+                  }}
+                  activeOpacity={PRESS_OPACITY}
+                  disabled={isIdentityBusy}
+                >
+                  <Text style={styles.dropdownLabel}>{identity.label}</Text>
+                  {isActive ? <Text style={styles.dropdownCheck}>✓</Text> : null}
+                </TouchableOpacity>
+              )
+            })}
+          </View>
+        ) : null}
+
+        <TouchableOpacity
+          style={styles.createPodLink}
+          onPress={() => void onCreateIdentity()}
+          activeOpacity={PRESS_OPACITY}
+          disabled={isIdentityBusy}
+          accessibilityRole="button"
+          accessibilityLabel="Create new identity"
+        >
+          <Text style={styles.createPodText}>
+            {isIdentityBusy ? 'Preparing identity…' : 'Create a new identity'}
+          </Text>
+        </TouchableOpacity>
+      </View>
       <TouchableOpacity
-        style={[styles.btnPrimary, (isSigningIn || !walletReady) && styles.btnDisabled]}
+        style={[styles.btnPrimary, (isSigningIn || isIdentityBusy || !walletReady) && styles.btnDisabled]}
         onPress={() => void onSignIn()}
-        disabled={isSigningIn || !walletReady}
+        disabled={isSigningIn || isIdentityBusy || !walletReady}
         activeOpacity={PRESS_OPACITY}
         accessibilityRole="button"
         accessibilityLabel="Sign In"
       >
         {isSigningIn ? (
-          <ActivityIndicator color="#FFF" />
+            <ActivityIndicator color="#FFF" />
         ) : (
           <Text style={styles.btnPrimaryText}>{walletReady ? 'Sign In' : 'Preparing wallet…'}</Text>
         )}
@@ -209,9 +284,9 @@ function LandingAuthCard({
             your recovery bundle safe to restore access on a new device.
           </Text>
           <TouchableOpacity
-            style={[styles.btnPrimary, (isCreating || !walletReady) && styles.btnDisabled]}
+            style={[styles.btnPrimary, (isCreating || isIdentityBusy || !walletReady) && styles.btnDisabled]}
             onPress={() => void onCreateNode()}
-            disabled={isCreating || !walletReady}
+            disabled={isCreating || isIdentityBusy || !walletReady}
             activeOpacity={PRESS_OPACITY}
           >
             {isCreating ? (
@@ -281,7 +356,16 @@ function AuthRedirectOverlay({ visible }: { visible: boolean }): JSX.Element {
 
 export default function LandingScreen(): JSX.Element {
   const { status, adoptSession } = useNodeZeroSession()
-  const { attestationStatus, walletInfo, createSeamlessAttestation } = useWallet()
+  const {
+    attestationStatus,
+    walletInfo,
+    identities,
+    activeIdentityKeyId,
+    isIdentityBusy,
+    selectIdentity,
+    createIdentity,
+    createSeamlessAttestation,
+  } = useWallet()
   const router = useRouter()
   const pathname = usePathname()
   const landingMode = getLandingMode()
@@ -504,6 +588,26 @@ export default function LandingScreen(): JSX.Element {
     }
   }
 
+  const handleSelectIdentity = async (keyId: string): Promise<void> => {
+    setError(null)
+    setErrorAction(null)
+    setCreateNotice(null)
+    await selectIdentity(keyId)
+  }
+
+  const handleCreateIdentity = async (): Promise<void> => {
+    setError(null)
+    setErrorAction(null)
+    setCreateNotice('Preparing a new local identity…')
+    try {
+      await createIdentity()
+      setCreateNotice('New identity ready. You can sign in or create your node with it.')
+    } catch (err) {
+      setCreateNotice(null)
+      setError(err instanceof Error ? err.message : 'Failed to create a new identity.')
+    }
+  }
+
   if (status === 'restoring') {
     return (
       <View style={styles.centred}>
@@ -559,7 +663,10 @@ export default function LandingScreen(): JSX.Element {
           error={error}
           errorAction={errorAction}
           isSigningIn={isSigningIn}
+          isIdentityBusy={isIdentityBusy}
           seamlessEnabled={seamlessConfig.enabled}
+          identities={identities}
+          activeIdentityKeyId={activeIdentityKeyId}
           nodeHandle={nodeHandle}
           notificationEmail={notificationEmail}
           isCreating={isCreating}
@@ -568,6 +675,8 @@ export default function LandingScreen(): JSX.Element {
           createSteps={createSteps}
           onNodeHandleChange={setNodeHandle}
           onNotificationEmailChange={setNotificationEmail}
+          onSelectIdentity={handleSelectIdentity}
+          onCreateIdentity={handleCreateIdentity}
           onSignIn={handleSignIn}
           onCreateNode={handleCreateNode}
         />
@@ -628,7 +737,10 @@ export default function LandingScreen(): JSX.Element {
                 error={error}
                 errorAction={errorAction}
                 isSigningIn={isSigningIn}
+                isIdentityBusy={isIdentityBusy}
                 seamlessEnabled={seamlessConfig.enabled}
+                identities={identities}
+                activeIdentityKeyId={activeIdentityKeyId}
                 nodeHandle={nodeHandle}
                 notificationEmail={notificationEmail}
                 isCreating={isCreating}
@@ -637,6 +749,8 @@ export default function LandingScreen(): JSX.Element {
                 createSteps={createSteps}
                 onNodeHandleChange={setNodeHandle}
                 onNotificationEmailChange={setNotificationEmail}
+                onSelectIdentity={handleSelectIdentity}
+                onCreateIdentity={handleCreateIdentity}
                 onSignIn={handleSignIn}
                 onCreateNode={handleCreateNode}
               />

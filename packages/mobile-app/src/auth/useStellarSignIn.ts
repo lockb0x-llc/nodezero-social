@@ -121,5 +121,5 @@ export function useStellarSignIn(): () => Promise<AdoptSessionInput> {
       podUrl: payload.podUrl,
       lockbox: payload.lockbox ?? null,
     }
-  }, [signAttestationChallenge, walletInfo?.publicKey])
+  }, [signAttestationChallenge, walletInfo?.keyId, walletInfo?.publicKey])
 }

@@ -18,7 +18,12 @@ import React, {
 import * as SecureStore from 'expo-secure-store'
 import { Platform } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
-import { EnclaveAdapter, WalletService, type WalletInfo } from '@nodezero/embedded-wallet'
+import {
+  EnclaveAdapter,
+  WalletService,
+  type WalletInfo,
+  type WalletIdentity,
+} from '@nodezero/embedded-wallet'
 import { produceSeamlessAttestation, type SeamlessAttestation } from '../onboarding/attestation'
 import type { ProgressStep } from '../components/ProgressStepLadder'
 import Constants from 'expo-constants'
@@ -53,8 +58,14 @@ interface DeleteNodeDataResult {
 interface WalletContextValue {
   /** Basic wallet info (public key, funded status), or `null` while loading. */
   walletInfo: WalletInfo | null
+  /** Local identities available on this device. */
+  identities: WalletIdentity[]
+  /** Current selected identity key id, or null while loading. */
+  activeIdentityKeyId: string | null
   /** Whether the wallet is currently loading / initialising. */
   isLoading: boolean
+  /** Whether identity switch/create work is currently running. */
+  isIdentityBusy: boolean
   /** Current pairing verification status for this session. */
   attestationStatus: AttestationStatus
   /** Human-readable status detail for pairing checks. */
@@ -90,6 +101,10 @@ interface WalletContextValue {
     challengePayload: string
     signatureBase64: string
   }>
+  /** Sets the active local identity used for sign-in and onboarding. */
+  selectIdentity: (keyId: string) => Promise<void>
+  /** Creates a new local identity and sets it active. */
+  createIdentity: (label?: string) => Promise<void>
   /** Destroys local wallet + pairing state, optionally unlinking on-chain. */
   deleteNodeData: (options?: {
     unlinkIdentity?: boolean
@@ -158,7 +173,10 @@ function getWalletService(): WalletService {
 export function WalletProvider({ children }: { children: ReactNode }): JSX.Element {
   const { status: sessionStatus, webId, lockbox, sessionCreatedAt } = useNodeZeroSession()
   const [walletInfo, setWalletInfo] = useState<WalletInfo | null>(null)
+  const [identities, setIdentities] = useState<WalletIdentity[]>([])
+  const [activeIdentityKeyId, setActiveIdentityKeyId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [isIdentityBusy, setIsIdentityBusy] = useState(false)
   const [attestationStatus, setAttestationStatus] = useState<AttestationStatus>('idle')
   const [attestationMessage, setAttestationMessage] = useState<string | null>(null)
   const [verificationSteps, setVerificationSteps] = useState<ProgressStep[]>([])
@@ -175,6 +193,31 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
     proofRootHex: null,
   })
   const lastCheckedKeyRef = useRef<string | null>(null)
+
+  const refreshIdentities = useCallback(async (): Promise<void> => {
+    const service = getWalletService()
+    const [listed, active] = await Promise.all([
+      service.listIdentities(),
+      service.getActiveIdentityKeyId(),
+    ])
+    setIdentities(listed)
+    setActiveIdentityKeyId(active)
+  }, [])
+
+  const hydrateSelectedWallet = useCallback(async (keyId: string): Promise<void> => {
+    const service = getWalletService()
+    const publicKey = await service.getWalletPublicKeyForIdentity(keyId)
+    setWalletInfo({ keyId, publicKey, isFunded: false })
+
+    void (async (): Promise<void> => {
+      try {
+        const hydrated = await service.getWalletInfoForIdentity(keyId)
+        setWalletInfo(hydrated)
+      } catch (err) {
+        console.warn('[WalletContext] Wallet funding hydration failed:', err)
+      }
+    })()
+  }, [])
 
   /** Initialises the verification ladder: first step active, rest pending. */
   const initVerificationSteps = useCallback((defs: Array<[key: string, label: string]>): void => {
@@ -213,26 +256,52 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
     void (async (): Promise<void> => {
       const service = getWalletService()
       try {
-        // Make onboarding actionable as soon as the enclave key exists; do not
-        // block UI readiness on RPC/Friendbot funding checks.
-        const publicKey = await service.getWalletPublicKey()
-        setWalletInfo({ publicKey, isFunded: false })
-
-        void (async (): Promise<void> => {
-          try {
-            const hydrated = await service.getWalletInfo()
-            setWalletInfo(hydrated)
-          } catch (err) {
-            console.warn('[WalletContext] Wallet funding hydration failed:', err)
-          }
-        })()
+        // Make onboarding actionable as soon as a key exists without blocking
+        // on funding checks.
+        const active = (await service.getActiveIdentityKeyId()) ?? (await service.getWalletInfo()).keyId
+        await refreshIdentities()
+        if (active) {
+          await hydrateSelectedWallet(active)
+        }
       } catch (err) {
         console.warn('[WalletContext] Failed to load wallet info:', err)
       } finally {
         setIsLoading(false)
       }
     })()
-  }, [])
+  }, [hydrateSelectedWallet, refreshIdentities])
+
+  const selectIdentity = useCallback(async (keyId: string): Promise<void> => {
+    setIsIdentityBusy(true)
+    try {
+      const service = getWalletService()
+      await service.setActiveIdentity(keyId)
+      await refreshIdentities()
+      await hydrateSelectedWallet(keyId)
+    } finally {
+      setIsIdentityBusy(false)
+    }
+  }, [hydrateSelectedWallet, refreshIdentities])
+
+  const createIdentity = useCallback(async (label?: string): Promise<void> => {
+    setIsIdentityBusy(true)
+    try {
+      const service = getWalletService()
+      const created = await service.createIdentity(label)
+      await refreshIdentities()
+      setWalletInfo(created)
+      void (async (): Promise<void> => {
+        try {
+          const hydrated = await service.getWalletInfoForIdentity(created.keyId)
+          setWalletInfo(hydrated)
+        } catch (err) {
+          console.warn('[WalletContext] Wallet funding hydration failed:', err)
+        }
+      })()
+    } finally {
+      setIsIdentityBusy(false)
+    }
+  }, [refreshIdentities])
 
   // Fail-closed post-login verification (single path): every account is
   // provisioned with an on-chain per-user lockb0x, and the session carries the
@@ -355,7 +424,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
           setAttestationDetails(details({}))
           return
         }
-        const secret = await _adapter?.loadOrCreate()
+        const secret = await _adapter?.loadOrCreate(walletInfo?.keyId)
         if (!secret) throw new Error('wallet secret unavailable')
         const { deriveAccountCommitmentHex } = await import('@nodezero/zk-crypto/attestation-cipher')
         const deviceCommitment = await deriveAccountCommitmentHex(secret)
@@ -383,7 +452,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
         setAttestationDetails(details({}))
       }
     })()
-  }, [advanceVerificationStep, initVerificationSteps, lockbox, sessionCreatedAt, sessionStatus, webId])
+  }, [advanceVerificationStep, initVerificationSteps, lockbox, sessionCreatedAt, sessionStatus, walletInfo?.keyId, webId])
 
   const exportRecoveryBundle = useCallback(async (): Promise<{ fileName: string; json: string }> => {
     const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
@@ -449,6 +518,8 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
 
       lastCheckedKeyRef.current = null
       setWalletInfo(null)
+      setIdentities([])
+      setActiveIdentityKeyId(null)
       setAttestationStatus('idle')
       setAttestationMessage(null)
       setVerificationSteps([])
@@ -481,13 +552,13 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
       // adapter.load() can return null even when the key exists, so loadOrCreate
       // is the reliable accessor.
       getWalletService()
-      const secret = await _adapter?.loadOrCreate()
+      const secret = await _adapter?.loadOrCreate(walletInfo?.keyId)
       if (!secret) {
         throw new Error('Embedded wallet secret is unavailable for attestation.')
       }
       return produceSeamlessAttestation({ webId, podUrl, stellarPublicKey, stellarSecret: secret })
     },
-    []
+    [walletInfo?.keyId]
   )
 
   const signAttestationChallenge = useCallback(
@@ -500,7 +571,10 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
   return (
     <WalletContext.Provider value={{
       walletInfo,
+      identities,
+      activeIdentityKeyId,
       isLoading,
+      isIdentityBusy,
       attestationStatus,
       attestationMessage,
       verificationSteps,
@@ -509,6 +583,8 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
       deleteNodeData,
       createSeamlessAttestation,
       signAttestationChallenge,
+      selectIdentity,
+      createIdentity,
     }}>
       {children}
     </WalletContext.Provider>

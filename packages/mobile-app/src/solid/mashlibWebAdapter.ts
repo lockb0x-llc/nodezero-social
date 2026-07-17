@@ -10,8 +10,6 @@ type MashlibLikeModule = {
   listPanes?: (resourceUrl: string) => unknown[] | Promise<unknown[]>
 }
 
-type DynamicImport = (moduleId: string) => Promise<unknown>
-
 function mashlibModuleId(): string {
   const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
   return (appExtra?.mashlibModuleId ?? '').trim()
@@ -37,8 +35,7 @@ function normalizePaneListProvider(candidate: unknown): MashlibLikeModule | null
 }
 
 async function loadModuleById(moduleId: string): Promise<unknown> {
-  const dynamicImport = new Function('id', 'return import(id)') as DynamicImport
-  return dynamicImport(moduleId)
+  return import(moduleId)
 }
 
 async function resolveMashlibRuntimeModule(): Promise<MashlibLikeModule> {

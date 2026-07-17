@@ -33,6 +33,11 @@ export default function SettingsScreen(): JSX.Element {
   const router = useRouter()
   const {
     walletInfo,
+    identities,
+    activeIdentityKeyId,
+    isIdentityBusy,
+    selectIdentity,
+    createIdentity,
     attestationStatus,
     attestationMessage,
     attestationDetails,
@@ -44,6 +49,11 @@ export default function SettingsScreen(): JSX.Element {
   const [isExporting, setIsExporting] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [dataActionStatus, setDataActionStatus] = useState<string | null>(null)
+
+  const activeIdentity =
+    identities.find((identity) => identity.keyId === activeIdentityKeyId) ??
+    identities[0] ??
+    null
 
   // Load persisted NSFW setting on mount.
   React.useEffect(() => {
@@ -155,6 +165,26 @@ export default function SettingsScreen(): JSX.Element {
       ]
     )
   }, [deleteNodeData, router, signOut])
+
+  const createIdentityFromSettings = useCallback(async () => {
+    setDataActionStatus(null)
+    try {
+      await createIdentity()
+      setDataActionStatus('New identity created and selected.')
+    } catch (err) {
+      setDataActionStatus(err instanceof Error ? `Identity create failed: ${err.message}` : 'Identity create failed.')
+    }
+  }, [createIdentity])
+
+  const switchIdentityFromSettings = useCallback(async (keyId: string) => {
+    setDataActionStatus(null)
+    try {
+      await selectIdentity(keyId)
+      setDataActionStatus('Identity switched.')
+    } catch (err) {
+      setDataActionStatus(err instanceof Error ? `Identity switch failed: ${err.message}` : 'Identity switch failed.')
+    }
+  }, [selectIdentity])
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -291,6 +321,43 @@ export default function SettingsScreen(): JSX.Element {
         />
       </View>
 
+      {/* ── Device Identities ─────────────────────────────────────── */}
+      <Text style={styles.sectionHeader}>Device Identities</Text>
+      <View style={styles.card}>
+        <Row label="Active Identity" value={activeIdentity?.label ?? 'Provisioning…'} />
+        <Row label="Identity Key" value={activeIdentity?.keyId ?? 'Unavailable'} mono />
+        <Row label="Stored Identities" value={String(identities.length)} />
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() => void createIdentityFromSettings()}
+          disabled={isIdentityBusy}
+          accessibilityRole="button"
+          accessibilityLabel="Create new identity"
+        >
+          <Text style={styles.actionButtonText}>{isIdentityBusy ? 'Working…' : 'Create New Identity'}</Text>
+        </TouchableOpacity>
+        {identities.map((identity, index) => {
+          const active = identity.keyId === activeIdentityKeyId
+          return (
+            <TouchableOpacity
+              key={identity.keyId}
+              style={[
+                styles.identityOption,
+                index === identities.length - 1 && styles.identityOptionLast,
+                active && styles.identityOptionActive,
+              ]}
+              onPress={() => void switchIdentityFromSettings(identity.keyId)}
+              disabled={isIdentityBusy || active}
+              accessibilityRole="button"
+              accessibilityLabel={`Switch to ${identity.label}`}
+            >
+              <Text style={styles.identityOptionLabel}>{identity.label}</Text>
+              <Text style={styles.identityOptionMeta}>{active ? 'Active' : 'Switch'}</Text>
+            </TouchableOpacity>
+          )
+        })}
+      </View>
+
       {/* ── Data Management ──────────────────────────────────────── */}
       <Text style={styles.sectionHeader}>Data Management</Text>
       <View style={styles.card}>
@@ -400,6 +467,18 @@ const styles = StyleSheet.create({
   dangerButtonText: { color: aesthetic.color.danger, fontSize: 14, fontWeight: '600' },
   actionButton: { padding: 14, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: aesthetic.color.border },
   actionButtonText: { color: aesthetic.color.textHigh, fontSize: 14, fontWeight: '600' },
+  identityOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: aesthetic.color.border,
+  },
+  identityOptionLast: { borderBottomWidth: 0 },
+  identityOptionActive: { backgroundColor: aesthetic.color.bgInk },
+  identityOptionLabel: { color: aesthetic.color.textHigh, fontSize: 13, fontWeight: '600' },
+  identityOptionMeta: { color: aesthetic.color.textMid, fontSize: 12 },
   signOutButton: { padding: 14, alignItems: 'center' },
   signOutButtonText: { color: aesthetic.color.danger, fontSize: 15, fontWeight: '700' },
   version: { color: aesthetic.color.textLow, fontSize: 12, textAlign: 'center', marginTop: 32 },

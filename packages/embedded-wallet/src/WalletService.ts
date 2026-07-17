@@ -28,6 +28,7 @@ import {
 import type { EnclaveAdapter } from './EnclaveAdapter.js'
 import type {
   WalletInfo,
+  WalletIdentity,
   TransactionResult,
   IdentityHashPayload,
   AttestationSignature,
@@ -151,18 +152,71 @@ export class WalletService {
     this.network = network
   }
 
+  async listIdentities(): Promise<WalletIdentity[]> {
+    const identities = await this.adapter.listIdentities()
+    return identities.map((identity) => ({
+      keyId: identity.keyId,
+      label: identity.label,
+      createdAt: identity.createdAt,
+      lastUsedAt: identity.lastUsedAt,
+    }))
+  }
+
+  async createIdentity(label?: string): Promise<WalletInfo> {
+    const identity = await this.adapter.createIdentity(label)
+    const secret = await this.adapter.loadOrCreate(identity.keyId)
+    const keypair = Keypair.fromSecret(secret)
+    const publicKey = keypair.publicKey()
+    const isFunded = await this.ensureAccountExists(publicKey)
+    return {
+      keyId: identity.keyId,
+      publicKey,
+      isFunded,
+    }
+  }
+
+  async renameIdentity(keyId: string, label: string): Promise<void> {
+    await this.adapter.renameIdentity(keyId, label)
+  }
+
+  async deleteIdentity(keyId: string): Promise<void> {
+    await this.adapter.deleteIdentity(keyId)
+  }
+
+  async setActiveIdentity(keyId: string): Promise<void> {
+    await this.adapter.setActiveIdentityKeyId(keyId)
+  }
+
+  async getActiveIdentityKeyId(): Promise<string | null> {
+    return this.adapter.getActiveIdentityKeyId()
+  }
+
   /**
    * Returns basic information about the local wallet.
    * Loads (or creates) the keypair from the enclave.
    */
   async getWalletInfo(): Promise<WalletInfo> {
-    const secret = await this.adapter.loadOrCreate()
+    const keyId = await this.adapter.getActiveIdentityKeyId()
+    const secret = await this.adapter.loadOrCreate(keyId ?? undefined)
     const keypair = Keypair.fromSecret(secret)
     const publicKey = keypair.publicKey()
 
     const isFunded = await this.ensureAccountExists(publicKey)
 
-    return { publicKey, isFunded }
+    const resolvedKeyId = await this.adapter.getActiveIdentityKeyId()
+    if (!resolvedKeyId) {
+      throw new Error('Embedded wallet identity is not available.')
+    }
+
+    return { keyId: resolvedKeyId, publicKey, isFunded }
+  }
+
+  async getWalletInfoForIdentity(keyId: string): Promise<WalletInfo> {
+    const secret = await this.adapter.loadOrCreate(keyId)
+    const keypair = Keypair.fromSecret(secret)
+    const publicKey = keypair.publicKey()
+    const isFunded = await this.ensureAccountExists(publicKey)
+    return { keyId, publicKey, isFunded }
   }
 
   /**
@@ -170,7 +224,13 @@ export class WalletService {
    * Useful for UI readiness paths that must not block on RPC/Friendbot latency.
    */
   async getWalletPublicKey(): Promise<string> {
-    const secret = await this.adapter.loadOrCreate()
+    const active = await this.adapter.getActiveIdentityKeyId()
+    const secret = await this.adapter.loadOrCreate(active ?? undefined)
+    return Keypair.fromSecret(secret).publicKey()
+  }
+
+  async getWalletPublicKeyForIdentity(keyId: string): Promise<string> {
+    const secret = await this.adapter.loadOrCreate(keyId)
     return Keypair.fromSecret(secret).publicKey()
   }
 
@@ -184,7 +244,8 @@ export class WalletService {
       throw new Error('Attestation challenge payload is required.')
     }
 
-    const secret = await this.adapter.loadOrCreate()
+    const active = await this.adapter.getActiveIdentityKeyId()
+    const secret = await this.adapter.loadOrCreate(active ?? undefined)
     const keypair = Keypair.fromSecret(secret)
     const payloadBytes = Buffer.from(trimmedPayload, 'utf8')
     const signatureBytes = keypair.sign(payloadBytes)
@@ -204,12 +265,20 @@ export class WalletService {
     return this.adapter.load()
   }
 
+  async exportSecretForIdentity(keyId: string): Promise<string | null> {
+    return this.adapter.load(keyId)
+  }
+
   /**
    * Permanently destroys the embedded wallet secret. Irreversible: a fresh
    * keypair is provisioned on next wallet access.
    */
   async destroyWallet(): Promise<void> {
     await this.adapter.destroy()
+  }
+
+  async destroyWalletIdentity(keyId: string): Promise<void> {
+    await this.adapter.destroy(keyId)
   }
 
   /**
@@ -228,7 +297,8 @@ export class WalletService {
     payload: IdentityHashPayload,
     contractId: string
   ): Promise<TransactionResult> {
-    const secret = await this.adapter.loadOrCreate()
+    const active = await this.adapter.getActiveIdentityKeyId()
+    const secret = await this.adapter.loadOrCreate(active ?? undefined)
     const keypair = Keypair.fromSecret(secret)
     const publicKey = keypair.publicKey()
 
@@ -282,7 +352,8 @@ export class WalletService {
    * @returns {@link TransactionResult}
    */
   async removeIdentityOnChain(contractId: string): Promise<TransactionResult> {
-    const secret = await this.adapter.loadOrCreate()
+    const active = await this.adapter.getActiveIdentityKeyId()
+    const secret = await this.adapter.loadOrCreate(active ?? undefined)
     const keypair = Keypair.fromSecret(secret)
     const publicKey = keypair.publicKey()
 
@@ -386,7 +457,8 @@ export class WalletService {
     method: string,
     args: xdr.ScVal[]
   ): Promise<unknown> {
-    const secret = await this.adapter.loadOrCreate()
+    const active = await this.adapter.getActiveIdentityKeyId()
+    const secret = await this.adapter.loadOrCreate(active ?? undefined)
     const keypair = Keypair.fromSecret(secret)
 
     const account = await this.getSourceAccount(keypair.publicKey())

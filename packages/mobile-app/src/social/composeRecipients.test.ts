@@ -2,7 +2,7 @@ import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 import { resolveAudienceRecipients } from './composeRecipients'
 
-test('foaf recipients are derived from connections only', () => {
+void test('foaf recipients are derived from connections only', () => {
   const recipients = resolveAudienceRecipients({
     audience: 'foaf',
     connections: [
@@ -19,7 +19,7 @@ test('foaf recipients are derived from connections only', () => {
   ])
 })
 
-test('verified recipients are derived from connections only', () => {
+void test('verified recipients are derived from connections only', () => {
   const recipients = resolveAudienceRecipients({
     audience: 'verified',
     connections: ['https://solid.nodezero.social/v/profile/card#me'],
@@ -29,7 +29,7 @@ test('verified recipients are derived from connections only', () => {
   assert.deepEqual(recipients, ['https://solid.nodezero.social/v/profile/card#me'])
 })
 
-test('local audience does not target explicit WebID recipients', () => {
+void test('local audience does not target explicit WebID recipients', () => {
   const recipients = resolveAudienceRecipients({
     audience: 'local',
     connections: ['https://solid.nodezero.social/v/profile/card#me'],
@@ -39,7 +39,7 @@ test('local audience does not target explicit WebID recipients', () => {
   assert.deepEqual(recipients, [])
 })
 
-test('directory-only trust circle members do not change targeting', () => {
+void test('directory-only trust circle members do not change targeting', () => {
   const recipients = resolveAudienceRecipients({
     audience: 'verified',
     connections: [],

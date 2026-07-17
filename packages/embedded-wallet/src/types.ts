@@ -7,11 +7,25 @@
 export interface WalletInfo {
   /** The Stellar public key (G… address) derived from the stored secret. */
   publicKey: string
+  /** Stable identity key id that owns this wallet secret. */
+  keyId: string
   /**
    * Indicates whether this wallet has been funded on the Stellar network
    * (i.e., has a minimum balance and an active account).
    */
   isFunded: boolean
+}
+
+/** Metadata describing a stored embedded-wallet identity in the local keyring. */
+export interface WalletIdentity {
+  /** Stable local key identifier. */
+  keyId: string
+  /** User-visible label for picker UIs. */
+  label: string
+  /** ISO timestamp when the identity was created. */
+  createdAt: string
+  /** ISO timestamp of last key usage, or null if never used. */
+  lastUsedAt: string | null
 }
 
 /** Result returned by {@link WalletService} after submitting a transaction. */
