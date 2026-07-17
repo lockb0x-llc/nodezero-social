@@ -53,7 +53,7 @@ interface PersistedRecord {
 
 /** Index row payload: points a Stellar public key at its WebID row. */
 interface PersistedIndexRecord {
-  webIds: string[]
+  webIdsJson: string
 }
 
 const CIPHER_VERSION = 1
@@ -342,19 +342,9 @@ export class CredentialStore {
     // sign in from any device holding only their keypair.
     if (persisted.stellarPublicKey) {
       const existingIndex = await this.backend.get(stellarKeyRowKey(persisted.stellarPublicKey))
-      const previousIds = (() => {
-        if (!existingIndex) return [] as string[]
-        if (Array.isArray(existingIndex.webIds)) {
-          return existingIndex.webIds.filter((item): item is string => typeof item === 'string' && item.length > 0)
-        }
-        if (typeof existingIndex.webId === 'string' && existingIndex.webId.length > 0) {
-          // Backward-compatible migration path from the legacy single-webId index shape.
-          return [existingIndex.webId]
-        }
-        return [] as string[]
-      })()
+      const previousIds = this.readIndexedWebIds(existingIndex)
       const index: PersistedIndexRecord = {
-        webIds: [persisted.webId, ...previousIds.filter((id) => id !== persisted.webId)],
+        webIdsJson: JSON.stringify([persisted.webId, ...previousIds.filter((id) => id !== persisted.webId)]),
       }
       await this.backend.put(stellarKeyRowKey(persisted.stellarPublicKey), index as unknown as BackendRow)
     }
@@ -412,7 +402,7 @@ export class CredentialStore {
       if (remaining.length === 0) {
         await this.backend.delete(keyRow).catch(() => false)
       } else {
-        await this.backend.put(keyRow, { webIds: remaining }).catch(() => false)
+        await this.backend.put(keyRow, { webIdsJson: JSON.stringify(remaining) }).catch(() => false)
       }
     }
     return removed
@@ -420,6 +410,16 @@ export class CredentialStore {
 
   private readIndexedWebIds(index: BackendRow | null): string[] {
     if (!index) return []
+    if (typeof index.webIdsJson === 'string' && index.webIdsJson.length > 0) {
+      try {
+        const parsed = JSON.parse(index.webIdsJson)
+        if (Array.isArray(parsed)) {
+          return parsed.filter((item): item is string => typeof item === 'string' && item.length > 0)
+        }
+      } catch {
+        // Ignore malformed index rows and continue with compatibility fallbacks.
+      }
+    }
     if (Array.isArray(index.webIds)) {
       return index.webIds.filter((item): item is string => typeof item === 'string' && item.length > 0)
     }
