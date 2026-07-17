@@ -40,6 +40,10 @@ Primary packages and responsibilities:
   Proxy (`/v1/pod-proxy/*`). The staging deploy workflow keeps
   `pnpm qa:smoke:auth` as a blocking gate (no retry — session issuance has
   no redirect-timing window).
+- Returning sign-in supports multi-account disambiguation: when one local
+  Stellar identity maps to multiple NodeZero accounts, the app presents an
+  internal account chooser and retries `/v1/auth/stellar-token` with the
+  selected `webId`.
 
 ## Mandatory policy constraints
 Preserve environment isolation at all times:

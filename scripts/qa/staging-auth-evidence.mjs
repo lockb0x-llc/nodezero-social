@@ -106,6 +106,26 @@ async function waitForAuthenticatedSurface(page, timeoutMs) {
   await page.waitForURL((url) => /\/feed([/?#]|$)/.test(url.pathname), { timeout: timeoutMs })
 }
 
+async function maybeSelectAccountForReturningSignIn(page, expectedWebId) {
+  const modalTitle = page.getByText('Choose an account', { exact: true }).first()
+  const isVisible = await modalTitle
+    .isVisible({ timeout: 5_000 })
+    .catch(() => false)
+  if (!isVisible) return false
+
+  log('Returning sign-in surfaced internal account chooser; selecting the expected WebID.')
+  const matchingOption = page.getByText(expectedWebId, { exact: true }).first()
+  const hasMatch = await matchingOption
+    .isVisible({ timeout: 5_000 })
+    .catch(() => false)
+  if (!hasMatch) {
+    fail(`Account chooser did not contain expected WebID: ${expectedWebId}`)
+  }
+  await matchingOption.click()
+  await page.getByText('Continue', { exact: true }).first().click()
+  return true
+}
+
 function assertNoLegacyLegs(navigations, cssRequests) {
   for (const url of navigations) {
     if (/nz_oidc_bridge|nz_bridge_return|nz_stellar_token|[?&]code=|[?&]state=/.test(url)) {
@@ -227,6 +247,7 @@ async function main() {
     { timeout: 120_000 },
   )
   await page.getByText('Sign In', { exact: true }).first().click()
+  await maybeSelectAccountForReturningSignIn(page, session.webId)
 
   await waitForAuthenticatedSurface(page, sessionTimeoutMs).catch(async (error) => {
     fail(`Returning-user journey did not reach the feed: ${String(error?.message || error)}\nPage: ${await pageTextSnippet(page)}`)

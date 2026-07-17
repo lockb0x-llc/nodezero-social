@@ -40,6 +40,9 @@ Build and maintain NodeZero Social: a decentralized social app that integrates S
 	NodeZero sessions and proxies all Pod traffic (`/v1/pod-proxy/*`); the
 	browser never contacts the Community Server and there are no user-facing
 	passwords, OIDC redirects, or bridge tickets.
+- Returning sign-in supports multi-account disambiguation: if one device
+	Stellar identity maps to multiple NodeZero accounts, the app surfaces an
+	internal account chooser and retries sign-in with the selected WebID.
 - In CI, `pnpm qa:smoke:auth` remains the blocking identity gate; it runs
 	without retries because session issuance has no redirect-timing window.
 

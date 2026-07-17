@@ -48,7 +48,8 @@ code.
 |---|------|----------|--------|-------|
 | AU1 | Returning user taps **Sign In** (device with existing wallet) | One-tap Stellar signature login → authenticated feed. No IdP page, no password, no redirect leg, zero requests to `solid.nodezero.social` | RE-RUN REQUIRED (cutover) | Automated by `scripts/qa/staging-auth-evidence.mjs` (Journey 2). |
 | AU2 | Sign In on a device with no NodeZero account | Actionable error: no node exists for this device key; user is pointed to Create Your Node | RE-RUN REQUIRED (cutover) | Provisioner returns `401 no_account`; no fallback auth path exists. |
-| AU3 | Landing page audit | No password inputs, no identity-provider picker, no `solidcommunity.net` mention anywhere | RE-RUN REQUIRED (cutover) | Playwright `auth-invariant.spec.ts` (I5). |
+| AU3 | Landing page audit | No password inputs, no external identity-provider picker, no `solidcommunity.net` mention anywhere | RE-RUN REQUIRED (cutover) | Playwright `auth-invariant.spec.ts` (I5). |
+| AU3b | Returning sign-in when multiple NodeZero accounts share one local Stellar identity | Internal account chooser modal appears; selecting a listed WebID signs into that exact account with no external IdP redirect | RE-RUN REQUIRED (cutover) | Provisioner returns `409 account_selection_required`; UI sends selected `webId` on retry. |
 | AU4 | Sign out via Profile → Settings | Session destroyed (`nz.session.v2` cleared), returns to landing; every deep link redirects to `/` | RE-RUN REQUIRED (cutover) | Navigate `/profile` → ⚙ → `/settings` → **Sign Out**. |
 | AU5 | New-user seamless onboarding: handle + email → Create Your Node | ZK proof → Pod + WebID created → lockb0x anchored on-chain → **inline NodeZero session** → authenticated feed with no redirect leg and no password anywhere | RE-RUN REQUIRED (cutover) | Automated by `scripts/qa/staging-auth-evidence.mjs` (Journey 1); on-chain lockb0x asserted via stellar.expert. |
 | AU6 | Returning sign-in restores the same identity | Same WebID as onboarding; session carries lockb0x anchor metadata; client-side attestation check verifies | RE-RUN REQUIRED (cutover) | Automated (Journey 2); WebID equality asserted. |
@@ -289,7 +290,8 @@ Required mobile-app build env values:
 
 Expected behavior:
 
-- Landing exposes one-tap sign-in and Create Your Node with no IdP picker.
+- Landing exposes one-tap sign-in and Create Your Node with no external IdP picker.
+- If multiple accounts map to the same local Stellar identity, an internal account chooser modal is expected before session issuance.
 - Returning-user sign-in uses one tap (device key challenge signature) and lands in authenticated surfaces without redirect legs.
 - Feed, Local, and Settings auth mode labels show `NodeZero Session`.
 - Browser never talks directly to `solid.nodezero.social`; Pod access flows through `/v1/pod-proxy/*`.
@@ -297,5 +299,5 @@ Expected behavior:
 Validation snapshot:
 
 - `pnpm qa:smoke:auth` is the blocking identity gate and must pass all three journeys.
-- `auth-invariant.spec.ts` confirms no password field, no IdP picker, and no legacy bridge params.
+- `auth-invariant.spec.ts` confirms no password field, no external IdP picker, and no legacy bridge params.
 - Session invariant remains fail-closed (`session_invalid` clears session and returns to sign-in).
