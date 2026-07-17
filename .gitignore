@@ -35,3 +35,4 @@ provisioner-logs/latest.zip
 
 # Soroban test snapshots emitted by cargo test --target x86_64-unknown-linux-gnu
 packages/contracts/test_snapshots/
+docs/screenshots/onboarding-validation-2026-06-29
