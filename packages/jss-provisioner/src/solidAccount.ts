@@ -176,7 +176,7 @@ async function createDpopSigner(): Promise<DpopSigner> {
   const jwk = { crv: pub.crv, kty: pub.kty, x: pub.x, y: pub.y }
 
   return {
-    proof(htu, htm, ath) {
+    proof(htu, htm, ath): string {
       const header = { alg: 'ES256', typ: 'dpop+jwt', jwk }
       const payload: Record<string, unknown> = {
         htu,

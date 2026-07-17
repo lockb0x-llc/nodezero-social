@@ -50,7 +50,8 @@ file_contains_literal() {
 }
 
 # 1) Canonical staging domain must be nodezero.social (not nedzero.social).
-if grep -RIn --binary-files=without-match --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=build --exclude-dir=logs --exclude-dir=provisioner-logs --exclude-dir=provisioner-logs-live --exclude-dir=run61-logs --exclude-dir=playwright-report --exclude-dir=playwright-results --exclude-dir=.agent-worktrees --exclude-dir=documetation-assets --exclude-dir=screenshots --exclude-dir=videos --exclude=pnpm-lock.yaml --exclude=validate-env-isolation.sh 'staging\.nedzero\.social' "$REPO_ROOT" >/dev/null 2>&1; then
+# Use tracked-file grep to avoid expensive scans across large local log artifacts.
+if git -C "$REPO_ROOT" grep -nE 'staging\.nedzero\.social' -- . ':(exclude)pnpm-lock.yaml' ':(exclude)scripts/policy/validate-env-isolation.sh' >/dev/null 2>&1; then
   fail "Found deprecated staging domain 'staging.nedzero.social'. Use staging.nodezero.social everywhere."
 fi
 pass "Canonical staging domain references validated."

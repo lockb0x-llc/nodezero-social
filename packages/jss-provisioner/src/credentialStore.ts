@@ -412,7 +412,7 @@ export class CredentialStore {
     if (!index) return []
     if (typeof index.webIdsJson === 'string' && index.webIdsJson.length > 0) {
       try {
-        const parsed = JSON.parse(index.webIdsJson)
+        const parsed: unknown = JSON.parse(index.webIdsJson)
         if (Array.isArray(parsed)) {
           return parsed.filter((item): item is string => typeof item === 'string' && item.length > 0)
         }

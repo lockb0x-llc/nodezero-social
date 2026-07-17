@@ -7,9 +7,9 @@ import {
 } from './notificationEvents.js'
 
 void test('defaults to noop publisher mode when not configured', async () => {
-  const publisher = createNotificationEventPublisherFromEnv({}, async () => {
-    throw new Error('fetch should not be called in noop mode')
-  })
+  const publisher = createNotificationEventPublisherFromEnv({}, () =>
+    Promise.reject(new Error('fetch should not be called in noop mode'))
+  )
 
   assert.equal(publisher.mode, 'none')
   await publishProvisioningEvent(publisher, 'account.created', {
@@ -21,7 +21,7 @@ void test('defaults to noop publisher mode when not configured', async () => {
 void test('uses stdout mode when configured', async () => {
   const logs: string[] = []
   const originalLog = console.log
-  console.log = (...args: unknown[]) => {
+  console.log = (...args: unknown[]): void => {
     logs.push(args.map((arg) => String(arg)).join(' '))
   }
 
@@ -48,12 +48,12 @@ void test('uses stdout mode when configured', async () => {
 
 void test('uses webhook mode and sends event payload', async () => {
   let called = false
-  const fetchMock: typeof globalThis.fetch = async (input, init) => {
+  const fetchMock: typeof globalThis.fetch = (input, init) => {
     called = true
     assert.equal(String(input), 'https://example.test/events')
     assert.equal(init?.method, 'POST')
     assert.equal((init?.headers as Record<string, string>).authorization, 'Bearer test-token')
-    return new Response('', { status: 202 })
+    return Promise.resolve(new Response('', { status: 202 }))
   }
 
   const publisher = createNotificationEventPublisherFromEnv(

@@ -36,8 +36,9 @@ function normalizeMode(raw: string | undefined): 'none' | 'stdout' | 'webhook' {
 function createNoopPublisher(): NotificationEventPublisher {
   return {
     mode: 'none',
-    async publish(): Promise<void> {
+    publish(): Promise<void> {
       // Intentionally noop.
+      return Promise.resolve()
     },
   }
 }
@@ -45,8 +46,9 @@ function createNoopPublisher(): NotificationEventPublisher {
 function createStdoutPublisher(): NotificationEventPublisher {
   return {
     mode: 'stdout',
-    async publish(event): Promise<void> {
+    publish(event): Promise<void> {
       console.log('[jss-provisioner:event]', JSON.stringify(event))
+      return Promise.resolve()
     },
   }
 }

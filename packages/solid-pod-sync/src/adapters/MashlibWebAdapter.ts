@@ -35,15 +35,15 @@ function unsupported(reason: string): MashlibWebAdapter {
     inferResourceType(): MashlibResourceType {
       return 'generic'
     },
-    async listPanes(): Promise<MashlibPaneDescriptor[]> {
-      return []
+    listPanes(): Promise<MashlibPaneDescriptor[]> {
+      return Promise.resolve([])
     },
-    async listBoundPanes(resourceUrl: string): Promise<MashlibResourceBinding> {
-      return {
+    listBoundPanes(resourceUrl: string): Promise<MashlibResourceBinding> {
+      return Promise.resolve({
         resourceType: 'generic',
         resourceUrl,
         panes: [],
-      }
+      })
     },
   }
 }

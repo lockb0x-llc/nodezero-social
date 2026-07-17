@@ -4,7 +4,7 @@ import { CommunityDirectoryStore } from './communityDirectory.js'
 
 const seededWebId = 'https://solid.nodezero.social/lifecycle-user/profile/card#me'
 
-test('pre-opt-in records are absent from public index', () => {
+void test('pre-opt-in records are absent from public index', () => {
   const store = new CommunityDirectoryStore()
   store.seedRecord({
     webId: seededWebId,
@@ -17,7 +17,7 @@ test('pre-opt-in records are absent from public index', () => {
   assert.deepEqual(index.members, [])
 })
 
-test('opt-in publishes record to public index', () => {
+void test('opt-in publishes record to public index', () => {
   const store = new CommunityDirectoryStore()
   store.seedRecord({
     webId: seededWebId,
@@ -34,7 +34,7 @@ test('opt-in publishes record to public index', () => {
   assert.equal(index.members[0]?.listed, true)
 })
 
-test('opt-out removes record from public index and preserves record state', () => {
+void test('opt-out removes record from public index and preserves record state', () => {
   const store = new CommunityDirectoryStore()
   store.seedRecord({
     webId: seededWebId,
