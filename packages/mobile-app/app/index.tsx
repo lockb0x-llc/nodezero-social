@@ -33,7 +33,11 @@ import {
   getSeamlessSignupConfig,
 } from '../src/onboarding/seamlessSignup'
 import { ProgressStepLadder, type ProgressStep } from '../src/components/ProgressStepLadder'
-import { useStellarSignIn, NoAccountError } from '../src/auth/useStellarSignIn'
+import {
+  useStellarSignIn,
+  NoAccountError,
+  AccountSelectionRequiredError,
+} from '../src/auth/useStellarSignIn'
 
 const PRESS_OPACITY = 0.82
 
@@ -357,6 +361,93 @@ function AuthRedirectOverlay({ visible }: { visible: boolean }): JSX.Element {
   )
 }
 
+function accountDisplayLabel(account: { webId: string; podUrl: string }): string {
+  try {
+    const pod = new URL(account.podUrl)
+    const slug = pod.pathname.split('/').filter(Boolean)[0]
+    if (slug) return `@${slug}`
+  } catch {
+    // Fallback to WebID parsing.
+  }
+  try {
+    const webId = new URL(account.webId)
+    const slug = webId.pathname.split('/').filter(Boolean)[0]
+    if (slug) return `@${slug}`
+  } catch {
+    // ignore malformed URL and return a generic label.
+  }
+  return 'Node account'
+}
+
+function AccountSelectionModal({
+  visible,
+  accounts,
+  selectedWebId,
+  onSelect,
+  onCancel,
+  onContinue,
+  isSubmitting,
+}: {
+  visible: boolean
+  accounts: Array<{ webId: string; podUrl: string }>
+  selectedWebId: string | null
+  onSelect: (webId: string) => void
+  onCancel: () => void
+  onContinue: () => Promise<void>
+  isSubmitting: boolean
+}): JSX.Element {
+  return (
+    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent>
+      <View style={styles.accountModalBackdrop}>
+        <View style={styles.accountModalCard}>
+          <Text style={styles.accountModalTitle}>Choose an account</Text>
+          <Text style={styles.accountModalBody}>
+            This device identity has more than one NodeZero account. Select the one you want to sign into.
+          </Text>
+          <View style={styles.accountModalList}>
+            {accounts.map((account) => {
+              const isSelected = selectedWebId === account.webId
+              return (
+                <TouchableOpacity
+                  key={account.webId}
+                  style={[styles.accountOption, isSelected && styles.accountOptionSelected]}
+                  onPress={() => onSelect(account.webId)}
+                  activeOpacity={PRESS_OPACITY}
+                  disabled={isSubmitting}
+                >
+                  <Text style={styles.accountOptionTitle}>{accountDisplayLabel(account)}</Text>
+                  <Text style={styles.accountOptionMeta}>{account.webId}</Text>
+                </TouchableOpacity>
+              )
+            })}
+          </View>
+          <View style={styles.accountModalActions}>
+            <TouchableOpacity
+              style={[styles.accountActionSecondary, isSubmitting && styles.btnDisabled]}
+              onPress={onCancel}
+              activeOpacity={PRESS_OPACITY}
+              disabled={isSubmitting}
+            >
+              <Text style={styles.accountActionSecondaryText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.accountActionPrimary,
+                (isSubmitting || !selectedWebId) && styles.btnDisabled,
+              ]}
+              onPress={() => void onContinue()}
+              activeOpacity={PRESS_OPACITY}
+              disabled={isSubmitting || !selectedWebId}
+            >
+              {isSubmitting ? <ActivityIndicator color="#FFF" /> : <Text style={styles.accountActionPrimaryText}>Continue</Text>}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  )
+}
+
 export default function LandingScreen(): JSX.Element {
   const { status, adoptSession } = useNodeZeroSession()
   const {
@@ -383,6 +474,8 @@ export default function LandingScreen(): JSX.Element {
   const [isCreating, setIsCreating] = useState(false)
   const [createNotice, setCreateNotice] = useState<string | null>(null)
   const [createSteps, setCreateSteps] = useState<ProgressStep[]>([])
+  const [accountChoices, setAccountChoices] = useState<Array<{ webId: string; podUrl: string }>>([])
+  const [selectedAccountWebId, setSelectedAccountWebId] = useState<string | null>(null)
   const knownExistingEmailsRef = React.useRef<Set<string>>(new Set())
 
   /** Marks the given step done and activates the next pending step. */
@@ -420,7 +513,7 @@ export default function LandingScreen(): JSX.Element {
 
   const stellarSignIn = useStellarSignIn()
 
-  const handleSignIn = async (): Promise<void> => {
+  const handleSignIn = async (webId?: string): Promise<void> => {
     setError(null)
     setErrorAction(null)
     setIsSigningIn(true)
@@ -428,11 +521,17 @@ export default function LandingScreen(): JSX.Element {
       // One-tap sign-in: challenge → on-device Stellar signature → NodeZero
       // session. The provisioner only issues the session after proving live
       // Solid access (fail-closed) — no redirect, no password, no CSS UI.
-      const result = await stellarSignIn()
+      const result = await stellarSignIn({ webId })
+      setAccountChoices([])
+      setSelectedAccountWebId(null)
       await adoptSession(result)
     } catch (err) {
       if (err instanceof NoAccountError) {
         setError('No node exists for this device key yet. Create your node below to get started.')
+      } else if (err instanceof AccountSelectionRequiredError) {
+        setAccountChoices(err.accounts)
+        setSelectedAccountWebId(err.accounts[0]?.webId ?? null)
+        setError('Multiple accounts are available for this device identity. Choose one to sign in.')
       } else {
         setError(err instanceof Error ? err.message : 'Sign-in failed. Try again.')
       }
@@ -595,6 +694,8 @@ export default function LandingScreen(): JSX.Element {
     setError(null)
     setErrorAction(null)
     setCreateNotice(null)
+    setAccountChoices([])
+    setSelectedAccountWebId(null)
     await selectIdentity(keyId)
   }
 
@@ -611,6 +712,16 @@ export default function LandingScreen(): JSX.Element {
     }
   }
 
+  const handleCancelAccountSelection = (): void => {
+    setAccountChoices([])
+    setSelectedAccountWebId(null)
+  }
+
+  const handleContinueSelectedAccount = async (): Promise<void> => {
+    if (!selectedAccountWebId) return
+    await handleSignIn(selectedAccountWebId)
+  }
+
   if (status === 'restoring') {
     return (
       <View style={styles.centred}>
@@ -622,6 +733,15 @@ export default function LandingScreen(): JSX.Element {
   return (
     <>
       <AuthRedirectOverlay visible={isSigningIn} />
+      <AccountSelectionModal
+        visible={accountChoices.length > 0}
+        accounts={accountChoices}
+        selectedWebId={selectedAccountWebId}
+        onSelect={setSelectedAccountWebId}
+        onCancel={handleCancelAccountSelection}
+        onContinue={handleContinueSelectedAccount}
+        isSubmitting={isSigningIn}
+      />
       <KeyboardAvoidingView
         style={styles.root}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -1044,6 +1164,94 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     textAlign: 'center',
     marginBottom: 10,
+  },
+
+  // Multi-account selector
+  accountModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.62)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  accountModalCard: {
+    width: '100%',
+    maxWidth: 460,
+    backgroundColor: SURFACE,
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 16,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+  },
+  accountModalTitle: {
+    color: TEXT,
+    fontSize: 18,
+    fontWeight: '800',
+    marginBottom: 8,
+  },
+  accountModalBody: {
+    color: MUTED,
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 12,
+  },
+  accountModalList: {
+    gap: 8,
+    marginBottom: 14,
+  },
+  accountOption: {
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 12,
+    backgroundColor: INPUT_BG,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  accountOptionSelected: {
+    borderColor: PURPLE,
+    backgroundColor: CHIP,
+  },
+  accountOptionTitle: {
+    color: TEXT,
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  accountOptionMeta: {
+    color: MUTED,
+    fontSize: 12,
+  },
+  accountModalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+  },
+  accountActionSecondary: {
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 10,
+    backgroundColor: INPUT_BG,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  accountActionSecondaryText: {
+    color: TEXT,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  accountActionPrimary: {
+    borderRadius: 10,
+    backgroundColor: PURPLE,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    minWidth: 96,
+    alignItems: 'center',
+  },
+  accountActionPrimaryText: {
+    color: '#FFF',
+    fontSize: 13,
+    fontWeight: '700',
   },
 
   // How it works

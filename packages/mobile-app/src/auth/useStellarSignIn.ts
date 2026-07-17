@@ -30,6 +30,7 @@ interface StellarLoginResponse {
   webId: string
   podUrl: string
   lockbox?: SessionLockboxInfo | null
+  accounts?: Array<{ webId: string; podUrl: string }>
   error?: string
   code?: string
 }
@@ -42,6 +43,16 @@ export class NoAccountError extends Error {
   constructor() {
     super('No NodeZero account exists for this device key. Create your node to continue.')
     this.name = 'NoAccountError'
+  }
+}
+
+export class AccountSelectionRequiredError extends Error {
+  readonly accounts: Array<{ webId: string; podUrl: string }>
+
+  constructor(accounts: Array<{ webId: string; podUrl: string }>) {
+    super('Multiple NodeZero accounts were found for this device key. Choose one to continue.')
+    this.name = 'AccountSelectionRequiredError'
+    this.accounts = accounts
   }
 }
 
@@ -62,10 +73,10 @@ async function fetchWithTimeout(url: string, init: RequestInit): Promise<Respons
  *
  * Fail-closed: every failure throws; there is no fallback auth path.
  */
-export function useStellarSignIn(): () => Promise<AdoptSessionInput> {
+export function useStellarSignIn(): (options?: { webId?: string }) => Promise<AdoptSessionInput> {
   const { signAttestationChallenge, walletInfo } = useWallet()
 
-  return useCallback(async (): Promise<AdoptSessionInput> => {
+  return useCallback(async (options?: { webId?: string }): Promise<AdoptSessionInput> => {
     const provisionerUrl = getProvisionerUrl()
     if (!provisionerUrl) {
       throw new Error('Provisioner URL is not configured — cannot sign in.')
@@ -102,12 +113,16 @@ export function useStellarSignIn(): () => Promise<AdoptSessionInput> {
         challengeId: challenge.challengeId,
         stellarPublicKey: walletInfo.publicKey,
         signatureBase64,
+        webId: options?.webId,
       }),
     })
     const payload = (await loginResp.json().catch(() => ({}))) as StellarLoginResponse
     if (!loginResp.ok) {
       if (payload.code === 'no_account') {
         throw new NoAccountError()
+      }
+      if (payload.code === 'account_selection_required' && Array.isArray(payload.accounts) && payload.accounts.length > 0) {
+        throw new AccountSelectionRequiredError(payload.accounts)
       }
       throw new Error(payload.error ?? `Sign-in failed (${loginResp.status}).`)
     }

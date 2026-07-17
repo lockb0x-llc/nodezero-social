@@ -96,4 +96,5 @@ export interface StellarTokenRequest {
   challengeId: string
   stellarPublicKey: string
   signatureBase64: string
+  webId?: string
 }

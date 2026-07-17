@@ -251,9 +251,10 @@ interface SessionShape {
 }
 
 let counter = 0
-async function provisionUser(): Promise<{ session: SessionShape; webId: string; podUrl: string; keypair: Keypair }> {
+async function provisionUserWith(
+  keypair: Keypair,
+): Promise<{ session: SessionShape; webId: string; podUrl: string; keypair: Keypair }> {
   counter += 1
-  const keypair = Keypair.random()
   const { status, json: payload } = await postJson('/v1/solid-account', {
     name: `alice${counter}`,
     email: `alice${counter}@example.com`,
@@ -264,6 +265,11 @@ async function provisionUser(): Promise<{ session: SessionShape; webId: string; 
   assert.ok(session?.accessToken, 'session.accessToken missing')
   assert.ok(session?.refreshToken, 'session.refreshToken missing')
   return { session, webId: payload.webId as string, podUrl: payload.podUrl as string, keypair }
+}
+
+async function provisionUser(): Promise<{ session: SessionShape; webId: string; podUrl: string; keypair: Keypair }> {
+  const keypair = Keypair.random()
+  return provisionUserWith(keypair)
 }
 
 // ---------------------------------------------------------------------------
@@ -317,7 +323,10 @@ void test('solid-account: rejects missing stellarPublicKey', async () => {
 // Login (fail-closed) contract
 // ---------------------------------------------------------------------------
 
-async function loginWith(keypair: Keypair): Promise<{ status: number; json: Record<string, unknown> }> {
+async function loginWith(
+  keypair: Keypair,
+  options?: { webId?: string },
+): Promise<{ status: number; json: Record<string, unknown> }> {
   const challengeResp = await postJson('/v1/auth/stellar-challenge', {
     stellarPublicKey: keypair.publicKey(),
   })
@@ -334,6 +343,7 @@ async function loginWith(keypair: Keypair): Promise<{ status: number; json: Reco
     challengeId: challenge.challengeId,
     stellarPublicKey: keypair.publicKey(),
     signatureBase64,
+    webId: options?.webId,
   })
 }
 
@@ -354,6 +364,47 @@ void test('login: unknown identity gets 401 no_account (no migration path)', asy
   const result = await loginWith(stranger)
   assert.equal(result.status, 401)
   assert.equal(result.json.code, 'no_account')
+})
+
+void test('login: requires account selection when multiple webIds share the same Stellar key', async () => {
+  const keypair = Keypair.random()
+  const first = await provisionUserWith(keypair)
+  await provisionUserWith(keypair)
+
+  const result = await loginWith(keypair)
+  assert.equal(result.status, 409)
+  assert.equal(result.json.code, 'account_selection_required')
+
+  const accounts = result.json.accounts as Array<{ webId: string; podUrl: string }>
+  assert.ok(Array.isArray(accounts))
+  assert.equal(accounts.length, 2)
+  assert.equal(accounts.some((account) => account.webId === first.webId), true)
+})
+
+void test('login: selected webId signs into the requested account', async () => {
+  const keypair = Keypair.random()
+  const first = await provisionUserWith(keypair)
+  const second = await provisionUserWith(keypair)
+
+  const selectedFirst = await loginWith(keypair, { webId: first.webId })
+  assert.equal(selectedFirst.status, 200, JSON.stringify(selectedFirst.json))
+  assert.equal(selectedFirst.json.webId, first.webId)
+  assert.equal(selectedFirst.json.podUrl, first.podUrl)
+
+  const selectedSecond = await loginWith(keypair, { webId: second.webId })
+  assert.equal(selectedSecond.status, 200, JSON.stringify(selectedSecond.json))
+  assert.equal(selectedSecond.json.webId, second.webId)
+  assert.equal(selectedSecond.json.podUrl, second.podUrl)
+})
+
+void test('login: selecting a webId outside the Stellar identity set is rejected', async () => {
+  const keypair = Keypair.random()
+  await provisionUserWith(keypair)
+  const stranger = await provisionUser()
+
+  const result = await loginWith(keypair, { webId: stranger.webId })
+  assert.equal(result.status, 404)
+  assert.equal(result.json.code, 'account_not_found')
 })
 
 void test('login: bad signature is rejected before any credential lookup', async () => {

@@ -70,8 +70,29 @@ void test('memory store: save, find, revoke lifecycle', async () => {
   assert.ok(byKey)
   assert.equal(byKey.webId, 'https://pods.example/alice/profile/card#me')
 
+  await store.save({
+    webId: 'https://pods.example/alice-second/profile/card#me',
+    podUrl: 'https://pods.example/alice-second/',
+    stellarPublicKey: 'GABC',
+    clientCredentialsId: 'cc-2',
+    clientCredentialsSecret: 'second-secret',
+    userLockboxContractId: null,
+    lockboxFactoryContractId: null,
+    proofRootHex: null,
+  })
+
+  const byKeyAll = await store.findAllByStellarPublicKey('GABC')
+  assert.equal(byKeyAll.length, 2)
+  assert.equal(byKeyAll[0]?.webId, 'https://pods.example/alice-second/profile/card#me')
+  assert.equal(byKeyAll[1]?.webId, 'https://pods.example/alice/profile/card#me')
+
   assert.equal(await store.revokeByWebId('https://pods.example/alice/profile/card#me'), true)
   assert.equal(await store.findByWebId('https://pods.example/alice/profile/card#me'), null)
+  const remaining = await store.findByStellarPublicKey('GABC')
+  assert.ok(remaining)
+  assert.equal(remaining.webId, 'https://pods.example/alice-second/profile/card#me')
+
+  assert.equal(await store.revokeByWebId('https://pods.example/alice-second/profile/card#me'), true)
   assert.equal(await store.findByStellarPublicKey('GABC'), null)
   assert.equal(await store.revokeByWebId('https://pods.example/alice/profile/card#me'), false)
 })

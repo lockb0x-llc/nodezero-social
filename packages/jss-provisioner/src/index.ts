@@ -877,13 +877,37 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
     // Fail-closed login: a NodeZero session is issued only when stored client
     // credentials exist AND they produce a live Solid token AND the Pod
     // answers a probe. Anything else is 401 — there is no degraded state.
-    const credentials = await credentialStore
-      .findByStellarPublicKey(challenge.stellarPublicKey)
-      .catch(() => null)
-    if (!credentials) {
+    const candidateCredentials = await credentialStore
+      .findAllByStellarPublicKey(challenge.stellarPublicKey)
+      .catch(() => [])
+    if (candidateCredentials.length === 0) {
       sendJson(req, res, 401, {
         error: 'No NodeZero account exists for this identity. Create your node to continue.',
         code: 'no_account',
+      })
+      return
+    }
+
+    let credentials = candidateCredentials[0]
+    if (isNonEmpty(body.webId)) {
+      const requestedWebId = body.webId.trim()
+      const matchedCredentials = candidateCredentials.find((candidate) => candidate.webId === requestedWebId)
+      if (!matchedCredentials) {
+        sendJson(req, res, 404, {
+          error: 'Selected account was not found for this Stellar identity.',
+          code: 'account_not_found',
+        })
+        return
+      }
+      credentials = matchedCredentials
+    } else if (candidateCredentials.length > 1) {
+      sendJson(req, res, 409, {
+        error: 'Multiple NodeZero accounts found for this Stellar identity. Choose an account to continue.',
+        code: 'account_selection_required',
+        accounts: candidateCredentials.map((candidate) => ({
+          webId: candidate.webId,
+          podUrl: candidate.podUrl,
+        })),
       })
       return
     }

@@ -53,7 +53,7 @@ interface PersistedRecord {
 
 /** Index row payload: points a Stellar public key at its WebID row. */
 interface PersistedIndexRecord {
-  webId: string
+  webIds: string[]
 }
 
 const CIPHER_VERSION = 1
@@ -341,7 +341,21 @@ export class CredentialStore {
     // Secondary index: Stellar public key -> WebID, so returning users can
     // sign in from any device holding only their keypair.
     if (persisted.stellarPublicKey) {
-      const index: PersistedIndexRecord = { webId: persisted.webId }
+      const existingIndex = await this.backend.get(stellarKeyRowKey(persisted.stellarPublicKey))
+      const previousIds = (() => {
+        if (!existingIndex) return [] as string[]
+        if (Array.isArray(existingIndex.webIds)) {
+          return existingIndex.webIds.filter((item): item is string => typeof item === 'string' && item.length > 0)
+        }
+        if (typeof existingIndex.webId === 'string' && existingIndex.webId.length > 0) {
+          // Backward-compatible migration path from the legacy single-webId index shape.
+          return [existingIndex.webId]
+        }
+        return [] as string[]
+      })()
+      const index: PersistedIndexRecord = {
+        webIds: [persisted.webId, ...previousIds.filter((id) => id !== persisted.webId)],
+      }
       await this.backend.put(stellarKeyRowKey(persisted.stellarPublicKey), index as unknown as BackendRow)
     }
   }
@@ -370,9 +384,20 @@ export class CredentialStore {
   /** Resolves credentials from a Stellar public key via the index row. */
   async findByStellarPublicKey(stellarPublicKey: string): Promise<StoredCredentialRecord | null> {
     const index = await this.backend.get(stellarKeyRowKey(stellarPublicKey))
-    const webId = index && typeof index.webId === 'string' ? index.webId : null
+    const webIds = this.readIndexedWebIds(index)
+    const webId = webIds[0] ?? null
     if (!webId) return null
     return this.findByWebId(webId)
+  }
+
+  /** Resolves all known credentials for a Stellar public key, newest-first. */
+  async findAllByStellarPublicKey(stellarPublicKey: string): Promise<StoredCredentialRecord[]> {
+    const index = await this.backend.get(stellarKeyRowKey(stellarPublicKey))
+    const webIds = this.readIndexedWebIds(index)
+    if (webIds.length === 0) return []
+
+    const records = await Promise.all(webIds.map((webId) => this.findByWebId(webId)))
+    return records.filter((record): record is StoredCredentialRecord => record !== null)
   }
 
   /** Server-side revocation: removing the record invalidates every session. */
@@ -381,8 +406,27 @@ export class CredentialStore {
     const removed = await this.backend.delete(webIdRowKey(webId))
     const spk = existing && typeof existing.stellarPublicKey === 'string' ? existing.stellarPublicKey : ''
     if (spk) {
-      await this.backend.delete(stellarKeyRowKey(spk)).catch(() => false)
+      const keyRow = stellarKeyRowKey(spk)
+      const existingIndex = await this.backend.get(keyRow)
+      const remaining = this.readIndexedWebIds(existingIndex).filter((indexedWebId) => indexedWebId !== webId)
+      if (remaining.length === 0) {
+        await this.backend.delete(keyRow).catch(() => false)
+      } else {
+        await this.backend.put(keyRow, { webIds: remaining }).catch(() => false)
+      }
     }
     return removed
+  }
+
+  private readIndexedWebIds(index: BackendRow | null): string[] {
+    if (!index) return []
+    if (Array.isArray(index.webIds)) {
+      return index.webIds.filter((item): item is string => typeof item === 'string' && item.length > 0)
+    }
+    if (typeof index.webId === 'string' && index.webId.length > 0) {
+      // Backward-compatible migration path from the legacy single-webId index shape.
+      return [index.webId]
+    }
+    return []
   }
 }
