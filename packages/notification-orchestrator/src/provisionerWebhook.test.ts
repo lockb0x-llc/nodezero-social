@@ -13,7 +13,7 @@ import {
 const WEB_ID = 'https://solid.nodezero.social/alice/profile/card#me'
 const POD_URL = 'https://solid.nodezero.social/alice/'
 
-function createOrchestrator() {
+function createOrchestrator(): NotificationOrchestrator {
   return new NotificationOrchestrator({
     preferencesStore: new InMemoryPreferencesStore(),
     messageStore: new InMemoryMessageStore(),

@@ -13,24 +13,27 @@ import type {
 class InMemoryPreferencesStore {
   constructor(private readonly records: Record<string, NotificationPreferences>) {}
 
-  async getPreferences(webId: string): Promise<NotificationPreferences | null> {
-    return this.records[webId] ?? null
+  getPreferences(webId: string): Promise<NotificationPreferences | null> {
+    return Promise.resolve(this.records[webId] ?? null)
   }
 }
 
 class InMemoryMessageStore {
   readonly messages: NotificationMessage[] = []
 
-  async append(message: NotificationMessage): Promise<void> {
+  append(message: NotificationMessage): Promise<void> {
     this.messages.push(message)
+    return Promise.resolve()
   }
 
-  async listForDigest(webId: string, windowStart: string, windowEnd: string): Promise<NotificationMessage[]> {
-    return this.messages.filter(
-      (message) =>
-        message.userWebId === webId &&
-        message.occurredAt >= windowStart &&
-        message.occurredAt <= windowEnd
+  listForDigest(webId: string, windowStart: string, windowEnd: string): Promise<NotificationMessage[]> {
+    return Promise.resolve(
+      this.messages.filter(
+        (message) =>
+          message.userWebId === webId &&
+          message.occurredAt >= windowStart &&
+          message.occurredAt <= windowEnd
+      )
     )
   }
 }
@@ -38,17 +41,17 @@ class InMemoryMessageStore {
 class InMemoryEmailSender {
   readonly digests: DigestEmail[] = []
 
-  async sendDigest(email: DigestEmail): Promise<{ providerMessageId?: string }> {
+  sendDigest(email: DigestEmail): Promise<{ providerMessageId?: string }> {
     this.digests.push(email)
-    return { providerMessageId: 'provider-1' }
+    return Promise.resolve({ providerMessageId: 'provider-1' })
   }
 }
 
 class InMemoryUserDirectory {
   constructor(private readonly records: Record<string, UserDirectoryRecord>) {}
 
-  async resolveByWebId(webId: string): Promise<UserDirectoryRecord | null> {
-    return this.records[webId] ?? null
+  resolveByWebId(webId: string): Promise<UserDirectoryRecord | null> {
+    return Promise.resolve(this.records[webId] ?? null)
   }
 }
 

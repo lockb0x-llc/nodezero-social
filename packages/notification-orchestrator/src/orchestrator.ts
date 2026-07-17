@@ -37,7 +37,7 @@ export class NotificationOrchestrator {
   constructor(deps: OrchestratorDependencies) {
     this.deps = {
       ...deps,
-      now: deps.now ?? (() => new Date()),
+      now: deps.now ?? (((): Date => new Date())),
     }
   }
 

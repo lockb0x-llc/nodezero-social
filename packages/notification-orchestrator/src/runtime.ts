@@ -40,24 +40,27 @@ export class InMemoryPreferencesStore implements PreferencesStore {
     private readonly fallback: NotificationPreferences = defaultPreferences()
   ) {}
 
-  async getPreferences(webId: string): Promise<NotificationPreferences | null> {
-    return this.records[webId] ?? this.fallback
+  getPreferences(webId: string): Promise<NotificationPreferences | null> {
+    return Promise.resolve(this.records[webId] ?? this.fallback)
   }
 }
 
 export class InMemoryMessageStore implements MessageStore {
   private readonly messages: NotificationMessage[] = []
 
-  async append(message: NotificationMessage): Promise<void> {
+  append(message: NotificationMessage): Promise<void> {
     this.messages.push(message)
+    return Promise.resolve()
   }
 
-  async listForDigest(webId: string, windowStart: string, windowEnd: string): Promise<NotificationMessage[]> {
-    return this.messages.filter(
-      (message) =>
-        message.userWebId === webId &&
-        message.occurredAt >= windowStart &&
-        message.occurredAt <= windowEnd
+  listForDigest(webId: string, windowStart: string, windowEnd: string): Promise<NotificationMessage[]> {
+    return Promise.resolve(
+      this.messages.filter(
+        (message) =>
+          message.userWebId === webId &&
+          message.occurredAt >= windowStart &&
+          message.occurredAt <= windowEnd
+      )
     )
   }
 
@@ -73,14 +76,14 @@ export class InMemoryUserDirectory implements UserDirectory {
     return new InMemoryUserDirectory(parseUserDirectory(raw ?? ''))
   }
 
-  async resolveByWebId(webId: string): Promise<UserDirectoryRecord | null> {
-    return this.records[webId] ?? null
+  resolveByWebId(webId: string): Promise<UserDirectoryRecord | null> {
+    return Promise.resolve(this.records[webId] ?? null)
   }
 }
 
 export class ConsoleEmailSender implements EmailSender {
-  async sendDigest(email: DigestEmail): Promise<{ providerMessageId?: string }> {
+  sendDigest(email: DigestEmail): Promise<{ providerMessageId?: string }> {
     console.log('[notification-orchestrator:digest]', JSON.stringify(email))
-    return { providerMessageId: `console-${email.digestId}` }
+    return Promise.resolve({ providerMessageId: `console-${email.digestId}` })
   }
 }
