@@ -39,6 +39,19 @@ interface CssControls {
   password: { create: string; login: string }
 }
 
+const CSS_POD_LOCK_RETRY_ATTEMPTS = Number(process.env.JSS_SOLID_CSS_POD_LOCK_RETRY_ATTEMPTS ?? 3)
+const CSS_POD_LOCK_RETRY_BASE_DELAY_MS = Number(process.env.JSS_SOLID_CSS_POD_LOCK_RETRY_BASE_DELAY_MS ?? 350)
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function isCssPodLockTimeoutError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false
+  const lower = error.message.toLowerCase()
+  return lower.includes('lock expired after') && lower.includes('/pod')
+}
+
 async function getControls(baseUrl: string, authorization?: string): Promise<CssControls> {
   const headers: Record<string, string> = { accept: 'application/json' }
   if (authorization) headers.authorization = `CSS-Account-Token ${authorization}`
@@ -61,6 +74,31 @@ async function postJson<T>(url: string, authorization: string | undefined, paylo
   return (text ? JSON.parse(text) : {}) as T
 }
 
+async function createPodWithRetry(
+  podEndpoint: string,
+  token: string,
+  name: string,
+): Promise<{ pod?: string; webId?: string }> {
+  const attempts = Math.max(1, CSS_POD_LOCK_RETRY_ATTEMPTS)
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await postJson<{ pod?: string; webId?: string }>(podEndpoint, token, { name })
+    } catch (error) {
+      const isLastAttempt = attempt === attempts
+      if (!isCssPodLockTimeoutError(error) || isLastAttempt) {
+        if (isCssPodLockTimeoutError(error) && isLastAttempt) {
+          throw new Error('Pod provisioning is temporarily busy. Please wait a few seconds and try again.')
+        }
+        throw error
+      }
+      await sleep(CSS_POD_LOCK_RETRY_BASE_DELAY_MS * attempt)
+    }
+  }
+
+  // Unreachable because loop exits via return/throw; keeps TS control-flow exhaustive.
+  throw new Error('Pod provisioning failed unexpectedly.')
+}
+
 /**
  * Creates a Solid account + Pod on the configured CSS server and returns the
  * WebID, Pod URL, and freshly minted client credentials.
@@ -80,7 +118,7 @@ export async function createSolidAccount(
 
   const authedControls = await getControls(normalizedBase, token)
   await postJson(authedControls.password.create, token, { email: input.email, password: input.password })
-  const pod = await postJson<{ pod?: string; webId?: string }>(authedControls.account.pod, token, { name: input.name })
+  const pod = await createPodWithRetry(authedControls.account.pod, token, input.name)
 
   const refreshed = await getControls(normalizedBase, token)
   const webIdRes = await fetch(refreshed.account.webId, {

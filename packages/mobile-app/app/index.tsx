@@ -74,6 +74,9 @@ function mapCreateNodeError(err: unknown): string {
       'contact support and mention "ZK artifact access".'
     )
   }
+  if (lower.includes('lock expired after') || lower.includes('pod provisioning is temporarily busy')) {
+    return 'Pod provisioning is temporarily busy. Please wait a few seconds and tap Create Your Node again.'
+  }
   return err.message || 'Could not create your node. Try again.'
 }
 
