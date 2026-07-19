@@ -4,6 +4,10 @@ import {
   type DocustreamSourceManagerOptions,
 } from './DocustreamSourceManager.js'
 import { ProfileManager, type ProfileManagerOptions } from './ProfileManager.js'
+import {
+  ProfilePreferencesManager,
+  type ProfilePreferencesManagerOptions,
+} from './ProfilePreferencesManager.js'
 import { SocialGraph, type SocialGraphOptions } from './SocialGraph.js'
 import { NsfwScanner } from './NsfwScanner.js'
 import { NotificationManager, type NotificationManagerOptions } from './NotificationManager.js'
@@ -19,6 +23,7 @@ interface AuthenticatedSession {
 
 export interface SolidPodSyncManagers {
   profileManager: ProfileManager
+  profilePreferencesManager: ProfilePreferencesManager
   socialGraph: SocialGraph
   docustreamManager: DocustreamManager
   docustreamSourceManager: DocustreamSourceManager
@@ -51,7 +56,8 @@ export function createSolidPodSyncManagers(
       ProfileManagerOptions &
       SocialGraphOptions &
       DocustreamSourceManagerOptions &
-      NotificationManagerOptions,
+      NotificationManagerOptions &
+      ProfilePreferencesManagerOptions,
     'enablePodBootstrap' | 'policyMatrix' | 'podLayoutManager'
   > = {
     enablePodBootstrap: options.enablePodBootstrap ?? false,
@@ -65,6 +71,7 @@ export function createSolidPodSyncManagers(
       options.nsfwScanner,
       sharedBootstrapOptions
     ),
+    profilePreferencesManager: new ProfilePreferencesManager(session, sharedBootstrapOptions),
     socialGraph: new SocialGraph(session, sharedBootstrapOptions),
     docustreamManager: new DocustreamManager(session, sharedBootstrapOptions),
     docustreamSourceManager: new DocustreamSourceManager(session, sharedBootstrapOptions),

@@ -5,7 +5,7 @@
 # Verifies the published staging bundle includes:
 # 1) explicit module-id sentinel path
 # 2) first-party pane provider payload markers
-# 3) docustream pane-hint rendering marker
+# 3) docustream lockdown rendering marker
 
 set -euo pipefail
 
@@ -73,8 +73,8 @@ grep -q 'nodezero:mashlib-pane-provider' <<<"$BUNDLE" || fail "Bundle missing mo
 grep -q 'Activity Stream' <<<"$BUNDLE" || fail "Bundle missing pane label marker 'Activity Stream'."
 grep -q 'Timeline View' <<<"$BUNDLE" || fail "Bundle missing pane label marker 'Timeline View'."
 
-# Docustream UI marker proving pane-label render path is present.
-grep -q 'Web explorer panes' <<<"$BUNDLE" || fail "Bundle missing docustream pane hint marker 'Web explorer panes'."
+# Docustream UI marker proving lockdown state is present in deployed bundle.
+grep -q 'DocuStream is currently read-only while we complete a storage refactor.' <<<"$BUNDLE" || fail "Bundle missing docustream lockdown marker 'DocuStream is currently read-only while we complete a storage refactor.'."
 
 pass "bundle contains module-id runtime path and pane payload markers."
 

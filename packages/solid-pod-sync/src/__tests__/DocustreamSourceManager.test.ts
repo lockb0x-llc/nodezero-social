@@ -3,7 +3,7 @@ import { DocustreamSourceManager } from '../DocustreamSourceManager.js'
 const jestGlobal = import.meta.jest
 
 describe('DocustreamSourceManager', () => {
-  it('upsertSource writes source registry document', async () => {
+  it('blocks source mutations during docustream freeze', async () => {
     const fetch = jestGlobal
       .fn()
       .mockResolvedValueOnce({ ok: false, status: 404 })
@@ -11,22 +11,16 @@ describe('DocustreamSourceManager', () => {
 
     const manager = new DocustreamSourceManager({ fetch })
 
-    const source = await manager.upsertSource('https://alice.example/', {
-      url: 'https://example.com/feed.xml',
-      title: 'Example Feed',
-    })
+    await expect(
+      manager.upsertSource('https://alice.example/', {
+        url: 'https://example.com/feed.xml',
+        title: 'Example Feed',
+      })
+    ).rejects.toThrow(
+      'DocuStream source mutations are temporarily disabled during the storage refactor lock.'
+    )
 
-    expect(source.type).toBe('rss')
-    expect(source.enabled).toBe(true)
-
-    expect(fetch).toHaveBeenCalledTimes(2)
-    const [url, options] = fetch.mock.calls[1]
-    expect(url).toBe('https://alice.example/public/docustream-sources.jsonld')
-    expect(options).toMatchObject({
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/ld+json' },
-    })
-    expect(String(options?.body)).toContain('https://example.com/feed.xml')
+    expect(fetch).toHaveBeenCalledTimes(0)
   })
 
   it('listSources returns parsed sources from registry payload', async () => {

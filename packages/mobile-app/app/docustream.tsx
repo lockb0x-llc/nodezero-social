@@ -49,6 +49,8 @@ const DEFAULT_RSS_PRESETS: Array<{ title: string; url: string }> = [
   },
 ]
 
+const DOCUSTREAM_LOCKED = true
+
 function getSourceIcon(source: StreamItem['source']): JSX.Element {
   switch (source) {
     case 'reddit':
@@ -365,6 +367,11 @@ export default function DocustreamScreen(): JSX.Element {
     filter === 'all' ? items : queryStreamItems(items, { sources: [filter] })
 
   const handleSaveToPod = async (item: StreamItem): Promise<void> => {
+    if (DOCUSTREAM_LOCKED) {
+      Alert.alert('DocuStream locked', 'DocuStream writes are temporarily disabled.')
+      return
+    }
+
     if (!isLoggedIn || !effectiveWebId || !podRoot) {
       Alert.alert('Sign in required', 'Sign in to save Downstream items to your Pod.')
       return
@@ -385,6 +392,12 @@ export default function DocustreamScreen(): JSX.Element {
   }
 
   const handleAddSource = useCallback(async (url: string, title?: string): Promise<void> => {
+    if (DOCUSTREAM_LOCKED) {
+      setSourceModalError('DocuStream source management is temporarily disabled.')
+      Alert.alert('DocuStream locked', 'DocuStream source management is temporarily disabled.')
+      return
+    }
+
     if (!isLoggedIn || !podRoot) {
       setSourceModalError('Sign in to manage Docustream sources.')
       Alert.alert('Sign in required', 'Sign in to manage Docustream sources.')
@@ -430,6 +443,11 @@ export default function DocustreamScreen(): JSX.Element {
   }, [])
 
   const handleToggleSource = useCallback(async (source: DocustreamSource, nextEnabled: boolean): Promise<void> => {
+    if (DOCUSTREAM_LOCKED) {
+      Alert.alert('DocuStream locked', 'DocuStream source management is temporarily disabled.')
+      return
+    }
+
     if (!isLoggedIn || !podRoot) return
 
     setSourceOperationId(source.id)
@@ -448,6 +466,11 @@ export default function DocustreamScreen(): JSX.Element {
   }, [authFetch, ingestEnabledSources, isLoggedIn, loadSources, podRoot])
 
   const handleRemoveSource = useCallback(async (source: DocustreamSource): Promise<void> => {
+    if (DOCUSTREAM_LOCKED) {
+      Alert.alert('DocuStream locked', 'DocuStream source management is temporarily disabled.')
+      return
+    }
+
     if (!isLoggedIn || !podRoot) return
 
     setSourceOperationId(source.id)
@@ -464,6 +487,11 @@ export default function DocustreamScreen(): JSX.Element {
   }, [authFetch, isLoggedIn, loadDocustreamItems, loadSources, podRoot])
 
   const handleIngestSingleSource = useCallback(async (source: DocustreamSource): Promise<void> => {
+    if (DOCUSTREAM_LOCKED) {
+      Alert.alert('DocuStream locked', 'DocuStream ingest is temporarily disabled.')
+      return
+    }
+
     setSourceOperationId(source.id)
     try {
       await ingestOneSource(source)
@@ -475,7 +503,9 @@ export default function DocustreamScreen(): JSX.Element {
   }, [ingestOneSource, loadDocustreamItems, loadSources])
 
   const emptyStateText = isLoggedIn
-    ? 'No Docustream items yet. Add an RSS source to start filling your stream.'
+    ? DOCUSTREAM_LOCKED
+      ? 'DocuStream is currently read-only while we complete a storage refactor.'
+      : 'No Docustream items yet. Add an RSS source to start filling your stream.'
     : 'Sign in to load your Docustream from your Pod.'
 
   return (
@@ -489,7 +519,7 @@ export default function DocustreamScreen(): JSX.Element {
           <TouchableOpacity
             onPress={() => void ingestEnabledSources()}
             style={styles.addButton}
-            disabled={isIngesting || !isLoggedIn}
+            disabled={DOCUSTREAM_LOCKED || isIngesting || !isLoggedIn}
           >
             <Ionicons name="refresh" size={24} color={isIngesting ? aesthetic.color.textLow : aesthetic.color.accent} />
           </TouchableOpacity>
@@ -498,6 +528,7 @@ export default function DocustreamScreen(): JSX.Element {
             style={styles.addButton}
             testID="docustream-sources-open"
             accessibilityLabel="Open Docustream sources"
+            disabled={DOCUSTREAM_LOCKED}
           >
             <Ionicons name="add-circle" size={28} color="#2563EB" />
           </TouchableOpacity>
@@ -552,7 +583,7 @@ export default function DocustreamScreen(): JSX.Element {
               <TouchableOpacity
                 style={styles.actionLink}
                 onPress={() => void handleSaveToPod(item)}
-                disabled={savingItemId === item.id}
+                disabled={DOCUSTREAM_LOCKED || savingItemId === item.id}
               >
                 <Ionicons name="bookmark-outline" size={16} color="#6B7280" />
                 <Text style={styles.actionText}>
@@ -603,7 +634,7 @@ export default function DocustreamScreen(): JSX.Element {
               />
               <TouchableOpacity
                 style={styles.addSourceButton}
-                disabled={!sourceUrlInput.trim() || sourceOperationId !== null}
+                disabled={DOCUSTREAM_LOCKED || !sourceUrlInput.trim() || sourceOperationId !== null}
                 testID="docustream-source-add"
                 onPress={() => void handleAddSource(sourceUrlInput, pendingSourceTitle ?? undefined)}
               >
@@ -628,7 +659,7 @@ export default function DocustreamScreen(): JSX.Element {
                   key={preset.url}
                   style={styles.presetChip}
                   onPress={() => handlePresetSelect(preset)}
-                  disabled={sourceOperationId !== null}
+                  disabled={DOCUSTREAM_LOCKED || sourceOperationId !== null}
                 >
                   <Text style={styles.presetChipText}>{preset.title}</Text>
                 </TouchableOpacity>
@@ -653,7 +684,7 @@ export default function DocustreamScreen(): JSX.Element {
                       onValueChange={(nextEnabled) => void handleToggleSource(source, nextEnabled)}
                       trackColor={{ false: '#333', true: '#6C63FF' }}
                       thumbColor="#FFF"
-                      disabled={sourceOperationId === source.id}
+                      disabled={DOCUSTREAM_LOCKED || sourceOperationId === source.id}
                     />
                   </View>
 
@@ -671,14 +702,14 @@ export default function DocustreamScreen(): JSX.Element {
                     <TouchableOpacity
                       style={styles.sourceActionButton}
                       onPress={() => void handleIngestSingleSource(source)}
-                      disabled={sourceOperationId === source.id || isIngesting || !source.enabled}
+                      disabled={DOCUSTREAM_LOCKED || sourceOperationId === source.id || isIngesting || !source.enabled}
                     >
                       <Text style={styles.sourceActionButtonText}>Ingest now</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={styles.sourceActionButtonDanger}
                       onPress={() => void handleRemoveSource(source)}
-                      disabled={sourceOperationId === source.id}
+                      disabled={DOCUSTREAM_LOCKED || sourceOperationId === source.id}
                     >
                       <Text style={styles.sourceActionButtonText}>Remove</Text>
                     </TouchableOpacity>

@@ -3,11 +3,7 @@ import {
   type DocustreamSource,
   type DocustreamSourceType,
 } from './contracts/DocustreamSourceContract.js'
-import {
-  DEFAULT_POLICY_MATRIX,
-  PodLayoutManager,
-  type PodPolicyMatrix,
-} from './PodLayoutManager.js'
+import { type PodLayoutManager, type PodPolicyMatrix } from './PodLayoutManager.js'
 
 interface AuthenticatedSession {
   fetch: typeof globalThis.fetch
@@ -30,54 +26,14 @@ export interface UpsertDocustreamSourceInput {
 }
 
 const SOURCE_REGISTRY_FILE = 'docustream-sources.jsonld'
-
-function nowIso(): string {
-  return new Date().toISOString()
-}
+const DOCUSTREAM_SOURCE_WRITE_LOCK_ERROR =
+  'DocuStream source mutations are temporarily disabled during the storage refactor lock.'
 
 function sourceRegistryUrl(podRoot: string): string {
   const base = podRoot.replace(/\/$/, '')
   return `${base}/public/${SOURCE_REGISTRY_FILE}`
 }
 
-function normalizeSourceUrl(raw: string): string {
-  const trimmed = raw.trim()
-  const parsed = new URL(trimmed)
-  parsed.hash = ''
-
-  const normalizedPath = parsed.pathname.replace(/\/+$/, '') || '/'
-  parsed.pathname = normalizedPath
-
-  return parsed.toString()
-}
-
-function sourceIdFromUrl(url: string): string {
-  let hash = 2166136261
-  for (let index = 0; index < url.length; index += 1) {
-    hash ^= url.charCodeAt(index)
-    hash = Math.imul(hash, 16777619)
-  }
-
-  return `rss_${(hash >>> 0).toString(36)}`
-}
-
-function toJsonLd(sources: DocustreamSource[]): string {
-  return JSON.stringify(
-    {
-      '@context': {
-        '@vocab': 'https://vocab.nodezero.social/docustream-source#',
-        items: 'sources',
-        id: '@id',
-        type: '@type',
-      },
-      '@id': 'nodezero:docustream-sources',
-      '@type': 'DocustreamSourceRegistry',
-      sources,
-    },
-    null,
-    2
-  )
-}
 
 function fromJsonLd(payload: string): DocustreamSource[] {
   try {
@@ -118,8 +74,10 @@ function fromJsonLd(payload: string): DocustreamSource[] {
 export class DocustreamSourceManager {
   constructor(
     private readonly session: AuthenticatedSession,
-    private readonly options: DocustreamSourceManagerOptions = {}
-  ) {}
+    options: DocustreamSourceManagerOptions = {}
+  ) {
+    void options
+  }
 
   async listSources(podRoot: string): Promise<DocustreamSource[]> {
     const registryUrl = sourceRegistryUrl(podRoot)
@@ -146,124 +104,33 @@ export class DocustreamSourceManager {
   }
 
   async upsertSource(podRoot: string, input: UpsertDocustreamSourceInput): Promise<DocustreamSource> {
-    await this.ensurePodLayoutIfEnabled(podRoot)
-
-    const normalizedUrl = normalizeSourceUrl(input.url)
-    const existing = await this.listSources(podRoot)
-    const timestamp = nowIso()
-
-    const existingByUrl = existing.find((source) => source.url === normalizedUrl)
-    const id = existingByUrl?.id ?? sourceIdFromUrl(normalizedUrl)
-
-    const nextSource: DocustreamSource = {
-      id,
-      type: input.type ?? existingByUrl?.type ?? 'rss',
-      url: normalizedUrl,
-      enabled: input.enabled ?? existingByUrl?.enabled ?? true,
-      createdAt: existingByUrl?.createdAt ?? timestamp,
-      updatedAt: timestamp,
-      ...(input.title?.trim() ? { title: input.title.trim() } : existingByUrl?.title ? { title: existingByUrl.title } : {}),
-      ...(existingByUrl?.lastIngestedAt ? { lastIngestedAt: existingByUrl.lastIngestedAt } : {}),
-      ...(existingByUrl?.lastError ? { lastError: existingByUrl.lastError } : {}),
-    }
-
-    assertValidDocustreamSource(nextSource)
-
-    const withoutCurrent = existing.filter((source) => source.id !== id)
-    const updated = [...withoutCurrent, nextSource]
-    await this.writeRegistry(podRoot, updated)
-
-    return nextSource
+    void podRoot
+    void input
+    await Promise.resolve()
+    throw new Error(DOCUSTREAM_SOURCE_WRITE_LOCK_ERROR)
   }
 
   async setSourceEnabled(podRoot: string, sourceId: string, enabled: boolean): Promise<DocustreamSource | null> {
-    const existing = await this.listSources(podRoot)
-    const target = existing.find((source) => source.id === sourceId)
-    if (!target) return null
-
-    const nextSource: DocustreamSource = {
-      ...target,
-      enabled,
-      updatedAt: nowIso(),
-    }
-    assertValidDocustreamSource(nextSource)
-
-    const updated = existing.map((source) => (source.id === sourceId ? nextSource : source))
-    await this.writeRegistry(podRoot, updated)
-
-    return nextSource
+    void podRoot
+    void sourceId
+    void enabled
+    await Promise.resolve()
+    throw new Error(DOCUSTREAM_SOURCE_WRITE_LOCK_ERROR)
   }
 
   async removeSource(podRoot: string, sourceId: string): Promise<void> {
-    const existing = await this.listSources(podRoot)
-    const updated = existing.filter((source) => source.id !== sourceId)
-    if (updated.length === existing.length) return
-    await this.writeRegistry(podRoot, updated)
+    void podRoot
+    void sourceId
+    await Promise.resolve()
+    throw new Error(DOCUSTREAM_SOURCE_WRITE_LOCK_ERROR)
   }
 
   async recordIngestionResult(podRoot: string, sourceId: string, lastError?: string): Promise<DocustreamSource | null> {
-    const existing = await this.listSources(podRoot)
-    const target = existing.find((source) => source.id === sourceId)
-    if (!target) return null
-
-    const nextSource: DocustreamSource = {
-      ...target,
-      updatedAt: nowIso(),
-      ...(lastError
-        ? { lastError: lastError.slice(0, 512) }
-        : { lastIngestedAt: nowIso() }),
-    }
-
-    if (!lastError) {
-      delete nextSource.lastError
-    }
-
-    assertValidDocustreamSource(nextSource)
-
-    const updated = existing.map((source) => (source.id === sourceId ? nextSource : source))
-    await this.writeRegistry(podRoot, updated)
-
-    return nextSource
+    void podRoot
+    void sourceId
+    void lastError
+    await Promise.resolve()
+    throw new Error(DOCUSTREAM_SOURCE_WRITE_LOCK_ERROR)
   }
 
-  private async writeRegistry(podRoot: string, sources: DocustreamSource[]): Promise<void> {
-    const registryUrl = sourceRegistryUrl(podRoot)
-    const body = toJsonLd(sources)
-
-    const response = await this.session.fetch(registryUrl, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/ld+json' },
-      body,
-    })
-
-    if (!response.ok) {
-      const authHeader = response.headers.get('www-authenticate') ?? 'none'
-      let responseSnippet = ''
-      try {
-        responseSnippet = (await response.text()).replace(/\s+/g, ' ').slice(0, 300)
-      } catch {
-        responseSnippet = 'unavailable'
-      }
-
-      throw new Error(
-        `Failed to write source registry at ${registryUrl}: HTTP ${response.status} ${response.statusText}; www-authenticate=${authHeader}; body=${responseSnippet}`
-      )
-    }
-  }
-
-  private async ensurePodLayoutIfEnabled(podRoot: string): Promise<void> {
-    if (!this.options.enablePodBootstrap) return
-
-    const fallbackManager = new PodLayoutManager({ fetch: this.session.fetch })
-    const podLayoutManager = this.options.podLayoutManager ?? fallbackManager
-    if (typeof podLayoutManager.ensureDocustreamLayoutAndPolicy === 'function') {
-      await podLayoutManager.ensureDocustreamLayoutAndPolicy(
-        podRoot,
-        (this.options.policyMatrix ?? DEFAULT_POLICY_MATRIX).docustream
-      )
-      return
-    }
-
-    await podLayoutManager.ensureDefaultLayoutAndPolicies(podRoot, this.options.policyMatrix ?? DEFAULT_POLICY_MATRIX)
-  }
 }

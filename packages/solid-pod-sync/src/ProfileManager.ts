@@ -12,23 +12,24 @@
  */
 
 import {
-  getSolidDataset,
-  saveSolidDatasetAt,
-  getThing,
-  setThing,
   createSolidDataset,
-  buildThing,
   createThing,
+  saveSolidDatasetAt,
+  getSolidDataset,
+  getThing,
+  buildThing,
   getStringNoLocale,
-  getStringNoLocaleAll,
   getUrl,
-  getBoolean,
+  setThing,
   type SolidDataset,
   type Thing,
   type WithServerResourceInfo,
 } from '@inrupt/solid-client'
 import { NsfwScanner } from './NsfwScanner.js'
-import { assertValidDataBackpackProfile } from './contracts/DataBackpackContract.js'
+import {
+  assertValidPublicProfileDocument,
+  type PublicProfileDocument,
+} from './contracts/DataBackpackContract.js'
 import {
   assertAclNamespacePolicy,
   DEFAULT_POLICY_MATRIX,
@@ -43,11 +44,6 @@ import {
 interface AuthenticatedSession {
   fetch: typeof globalThis.fetch
 }
-
-// ─── NodeZero custom RDF namespace ────────────────────────────────────────────
-const NZ_NS = 'https://vocab.nodezero.social/ns#'
-const NZ_IS_NSFW = `${NZ_NS}isNSFW`
-const NZ_INTERESTS = `${NZ_NS}interests`
 
 // ─── Standard vocabulary predicates ──────────────────────────────────────────
 const VCARD_FN = 'http://www.w3.org/2006/vcard/ns#fn'
@@ -185,19 +181,20 @@ export class ProfileManager {
     if (profile.externalUrl) urlsToScan.push(profile.externalUrl)
     if (profile.avatarUrl) urlsToScan.push(profile.avatarUrl)
 
-    const scanResult = this.nsfwScanner.scan(urlsToScan)
-    const isNsfw = profile.isNsfw || scanResult.isNsfw
+    this.nsfwScanner.scan(urlsToScan)
 
-    assertValidDataBackpackProfile({
-      ...profile,
-      isNsfw,
-    })
+    const publicProfile: PublicProfileDocument = {
+      displayName: profile.displayName,
+      bio: profile.bio,
+      ...(profile.avatarUrl ? { avatarUrl: profile.avatarUrl } : {}),
+      ...(profile.externalUrl ? { externalUrl: profile.externalUrl } : {}),
+    }
+    assertValidPublicProfileDocument(publicProfile)
 
     // ── Build RDF Thing ────────────────────────────────────────────────────
     let thingBuilder = buildThing(createThing({ url: webId }))
       .setStringNoLocale(VCARD_FN, profile.displayName)
       .setStringNoLocale(VCARD_NOTE, profile.bio)
-      .setBoolean(NZ_IS_NSFW, isNsfw)
 
     if (profile.avatarUrl) {
       thingBuilder = thingBuilder.setUrl(VCARD_PHOTO, profile.avatarUrl)
@@ -205,10 +202,6 @@ export class ProfileManager {
     if (profile.externalUrl) {
       thingBuilder = thingBuilder.setUrl(VCARD_URL, profile.externalUrl)
     }
-    for (const interest of profile.interests) {
-      thingBuilder = thingBuilder.addStringNoLocale(NZ_INTERESTS, interest)
-    }
-
     const profileThing = thingBuilder.build()
 
     // ── Fetch or create the dataset, then patch and save ──────────────────
@@ -307,16 +300,9 @@ function thingToProfile(thing: Thing): UserProfile {
     bio: getStringNoLocale(thing, VCARD_NOTE) ?? '',
     ...(avatarUrl !== null ? { avatarUrl } : {}),
     ...(externalUrl !== null ? { externalUrl } : {}),
-    interests: getAllStrings(thing, NZ_INTERESTS),
-    isNsfw: getBoolean(thing, NZ_IS_NSFW) ?? false,
+    interests: [],
+    isNsfw: false,
   }
-}
-
-/**
- * Returns all string values for a given predicate on a Thing (multi-value).
- */
-function getAllStrings(thing: Thing, predicate: string): string[] {
-  return getStringNoLocaleAll(thing, predicate)
 }
 
 /**

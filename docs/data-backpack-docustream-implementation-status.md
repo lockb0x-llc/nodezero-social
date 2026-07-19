@@ -108,15 +108,15 @@ Verification commands and outcomes:
 
 13. `bash ./scripts/qa/staging-mashlib-deployed-proof.sh --bundle-file /mnt/c/Users/standarduser/Code/nodezero-social/packages/mobile-app/dist/_expo/static/js/web/index-21303f0b828e796f8a81333b2a02de28.js`
 - Outcome: PASS
-- Evidence summary: locally exported web artifact (built with `NZ_ENV_PROFILE=staging-testnet`, `NZ_MASHLIB_EXPLORER_ENABLED=true`, `NZ_MASHLIB_MODULE_ID=nodezero:mashlib-pane-provider`) contains module-id sentinel and pane label/render markers (`Activity Stream`, `Timeline View`, `Web explorer panes`)
+- Evidence summary: locally exported web artifact (built with `NZ_ENV_PROFILE=staging-testnet`, `NZ_MASHLIB_EXPLORER_ENABLED=true`, `NZ_MASHLIB_MODULE_ID=nodezero:mashlib-pane-provider`) contains module-id sentinel and pane label/render markers (`Activity Stream`, `Timeline View`, `DocuStream is currently read-only while we complete a storage refactor.`)
 
 14. `npx @azure/static-web-apps-cli@2.0.2 deploy ./packages/mobile-app/dist --deployment-token <token> --env production` then `corepack pnpm qa:smoke:mashlib-deployed`
 - Outcome: PASS
 - Evidence summary: manual SWA deployment completed successfully (deployment id `eac2bdbb-0e20-4d2f-807e-0380a1ed223c`) and live staging proof immediately passed
 
-15. `corepack pnpm qa:smoke:docustream-pane` (seeded-session deterministic mode)
+15. `corepack pnpm qa:smoke:docustream-pane` (seeded-session deterministic mode, lockdown verification)
 - Outcome: FAIL
-- Evidence summary: runtime app config loaded on staging reports `envProfile: staging-testnet` but `mashlibExplorerEnabled` and `mashlibModuleId` are `null`, so web adapter pane hints cannot render on docustream despite bundle marker presence
+- Evidence summary: runtime app config loaded on staging reports `envProfile: staging-testnet` but `mashlibExplorerEnabled` and `mashlibModuleId` are `null`, so full lockdown-proof capture could not complete despite bundle marker presence
 
 ## Step 4: focused staging verification evidence
 

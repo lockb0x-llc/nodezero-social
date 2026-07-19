@@ -562,70 +562,6 @@ async function waitForVerifiedShellStability(page, timeoutMs) {
   }
 }
 
-async function recoverSolidOidcSessionForSourceWrites(page, options) {
-  const { baseUrl, email, password, appHost } = options
-  console.log('[docustream-pane-evidence] Recovering Solid OIDC session for source writes...')
-
-  const savedNodeSession = await page.evaluate(() => {
-    try {
-      return localStorage.getItem('node.session.v1') || localStorage.getItem('@node.session.v1') || ''
-    } catch {
-      return ''
-    }
-  })
-
-  await page.evaluate(() => {
-    try {
-      const keys = ['solid.webId.v1', '@solid.webId.v1', 'node.session.v1', '@node.session.v1']
-      for (const key of keys) localStorage.removeItem(key)
-    } catch {
-      // ignore storage write failures
-    }
-  })
-
-  await page.goto(`${baseUrl}/`, { waitUntil: 'domcontentloaded' })
-  await page.getByRole('button', { name: 'Sign In' }).first().click({ timeout: 30000 })
-
-  await page.waitForURL((url) => url.hostname === solidHost, { timeout: redirectTimeoutMs }).catch(async () => {
-    const snippet = await pageTextSnippet(page)
-    fail(`OIDC recovery could not reach identity provider login. URL=${page.url()}. Page snippet: ${snippet}`)
-  })
-
-  await completeIdentityProviderFlow(page, {
-    email,
-    password,
-    appHost,
-    expectManual: true,
-  })
-
-  await page.waitForURL((url) => url.hostname === solidHost, { timeout: 30000 }).catch(() => null)
-
-  if (currentHost(page) === solidHost) {
-    await completeIdentityProviderFlow(page, {
-      email,
-      password,
-      appHost,
-      expectManual: false,
-    })
-  }
-
-  await waitForAuthenticatedSession(page, 'docustream-oidc-recovery')
-
-  if (savedNodeSession) {
-    await page.evaluate((nodeSessionRaw) => {
-      try {
-        localStorage.setItem('node.session.v1', nodeSessionRaw)
-        localStorage.setItem('@node.session.v1', nodeSessionRaw)
-      } catch {
-        // ignore storage write failures
-      }
-    }, savedNodeSession)
-  }
-
-  await page.goto(`${baseUrl}/docustream`, { waitUntil: 'domcontentloaded' })
-  await ensureDocustreamVisible(page, baseUrl)
-}
-
 async function openSourcesModal(page, baseUrl) {
   const modalTitle = page.getByText('Docustream Sources', { exact: false }).first()
   const stableLauncher = page.locator('[data-testid="docustream-sources-open"]').first()
@@ -713,114 +649,55 @@ async function openSourcesModal(page, baseUrl) {
   fail(`Could not find the Docustream sources launcher. Page snippet: ${snippet}`)
 }
 
-async function verifyAddSourceIngestAndRender(page, timeoutMs, options = {}) {
-  const { attemptSessionRecovery } = options
-  const testSource = 'https://www.w3.org/news/feed/'
-
+async function verifyDocustreamLockdown(page, timeoutMs) {
   await waitForDocustreamSessionReady(page, timeoutMs)
-  await openSourcesModal(page, baseUrl)
 
-  let addResult = null
-  for (let addAttempt = 1; addAttempt <= 2; addAttempt += 1) {
-    const sourceInput = page.locator('[data-testid="docustream-source-url-input"], input[placeholder="https://example.com/feed.xml"]').first()
-    await sourceInput.fill(testSource, { timeout: 15000 })
-
-    const stableAddButton = page.locator('[data-testid="docustream-source-add"]').first()
-    const clickedStableAdd = await stableAddButton.click({ timeout: 5000 }).then(() => true).catch(() => false)
-    if (!clickedStableAdd) {
-      await page.getByText('Add', { exact: true }).first().click({ timeout: 15000 })
-    }
-
-    addResult = await page.waitForFunction(() => {
-      const bodyText = (document.body?.innerText || '').replace(/\s+/g, ' ')
-      if (bodyText.includes('Add source failed:')) {
-        return { state: 'error', text: bodyText.slice(0, 900) }
-      }
-
-      const ingestButtons = Array.from(document.querySelectorAll('button, [role="button"]'))
-        .filter((node) => (node.textContent || '').trim() === 'Ingest now').length
-      const sourceListReady = bodyText.includes('Your sources') && !bodyText.includes('No sources yet')
-
-      const inputNode =
-        document.querySelector('[data-testid="docustream-source-url-input"]') ||
-        document.querySelector('input[placeholder="https://example.com/feed.xml"]')
-      const inputValue = inputNode && 'value' in inputNode ? String(inputNode.value || '') : ''
-
-      if (ingestButtons > 0 || sourceListReady || inputValue.length === 0) {
-        return { state: 'ready', ingestButtons, sourceListReady, inputCleared: inputValue.length === 0 }
-      }
-
-      return null
-    }, { timeout: timeoutMs }).then((handle) => handle.jsonValue())
-
-    if (addResult?.state === 'ready') {
-      break
-    }
-
-    if (addAttempt === 1) {
-      const unauthorizedWrite =
-        typeof addResult?.text === 'string' &&
-        (addResult.text.includes('HTTP 401') || addResult.text.includes('www-authenticate=Bearer'))
-
-      if (unauthorizedWrite && typeof attemptSessionRecovery === 'function') {
-        console.log('[docustream-pane-evidence] Unauthorized source write detected; attempting OIDC recovery before retry...')
-        await attemptSessionRecovery()
-        await openSourcesModal(page, baseUrl)
-      }
-
-      console.log(`[docustream-pane-evidence] Add source attempt 1 failed; retrying once. Diagnostic=${JSON.stringify(addResult)}`)
-      await page.waitForTimeout(1200)
-      continue
-    }
-
-    fail(`Adding source failed before ingest. Modal snippet: ${addResult?.text ?? 'unknown add-source error'}`)
-  }
-
-  await page.getByText('Ingest now', { exact: true }).first().click({ timeout: 15000 })
-
-  const ingestResult = await page.waitForFunction(() => {
+  const initialState = await page.evaluate(() => {
     const text = document.body?.innerText ?? ''
-    if (text.includes('Last error:')) {
-      return 'error'
-    }
-    if (text.includes('Last ingested:') || text.includes('Save to Pod')) {
-      return 'ready'
-    }
-    return null
-  }, { timeout: timeoutMs }).then((handle) => handle.jsonValue())
-
-  if (ingestResult === 'error') {
-    const snippet = await pageTextSnippet(page)
-    fail(`Source ingestion recorded an error. Page snippet: ${snippet}`)
-  }
-
-  const rendered = await page.evaluate(() => {
-    const text = document.body?.innerText ?? ''
-    const hasLastError = text.includes('Last error:')
-    const itemCards = Array.from(document.querySelectorAll('button, [role="button"], a, div, span'))
-      .filter((node) => (node.textContent || '').trim() === 'Save to Pod').length
-
     return {
-      hasLastError,
-      itemCards,
-      hasIngestedLabel: text.includes('Last ingested:'),
+      hasReadonlyMessage: text.includes('DocuStream is currently read-only while we complete a storage refactor.'),
+      hasDownstreamHeader: text.includes('Downstream'),
     }
   })
 
-  if (rendered.hasLastError) {
+  if (!initialState.hasDownstreamHeader) {
     const snippet = await pageTextSnippet(page)
-    fail(`Source ingestion recorded an error. Page snippet: ${snippet}`)
+    fail(`Docustream header missing before lockdown checks. Page snippet: ${snippet}`)
   }
 
-  if (rendered.itemCards < 1) {
+  if (!initialState.hasReadonlyMessage) {
     const snippet = await pageTextSnippet(page)
-    fail(`Ingestion completed but no stream items were rendered. Page snippet: ${snippet}`)
+    fail(`Read-only lock message not found in docustream view. Page snippet: ${snippet}`)
+  }
+
+  await openSourcesModal(page, baseUrl)
+
+  const modalLockState = await page.evaluate(() => {
+    const bodyText = document.body?.innerText ?? ''
+    const addButton = document.querySelector('[data-testid="docustream-source-add"]')
+    const disabledAttr = addButton instanceof HTMLButtonElement
+      ? addButton.disabled
+      : addButton?.getAttribute?.('aria-disabled') === 'true'
+
+    return {
+      hasSourceLockMessage: bodyText.includes('DocuStream source management is temporarily disabled.'),
+      addDisabled: Boolean(disabledAttr),
+    }
+  })
+
+  if (!modalLockState.addDisabled) {
+    fail('Docustream source add control is not disabled during lockdown.')
+  }
+
+  if (!modalLockState.hasSourceLockMessage) {
+    fail('Docustream source lock message is missing in modal.')
   }
 
   return {
-    sourceUrl: testSource,
-    renderedItems: rendered.itemCards,
-    hasIngestedLabel: rendered.hasIngestedLabel,
+    mode: 'read-only-lockdown',
+    addDisabled: modalLockState.addDisabled,
+    hasSourceLockMessage: modalLockState.hasSourceLockMessage,
+    hasReadonlyMessage: initialState.hasReadonlyMessage,
   }
 }
 
@@ -847,7 +724,7 @@ async function run() {
   const page = await context.newPage()
   const topLevelNavigations = []
   let docustreamCapture = null
-  let sourceIngestEvidence = null
+  let lockdownEvidence = null
 
   try {
     console.log(`[docustream-pane-evidence] Starting run against ${baseUrl} with handle ${handle}.`)
@@ -1276,20 +1153,9 @@ async function run() {
     await openDocustreamWithRetry(page, baseUrl)
     await ensureDocustreamVisible(page, baseUrl)
 
-    console.log('[docustream-pane-evidence] Running source add + ingest verification...')
+    console.log('[docustream-pane-evidence] Running docustream lockdown verification...')
     await proveSolidSessionIntegrity(page, 120000)
-    sourceIngestEvidence = await verifyAddSourceIngestAndRender(page, timeoutMs, {
-      attemptSessionRecovery: useSeededSession
-        ? null
-        : async () => {
-            await recoverSolidOidcSessionForSourceWrites(page, {
-              baseUrl,
-              email,
-              password: onboardingPassword,
-              appHost: new URL(baseUrl).hostname.toLowerCase(),
-            })
-          },
-    })
+    lockdownEvidence = await verifyDocustreamLockdown(page, timeoutMs)
 
     const webId = await page.evaluate(() => {
       try {
@@ -1307,7 +1173,7 @@ async function run() {
       webId,
       paneText,
       docustreamCapture,
-      sourceIngestEvidence,
+      lockdownEvidence,
       capturedAt: new Date().toISOString(),
     }
 

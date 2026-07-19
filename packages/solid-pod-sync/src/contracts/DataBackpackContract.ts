@@ -11,6 +11,18 @@ export interface DataBackpackProfile {
   isNsfw: boolean
 }
 
+export interface PublicProfileDocument {
+  displayName: string
+  bio: string
+  avatarUrl?: string
+  externalUrl?: string
+}
+
+export interface PrivateProfilePreferencesDocument {
+  interests: string[]
+  isNsfw: boolean
+}
+
 export interface ContractValidationIssue {
   field: string
   message: string
@@ -25,24 +37,13 @@ function isHttpUrl(value: string): boolean {
   }
 }
 
-export function validateDataBackpackProfile(profile: DataBackpackProfile): ContractValidationIssue[] {
+export function validatePublicProfileDocument(
+  profile: PublicProfileDocument
+): ContractValidationIssue[] {
   const issues: ContractValidationIssue[] = []
 
   if (!profile.displayName?.trim()) {
     issues.push({ field: 'displayName', message: 'displayName is required' })
-  }
-
-  if (!Array.isArray(profile.interests)) {
-    issues.push({ field: 'interests', message: 'interests must be an array' })
-  } else {
-    const hasBlankInterest = profile.interests.some((interest) => !interest?.trim())
-    if (hasBlankInterest) {
-      issues.push({ field: 'interests', message: 'interests cannot include blank values' })
-    }
-  }
-
-  if (typeof profile.isNsfw !== 'boolean') {
-    issues.push({ field: 'isNsfw', message: 'isNsfw must be a boolean' })
   }
 
   if (profile.avatarUrl !== undefined && profile.avatarUrl.length > 0 && !isHttpUrl(profile.avatarUrl)) {
@@ -54,6 +55,52 @@ export function validateDataBackpackProfile(profile: DataBackpackProfile): Contr
   }
 
   return issues
+}
+
+export function validatePrivateProfilePreferencesDocument(
+  preferences: PrivateProfilePreferencesDocument
+): ContractValidationIssue[] {
+  const issues: ContractValidationIssue[] = []
+
+  if (!Array.isArray(preferences.interests)) {
+    issues.push({ field: 'interests', message: 'interests must be an array' })
+  } else {
+    const hasBlankInterest = preferences.interests.some((interest) => !interest?.trim())
+    if (hasBlankInterest) {
+      issues.push({ field: 'interests', message: 'interests cannot include blank values' })
+    }
+  }
+
+  if (typeof preferences.isNsfw !== 'boolean') {
+    issues.push({ field: 'isNsfw', message: 'isNsfw must be a boolean' })
+  }
+
+  return issues
+}
+
+export function validateDataBackpackProfile(profile: DataBackpackProfile): ContractValidationIssue[] {
+  return [
+    ...validatePublicProfileDocument(profile),
+    ...validatePrivateProfilePreferencesDocument(profile),
+  ]
+}
+
+export function assertValidPublicProfileDocument(profile: PublicProfileDocument): void {
+  const issues = validatePublicProfileDocument(profile)
+  if (issues.length === 0) return
+
+  const details = issues.map((issue) => `${issue.field}: ${issue.message}`).join('; ')
+  throw new Error(`Public profile contract validation failed: ${details}`)
+}
+
+export function assertValidPrivateProfilePreferencesDocument(
+  preferences: PrivateProfilePreferencesDocument
+): void {
+  const issues = validatePrivateProfilePreferencesDocument(preferences)
+  if (issues.length === 0) return
+
+  const details = issues.map((issue) => `${issue.field}: ${issue.message}`).join('; ')
+  throw new Error(`Private profile preferences contract validation failed: ${details}`)
 }
 
 export function assertValidDataBackpackProfile(profile: DataBackpackProfile): void {

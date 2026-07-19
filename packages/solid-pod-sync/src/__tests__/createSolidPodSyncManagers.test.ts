@@ -9,14 +9,22 @@ describe('createSolidPodSyncManagers', () => {
     const managers = createSolidPodSyncManagers({ fetch })
 
     expect(managers.notificationManager).toBeDefined()
+    expect(managers.profilePreferencesManager).toBeDefined()
     expect(typeof managers.notificationManager.getPreferences).toBe('function')
+    expect(typeof managers.profilePreferencesManager.readPreferences).toBe('function')
   })
 
   it('applies shared bootstrap hook to all write managers when enabled', async () => {
     const ensureDefaultLayoutAndPolicies = jestGlobal.fn().mockResolvedValue(undefined)
     const fetch = jestGlobal.fn().mockResolvedValue(new Response('', { status: 200 }))
 
-    const { profileManager, docustreamManager, docustreamSourceManager, socialGraph } = createSolidPodSyncManagers(
+    const {
+      profileManager,
+      profilePreferencesManager,
+      docustreamManager,
+      docustreamSourceManager,
+      socialGraph,
+    } = createSolidPodSyncManagers(
       { fetch },
       {
         enablePodBootstrap: true,
@@ -31,28 +39,39 @@ describe('createSolidPodSyncManagers', () => {
         interests: ['solid'],
         isNsfw: false,
       })
-    ).rejects.toThrow('Data Backpack contract validation failed')
+    ).rejects.toThrow('Public profile contract validation failed')
 
-    await docustreamManager.appendActivity('https://alice.example/', {
-      id: 'evt_1',
-      source: 'nodezero',
-      author: 'Alice',
-      content: 'Hello',
-      timestamp: '2026-07-05T12:00:00.000Z',
-    })
+    await expect(
+      docustreamManager.appendActivity('https://alice.example/', {
+        id: 'evt_1',
+        source: 'nodezero',
+        author: 'Alice',
+        content: 'Hello',
+        timestamp: '2026-07-05T12:00:00.000Z',
+      })
+    ).rejects.toThrow('DocuStream writes are temporarily disabled during the storage refactor lock.')
 
     await socialGraph.addConnection(
       'https://alice.example/',
       'https://bob.example/profile/card#me'
     )
 
-    await docustreamSourceManager.upsertSource('https://alice.example/', {
-      type: 'rss',
-      url: 'https://feeds.example.com/main.xml',
-      title: 'Main Feed',
+    await expect(
+      docustreamSourceManager.upsertSource('https://alice.example/', {
+        type: 'rss',
+        url: 'https://feeds.example.com/main.xml',
+        title: 'Main Feed',
+      })
+    ).rejects.toThrow(
+      'DocuStream source mutations are temporarily disabled during the storage refactor lock.'
+    )
+
+    await profilePreferencesManager.writePreferences('https://alice.example/', {
+      interests: ['solid'],
+      isNsfw: false,
     })
 
-    expect(ensureDefaultLayoutAndPolicies).toHaveBeenCalledTimes(4)
+    expect(ensureDefaultLayoutAndPolicies).toHaveBeenCalledTimes(3)
     expect(ensureDefaultLayoutAndPolicies).toHaveBeenNthCalledWith(
       1,
       'https://alice.example/',
@@ -65,11 +84,6 @@ describe('createSolidPodSyncManagers', () => {
     )
     expect(ensureDefaultLayoutAndPolicies).toHaveBeenNthCalledWith(
       3,
-      'https://alice.example/',
-      expect.any(Object)
-    )
-    expect(ensureDefaultLayoutAndPolicies).toHaveBeenNthCalledWith(
-      4,
       'https://alice.example/',
       expect.any(Object)
     )
@@ -93,7 +107,7 @@ describe('createSolidPodSyncManagers', () => {
         interests: ['solid'],
         isNsfw: false,
       })
-    ).rejects.toThrow('Data Backpack contract validation failed')
+    ).rejects.toThrow('Public profile contract validation failed')
 
     expect(ensureDefaultLayoutAndPolicies).toHaveBeenCalledTimes(0)
   })

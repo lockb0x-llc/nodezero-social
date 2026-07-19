@@ -13,11 +13,10 @@ import {
   assertValidStreamItem,
   type StreamItem,
 } from './contracts/DocustreamContract.js'
-import {
-  DEFAULT_POLICY_MATRIX,
-  PodLayoutManager,
-  type PodPolicyMatrix,
-} from './PodLayoutManager.js'
+import { type PodLayoutManager, type PodPolicyMatrix } from './PodLayoutManager.js'
+
+const DOCUSTREAM_WRITE_LOCK_ERROR =
+  'DocuStream writes are temporarily disabled during the storage refactor lock.'
 
 /** The origin source of a stream item. */
 export type { StreamItem } from './contracts/DocustreamContract.js'
@@ -32,34 +31,6 @@ export interface DocustreamManagerOptions {
 }
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
-
-/** Converts a `StreamItem` to a minimal JSON-LD document string. */
-function toJsonLd(item: StreamItem): string {
-  return JSON.stringify(
-    {
-      '@context': {
-        '@vocab': 'https://schema.org/',
-        nodezero: 'https://vocab.nodezero.social/ns#',
-        source: 'nodezero:source',
-        author: 'author',
-        title: 'name',
-        content: 'text',
-        timestamp: 'datePublished',
-        url: 'url',
-      },
-      '@id': `nodezero:docustream/${item.id}`,
-      '@type': 'SocialMediaPosting',
-      source: item.source,
-      author: item.author,
-      ...(item.title !== undefined ? { title: item.title } : {}),
-      content: item.content,
-      timestamp: item.timestamp,
-      ...(item.url !== undefined ? { url: item.url } : {}),
-    },
-    null,
-    2
-  )
-}
 
 /** Attempts to parse raw JSON-LD text back into a `StreamItem`. Returns `null` on failure. */
 function fromJsonLd(text: string): StreamItem | null {
@@ -136,8 +107,10 @@ export class DocustreamManager {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   constructor(
     private readonly session: any,
-    private readonly options: DocustreamManagerOptions = {}
-  ) {}
+    _options: DocustreamManagerOptions = {}
+  ) {
+    void _options
+  }
 
   /**
    * Writes a `StreamItem` as a JSON-LD document to `/public/docustream/<id>.jsonld`
@@ -147,28 +120,10 @@ export class DocustreamManager {
    * @param item - The activity item to persist.
    */
   async appendActivity(podRoot: string, item: StreamItem): Promise<void> {
-    assertValidStreamItem(item)
-    await this.ensurePodLayoutIfEnabled(podRoot)
-
-    const base = podRoot.replace(/\/$/, '')
-    const resourceUrl = `${base}/public/docustream/${item.id}.jsonld`
-    const body = toJsonLd(item)
-
-    try {
-      const response = await this.session.fetch(resourceUrl, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/ld+json' },
-        body,
-      })
-
-      if (!response.ok) {
-        throw new Error(`Failed to write docustream item ${item.id}: HTTP ${response.status}`)
-      }
-    } catch (err) {
-      throw new Error(
-        `Unable to append docustream item ${item.id} at ${resourceUrl}: ${err instanceof Error ? err.message : String(err)}`
-      )
-    }
+    void podRoot
+    void item
+    await Promise.resolve()
+    throw new Error(DOCUSTREAM_WRITE_LOCK_ERROR)
   }
 
   /**
@@ -253,23 +208,4 @@ export class DocustreamManager {
     }
   }
 
-  private async ensurePodLayoutIfEnabled(podRoot: string): Promise<void> {
-    if (!this.options.enablePodBootstrap) return
-
-    const fallbackManager = new PodLayoutManager({ fetch: this.session.fetch })
-    const podLayoutManager = this.options.podLayoutManager ?? fallbackManager
-
-    if (typeof podLayoutManager.ensureDocustreamLayoutAndPolicy === 'function') {
-      await podLayoutManager.ensureDocustreamLayoutAndPolicy(
-        podRoot,
-        (this.options.policyMatrix ?? DEFAULT_POLICY_MATRIX).docustream
-      )
-      return
-    }
-
-    await podLayoutManager.ensureDefaultLayoutAndPolicies(
-      podRoot,
-      this.options.policyMatrix ?? DEFAULT_POLICY_MATRIX
-    )
-  }
 }

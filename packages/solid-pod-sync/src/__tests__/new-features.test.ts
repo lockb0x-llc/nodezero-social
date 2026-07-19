@@ -6,30 +6,25 @@ import { intersectInterests } from '../SocialGraph.js'
 const jestGlobal = import.meta.jest
 
 describe('DocustreamManager', () => {
-  it('appendActivity stores item in Pod', async () => {
+  it('appendActivity is locked during docustream freeze', async () => {
     const fetch = jestGlobal.fn().mockResolvedValue({ ok: true })
     const manager = new DocustreamManager({ fetch })
 
-    await manager.appendActivity('https://alice.example/', {
-      id: 'abc123',
-      source: 'rss',
-      author: 'Alice',
-      title: 'My first post',
-      content: 'Hello world',
-      timestamp: '2026-06-27T00:00:00.000Z',
-    })
+    await expect(
+      manager.appendActivity('https://alice.example/', {
+        id: 'abc123',
+        source: 'rss',
+        author: 'Alice',
+        title: 'My first post',
+        content: 'Hello world',
+        timestamp: '2026-06-27T00:00:00.000Z',
+      })
+    ).rejects.toThrow('DocuStream writes are temporarily disabled during the storage refactor lock.')
 
-    expect(fetch).toHaveBeenCalledTimes(1)
-    const [url, options] = fetch.mock.calls[0]
-    expect(url).toBe('https://alice.example/public/docustream/abc123.jsonld')
-    expect(options).toMatchObject({
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/ld+json' },
-    })
-    expect(String(options?.body)).toContain('Hello world')
+    expect(fetch).toHaveBeenCalledTimes(0)
   })
 
-  it('appendActivity rejects invalid contract payloads', async () => {
+  it('appendActivity rejects writes regardless of payload during lock', async () => {
     const fetch = jestGlobal.fn().mockResolvedValue({ ok: true })
     const manager = new DocustreamManager({ fetch })
 
@@ -41,7 +36,7 @@ describe('DocustreamManager', () => {
         content: 'Hello world',
         timestamp: 'not-a-date',
       })
-    ).rejects.toThrow('DocuStream contract validation failed')
+    ).rejects.toThrow('DocuStream writes are temporarily disabled during the storage refactor lock.')
 
     expect(fetch).toHaveBeenCalledTimes(0)
   })
@@ -84,7 +79,7 @@ describe('DocustreamManager', () => {
     expect(items[0]?.id).toBe('good1')
   })
 
-  it('runs pod bootstrap before write when enabled', async () => {
+  it('does not run pod bootstrap for blocked writes', async () => {
     const ensureDefaultLayoutAndPolicies = jestGlobal.fn().mockResolvedValue(undefined)
     const fetch = jestGlobal.fn().mockResolvedValue({ ok: true })
     const manager = new DocustreamManager(
@@ -95,16 +90,17 @@ describe('DocustreamManager', () => {
       }
     )
 
-    await manager.appendActivity('https://alice.example/', {
-      id: 'abc123',
-      source: 'nodezero',
-      author: 'Alice',
-      content: 'Hello world',
-      timestamp: '2026-07-05T00:00:00.000Z',
-    })
+    await expect(
+      manager.appendActivity('https://alice.example/', {
+        id: 'abc123',
+        source: 'nodezero',
+        author: 'Alice',
+        content: 'Hello world',
+        timestamp: '2026-07-05T00:00:00.000Z',
+      })
+    ).rejects.toThrow('DocuStream writes are temporarily disabled during the storage refactor lock.')
 
-    expect(ensureDefaultLayoutAndPolicies).toHaveBeenCalledTimes(1)
-    expect(ensureDefaultLayoutAndPolicies).toHaveBeenCalledWith('https://alice.example/', expect.any(Object))
+    expect(ensureDefaultLayoutAndPolicies).toHaveBeenCalledTimes(0)
   })
 })
 
@@ -146,7 +142,7 @@ describe('ProfileManager.writeProfile', () => {
         interests: ['solid'],
         isNsfw: false,
       })
-    ).rejects.toThrow('Data Backpack contract validation failed')
+    ).rejects.toThrow('Public profile contract validation failed')
 
     expect(fetch).toHaveBeenCalledTimes(0)
   })
@@ -171,7 +167,7 @@ describe('ProfileManager.writeProfile', () => {
         interests: ['solid'],
         isNsfw: false,
       })
-    ).rejects.toThrow('Data Backpack contract validation failed')
+    ).rejects.toThrow('Public profile contract validation failed')
 
     expect(ensureDefaultLayoutAndPolicies).toHaveBeenCalledTimes(1)
     expect(ensureDefaultLayoutAndPolicies).toHaveBeenCalledWith('https://alice.example/', expect.any(Object))

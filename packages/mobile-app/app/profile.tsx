@@ -23,8 +23,15 @@ import {
 } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useNodeZeroSession } from '../src/contexts/NodeZeroSessionContext'
-import type { ProfileManager, UserProfile } from '@nodezero/solid-pod-sync'
+import type {
+  ProfileManager,
+  ProfilePreferencesManager,
+  PrivateProfilePreferencesDocument,
+  NsfwScanResult,
+  UserProfile,
+} from '@nodezero/solid-pod-sync'
 import { getSolidPodSyncManagers } from '../src/solid/podSyncManagers'
+import { NsfwScanner } from '@nodezero/solid-pod-sync'
 import { Ionicons } from '@expo/vector-icons'
 import { aesthetic } from '../src/theme/aesthetic'
 import { useConnections } from '../src/social/useConnections'
@@ -38,10 +45,13 @@ const EMPTY_PROFILE: UserProfile = {
   isNsfw: false,
 }
 
+const nsfwScanner = new NsfwScanner()
+
 export default function ProfileScreen(): JSX.Element {
   const { status, webId, authFetch } = useNodeZeroSession()
   const isLoggedIn = status === 'authenticated'
   const managerRef = useRef<ProfileManager | null>(null)
+  const preferencesManagerRef = useRef<ProfilePreferencesManager | null>(null)
 
   const [profile, setProfile] = useState<UserProfile>(EMPTY_PROFILE)
   const [loading, setLoading] = useState(true)
@@ -89,7 +99,9 @@ export default function ProfileScreen(): JSX.Element {
       return
     }
 
-    managerRef.current = getSolidPodSyncManagers({ fetch: authFetch }).profileManager
+    const managers = getSolidPodSyncManagers({ fetch: authFetch })
+    managerRef.current = managers.profileManager
+    preferencesManagerRef.current = managers.profilePreferencesManager
     void loadConnections()
   }, [authFetch, isLoggedIn, loadConnections])
 
@@ -101,12 +113,20 @@ export default function ProfileScreen(): JSX.Element {
     }
 
     setLoading(true)
-    void managerRef.current
-      .readProfile(effectiveWebId)
-      .then((p) => {
-        if (p) {
-          setProfile(p)
-          setInterestsInput(p.interests.join(', '))
+    const podRoot = effectiveWebId.split('/profile/')[0] + '/'
+    void Promise.all([
+      managerRef.current.readProfile(effectiveWebId),
+      preferencesManagerRef.current?.readPreferences(podRoot) ?? Promise.resolve(null),
+    ])
+      .then(([publicProfile, privatePreferences]) => {
+        if (publicProfile) {
+          const mergedProfile: UserProfile = {
+            ...publicProfile,
+            interests: privatePreferences?.interests ?? [],
+            isNsfw: privatePreferences?.isNsfw ?? false,
+          }
+          setProfile(mergedProfile)
+          setInterestsInput(mergedProfile.interests.join(', '))
         }
       })
       .finally(() => {
@@ -115,7 +135,7 @@ export default function ProfileScreen(): JSX.Element {
   }, [effectiveWebId])
 
   const saveProfile = useCallback(async () => {
-    if (!effectiveWebId || !managerRef.current) return
+    if (!effectiveWebId || !managerRef.current || !preferencesManagerRef.current) return
 
     // Session invariant: being authenticated guarantees a live Pod write
     // path through the proxy — there is no "restoring" write state anymore.
@@ -131,11 +151,31 @@ export default function ProfileScreen(): JSX.Element {
     setSaving(true)
     try {
       await managerRef.current.writeProfile(podRoot, updatedProfile)
+
+      const urlsToScan: string[] = []
+      if (updatedProfile.externalUrl) urlsToScan.push(updatedProfile.externalUrl)
+      if (updatedProfile.avatarUrl) urlsToScan.push(updatedProfile.avatarUrl)
+      const scanResult: NsfwScanResult = nsfwScanner.scan(urlsToScan)
+
+      const preferencesPayload: PrivateProfilePreferencesDocument = {
+        interests: updatedProfile.interests,
+        isNsfw: updatedProfile.isNsfw || scanResult.isNsfw,
+      }
+      await preferencesManagerRef.current.writePreferences(podRoot, preferencesPayload)
+
       // Re-read to pick up any server-side mutations (e.g. NSFW auto-tag).
-      const saved = await managerRef.current.readProfile(`${podRoot}profile/card#me`)
-      if (saved) {
-        setProfile(saved)
-        setInterestsInput(saved.interests.join(', '))
+      const [savedPublic, savedPrivate] = await Promise.all([
+        managerRef.current.readProfile(`${podRoot}profile/card#me`),
+        preferencesManagerRef.current.readPreferences(podRoot),
+      ])
+      if (savedPublic) {
+        const mergedSaved: UserProfile = {
+          ...savedPublic,
+          interests: savedPrivate?.interests ?? [],
+          isNsfw: savedPrivate?.isNsfw ?? false,
+        }
+        setProfile(mergedSaved)
+        setInterestsInput(mergedSaved.interests.join(', '))
       }
       Alert.alert('Saved', 'Your profile has been updated in your Solid Pod.')
     } catch (err) {

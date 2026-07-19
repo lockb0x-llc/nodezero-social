@@ -1,8 +1,12 @@
 import {
   validateDataBackpackProfile,
+  validatePublicProfileDocument,
+  validatePrivateProfilePreferencesDocument,
   validateConnectionRecord,
   validateStreamItem,
   assertValidDataBackpackProfile,
+  assertValidPublicProfileDocument,
+  assertValidPrivateProfilePreferencesDocument,
   assertValidConnectionRecord,
   assertValidStreamItem,
 } from '../index.js'
@@ -22,7 +26,35 @@ import {
 describe('Data Backpack contract conformance', () => {
   it('accepts valid fixtures', () => {
     for (const fixture of validDataBackpackFixtures) {
+      expect(
+        validatePublicProfileDocument({
+          displayName: fixture.displayName,
+          bio: fixture.bio,
+          ...(fixture.avatarUrl ? { avatarUrl: fixture.avatarUrl } : {}),
+          ...(fixture.externalUrl ? { externalUrl: fixture.externalUrl } : {}),
+        })
+      ).toEqual([])
+      expect(
+        validatePrivateProfilePreferencesDocument({
+          interests: fixture.interests,
+          isNsfw: fixture.isNsfw,
+        })
+      ).toEqual([])
       expect(validateDataBackpackProfile(fixture)).toEqual([])
+      expect(() =>
+        assertValidPublicProfileDocument({
+          displayName: fixture.displayName,
+          bio: fixture.bio,
+          ...(fixture.avatarUrl ? { avatarUrl: fixture.avatarUrl } : {}),
+          ...(fixture.externalUrl ? { externalUrl: fixture.externalUrl } : {}),
+        })
+      ).not.toThrow()
+      expect(() =>
+        assertValidPrivateProfilePreferencesDocument({
+          interests: fixture.interests,
+          isNsfw: fixture.isNsfw,
+        })
+      ).not.toThrow()
       expect(() => assertValidDataBackpackProfile(fixture)).not.toThrow()
     }
   })

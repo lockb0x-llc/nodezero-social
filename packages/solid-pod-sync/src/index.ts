@@ -13,6 +13,7 @@
  */
 
 export { ProfileManager } from './ProfileManager.js'
+export { ProfilePreferencesManager } from './ProfilePreferencesManager.js'
 export { SocialGraph } from './SocialGraph.js'
 export { NsfwScanner, NSFW_DOMAINS } from './NsfwScanner.js'
 export { DocustreamManager } from './DocustreamManager.js'
@@ -62,6 +63,10 @@ export {
 	validateDigestManifest,
 } from './contracts/NotificationContract.js'
 export {
+	assertValidPublicProfileDocument,
+	validatePublicProfileDocument,
+	assertValidPrivateProfilePreferencesDocument,
+	validatePrivateProfilePreferencesDocument,
 	assertValidDataBackpackProfile,
 	validateDataBackpackProfile,
 } from './contracts/DataBackpackContract.js'
@@ -70,6 +75,10 @@ export {
 	validateConnectionRecord,
 } from './contracts/SocialGraphContract.js'
 export type { UserProfile, ProfileWriteOptions } from './ProfileManager.js'
+export type {
+	ProfilePreferencesManagerOptions,
+	ProfilePreferencesWriteOptions,
+} from './ProfilePreferencesManager.js'
 export type { Connection } from './SocialGraph.js'
 export type { NsfwScanResult } from './NsfwScanner.js'
 export type { StreamItem } from './DocustreamManager.js'
@@ -92,6 +101,10 @@ export type { ProfileManagerOptions } from './ProfileManager.js'
 export type { SocialGraphOptions } from './SocialGraph.js'
 export type { ContractValidationIssue, StreamSource } from './contracts/DocustreamContract.js'
 export type { DataBackpackProfile } from './contracts/DataBackpackContract.js'
+export type {
+	PublicProfileDocument,
+	PrivateProfilePreferencesDocument,
+} from './contracts/DataBackpackContract.js'
 export type { ConnectionRecord } from './contracts/SocialGraphContract.js'
 export type {
 	NotificationCategory,
