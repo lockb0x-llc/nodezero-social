@@ -1,0 +1,41 @@
+# Local nwaku node for the NodeZero Waku spike (Phase 0).
+#
+# Usage:
+#   docker compose -f scripts/waku-spike/docker-compose.yml up -d
+#   node packages/waku-comms/spike/local-spike.mjs
+#
+# Private cluster (id 0, shard 0) — deliberately NOT The Waku Network, so no
+# RLN and no public traffic. Ports:
+#   8645  REST API (peer info at /debug/v1/info)
+#   8000  libp2p WebSocket (js-waku light nodes dial this)
+#   60000 libp2p TCP
+#
+# Note: nwaku CLI flags churn between releases. If the container exits on an
+# unknown flag, check `docker logs nodezero-waku-spike` and consult
+# https://github.com/waku-org/nwaku/blob/master/docs/operators/how-to/configure.md
+services:
+  nwaku:
+    image: wakuorg/nwaku:v0.36.0
+    container_name: nodezero-waku-spike
+    restart: unless-stopped
+    command:
+      - --relay=true
+      - --filter=true
+      - --lightpush=true
+      - --store=true
+      - --store-message-retention-policy=time:3600
+      - --rest=true
+      - --rest-address=0.0.0.0
+      - --rest-port=8645
+      - --websocket-support=true
+      - --websocket-port=8000
+      - --tcp-port=60000
+      - --listen-address=0.0.0.0
+      - --nat=none
+      - --cluster-id=0
+      - --shard=0
+      - --log-level=INFO
+    ports:
+      - "8645:8645"
+      - "8000:8000"
+      - "60000:60000"

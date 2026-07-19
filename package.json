@@ -43,6 +43,9 @@
     "provisioner:type-check": "pnpm --filter @nodezero/jss-provisioner type-check",
     "relay:dev": "pnpm --filter @nodezero/relay-service dev",
     "relay:build": "pnpm --filter @nodezero/relay-service build",
+    "waku:spike:up": "docker compose -f ./scripts/waku-spike/docker-compose.yml up -d",
+    "waku:spike:down": "docker compose -f ./scripts/waku-spike/docker-compose.yml down",
+    "waku:spike": "node ./packages/waku-comms/spike/local-spike.mjs",
     "deploy:stellar:testnet": "bash ./scripts/stellar/deploy-testnet.sh",
     "deploy:azure": "bash ./scripts/azure/deploy.sh",
     "deploy:azure:notifications": "bash ./scripts/azure/deploy-notification-infra.sh"
