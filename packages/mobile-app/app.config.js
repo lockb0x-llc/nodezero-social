@@ -26,6 +26,13 @@
  *                             production-mainnet must set it explicitly.
  *   NZ_JSS_PROVISIONER_URL  – NodeZero provisioner base URL (session issuance
  *                             + Pod Access Proxy). Required for strict profiles.
+ *   NZ_WAKU_BOOTSTRAP_PEERS – Comma-separated multiaddrs of NodeZero-operated
+ *                             nwaku bootstrap peers (for example,
+ *                             /dns4/waku-staging.nodezero.social/tcp/443/wss/p2p/16Uiu2...).
+ *                             Optional until the Waku messaging cutover
+ *                             (Phase 5) makes it a strict-profile requirement.
+ *   NZ_WAKU_CLUSTER_ID      – Waku cluster id of the private NodeZero cluster
+ *                             (default 0; must match the nwaku nodes).
  */
 
 /** @type {import('@expo/config').ExpoConfig} */
@@ -95,6 +102,15 @@ const mashlibModuleId =
   nonEmptyEnv('NZ_MASHLIB_MODULE_ID') ?? (envProfile === 'staging-testnet' ? 'nodezero:mashlib-pane-provider' : '')
 const nodeZeroDirectoryUrl = nonEmptyEnv('NZ_NODEZERO_DIRECTORY_URL') ?? ''
 
+// Waku messaging backbone (packages/waku-comms). Optional until the Phase 5
+// WebRTC → Waku cutover; when set, entries are validated for multiaddr shape
+// and environment isolation below.
+const wakuBootstrapPeers = (nonEmptyEnv('NZ_WAKU_BOOTSTRAP_PEERS') ?? '')
+  .split(',')
+  .map((entry) => entry.trim())
+  .filter((entry) => entry.length > 0)
+const wakuClusterId = nonEmptyEnv('NZ_WAKU_CLUSTER_ID') ?? '0'
+
 if (profile.enforceStrictVariables) {
   if (!relayUrl) {
     throw new Error(`NZ_RELAY_URL is required for ${envProfile}.`)
@@ -134,6 +150,36 @@ if (envProfile === 'staging-testnet' && profile.passphrase !== 'Test SDF Network
 
 if (envProfile === 'production-mainnet' && profile.passphrase !== 'Public Global Stellar Network ; September 2015') {
   throw new Error('Production profile must use the Stellar MainNet passphrase.')
+}
+
+for (const peer of wakuBootstrapPeers) {
+  if (!peer.startsWith('/')) {
+    throw new Error(
+      `NZ_WAKU_BOOTSTRAP_PEERS entry '${peer}' is not a multiaddr (expected e.g. /dns4/<host>/tcp/443/wss/p2p/<peerId>).`
+    )
+  }
+  const peerLower = peer.toLowerCase()
+  // Environment isolation: never mix staging and production Waku clusters.
+  if (envProfile !== 'production-mainnet' && /\/dns4\/waku\.nodezero\.social\//.test(peerLower)) {
+    throw new Error(
+      `NZ_WAKU_BOOTSTRAP_PEERS entry '${peer}' targets the production Waku host from profile '${envProfile}'.`
+    )
+  }
+  if (envProfile === 'production-mainnet' && /waku-staging\.nodezero\.social/.test(peerLower)) {
+    throw new Error(
+      `NZ_WAKU_BOOTSTRAP_PEERS entry '${peer}' targets the staging Waku host from production-mainnet.`
+    )
+  }
+  // Strict profiles ride TLS ingress only; plain ws/tcp is local-dev only.
+  if (profile.enforceStrictVariables && !peerLower.includes('/wss/')) {
+    throw new Error(
+      `NZ_WAKU_BOOTSTRAP_PEERS entry '${peer}' must use a /wss/ transport for ${envProfile}.`
+    )
+  }
+}
+
+if (!/^\d+$/.test(wakuClusterId)) {
+  throw new Error(`NZ_WAKU_CLUSTER_ID must be a non-negative integer, got '${wakuClusterId}'.`)
 }
 
 module.exports = {
@@ -189,6 +235,8 @@ module.exports = {
     primaryColor: process.env.NZ_PRIMARY_COLOR ?? '#6C63FF',
     backgroundColor: process.env.NZ_BACKGROUND_COLOR ?? '#0D0D0D',
     relayUrl,
+    wakuBootstrapPeers,
+    wakuClusterId,
     stellarRpcUrl: profile.rpcUrl,
     stellarNetworkPassphrase: profile.passphrase,
     identityContractId,

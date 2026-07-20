@@ -1,0 +1,19 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": { "value": "eastus2" },
+    "environmentName": { "value": "staging-testnet" },
+    "appName": { "value": "nodezero-social" },
+    "nwakuImage": { "value": "docker.io/wakuorg/nwaku:v0.36.0" },
+    "wakuClusterId": { "value": 0 },
+    "storeRetentionSeconds": { "value": 3600 },
+    "wakuCustomDomain": { "value": "waku-staging.nodezero.social" },
+    "serviceCpu": { "value": "0.75" },
+    "serviceMemory": { "value": "1.5Gi" },
+    "peerCpu": { "value": "0.25" },
+    "peerMemory": { "value": "0.5Gi" },
+    "logAnalyticsRetentionDays": { "value": 30 },
+    "logAnalyticsDailyQuotaGb": { "value": 1 }
+  }
+}

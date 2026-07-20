@@ -103,4 +103,23 @@ fi
 grep -q 'NZ_JSS_PROVISIONER_URL is required' "$APP_CONFIG" || fail "Mobile app config must fail closed without NZ_JSS_PROVISIONER_URL on strict profiles."
 pass "Internal-auth cutover guardrails validated."
 
+# 8) Waku messaging backbone guardrails: staging deploy script must preserve
+#    what-if preflight + environment coherence + secret nodekey handling, the
+#    Bicep module must stay testnet-only, and the app config must validate
+#    NZ_WAKU_BOOTSTRAP_PEERS environment isolation.
+WAKU_DEPLOY_SCRIPT="$REPO_ROOT/scripts/azure/deploy-waku.sh"
+WAKU_BICEP="$REPO_ROOT/infrastructure/azure/waku-node.bicep"
+grep -q 'az deployment group what-if' "$WAKU_DEPLOY_SCRIPT" || fail "Waku deploy script missing mandatory what-if preflight."
+grep -q 'Refusing production-mainnet deployment' "$WAKU_DEPLOY_SCRIPT" || fail "Waku deploy script missing production-mainnet refusal guard."
+grep -q 'AZURE_WAKU_NODEKEY is required' "$WAKU_DEPLOY_SCRIPT" || fail "Waku deploy script missing nodekey requirement guard."
+grep -q 'must not contain wakuNodeKey' "$WAKU_DEPLOY_SCRIPT" || fail "Waku deploy script missing parameters-file secret exclusion guard."
+file_contains_literal "$WAKU_BICEP" "'staging-testnet'" || fail "waku-node.bicep missing staging-testnet allowed environment value."
+if file_contains_literal "$WAKU_BICEP" "'production-mainnet'"; then
+  fail "waku-node.bicep must not allow production-mainnet (testnet-only module)."
+fi
+file_contains_literal "$WAKU_BICEP" "wakuNodeKey" || fail "waku-node.bicep must declare wakuNodeKey as a @secure() parameter."
+grep -q 'NZ_WAKU_BOOTSTRAP_PEERS' "$APP_CONFIG" || fail "Mobile app config missing NZ_WAKU_BOOTSTRAP_PEERS plumbing."
+grep -q 'targets the production Waku host' "$APP_CONFIG" || fail "Mobile app config missing Waku cross-environment bootstrap guard."
+pass "Waku messaging backbone guardrails validated."
+
 echo "[policy] All environment-isolation policy checks passed."

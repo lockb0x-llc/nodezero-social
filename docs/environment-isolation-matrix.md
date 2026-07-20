@@ -34,6 +34,12 @@ All non-local builds must define these variables explicitly:
 - NZ_SOLID_OIDC_ISSUER_URL
 - NZ_SOLID_SIGNUP_URL
 
+Optional until the Waku messaging cutover (validated when set):
+
+- NZ_WAKU_BOOTSTRAP_PEERS (comma-separated wss multiaddrs of NodeZero-operated
+  nwaku bootstrap peers; staging and production hosts must never mix)
+- NZ_WAKU_CLUSTER_ID (private Waku cluster id; default 0)
+
 ## Identity provider defaults
 
 The Node Zero Community Server is the default identity provider in every
@@ -58,6 +64,12 @@ Stellar TestNet deploy via scripts/stellar/deploy-testnet.sh requires:
 
 - STELLAR_SOURCE_ACCOUNT
 
+Waku node deploy via scripts/azure/deploy-waku.sh requires:
+
+- AZURE_RESOURCE_GROUP
+- AZURE_WAKU_NODEKEY (64-hex secret pinning the bootstrap peer id; never
+  committed and never placed in a parameters file)
+
 Optional but guarded:
 
 - ALLOW_NON_TESTNET=1 (explicit unsafe override only)
@@ -71,6 +83,7 @@ Optional but guarded:
 - production-mainnet deploy is not permitted from staging scripts.
 - Example parameter files must never be used for real deployments.
 - `staging-testnet` must not use `NZ_RELAY_URL=wss://staging.nodezero.social/relay` (or `https://.../relay`), because that path is served by the Static Web App shell and cannot terminate WebSocket signaling.
+- `staging-testnet` Waku bootstrap peers must target the staging Waku host (for example, `waku-staging.nodezero.social`); production-mainnet must never reference the staging Waku host and vice versa. Strict profiles require `/wss/` transports.
 
 ## CI/CD policy checkpoints
 
