@@ -26,6 +26,7 @@ import Constants from 'expo-constants'
 import { useDiscovery } from '../src/contexts/DiscoveryContext'
 import { useNodeZeroSession } from '../src/contexts/NodeZeroSessionContext'
 import { useWallet } from '../src/contexts/WalletContext'
+import { usePresence } from '../src/contexts/PresenceContext'
 import { P2PChannel, SignalRelay, type SignalMessage } from '@nodezero/p2p-comms'
 import { getSolidPodSyncManagers } from '../src/solid/podSyncManagers'
 import { aesthetic } from '../src/theme/aesthetic'
@@ -57,6 +58,7 @@ function isValidRelayOverrideWebId(raw: string): boolean {
 export default function LocalNodeScreen(): JSX.Element {
   const { currentNode, surroundingNodes, locationStatus, requestAccess } = useDiscovery()
   const { webId, status, authFetch } = useNodeZeroSession()
+  const { presentPeers, presenceStatus, presenceError } = usePresence()
   const isLoggedIn = status === 'authenticated'
   const { attestationStatus } = useWallet()
   const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
@@ -397,6 +399,40 @@ export default function LocalNodeScreen(): JSX.Element {
           </View>
         )}
       />
+
+      {/* Live presence: peers actually beaconing in the surrounding cells */}
+      {presenceStatus !== 'disabled' && (
+        <View style={styles.peerRow}>
+          <Text style={styles.peerRowLabel}>
+            Present now{presenceStatus === 'active' ? ` · ${presentPeers.length}` : ''}
+          </Text>
+          {presenceStatus === 'waiting' && (
+            <Text style={styles.systemText}>Connecting to the local mesh…</Text>
+          )}
+          {presenceStatus === 'error' && presenceError && (
+            <Text style={styles.errorText}>{presenceError}</Text>
+          )}
+          {presenceStatus === 'active' && presentPeers.length === 0 && (
+            <Text style={styles.systemText}>No one else is present right now.</Text>
+          )}
+          {presentPeers.length > 0 && (
+            <FlatList
+              horizontal
+              data={presentPeers}
+              keyExtractor={(peer) => peer.webIdCommitment}
+              showsHorizontalScrollIndicator={false}
+              renderItem={({ item }) => (
+                <View style={styles.peerChip}>
+                  <Text style={styles.peerChipText} numberOfLines={1}>
+                    {item.h3Index === currentNode?.h3Index ? '● ' : '○ '}
+                    {item.webIdCommitment.slice(0, 10)}
+                  </Text>
+                </View>
+              )}
+            />
+          )}
+        </View>
+      )}
 
       {/* Message feed */}
       <FlatList

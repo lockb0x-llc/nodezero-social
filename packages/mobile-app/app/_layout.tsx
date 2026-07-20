@@ -13,6 +13,8 @@
 import { NodeZeroSessionProvider, useNodeZeroSession } from '../src/contexts/NodeZeroSessionContext'
 import { DiscoveryProvider } from '../src/contexts/DiscoveryContext'
 import { WalletProvider, useWallet } from '../src/contexts/WalletContext'
+import { WakuProvider } from '../src/contexts/WakuContext'
+import { PresenceProvider } from '../src/contexts/PresenceContext'
 import { Stack, Link, usePathname, useRouter } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { View, Text, StyleSheet, Platform, ScrollView, type ViewStyle } from 'react-native'
@@ -225,27 +227,31 @@ export default function RootLayout(): JSX.Element {
     <NodeZeroSessionProvider>
       <DiscoveryProvider>
         <WalletProvider>
-          <RouteGuard />
-          <StatusBar style="light" />
-          <Stack
-            screenOptions={{
-              headerStyle: { backgroundColor: aesthetic.color.bgNight },
-              headerTintColor: aesthetic.color.textHigh,
-              headerTitleStyle: { fontWeight: 'bold' },
-              contentStyle: { backgroundColor: aesthetic.color.bgNight },
-            }}
-          >
-            <Stack.Screen name="index" options={{ title: 'NodeZero' }} />
-            <Stack.Screen name="onboarding" options={{ title: 'Onboarding' }} />
-            <Stack.Screen name="feed" options={{ title: 'Global Feed' }} />
-            <Stack.Screen name="local" options={{ title: 'Local Node' }} />
-            <Stack.Screen name="profile" options={{ title: 'Profile' }} />
-            <Stack.Screen name="settings" options={{ title: 'Settings' }} />
-            <Stack.Screen name="backpack" />
-            <Stack.Screen name="compose" />
-            <Stack.Screen name="docustream" />
-          </Stack>
-          <WebNavBar />
+          <WakuProvider>
+            <PresenceProvider>
+              <RouteGuard />
+              <StatusBar style="light" />
+              <Stack
+                screenOptions={{
+                  headerStyle: { backgroundColor: aesthetic.color.bgNight },
+                  headerTintColor: aesthetic.color.textHigh,
+                  headerTitleStyle: { fontWeight: 'bold' },
+                  contentStyle: { backgroundColor: aesthetic.color.bgNight },
+                }}
+              >
+                <Stack.Screen name="index" options={{ title: 'NodeZero' }} />
+                <Stack.Screen name="onboarding" options={{ title: 'Onboarding' }} />
+                <Stack.Screen name="feed" options={{ title: 'Global Feed' }} />
+                <Stack.Screen name="local" options={{ title: 'Local Node' }} />
+                <Stack.Screen name="profile" options={{ title: 'Profile' }} />
+                <Stack.Screen name="settings" options={{ title: 'Settings' }} />
+                <Stack.Screen name="backpack" />
+                <Stack.Screen name="compose" />
+                <Stack.Screen name="docustream" />
+              </Stack>
+              <WebNavBar />
+            </PresenceProvider>
+          </WakuProvider>
         </WalletProvider>
       </DiscoveryProvider>
     </NodeZeroSessionProvider>

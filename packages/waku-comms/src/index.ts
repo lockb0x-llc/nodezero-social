@@ -30,6 +30,17 @@ export {
   keypairSigner,
 } from './envelope.js'
 export type { CreateEnvelopeInput } from './envelope.js'
+export {
+  PRESENCE_BEACON_INTERVAL_MS,
+  PRESENCE_BEACON_TTL_MS,
+  PRESENCE_MAX_TTL_MS,
+  presenceEpoch,
+  presenceSenderId,
+  createPresenceBeaconBody,
+  parsePresenceBeacon,
+  PresenceTracker,
+} from './presence.js'
+export type { PresencePeer, PresenceTrackerOptions } from './presence.js'
 export { WakuTransport } from './WakuTransport.js'
 export type { WakuNodeLike, WakuDecodedMessage } from './WakuTransport.js'
 export { createWakuTransport } from './createWakuTransport.js'
