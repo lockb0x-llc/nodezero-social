@@ -1,17 +1,25 @@
-# Local nwaku node for the NodeZero Waku spike (Phase 0).
+# Local nwaku cluster for the NodeZero Waku spike (Phase 0).
 #
 # Usage:
 #   docker compose -f scripts/waku-spike/docker-compose.yml up -d
 #   node packages/waku-comms/spike/local-spike.mjs
 #
 # Private cluster (id 0, shard 0) — deliberately NOT The Waku Network, so no
-# RLN and no public traffic. Ports:
+# RLN and no public traffic.
+#
+# TWO nodes: nwaku (service node: relay+filter+lightpush+store, host-exposed)
+# and nwaku-relay-peer (internal relay-only peer). A lone nwaku node rejects
+# lightpush with NoPeersToPublish because gossipsub needs >=1 relay peer, so
+# the second node exists purely to complete the relay mesh — mirroring the
+# multi-node staging topology.
+#
+# Ports (nwaku service node only):
 #   8645  REST API (peer info at /debug/v1/info)
 #   8000  libp2p WebSocket (js-waku light nodes dial this)
 #   60000 libp2p TCP
 #
-# Note: nwaku CLI flags churn between releases. If the container exits on an
-# unknown flag, check `docker logs nodezero-waku-spike` and consult
+# Note: nwaku CLI flags churn between releases. If a container exits on an
+# unknown flag, check `docker logs <name>` and consult
 # https://github.com/waku-org/nwaku/blob/master/docs/operators/how-to/configure.md
 services:
   nwaku:
@@ -31,7 +39,9 @@ services:
       - --websocket-port=8000
       - --tcp-port=60000
       - --listen-address=0.0.0.0
-      - --nat=none
+      # v0.36.0 rejects `--nat=none`; valid: any|upnp|pmp|extip:<ip>.
+      # Loopback extip is fine for a local spike — clients dial 127.0.0.1.
+      - --nat=extip:127.0.0.1
       - --cluster-id=0
       - --shard=0
       - --log-level=INFO
@@ -39,3 +49,30 @@ services:
       - "8645:8645"
       - "8000:8000"
       - "60000:60000"
+
+  nwaku-relay-peer:
+    image: wakuorg/nwaku:v0.36.0
+    container_name: nodezero-waku-spike-peer
+    restart: unless-stopped
+    depends_on:
+      - nwaku
+    # Discover the service node's peer id via its REST API at runtime (no
+    # fixed nodekey committed to the repo), then static-dial it over the
+    # compose network so the relay mesh forms.
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - >
+        until wget -qO /tmp/info.json http://nwaku:8645/debug/v1/info;
+        do sleep 1; done;
+        ADDR=$$(sed -n 's|.*"\(/ip4/[0-9.]*/tcp/60000/p2p/[A-Za-z0-9]*\)".*|\1|p' /tmp/info.json | head -1);
+        echo "static peer multiaddr: $$ADDR";
+        exec /usr/bin/wakunode
+        --relay=true
+        --tcp-port=60000
+        --listen-address=0.0.0.0
+        --nat=extip:127.0.0.1
+        --cluster-id=0
+        --shard=0
+        --staticnode=$$ADDR
+        --log-level=INFO

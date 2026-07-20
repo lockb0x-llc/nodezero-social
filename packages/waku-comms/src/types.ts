@@ -159,4 +159,15 @@ export interface WakuTransportOptions {
    * cross-environment topic traffic violates the isolation matrix.
    */
   appPrefix: string
+  /**
+   * Waku cluster id of the NodeZero-operated private cluster. Defaults to 0
+   * (static sharding, single shard) — must match the nwaku nodes'
+   * `--cluster-id`; js-waku otherwise defaults to The Waku Network.
+   */
+  clusterId?: number
+  /**
+   * Permit plain ws:// bootstrap multiaddrs (local development against a
+   * loopback nwaku only — staging/production peers are always wss).
+   */
+  allowInsecureWs?: boolean
 }

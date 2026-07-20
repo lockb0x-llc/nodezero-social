@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@stellar/stellar-sdk": "^16.0.0",
+    "@waku/sdk": "0.0.36",
     "eventemitter3": "^5.0.1"
   },
   "devDependencies": {

@@ -6,7 +6,7 @@
  * SDK API churn is absorbed here.
  */
 
-import { createDecoder, createEncoder, createLightNode, Protocols } from '@waku/sdk'
+import { createLightNode, Protocols, WakuEvent } from '@waku/sdk'
 import type { LightNode } from '@waku/sdk'
 import { WakuTransport } from './WakuTransport.js'
 import type { WakuDecodedMessage, WakuNodeLike } from './WakuTransport.js'
@@ -22,6 +22,13 @@ export async function createWakuTransport(options: WakuTransportOptions): Promis
   const node = await createLightNode({
     bootstrapPeers: options.bootstrapPeers,
     defaultBootstrap: false,
+    // Private NodeZero cluster (static sharding); js-waku defaults to The
+    // Waku Network (clusterId 1) if unspecified.
+    networkConfig: { clusterId: options.clusterId ?? 0 },
+    // Bootstrap peers are the only trusted entry points — no public discovery.
+    discovery: { peerExchange: false, dns: false, peerCache: false },
+    // Local dev nwaku is plain ws://; the default filter admits only wss/dns.
+    ...(options.allowInsecureWs ? { libp2p: { filterMultiaddrs: false } } : {}),
   })
   return new WakuTransport(adaptNode(node))
 }
@@ -31,10 +38,10 @@ function adaptNode(node: LightNode): WakuNodeLike {
     start: () => node.start(),
     stop: () => node.stop(),
     waitForPeers: () => node.waitForPeers([Protocols.LightPush, Protocols.Filter]),
-    hasPeers: () => node.libp2p.getConnections().length > 0,
+    hasPeers: () => node.isConnected(),
 
     async lightPush(contentTopic: string, payload: Uint8Array, ephemeral: boolean): Promise<void> {
-      const encoder = createEncoder({ contentTopic, ephemeral })
+      const encoder = node.createEncoder({ contentTopic, ephemeral })
       const result = await node.lightPush.send(encoder, { payload })
       if (result.successes.length === 0) {
         const detail = result.failures.map((failure) => failure.error).join('; ')
@@ -46,15 +53,15 @@ function adaptNode(node: LightNode): WakuNodeLike {
       contentTopics: string[],
       callback: (message: WakuDecodedMessage) => void,
     ): Promise<() => Promise<void>> {
-      const decoders = contentTopics.map((topic) => createDecoder(topic))
-      const { error, subscription } = await node.filter.subscribe(decoders, (message) => {
+      const decoders = contentTopics.map((topic) => node.createDecoder({ contentTopic: topic }))
+      const subscribed = await node.filter.subscribe(decoders, (message) => {
         callback({ contentTopic: message.contentTopic, payload: message.payload })
       })
-      if (error || !subscription) {
-        throw new Error(`Waku filter subscription failed${error ? `: ${String(error)}` : ''}`)
+      if (!subscribed) {
+        throw new Error('Waku filter subscription failed')
       }
       return async () => {
-        await subscription.unsubscribe(contentTopics)
+        await node.filter.unsubscribe(decoders)
       }
     },
 
@@ -63,7 +70,7 @@ function adaptNode(node: LightNode): WakuNodeLike {
       since: Date,
       callback: (message: WakuDecodedMessage) => void,
     ): Promise<void> {
-      const decoder = createDecoder(contentTopic)
+      const decoder = node.createDecoder({ contentTopic })
       for await (const page of node.store.queryGenerator([decoder], {
         timeStart: since,
       })) {
@@ -77,9 +84,10 @@ function adaptNode(node: LightNode): WakuNodeLike {
     },
 
     onConnectionChange(onConnect: () => void, onDisconnect: () => void): void {
-      node.libp2p.addEventListener('peer:connect', onConnect)
-      node.libp2p.addEventListener('peer:disconnect', () => {
-        if (node.libp2p.getConnections().length === 0) {
+      node.events.addEventListener(WakuEvent.Connection, (event: CustomEvent<boolean>) => {
+        if (event.detail) {
+          onConnect()
+        } else {
           onDisconnect()
         }
       })

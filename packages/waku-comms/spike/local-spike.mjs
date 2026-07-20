@@ -18,7 +18,7 @@
  */
 
 import { Keypair } from '@stellar/stellar-sdk'
-import { createDecoder, createEncoder, createLightNode, Protocols } from '@waku/sdk'
+import { createLightNode, Protocols } from '@waku/sdk'
 
 const args = process.argv.slice(2)
 const restBase = argValue('--rest') ?? 'http://127.0.0.1:8645'
@@ -47,19 +47,27 @@ async function nwakuMultiaddr() {
     throw new Error(`nwaku REST /debug/v1/info returned ${response.status} — is the container up?`)
   }
   const info = await response.json()
-  // listenAddresses contains the ws multiaddr including the peer id.
-  const ws = (info.listenAddresses ?? []).find((address) => address.includes('/ws'))
-  if (ws) return ws
-  // Fall back to composing from the first address's peer id.
-  const first = (info.listenAddresses ?? [])[0]
-  const p2pIndex = first?.indexOf('/p2p/')
-  if (first && p2pIndex >= 0) return `${wsBase}${first.slice(p2pIndex)}`
+  // listenAddresses advertise the container-internal IP (e.g. 172.18.0.2),
+  // which is unreachable from the host. Extract the peer id and rewrite onto
+  // the host-mapped WebSocket base (127.0.0.1:8000 by default).
+  const withPeerId = (info.listenAddresses ?? []).find((address) => address.includes('/p2p/'))
+  const p2pIndex = withPeerId?.indexOf('/p2p/')
+  if (withPeerId && p2pIndex >= 0) return `${wsBase}${withPeerId.slice(p2pIndex)}`
   throw new Error(`Could not derive a WebSocket multiaddr from ${JSON.stringify(info)}`)
 }
 
 async function startClient(name, bootstrap) {
   const startedAt = Date.now()
-  const node = await createLightNode({ bootstrapPeers: [bootstrap], defaultBootstrap: false })
+  const node = await createLightNode({
+    bootstrapPeers: [bootstrap],
+    defaultBootstrap: false,
+    // Must match the nwaku spike node (--cluster-id=0 --shard=0); js-waku
+    // defaults to The Waku Network (clusterId 1) otherwise.
+    networkConfig: { clusterId: 0 },
+    discovery: { peerExchange: false, dns: false, peerCache: false },
+    // Allow plain ws:// to 127.0.0.1 (default filter admits only wss/dns).
+    libp2p: { filterMultiaddrs: false },
+  })
   await node.start()
   await withTimeout(
     node.waitForPeers([Protocols.LightPush, Protocols.Filter]),
@@ -127,15 +135,15 @@ async function main() {
 
   // ---- Check 1: publish → filter delivery latency -------------------------
   const inbox = []
-  const { error, subscription } = await bob.filter.subscribe(
-    [createDecoder(CELL_TOPIC)],
-    (message) => inbox.push({ at: Date.now(), payload: message.payload }),
+  const cellDecoder = bob.createDecoder({ contentTopic: CELL_TOPIC, shardId: 0 })
+  const subscribed = await bob.filter.subscribe([cellDecoder], (message) =>
+    inbox.push({ at: Date.now(), payload: message.payload }),
   )
-  if (error) throw new Error(`bob filter subscribe failed: ${error}`)
+  if (!subscribed) throw new Error('bob filter subscribe failed')
 
   const publishedAt = Date.now()
   const sendResult = await alice.lightPush.send(
-    createEncoder({ contentTopic: CELL_TOPIC, ephemeral: false }),
+    alice.createEncoder({ contentTopic: CELL_TOPIC, ephemeral: false, shardId: 0 }),
     { payload: signedPayload(keypair, 'hello local cell') },
   )
   record('alice: lightPush acknowledged', sendResult.successes.length > 0)
@@ -149,16 +157,16 @@ async function main() {
   }
 
   // ---- Check 2: store recovery (offline catch-up) -------------------------
-  await alice.lightPush.send(createEncoder({ contentTopic: DM_TOPIC, ephemeral: false }), {
+  await alice.lightPush.send(alice.createEncoder({ contentTopic: DM_TOPIC, ephemeral: false, shardId: 0 }), {
     payload: signedPayload(keypair, 'missed while offline'),
   })
-  await alice.lightPush.send(createEncoder({ contentTopic: DM_TOPIC, ephemeral: true }), {
+  await alice.lightPush.send(alice.createEncoder({ contentTopic: DM_TOPIC, ephemeral: true, shardId: 0 }), {
     payload: signedPayload(keypair, 'ephemeral — must NOT be stored'),
   })
   await sleep(1_500) // allow store indexing
 
   const recovered = []
-  for await (const page of bob.store.queryGenerator([createDecoder(DM_TOPIC)])) {
+  for await (const page of bob.store.queryGenerator([bob.createDecoder({ contentTopic: DM_TOPIC, shardId: 0 })])) {
     for (const message of await Promise.all(page)) {
       if (message) recovered.push(verifyPayload(message.payload))
     }
@@ -171,7 +179,7 @@ async function main() {
     `recovered=${JSON.stringify(bodies)}`,
   )
 
-  await subscription?.unsubscribe([CELL_TOPIC]).catch(() => undefined)
+  await bob.filter.unsubscribe([cellDecoder]).catch(() => undefined)
   await alice.stop()
   await bob.stop()
 
