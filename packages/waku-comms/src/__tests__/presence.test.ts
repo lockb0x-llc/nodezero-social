@@ -83,6 +83,15 @@ describe('beacon body round-trip', () => {
       parsePresenceBeacon(JSON.stringify({ ...beacon(), capabilities: ['chat', 42] })),
     ).toBeNull()
   })
+
+  it('carries an optional DM session public key and rejects malformed ones', () => {
+    const jwk = { kty: 'EC' as const, crv: 'P-256' as const, x: 'xxxx', y: 'yyyy' }
+    const withKey = beacon({ dmPublicKeyJwk: jwk })
+    expect(parsePresenceBeacon(createPresenceBeaconBody(withKey))).toEqual(withKey)
+    expect(
+      parsePresenceBeacon(JSON.stringify({ ...beacon(), dmPublicKeyJwk: { kty: 'oct' } })),
+    ).toBeNull()
+  })
 })
 
 describe('PresenceTracker', () => {

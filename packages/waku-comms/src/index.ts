@@ -19,6 +19,7 @@ export {
   presenceTopic,
   cellTopic,
   dmTopic,
+  revealTopic,
   presenceCommitment,
 } from './topics.js'
 export {
@@ -41,6 +42,26 @@ export {
   PresenceTracker,
 } from './presence.js'
 export type { PresencePeer, PresenceTrackerOptions } from './presence.js'
+export {
+  generateDmKeyPair,
+  encryptDmBody,
+  decryptDmBody,
+  isDmPublicJwk,
+  isDmCiphertext,
+} from './dm-cipher.js'
+export type { DmKeyPair, DmPublicJwk, DmCiphertext } from './dm-cipher.js'
+export {
+  createBroadcastBody,
+  parseBroadcastBody,
+  createPlainChatBody,
+  createEncryptedChatBody,
+  parseChatBody,
+  createRevealPayload,
+  parseRevealPayload,
+  createRevealBody,
+  parseRevealBody,
+} from './chat.js'
+export type { BroadcastBody, ChatBody, RevealPayload } from './chat.js'
 export { WakuTransport } from './WakuTransport.js'
 export type { WakuNodeLike, WakuDecodedMessage } from './WakuTransport.js'
 export { createWakuTransport } from './createWakuTransport.js'

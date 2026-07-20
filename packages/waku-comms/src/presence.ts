@@ -17,6 +17,7 @@
  *   WebIDs only over the pairwise DM topic.
  */
 
+import { isDmPublicJwk, type DmPublicJwk } from './dm-cipher.js'
 import type { InboundMessage, PresenceBeacon } from './types.js'
 
 /** How often a client republishes its presence beacon. */
@@ -82,6 +83,9 @@ export function parsePresenceBeacon(body: string): PresenceBeacon | null {
     ) {
       return null
     }
+    if (candidate.dmPublicKeyJwk !== undefined && !isDmPublicJwk(candidate.dmPublicKeyJwk)) {
+      return null
+    }
     return {
       webIdCommitment: candidate.webIdCommitment,
       h3Index: candidate.h3Index,
@@ -89,6 +93,9 @@ export function parsePresenceBeacon(body: string): PresenceBeacon | null {
         (value): value is string => typeof value === 'string',
       ),
       expiresAt: candidate.expiresAt,
+      ...(candidate.dmPublicKeyJwk !== undefined && isDmPublicJwk(candidate.dmPublicKeyJwk)
+        ? { dmPublicKeyJwk: candidate.dmPublicKeyJwk }
+        : {}),
     }
   } catch {
     return null
@@ -109,6 +116,8 @@ export interface PresencePeer {
   lastSeenAt: string
   /** ISO expiry after which the peer is swept from the live map. */
   expiresAt: string
+  /** Peer's DM session public key, when advertised in the beacon. */
+  dmPublicKeyJwk?: DmPublicJwk
 }
 
 /** Options for {@link PresenceTracker}. */
@@ -165,6 +174,7 @@ export class PresenceTracker {
       stellarPublicKey: message.envelope.senderStellarPublicKey,
       lastSeenAt: message.envelope.timestamp,
       expiresAt: beacon.expiresAt,
+      ...(beacon.dmPublicKeyJwk !== undefined ? { dmPublicKeyJwk: beacon.dmPublicKeyJwk } : {}),
     }
     this.peersByCommitment.set(beacon.webIdCommitment, peer)
     return peer

@@ -11,12 +11,16 @@
  *  - maintains a live peer map with expiry sweeping via PresenceTracker.
  *
  * Privacy: beacons carry a rotating WebID commitment, never the raw WebID.
- * The raw WebID is only exchanged during the mutual-reveal DM handshake
- * (Phase 4). Raw GPS never appears anywhere — only H3 cell indexes.
+ * The raw WebID is only exchanged during the mutual-reveal handshake: a
+ * signed 'reveal' envelope whose body is ECIES-sealed to the target peer's
+ * DM session key, published on the target commitment's reveal topic. Both
+ * sides must actively reveal before either can DM the other by WebID.
+ * Raw GPS never appears anywhere — only H3 cell indexes.
  */
 
 import React, {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -30,10 +34,18 @@ import {
   PresenceTracker,
   createEnvelope,
   createPresenceBeaconBody,
+  createRevealBody,
+  createRevealPayload,
+  decryptDmBody,
+  encryptDmBody,
+  parseRevealBody,
+  parseRevealPayload,
   presenceCommitment,
   presenceEpoch,
   presenceSenderId,
   presenceTopic,
+  revealTopic,
+  type DmPublicJwk,
   type InboundMessage,
   type PresencePeer,
 } from '@nodezero/waku-comms'
@@ -54,24 +66,50 @@ export type PresenceStatus =
   | 'active'
   | 'error'
 
+/** A nearby peer who revealed their WebID to us via the reveal handshake. */
+export interface RevealedPeer {
+  /** Presence commitment the reveal was linked to. */
+  commitment: string
+  /** The peer's raw WebID (only ever delivered E2EE). */
+  webId: string
+  /** The peer's DM session public key for E2EE chat. */
+  dmPublicKeyJwk: DmPublicJwk
+  /** Stellar key that signed the reveal envelope. */
+  stellarPublicKey: string
+  /** ISO timestamp when the reveal arrived. */
+  revealedAt: string
+}
+
 interface PresenceContextValue {
   /** Verified, unexpired peers present in the surrounding cells. */
   presentPeers: PresencePeer[]
   presenceStatus: PresenceStatus
   /** Human-readable error detail when presenceStatus is 'error'. */
   presenceError: string | null
+  /** Peers who revealed their WebID to us, most recent first. */
+  revealedPeers: RevealedPeer[]
+  /** Commitments we have already sent a reveal to (this session). */
+  revealedTo: string[]
+  /**
+   * Reveal our WebID + DM key to a present peer (E2EE to their beacon key).
+   * Rejects when the peer advertises no DM key or the Waku plane is down.
+   */
+  revealToPeer: (peer: PresencePeer) => Promise<void>
 }
 
 const PresenceContext = createContext<PresenceContextValue | null>(null)
 
 /** Publishes presence beacons and tracks live peers in nearby cells. */
 export function PresenceProvider({ children }: { children: ReactNode }): JSX.Element {
-  const { transport, status: wakuStatus, appPrefix, signer } = useWaku()
+  const { transport, status: wakuStatus, appPrefix, signer, dmKeyPair } = useWaku()
   const { currentNode, surroundingNodes } = useDiscovery()
   const { webId } = useNodeZeroSession()
 
   const [presentPeers, setPresentPeers] = useState<PresencePeer[]>([])
   const [presenceError, setPresenceError] = useState<string | null>(null)
+  const [revealedPeers, setRevealedPeers] = useState<RevealedPeer[]>([])
+  const [revealedTo, setRevealedTo] = useState<string[]>([])
+  const [ownCommitments, setOwnCommitments] = useState<string[]>([])
 
   const trackerRef = useRef(new PresenceTracker())
   // Own commitments for the current + previous epoch, so the user's own
@@ -159,6 +197,9 @@ export function PresenceProvider({ children }: { children: ReactNode }): JSX.Ele
           presenceEpoch(new Date(now.getTime() - 60 * 60_000)),
         )
         ownCommitmentsRef.current = new Set([commitment, previous])
+        setOwnCommitments((existing) =>
+          existing[0] === commitment && existing[1] === previous ? existing : [commitment, previous],
+        )
         if (cancelled) return
 
         const envelope = await createEnvelope(signer, {
@@ -169,6 +210,7 @@ export function PresenceProvider({ children }: { children: ReactNode }): JSX.Ele
             h3Index: currentH3,
             capabilities: ['chat'],
             expiresAt: new Date(now.getTime() + PRESENCE_BEACON_TTL_MS).toISOString(),
+            ...(dmKeyPair ? { dmPublicKeyJwk: dmKeyPair.publicJwk } : {}),
           }),
         })
         if (cancelled) return
@@ -188,7 +230,110 @@ export function PresenceProvider({ children }: { children: ReactNode }): JSX.Ele
       cancelled = true
       clearInterval(interval)
     }
-  }, [appPrefix, connected, currentH3, signer, transport, webId])
+  }, [appPrefix, connected, currentH3, dmKeyPair, signer, transport, webId])
+
+  // Listen for E2EE reveals addressed to our current (and previous) presence
+  // commitment. Payloads are sealed to our DM session key; a reveal is only
+  // accepted when its sender commitment maps to a tracked peer signed by the
+  // same Stellar key (anti-spoof) or the peer is no longer tracked but the
+  // envelope still verified.
+  useEffect((): (() => void) | void => {
+    if (!connected || !transport || !dmKeyPair || ownCommitments.length === 0) {
+      return
+    }
+
+    let cancelled = false
+    let unsubscribe: (() => Promise<void>) | null = null
+    const topics = [...new Set(ownCommitments)].map((c) => revealTopic(appPrefix, c))
+
+    const handler = (message: InboundMessage): void => {
+      if (cancelled || message.envelope.kind !== 'reveal' || !message.verified) return
+      const sealed = parseRevealBody(message.envelope.body)
+      if (!sealed) return
+      void decryptDmBody(dmKeyPair.privateKey, sealed)
+        .then((plaintext) => {
+          if (cancelled) return
+          const payload = parseRevealPayload(plaintext)
+          if (!payload) return
+          const tracked = trackerRef.current
+            .peers()
+            .find((peer) => peer.webIdCommitment === payload.senderCommitment)
+          if (tracked && tracked.stellarPublicKey !== message.envelope.senderStellarPublicKey) {
+            return
+          }
+          const revealed: RevealedPeer = {
+            commitment: payload.senderCommitment,
+            webId: payload.webId,
+            dmPublicKeyJwk: payload.dmPublicKeyJwk,
+            stellarPublicKey: message.envelope.senderStellarPublicKey,
+            revealedAt: new Date().toISOString(),
+          }
+          setRevealedPeers((existing) => [
+            revealed,
+            ...existing.filter((peer) => peer.webId !== revealed.webId),
+          ])
+        })
+        .catch(() => undefined)
+    }
+
+    void transport
+      .subscribe(topics, handler)
+      .then((unsub) => {
+        if (cancelled) {
+          void unsub().catch(() => undefined)
+          return
+        }
+        unsubscribe = unsub
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setPresenceError(err instanceof Error ? err.message : 'Reveal subscription failed.')
+        }
+      })
+
+    return () => {
+      cancelled = true
+      if (unsubscribe) {
+        void unsubscribe().catch(() => undefined)
+      }
+    }
+  }, [appPrefix, connected, dmKeyPair, ownCommitments, transport])
+
+  const revealToPeer = useCallback(
+    async (peer: PresencePeer): Promise<void> => {
+      if (!connected || !transport || !signer || !webId) {
+        throw new Error('Local mesh is not connected.')
+      }
+      if (!dmKeyPair) {
+        throw new Error('No DM session key available on this device.')
+      }
+      if (!peer.dmPublicKeyJwk) {
+        throw new Error('This peer does not accept reveals (no DM key in their beacon).')
+      }
+      const commitment =
+        ownCommitments[0] ?? (await presenceCommitment(webId, presenceEpoch(new Date())))
+      const sealed = await encryptDmBody(
+        peer.dmPublicKeyJwk,
+        createRevealPayload({
+          webId,
+          dmPublicKeyJwk: dmKeyPair.publicJwk,
+          senderCommitment: commitment,
+        }),
+      )
+      const envelope = await createEnvelope(signer, {
+        senderWebId: presenceSenderId(commitment),
+        kind: 'reveal',
+        body: createRevealBody(sealed),
+      })
+      await transport.publish(revealTopic(appPrefix, peer.webIdCommitment), envelope, {
+        ephemeral: true,
+      })
+      setRevealedTo((existing) =>
+        existing.includes(peer.webIdCommitment) ? existing : [...existing, peer.webIdCommitment],
+      )
+    },
+    [appPrefix, connected, dmKeyPair, ownCommitments, signer, transport, webId],
+  )
 
   // Sweep expired peers on a slower cadence.
   useEffect((): (() => void) | void => {
@@ -211,8 +356,8 @@ export function PresenceProvider({ children }: { children: ReactNode }): JSX.Ele
           : 'waiting'
 
   const value = useMemo<PresenceContextValue>(
-    () => ({ presentPeers, presenceStatus, presenceError }),
-    [presentPeers, presenceStatus, presenceError],
+    () => ({ presentPeers, presenceStatus, presenceError, revealedPeers, revealedTo, revealToPeer }),
+    [presentPeers, presenceStatus, presenceError, revealedPeers, revealedTo, revealToPeer],
   )
 
   return <PresenceContext.Provider value={value}>{children}</PresenceContext.Provider>

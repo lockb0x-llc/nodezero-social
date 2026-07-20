@@ -7,11 +7,14 @@
  *   /nodezero-staging/1/presence-892830828cbffff/proto
  *   /nodezero-staging/1/cell-892830828cbffff/proto
  *   /nodezero-staging/1/dm-Zm9vYmFyYmF6cXV4/proto
+ *   /nodezero-staging/1/reveal-Zm9vYmFyYmF6cXV4/proto
  *
- * - presence-{h3Index}: ephemeral presence beacons for one H3 cell.
- * - cell-{h3Index}:     local broadcast posts for one H3 cell.
- * - dm-{pairHash}:      pairwise inbox; pairHash is order-independent so both
- *                       peers derive the same topic.
+ * - presence-{h3Index}:  ephemeral presence beacons for one H3 cell.
+ * - cell-{h3Index}:      local broadcast posts for one H3 cell.
+ * - dm-{pairHash}:       pairwise inbox; pairHash is order-independent so both
+ *                        peers derive the same topic.
+ * - reveal-{commitment}: mutual-reveal handshake inbox addressed to one
+ *                        rotating presence commitment.
  *
  * The appPrefix is environment-scoped (nodezero-local / nodezero-staging /
  * nodezero) so staging and production traffic can never mix — the same
@@ -22,6 +25,7 @@
 const TOPIC_VERSION = 1
 const APP_PREFIX_PATTERN = /^[a-z0-9][a-z0-9-]*$/
 const H3_INDEX_PATTERN = /^[0-9a-f]{15}$/
+const COMMITMENT_PATTERN = /^[A-Za-z0-9_-]{16,}$/
 
 /** Map an NZ_ENV_PROFILE value to its content-topic app prefix. */
 export function appPrefixForProfile(profile: string): string {
@@ -78,6 +82,18 @@ export async function dmTopic(appPrefix: string, webIdA: string, webIdB: string)
   const [first, second] = [webIdA, webIdB].sort()
   const pairHash = await sha256Base64Url(`${first}\n${second}`)
   return contentTopic(appPrefix, `dm-${pairHash.slice(0, 32)}`)
+}
+
+/**
+ * Mutual-reveal handshake topic addressed to one rotating presence
+ * commitment. The holder of the commitment subscribes here to receive
+ * E2EE reveal payloads from peers who saw its presence beacon.
+ */
+export function revealTopic(appPrefix: string, webIdCommitment: string): string {
+  if (!COMMITMENT_PATTERN.test(webIdCommitment)) {
+    throw new Error(`Invalid presence commitment: ${webIdCommitment}`)
+  }
+  return contentTopic(appPrefix, `reveal-${webIdCommitment.slice(0, 32)}`)
 }
 
 /**

@@ -29,6 +29,8 @@ import Constants from 'expo-constants'
 import {
   appPrefixForProfile,
   createWakuTransport,
+  generateDmKeyPair,
+  type DmKeyPair,
   type EnvelopeSigner,
   type MessageTransport,
 } from '@nodezero/waku-comms'
@@ -55,6 +57,12 @@ interface WakuContextValue {
   appPrefix: string
   /** Envelope signer bound to the device Stellar key, or null pre-wallet. */
   signer: EnvelopeSigner | null
+  /**
+   * Session-scoped DM key pair for E2EE chat/reveal payloads. The public JWK
+   * travels in presence beacons; the private key never leaves this context.
+   * Null until generated (or when WebCrypto ECDH is unavailable).
+   */
+  dmKeyPair: DmKeyPair | null
 }
 
 const WakuContext = createContext<WakuContextValue | null>(null)
@@ -93,6 +101,7 @@ export function WakuProvider({ children }: { children: ReactNode }): JSX.Element
   const [transport, setTransport] = useState<MessageTransport | null>(null)
   const [status, setStatus] = useState<WakuStatus>(bootstrapPeers.length > 0 ? 'idle' : 'disabled')
   const [error, setError] = useState<string | null>(null)
+  const [dmKeyPair, setDmKeyPair] = useState<DmKeyPair | null>(null)
   const generationRef = useRef(0)
 
   const walletPublicKey = walletInfo?.publicKey ?? null
@@ -117,6 +126,28 @@ export function WakuProvider({ children }: { children: ReactNode }): JSX.Element
     sessionStatus === 'authenticated' &&
     attestationStatus === 'verified' &&
     walletPublicKey !== null
+
+  // One DM session key pair per provider mount. Best-effort: platforms
+  // without WebCrypto ECDH simply fall back to plaintext-signed chat.
+  useEffect(() => {
+    let cancelled = false
+    if (!enabled) {
+      setDmKeyPair(null)
+      return (): void => {
+        cancelled = true
+      }
+    }
+    void generateDmKeyPair()
+      .then((pair) => {
+        if (!cancelled) setDmKeyPair(pair)
+      })
+      .catch(() => {
+        if (!cancelled) setDmKeyPair(null)
+      })
+    return (): void => {
+      cancelled = true
+    }
+  }, [enabled])
 
   useEffect((): (() => void) | void => {
     if (!enabled) {
@@ -177,8 +208,8 @@ export function WakuProvider({ children }: { children: ReactNode }): JSX.Element
   }, [enabled])
 
   const value = useMemo<WakuContextValue>(
-    () => ({ transport, status, error, appPrefix, signer }),
-    [transport, status, error, appPrefix, signer],
+    () => ({ transport, status, error, appPrefix, signer, dmKeyPair }),
+    [transport, status, error, appPrefix, signer, dmKeyPair],
   )
 
   return <WakuContext.Provider value={value}>{children}</WakuContext.Provider>

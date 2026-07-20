@@ -11,14 +11,18 @@
  *   underlying network (Waku today, GossipSub/Nostr fallback) is swappable.
  */
 
+import type { DmPublicJwk } from './dm-cipher.js'
+
 /** Message kinds carried over the ephemeral plane. */
 export type EnvelopeKind =
-  /** 1:1 or small-group chat message body (E2EE ciphertext once Phase 4 lands). */
+  /** 1:1 or small-group chat message body (plain or ECIES-sealed, see chat.ts). */
   | 'chat'
   /** Presence beacon for an H3 cell (always ephemeral, never stored). */
   | 'presence'
   /** Local broadcast post to an H3 cell topic. */
   | 'broadcast'
+  /** E2EE mutual-reveal handshake payload (commitment → WebID exchange). */
+  | 'reveal'
   /** Pointer to durable content in a Solid Pod (attachments, long posts). */
   | 'pod-pointer'
 
@@ -71,6 +75,11 @@ export interface PresenceBeacon {
   capabilities: string[]
   /** ISO 8601 expiry; consumers must sweep beacons past this instant. */
   expiresAt: string
+  /**
+   * Public half of the sender's DM session key. Lets peers seal E2EE
+   * reveal/chat payloads for this beacon's holder without prior contact.
+   */
+  dmPublicKeyJwk?: DmPublicJwk
 }
 
 /** Pointer to durable content anchored in a Solid Pod. */

@@ -2,14 +2,16 @@
  * LocalNodeScreen
  *
  * Shows active users within the same H3 hexagonal cell or its immediate ring.
- * Uses `@nodezero/geo-discovery` to determine the local node and broadcasts
- * ephemeral messages over the P2P WebRTC channel.
+ * Uses `@nodezero/geo-discovery` to determine the local node. Messaging runs
+ * over the Waku local mesh when connected (signed envelopes; E2EE DMs once a
+ * peer has revealed their DM key), with the legacy WebRTC relay retained as a
+ * fallback while the Waku rollout completes (Phase 5 removes it).
  *
  * Privacy note: the raw GPS coordinate is NEVER displayed or transmitted.
  * Only the H3 cell index is shared.
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   View,
   Text,
@@ -27,7 +29,20 @@ import { useDiscovery } from '../src/contexts/DiscoveryContext'
 import { useNodeZeroSession } from '../src/contexts/NodeZeroSessionContext'
 import { useWallet } from '../src/contexts/WalletContext'
 import { usePresence } from '../src/contexts/PresenceContext'
+import { useWaku } from '../src/contexts/WakuContext'
 import { P2PChannel, SignalRelay, type SignalMessage } from '@nodezero/p2p-comms'
+import {
+  cellTopic,
+  createEncryptedChatBody,
+  createEnvelope,
+  createPlainChatBody,
+  decryptDmBody,
+  dmTopic,
+  encryptDmBody,
+  parseBroadcastBody,
+  parseChatBody,
+  type InboundMessage,
+} from '@nodezero/waku-comms'
 import { getSolidPodSyncManagers } from '../src/solid/podSyncManagers'
 import { aesthetic } from '../src/theme/aesthetic'
 import { Ionicons } from '@expo/vector-icons'
@@ -38,6 +53,9 @@ interface LocalMessage {
   body: string
   timestamp: string
 }
+
+/** How far back the store catch-up query reaches on mount/resubscribe. */
+const CHAT_CATCHUP_MS = 60 * 60_000
 
 function firstParam(value: string | string[] | undefined): string {
   if (Array.isArray(value)) {
@@ -58,7 +76,9 @@ function isValidRelayOverrideWebId(raw: string): boolean {
 export default function LocalNodeScreen(): JSX.Element {
   const { currentNode, surroundingNodes, locationStatus, requestAccess } = useDiscovery()
   const { webId, status, authFetch } = useNodeZeroSession()
-  const { presentPeers, presenceStatus, presenceError } = usePresence()
+  const { presentPeers, presenceStatus, presenceError, revealedPeers, revealedTo, revealToPeer } =
+    usePresence()
+  const { transport: wakuTransport, status: wakuStatus, appPrefix, signer, dmKeyPair } = useWaku()
   const isLoggedIn = status === 'authenticated'
   const { attestationStatus } = useWallet()
   const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
@@ -87,10 +107,21 @@ export default function LocalNodeScreen(): JSX.Element {
   const [relayError, setRelayError] = useState<string | null>(null)
   const [openPeers, setOpenPeers] = useState<Record<string, boolean>>({})
   const [knownPeers, setKnownPeers] = useState<string[]>([])
+  const [chatPartners, setChatPartners] = useState<string[]>([])
   const [showAuthModeHint, setShowAuthModeHint] = useState(false)
 
   const relayRef = useRef<SignalRelay | null>(null)
   const channelsRef = useRef<Map<string, P2PChannel>>(new Map())
+  const seenMessageIdsRef = useRef<Set<string>>(new Set())
+
+  const wakuActive = wakuStatus === 'connected' && wakuTransport !== null
+
+  /** Append a message once, deduplicating live/store/echo deliveries by id. */
+  const appendMessage = useCallback((incoming: LocalMessage): void => {
+    if (seenMessageIdsRef.current.has(incoming.id)) return
+    seenMessageIdsRef.current.add(incoming.id)
+    setMessages((prev) => [incoming, ...prev])
+  }, [])
 
   const upsertChannel = useCallback((remoteWebId: string): P2PChannel | null => {
     if (!effectiveWebId) return null
@@ -218,16 +249,175 @@ export default function LocalNodeScreen(): JSX.Element {
       })
   }, [authFetch, isLoggedIn, webId])
 
+  // Stable key for the surrounding cell set (origin + ring).
+  const cellKey = useMemo(() => {
+    const indexes = new Set(surroundingNodes.map((node) => node.h3Index))
+    if (currentNode?.h3Index) indexes.add(currentNode.h3Index)
+    return [...indexes].sort().join(',')
+  }, [currentNode?.h3Index, surroundingNodes])
+
+  // Live local-broadcast feed: signed 'broadcast' envelopes on the
+  // surrounding cell topics, plus a store catch-up on (re)subscribe.
+  useEffect((): (() => void) | void => {
+    if (!wakuActive || !wakuTransport || cellKey.length === 0) return
+
+    let cancelled = false
+    let unsubscribe: (() => Promise<void>) | null = null
+    const topics = cellKey.split(',').map((h3Index) => cellTopic(appPrefix, h3Index))
+
+    const handler = (inbound: InboundMessage): void => {
+      if (cancelled || inbound.envelope.kind !== 'broadcast' || !inbound.verified) return
+      const body = parseBroadcastBody(inbound.envelope.body)
+      if (!body) return
+      appendMessage({
+        id: inbound.envelope.id,
+        senderWebId: inbound.envelope.senderWebId,
+        body: body.text,
+        timestamp: inbound.envelope.timestamp,
+      })
+    }
+
+    void wakuTransport
+      .subscribe(topics, handler)
+      .then((unsub) => {
+        if (cancelled) {
+          void unsub().catch(() => undefined)
+          return
+        }
+        unsubscribe = unsub
+      })
+      .catch(() => undefined)
+
+    const since = new Date(Date.now() - CHAT_CATCHUP_MS)
+    for (const topic of topics) {
+      void wakuTransport.querySince(topic, since, handler).catch(() => undefined)
+    }
+
+    return () => {
+      cancelled = true
+      if (unsubscribe) void unsubscribe().catch(() => undefined)
+    }
+  }, [appPrefix, appendMessage, cellKey, wakuActive, wakuTransport])
+
+  // Inbound DM handler: plaintext-signed or ECIES-sealed chat bodies.
+  const handleDmInbound = useCallback(
+    (inbound: InboundMessage): void => {
+      if (inbound.envelope.kind !== 'chat' || !inbound.verified) return
+      const parsed = parseChatBody(inbound.envelope.body)
+      if (!parsed) return
+      const base = {
+        id: inbound.envelope.id,
+        senderWebId: inbound.envelope.senderWebId,
+        timestamp: inbound.envelope.timestamp,
+      }
+      if (parsed.scheme === 'plain') {
+        appendMessage({ ...base, body: parsed.text })
+        return
+      }
+      if (!dmKeyPair) {
+        appendMessage({ ...base, body: '[encrypted message — no session key]' })
+        return
+      }
+      void decryptDmBody(dmKeyPair.privateKey, parsed.sealed)
+        .then((text) => appendMessage({ ...base, body: text }))
+        .catch(() => appendMessage({ ...base, body: '[encrypted message]' }))
+    },
+    [appendMessage, dmKeyPair],
+  )
+
+  // DM chat partners: Pod connections + peers who revealed to us + anyone we
+  // messaged this session. Newline-joined stable key avoids re-subscribing on
+  // unrelated renders.
+  const dmPeersKey = useMemo(() => {
+    const peers = new Set<string>(knownPeers)
+    for (const peer of revealedPeers) peers.add(peer.webId)
+    for (const partner of chatPartners) peers.add(partner)
+    if (effectiveWebId) peers.delete(effectiveWebId)
+    return [...peers].sort().join('\n')
+  }, [chatPartners, effectiveWebId, knownPeers, revealedPeers])
+
+  // Subscribe to the pairwise DM topics for all chat partners, with a store
+  // catch-up so recent messages survive app restarts.
+  useEffect((): (() => void) | void => {
+    if (!wakuActive || !wakuTransport || !effectiveWebId || dmPeersKey.length === 0) return
+
+    let cancelled = false
+    let unsubscribe: (() => Promise<void>) | null = null
+
+    void (async (): Promise<void> => {
+      const peers = dmPeersKey.split('\n')
+      const topics = [
+        ...new Set(await Promise.all(peers.map((peer) => dmTopic(appPrefix, effectiveWebId, peer)))),
+      ]
+      if (cancelled) return
+      try {
+        const unsub = await wakuTransport.subscribe(topics, handleDmInbound)
+        if (cancelled) {
+          void unsub().catch(() => undefined)
+          return
+        }
+        unsubscribe = unsub
+      } catch {
+        // Subscription failures surface via transport error events.
+      }
+      const since = new Date(Date.now() - CHAT_CATCHUP_MS)
+      for (const topic of topics) {
+        void wakuTransport.querySince(topic, since, handleDmInbound).catch(() => undefined)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+      if (unsubscribe) void unsubscribe().catch(() => undefined)
+    }
+  }, [appPrefix, dmPeersKey, effectiveWebId, handleDmInbound, wakuActive, wakuTransport])
+
   const sendMessage = useCallback(async () => {
     if (!message.trim() || !effectiveWebId || !targetWebId.trim()) return
+
+    const target = targetWebId.trim()
+    const bodyText = message.trim()
+
+    // Preferred path: signed (and E2EE where possible) chat over the Waku
+    // pairwise DM topic.
+    if (wakuActive && wakuTransport && signer) {
+      setSending(true)
+      try {
+        const revealed = revealedPeers.find((peer) => peer.webId === target)
+        const body = revealed
+          ? createEncryptedChatBody(await encryptDmBody(revealed.dmPublicKeyJwk, bodyText))
+          : createPlainChatBody(bodyText)
+        const envelope = await createEnvelope(signer, {
+          senderWebId: effectiveWebId,
+          kind: 'chat',
+          body,
+        })
+        await wakuTransport.publish(await dmTopic(appPrefix, effectiveWebId, target), envelope)
+        setChatPartners((prev) => (prev.includes(target) ? prev : [...prev, target]))
+        appendMessage({
+          id: envelope.id,
+          senderWebId: effectiveWebId,
+          body: bodyText,
+          timestamp: envelope.timestamp,
+        })
+        setMessage('')
+        setRelayError(null)
+      } catch (err) {
+        setRelayError(err instanceof Error ? err.message : 'Failed to send message.')
+        console.warn('[LocalNodeScreen] Waku sendMessage error:', err)
+      } finally {
+        setSending(false)
+      }
+      return
+    }
+
+    // Fallback path: legacy WebRTC channel via the signaling relay.
     if (!relayRef.current || relayState !== 'connected') {
       setRelayError('Relay is not connected yet. Please wait and retry.')
       return
     }
 
     setSending(true)
-
-    const target = targetWebId.trim()
 
     try {
       const channel = upsertChannel(target)
@@ -245,7 +435,7 @@ export default function LocalNodeScreen(): JSX.Element {
         return
       }
 
-      const sent = channel.send(message.trim())
+      const sent = channel.send(bodyText)
       setMessages((prev) => [sent, ...prev])
       setMessage('')
       setRelayError(null)
@@ -255,7 +445,20 @@ export default function LocalNodeScreen(): JSX.Element {
     } finally {
       setSending(false)
     }
-  }, [effectiveWebId, message, openPeers, relayState, targetWebId, upsertChannel])
+  }, [
+    appPrefix,
+    appendMessage,
+    effectiveWebId,
+    message,
+    openPeers,
+    relayState,
+    revealedPeers,
+    signer,
+    targetWebId,
+    upsertChannel,
+    wakuActive,
+    wakuTransport,
+  ])
 
   if (status === 'restoring') {
     return (
@@ -421,16 +624,74 @@ export default function LocalNodeScreen(): JSX.Element {
               data={presentPeers}
               keyExtractor={(peer) => peer.webIdCommitment}
               showsHorizontalScrollIndicator={false}
-              renderItem={({ item }) => (
-                <View style={styles.peerChip}>
-                  <Text style={styles.peerChipText} numberOfLines={1}>
-                    {item.h3Index === currentNode?.h3Index ? '● ' : '○ '}
-                    {item.webIdCommitment.slice(0, 10)}
-                  </Text>
-                </View>
-              )}
+              renderItem={({ item }) => {
+                const alreadyRevealed = revealedTo.includes(item.webIdCommitment)
+                const canReveal = wakuActive && !!item.dmPublicKeyJwk && !alreadyRevealed
+                return (
+                  <TouchableOpacity
+                    onPress={() => {
+                      if (!canReveal) return
+                      void revealToPeer(item)
+                        .then(() => setRelayError(null))
+                        .catch((err: unknown) => {
+                          setRelayError(
+                            err instanceof Error ? err.message : 'Failed to reveal to peer.',
+                          )
+                        })
+                    }}
+                    disabled={!canReveal}
+                    style={styles.peerChip}
+                    activeOpacity={aesthetic.motion.pressOpacity}
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      alreadyRevealed
+                        ? 'Already revealed to this peer'
+                        : 'Reveal your WebID to this peer'
+                    }
+                  >
+                    <Text style={styles.peerChipText} numberOfLines={1}>
+                      {item.h3Index === currentNode?.h3Index ? '● ' : '○ '}
+                      {item.webIdCommitment.slice(0, 10)}
+                      {alreadyRevealed ? ' ✓' : canReveal ? ' ⇄' : ''}
+                    </Text>
+                  </TouchableOpacity>
+                )
+              }}
             />
           )}
+        </View>
+      )}
+
+      {/* Peers who revealed their WebID to us — tap to chat E2EE */}
+      {revealedPeers.length > 0 && (
+        <View style={styles.peerRow}>
+          <Text style={styles.peerRowLabel}>Revealed to you</Text>
+          <FlatList
+            horizontal
+            data={revealedPeers}
+            keyExtractor={(peer) => peer.webId}
+            showsHorizontalScrollIndicator={false}
+            renderItem={({ item }) => {
+              const selected = targetWebId.trim() === item.webId
+              return (
+                <TouchableOpacity
+                  onPress={() => setTargetWebId(item.webId)}
+                  style={[styles.peerChip, selected && styles.peerChipSelected]}
+                  activeOpacity={aesthetic.motion.pressOpacity}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Chat with revealed peer ${item.webId}`}
+                >
+                  <Text
+                    style={[styles.peerChipText, selected && styles.peerChipTextSelected]}
+                    numberOfLines={1}
+                  >
+                    {'🔒 '}
+                    {item.webId}
+                  </Text>
+                </TouchableOpacity>
+              )
+            }}
+          />
         </View>
       )}
 
@@ -500,7 +761,12 @@ export default function LocalNodeScreen(): JSX.Element {
         />
       </View>
 
-      {relayState !== 'connected' && (
+      {wakuActive && (
+        <Text style={styles.systemText}>
+          Local mesh connected — messages are signed{dmKeyPair ? ', E2EE with revealed peers' : ''}.
+        </Text>
+      )}
+      {!wakuActive && relayState !== 'connected' && (
         <Text style={styles.systemText}>
           {relayState === 'connecting' ? 'Connecting to secure relay…' : 'Relay disconnected.'}
         </Text>

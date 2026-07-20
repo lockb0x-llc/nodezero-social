@@ -15,7 +15,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNodeZeroSession } from '../src/contexts/NodeZeroSessionContext';
 import { useDiscovery } from '../src/contexts/DiscoveryContext';
 import { useWallet } from '../src/contexts/WalletContext';
-import { P2PChannel } from '@nodezero/p2p-comms';
+import { useWaku } from '../src/contexts/WakuContext';
+import { cellTopic, createBroadcastBody, createEnvelope } from '@nodezero/waku-comms';
 import { getSolidPodSyncManagers } from '../src/solid/podSyncManagers';
 import { aesthetic } from '../src/theme/aesthetic';
 import { resolveAudienceRecipients } from '../src/social/composeRecipients';
@@ -41,7 +42,8 @@ export default function ComposeScreen(): JSX.Element {
   const [sending, setSending] = useState(false);
 
   const { authFetch, webId } = useNodeZeroSession();
-  const { surroundingNodes } = useDiscovery();
+  const { currentNode, surroundingNodes } = useDiscovery();
+  const { transport: wakuTransport, status: wakuStatus, appPrefix, signer } = useWaku();
   // verifyPoH may not exist on the wallet context type; cast as a stub if absent
   const walletCtx = useWallet() as { verifyPoH?: (webId: string) => Promise<boolean> };
   const verifyPoH: (webId: string) => Promise<boolean> =
@@ -52,18 +54,37 @@ export default function ComposeScreen(): JSX.Element {
     setSending(true);
     try {
       if (audience === 'local') {
-        // Route via P2P relay to surrounding H3 nodes
-        const nodes = surroundingNodes ?? [];
-        await Promise.allSettled(
-          nodes.map((node) => {
-            const ch = new P2PChannel({
-              localWebId: webId ?? '',
-              remoteWebId: (node as { webId?: string }).webId ?? String(node),
-            });
-            void ch;
-            void node;
-          })
+        // Publish a signed broadcast envelope to the current cell and its
+        // surrounding H3 cells over the Waku local mesh.
+        if (wakuStatus !== 'connected' || !wakuTransport || !signer || !webId) {
+          throw new Error('Local broadcast requires the local mesh connection.');
+        }
+        const h3Indexes = [
+          ...new Set(
+            [currentNode?.h3Index, ...surroundingNodes.map((node) => node.h3Index)].filter(
+              (h3): h3 is string => typeof h3 === 'string' && h3.length > 0
+            )
+          ),
+        ];
+        if (h3Indexes.length === 0) {
+          throw new Error('No local cell available — enable location to broadcast.');
+        }
+        const envelope = await createEnvelope(signer, {
+          senderWebId: webId,
+          kind: 'broadcast',
+          body: createBroadcastBody({ text: postText }),
+        });
+        const results = await Promise.allSettled(
+          h3Indexes.map((h3Index) => wakuTransport.publish(cellTopic(appPrefix, h3Index), envelope))
         );
+        if (!results.some((result) => result.status === 'fulfilled')) {
+          const firstError: unknown = results.find(
+            (result): result is PromiseRejectedResult => result.status === 'rejected'
+          )?.reason;
+          throw firstError instanceof Error
+            ? firstError
+            : new Error('Broadcast was not accepted by the local mesh.');
+        }
       } else if (audience === 'foaf') {
         // Write payload to Pod /outbox/ container via the authenticated proxy fetch
         const podRoot = (webId ?? '').split('/profile/')[0] + '/';

@@ -15,7 +15,7 @@
 import { Keypair } from '@stellar/stellar-sdk'
 import type { EnvelopeKind, EnvelopeSigner, MessageEnvelope } from './types.js'
 
-const ENVELOPE_KINDS: readonly EnvelopeKind[] = ['chat', 'presence', 'broadcast', 'pod-pointer']
+const ENVELOPE_KINDS: readonly EnvelopeKind[] = ['chat', 'presence', 'broadcast', 'reveal', 'pod-pointer']
 const MAX_BODY_BYTES = 64 * 1024
 
 /** Input for {@link createEnvelope}. */
