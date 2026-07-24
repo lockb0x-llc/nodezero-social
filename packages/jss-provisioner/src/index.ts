@@ -1173,7 +1173,7 @@ function isEntrypoint(): boolean {
 
 if (isEntrypoint()) {
   const server = createServer(createRequestHandler())
-  server.listen(PORT, () => {
-    console.log(`[jss-provisioner] listening on :${PORT}`)
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`[jss-provisioner] listening on 0.0.0.0:${PORT}`)
   })
 }
