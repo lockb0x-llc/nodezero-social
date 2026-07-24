@@ -17,6 +17,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@babel/runtime": "^8.0.0",
     "@inrupt/solid-client-authn-browser": "^5.0.0",
     "@nodezero/embedded-wallet": "workspace:*",
     "@nodezero/geo-discovery": "workspace:*",
