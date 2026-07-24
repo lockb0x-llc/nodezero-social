@@ -276,6 +276,10 @@ export default function DocustreamScreen(): JSX.Element {
   }, [authFetch, isLoggedIn, podRoot])
 
   const ingestEnabledSources = useCallback(async (sourceList: DocustreamSource[] = sources): Promise<void> => {
+    if (DOCUSTREAM_LOCKED) {
+      Alert.alert('DocuStream locked', 'DocuStream ingest is temporarily disabled.')
+      return
+    }
     if (!isLoggedIn || !podRoot) return
 
     const enabled = sourceList.filter((source) => source.enabled)
@@ -519,7 +523,7 @@ export default function DocustreamScreen(): JSX.Element {
           <TouchableOpacity
             onPress={() => void ingestEnabledSources()}
             style={styles.addButton}
-            disabled={DOCUSTREAM_LOCKED || isIngesting || !isLoggedIn}
+            disabled={isIngesting || !isLoggedIn}
           >
             <Ionicons name="refresh" size={24} color={isIngesting ? aesthetic.color.textLow : aesthetic.color.accent} />
           </TouchableOpacity>
@@ -582,7 +586,7 @@ export default function DocustreamScreen(): JSX.Element {
               <TouchableOpacity
                 style={styles.actionLink}
                 onPress={() => void handleSaveToPod(item)}
-                disabled={DOCUSTREAM_LOCKED || savingItemId === item.id}
+                disabled={savingItemId === item.id}
               >
                 <Ionicons name="bookmark-outline" size={16} color="#6B7280" />
                 <Text style={styles.actionText}>
@@ -633,7 +637,7 @@ export default function DocustreamScreen(): JSX.Element {
               />
               <TouchableOpacity
                 style={styles.addSourceButton}
-                disabled={DOCUSTREAM_LOCKED || !sourceUrlInput.trim() || sourceOperationId !== null}
+                disabled={!sourceUrlInput.trim() || sourceOperationId !== null}
                 testID="docustream-source-add"
                 onPress={() => void handleAddSource(sourceUrlInput, pendingSourceTitle ?? undefined)}
               >
@@ -658,7 +662,7 @@ export default function DocustreamScreen(): JSX.Element {
                   key={preset.url}
                   style={styles.presetChip}
                   onPress={() => handlePresetSelect(preset)}
-                  disabled={DOCUSTREAM_LOCKED || sourceOperationId !== null}
+                  disabled={sourceOperationId !== null}
                 >
                   <Text style={styles.presetChipText}>{preset.title}</Text>
                 </TouchableOpacity>
@@ -683,7 +687,7 @@ export default function DocustreamScreen(): JSX.Element {
                       onValueChange={(nextEnabled) => void handleToggleSource(source, nextEnabled)}
                       trackColor={{ false: '#333', true: '#6C63FF' }}
                       thumbColor="#FFF"
-                      disabled={DOCUSTREAM_LOCKED || sourceOperationId === source.id}
+                      disabled={sourceOperationId === source.id}
                     />
                   </View>
 
@@ -701,14 +705,14 @@ export default function DocustreamScreen(): JSX.Element {
                     <TouchableOpacity
                       style={styles.sourceActionButton}
                       onPress={() => void handleIngestSingleSource(source)}
-                      disabled={DOCUSTREAM_LOCKED || sourceOperationId === source.id || isIngesting || !source.enabled}
+                      disabled={sourceOperationId === source.id || isIngesting || !source.enabled}
                     >
                       <Text style={styles.sourceActionButtonText}>Ingest now</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={styles.sourceActionButtonDanger}
                       onPress={() => void handleRemoveSource(source)}
-                      disabled={DOCUSTREAM_LOCKED || sourceOperationId === source.id}
+                      disabled={sourceOperationId === source.id}
                     >
                       <Text style={styles.sourceActionButtonText}>Remove</Text>
                     </TouchableOpacity>
