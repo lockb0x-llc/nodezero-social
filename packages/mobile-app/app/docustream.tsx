@@ -528,7 +528,6 @@ export default function DocustreamScreen(): JSX.Element {
             style={styles.addButton}
             testID="docustream-sources-open"
             accessibilityLabel="Open Docustream sources"
-            disabled={DOCUSTREAM_LOCKED}
           >
             <Ionicons name="add-circle" size={28} color="#2563EB" />
           </TouchableOpacity>
