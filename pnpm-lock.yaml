@@ -79,6 +79,9 @@ importers:
       '@react-native-async-storage/async-storage':
         specifier: ^2.2.0
         version: 2.2.0(react-native@0.74.2(@babel/core@7.29.7)(@babel/preset-env@7.29.7(@babel/core@7.29.7))(@types/react@18.2.79)(react@18.2.0))
+      '@react-native/assets-registry':
+        specifier: ^0.86.0
+        version: 0.86.0
       expo:
         specifier: ~51.0.0
         version: 51.0.39(@babel/core@7.29.7)(@babel/preset-env@7.29.7(@babel/core@7.29.7))(react-native@0.74.2(@babel/core@7.29.7)(@babel/preset-env@7.29.7(@babel/core@7.29.7))(@types/react@18.2.79)(react@18.2.0))(react@18.2.0)
@@ -1480,6 +1483,10 @@ packages:
   '@react-native/assets-registry@0.74.84':
     resolution: {integrity: sha512-dzUhwyaX04QosWZ8zyaaNB/WYZIdeDN1lcpfQbqiOhZJShRH+FLTDVONE/dqlMQrP+EO7lDqF0RrlIt9lnOCQQ==}
     engines: {node: '>=18'}
+
+  '@react-native/assets-registry@0.86.0':
+    resolution: {integrity: sha512-nIaXbm2jX1OTYp0qbviJ3O6KZivoE8z3BnhUQ2LsqfZSWRoOK/n1qsiAr6oALiNKWnXY3j2KPwtYORnZzp8xew==}
+    engines: {node: ^20.19.4 || ^22.13.0 || ^24.3.0 || >= 25.0.0}
 
   '@react-native/babel-plugin-codegen@0.74.84':
     resolution: {integrity: sha512-UR4uiii5szIJA84mSC6GJOfYKDq7/ThyetOQT62+BBcyGeHVtHlNLNRzgaMeLqIQaT8Fq4pccMI+7QqLOMXzdw==}
@@ -7343,6 +7350,8 @@ snapshots:
       - utf-8-validate
 
   '@react-native/assets-registry@0.74.84': {}
+
+  '@react-native/assets-registry@0.86.0': {}
 
   '@react-native/babel-plugin-codegen@0.74.84(@babel/preset-env@7.29.7(@babel/core@7.29.7))':
     dependencies:
