@@ -198,16 +198,35 @@ export class ProfileManager {
     }
     assertValidPublicProfileDocument(publicProfile)
 
+    // ── Fetch or create the dataset, then patch and save ──────────────────
+    let dataset: SolidDataset
+    let existingDocumentThing: import('@inrupt/solid-client').Thing
+    let existingProfileThing: import('@inrupt/solid-client').Thing
+
+    try {
+      dataset = await getSolidDataset(datasetUrl, { fetch: this.session.fetch })
+      existingDocumentThing = getThing(dataset, datasetUrl) ?? createThing({ url: datasetUrl })
+      existingProfileThing = getThing(dataset, webId) ?? createThing({ url: webId })
+    } catch (err) {
+      if (isNotFoundError(err)) {
+        dataset = createSolidDataset()
+        existingDocumentThing = createThing({ url: datasetUrl })
+        existingProfileThing = createThing({ url: webId })
+      } else {
+        throw err
+      }
+    }
+
     // ── Build Document Thing ───────────────────────────────────────────────
-    const documentThing = buildThing(createThing({ url: datasetUrl }))
-      .setUrl(RDF_TYPE, FOAF_PERSONAL_PROFILE_DOCUMENT)
+    const documentThing = buildThing(existingDocumentThing)
+      .addUrl(RDF_TYPE, FOAF_PERSONAL_PROFILE_DOCUMENT)
       .setUrl(FOAF_MAKER, webId)
       .setUrl(FOAF_PRIMARY_TOPIC, webId)
       .build()
 
     // ── Build Profile Thing ────────────────────────────────────────────────
-    let thingBuilder = buildThing(createThing({ url: webId }))
-      .setUrl(RDF_TYPE, FOAF_PERSON)
+    let thingBuilder = buildThing(existingProfileThing)
+      .addUrl(RDF_TYPE, FOAF_PERSON)
       .setStringNoLocale(VCARD_FN, profile.displayName)
       .setStringNoLocale(FOAF_NAME, profile.displayName)
       .setStringNoLocale(VCARD_NOTE, profile.bio)
@@ -221,20 +240,8 @@ export class ProfileManager {
     }
     const profileThing = thingBuilder.build()
 
-    // ── Fetch or create the dataset, then patch and save ──────────────────
-    let dataset: SolidDataset
-    try {
-      const existing = await getSolidDataset(datasetUrl, { fetch: this.session.fetch })
-      dataset = setThing(existing, documentThing)
-      dataset = setThing(dataset, profileThing)
-    } catch (err) {
-      if (isNotFoundError(err)) {
-        dataset = setThing(createSolidDataset(), documentThing)
-        dataset = setThing(dataset, profileThing)
-      } else {
-        throw err
-      }
-    }
+    dataset = setThing(dataset, documentThing)
+    dataset = setThing(dataset, profileThing)
 
     await saveSolidDatasetAt(datasetUrl, dataset, { fetch: this.session.fetch })
 
