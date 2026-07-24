@@ -166,36 +166,48 @@ export class ProfileManager {
     const scanResult = this.nsfwScanner.scan(urlsToScan)
     const isNsfw = profile.isNsfw || scanResult.isNsfw
 
+    // ── Fetch or create the dataset, then patch and save ──────────────────
+    let dataset: SolidDataset
+    let existingThing: Thing | null = null
+    try {
+      dataset = await getSolidDataset(datasetUrl, { fetch: this.session.fetch })
+      existingThing = getThing(dataset, webId)
+    } catch (err) {
+      if (isNotFoundError(err)) {
+        dataset = createSolidDataset()
+      } else {
+        throw err
+      }
+    }
+
     // ── Build RDF Thing ────────────────────────────────────────────────────
-    let thingBuilder = buildThing(createThing({ url: webId }))
+    let thingBuilder = existingThing 
+      ? buildThing(existingThing)
+      : buildThing(createThing({ url: webId }))
+
+    thingBuilder = thingBuilder
       .setStringNoLocale(VCARD_FN, profile.displayName)
       .setStringNoLocale(VCARD_NOTE, profile.bio)
       .setBoolean(NZ_IS_NSFW, isNsfw)
 
+    // Remove existing URLs before setting, in case they are cleared
+    thingBuilder = thingBuilder.removeAll(VCARD_PHOTO).removeAll(VCARD_URL)
+    
     if (profile.avatarUrl) {
       thingBuilder = thingBuilder.setUrl(VCARD_PHOTO, profile.avatarUrl)
     }
     if (profile.externalUrl) {
       thingBuilder = thingBuilder.setUrl(VCARD_URL, profile.externalUrl)
     }
+    
+    // Clear and rebuild interests
+    thingBuilder = thingBuilder.removeAll(NZ_INTERESTS)
     for (const interest of profile.interests) {
       thingBuilder = thingBuilder.addStringNoLocale(NZ_INTERESTS, interest)
     }
 
     const profileThing = thingBuilder.build()
-
-    // ── Fetch or create the dataset, then patch and save ──────────────────
-    let dataset: SolidDataset
-    try {
-      const existing = await getSolidDataset(datasetUrl, { fetch: this.session.fetch })
-      dataset = setThing(existing, profileThing)
-    } catch (err) {
-      if (isNotFoundError(err)) {
-        dataset = setThing(createSolidDataset(), profileThing)
-      } else {
-        throw err
-      }
-    }
+    dataset = setThing(dataset, profileThing)
 
     await saveSolidDatasetAt(datasetUrl, dataset, { fetch: this.session.fetch })
 
