@@ -22,6 +22,7 @@ import {
   createThing,
   getUrlAll,
   getThingAll,
+  getSourceUrl,
   type SolidDataset,
   type WithServerResourceInfo,
 } from '@inrupt/solid-client'
@@ -163,7 +164,8 @@ export class SocialGraph {
       updated = removeThing(updated, legacyOwnerWebId)
     }
 
-    await saveSolidDatasetAt(datasetUrl, updated, { fetch: this.session.fetch })
+    const targetUrl = getSourceUrl(updated) || datasetUrl
+    await saveSolidDatasetAt(targetUrl, updated, { fetch: this.session.fetch })
 
     return datasetUrl
   }
@@ -205,7 +207,8 @@ export class SocialGraph {
       if (legacyOwnerWebId !== ownerWebId) {
         stripped = removeThing(stripped, legacyOwnerWebId)
       }
-      await saveSolidDatasetAt(datasetUrl, stripped, { fetch: this.session.fetch })
+      const targetUrl = getSourceUrl(stripped) || datasetUrl
+      await saveSolidDatasetAt(targetUrl, stripped, { fetch: this.session.fetch })
       return datasetUrl
     }
 
@@ -222,7 +225,8 @@ export class SocialGraph {
       updated = removeThing(updated, legacyOwnerWebId)
     }
 
-    await saveSolidDatasetAt(datasetUrl, updated, { fetch: this.session.fetch })
+    const targetUrl = getSourceUrl(updated) || datasetUrl
+    await saveSolidDatasetAt(targetUrl, updated, { fetch: this.session.fetch })
 
     return datasetUrl
   }

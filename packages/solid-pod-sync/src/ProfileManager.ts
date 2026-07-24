@@ -21,6 +21,7 @@ import {
   getStringNoLocale,
   getUrl,
   setThing,
+  getSourceUrl,
   type SolidDataset,
   type Thing,
   type WithServerResourceInfo,
@@ -249,7 +250,8 @@ export class ProfileManager {
     dataset = setThing(dataset, documentThing)
     dataset = setThing(dataset, profileThing)
 
-    await saveSolidDatasetAt(datasetUrl, dataset, { fetch: this.session.fetch })
+    const targetUrl = getSourceUrl(dataset) || datasetUrl
+    await saveSolidDatasetAt(targetUrl, dataset, { fetch: this.session.fetch })
 
     return datasetUrl
   }
