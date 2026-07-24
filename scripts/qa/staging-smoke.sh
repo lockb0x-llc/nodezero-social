@@ -42,15 +42,36 @@ esac
 pass "Staging base URL uses https ($BASE_URL)."
 
 # 1) Landing shell and Solid auth bundle reachable with stable markers.
-LANDING="$(fetch_body "$BASE_URL/")" || fail "Landing page not reachable at $BASE_URL/."
-echo "$LANDING" | grep -q "NodeZero" || fail "Landing page missing 'NodeZero' brand marker."
-echo "$LANDING" | grep -q 'id="root"' || fail "Landing page missing Expo root element."
-BUNDLE_PATH="$(printf '%s' "$LANDING" | sed -nE 's/.*src="([^"]*\/_expo\/static\/js\/web\/[^"]+\.js)".*/\1/p' | head -n1 || true)"
-if [[ -z "$BUNDLE_PATH" ]]; then
-  fail "Landing page missing Expo web bundle script."
+check_bundle() {
+  LANDING="$(fetch_body "$BASE_URL/")" || return 1
+  echo "$LANDING" | grep -q "NodeZero" || return 1
+  echo "$LANDING" | grep -q 'id="root"' || return 1
+  BUNDLE_PATH="$(printf '%s' "$LANDING" | sed -nE 's/.*src="([^"]*\/_expo\/static\/js\/web\/[^"]+\.js)".*/\1/p' | head -n1 || true)"
+  if [[ -z "$BUNDLE_PATH" ]]; then
+    return 1
+  fi
+  BUNDLE="$(fetch_body "$BASE_URL$BUNDLE_PATH" 2>/dev/null)" || return 1
+  echo "$BUNDLE" | grep -q "Sign in with Solid Pod" || return 1
+  return 0
+}
+
+echo "[smoke] Verifying Expo web bundle (with CDN cache retry)..."
+max_attempts=12
+attempt=1
+success=0
+while [ $attempt -le $max_attempts ]; do
+  if check_bundle; then
+    success=1
+    break
+  fi
+  echo "[smoke] CDN cache check (Attempt $attempt/$max_attempts) failed. Waiting 10s..."
+  sleep 10
+  attempt=$((attempt + 1))
+done
+
+if [ $success -eq 0 ]; then
+  fail "Expo web bundle not reachable or missing auth entry point."
 fi
-BUNDLE="$(fetch_body "$BASE_URL$BUNDLE_PATH")" || fail "Expo web bundle not reachable at $BUNDLE_PATH."
-echo "$BUNDLE" | grep -q "Sign in with Solid Pod" || fail "Expo web bundle missing Solid auth entry point."
 pass "Landing page shell and Solid auth bundle served."
 
 # 2) Core client routes resolve (SPA fallback returns the app shell).
