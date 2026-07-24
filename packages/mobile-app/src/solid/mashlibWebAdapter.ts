@@ -35,7 +35,9 @@ function normalizePaneListProvider(candidate: unknown): MashlibLikeModule | null
 }
 
 async function loadModuleById(moduleId: string): Promise<unknown> {
-  return import(moduleId)
+  // Hide from Metro bundler by using a Function constructor
+  const dynamicImport = new Function('modulePath', 'return import(modulePath)')
+  return dynamicImport(moduleId)
 }
 
 async function resolveMashlibRuntimeModule(): Promise<MashlibLikeModule> {
