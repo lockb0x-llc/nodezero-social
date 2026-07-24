@@ -286,14 +286,14 @@ resource wwwCnameRecord 'Microsoft.Network/dnsZones/CNAME@2018-05-01' = {
 }
 
 // www custom domain — validated via CNAME delegation
-resource wwwCustomDomain 'Microsoft.Web/staticSites/customDomains@2022-09-01' = {
-  parent: staticWebApp
-  name: 'www.${dnsZoneName}'
-  properties: {
-    validationMethod: 'cname-delegation'
-  }
-  dependsOn: [wwwCnameRecord]
-}
+// resource wwwCustomDomain 'Microsoft.Web/staticSites/customDomains@2022-09-01' = {
+//   parent: staticWebApp
+//   name: 'www.${dnsZoneName}'
+//   properties: {
+//     validationMethod: 'cname-delegation'
+//   }
+//   dependsOn: [wwwCnameRecord]
+// }
 
 // NOTE: nodezero.social apex custom domain is NOT managed here.
 // The apex domain is registered via manual ARM operation and monitored separately.
