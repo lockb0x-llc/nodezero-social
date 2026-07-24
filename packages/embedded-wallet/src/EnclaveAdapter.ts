@@ -10,7 +10,7 @@
  * an in-memory store – **never use the in-memory fallback in production**.
  */
 
-import { randomBytes } from 'node:crypto'
+
 
 interface KeyringIndexRecord {
   version: 1
@@ -197,7 +197,8 @@ export class EnclaveAdapter {
     const legacySecret = await this.store.getItemAsync(LEGACY_STELLAR_SECRET_KEY)
     if (!legacySecret) return index
 
-    const keyId = `id-${randomBytes(8).toString('hex')}`
+    const hex = Math.floor(Math.random() * 0xffffffff).toString(16).padStart(8, '0') + Math.floor(Math.random() * 0xffffffff).toString(16).padStart(8, '0')
+    const keyId = `id-${hex}`
     const createdAt = nowIso()
     await this.store.setItemAsync(toSecretKey(keyId), legacySecret)
     await this.saveIdentityMeta({
@@ -266,7 +267,8 @@ export class EnclaveAdapter {
 
   async createIdentity(label?: string): Promise<EnclaveIdentityRecord> {
     const index = await this.ensureKeyring()
-    const keyId = `id-${randomBytes(8).toString('hex')}`
+    const hex = Math.floor(Math.random() * 0xffffffff).toString(16).padStart(8, '0') + Math.floor(Math.random() * 0xffffffff).toString(16).padStart(8, '0')
+    const keyId = `id-${hex}`
     const createdAt = nowIso()
     const identityLabel = label?.trim() ? label.trim() : `Identity ${index.keyIds.length + 1}`
 
