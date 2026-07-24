@@ -87,6 +87,7 @@ az deployment group what-if \
 
 echo "Applying deployment for environment '$TARGET_ENVIRONMENT'..."
 az deployment group create \
+  --name "deploy-$(date +%s)" \
   --resource-group "$RESOURCE_GROUP" \
   --template-file "$TEMPLATE_FILE" \
   --parameters "@$PARAM_FILE" \
