@@ -227,6 +227,12 @@ export class ProfileManager {
     // ── Build Profile Thing ────────────────────────────────────────────────
     let thingBuilder = buildThing(existingProfileThing)
       .addUrl(RDF_TYPE, FOAF_PERSON)
+      .removeAll(VCARD_FN)
+      .removeAll(FOAF_NAME)
+      .removeAll(VCARD_NOTE)
+      .removeAll(VCARD_PHOTO)
+      .removeAll(FOAF_IMG)
+      .removeAll(VCARD_URL)
       .setStringNoLocale(VCARD_FN, profile.displayName)
       .setStringNoLocale(FOAF_NAME, profile.displayName)
       .setStringNoLocale(VCARD_NOTE, profile.bio)
