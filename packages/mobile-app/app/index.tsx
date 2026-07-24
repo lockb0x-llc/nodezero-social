@@ -155,9 +155,6 @@ function LandingAuthCard({
   onSignIn,
   onCreateNode,
 }: LandingAuthCardProps): JSX.Element {
-  const [isIdentityMenuOpen, setIsIdentityMenuOpen] = useState(false)
-  const selectedIdentity =
-    identities.find((identity) => identity.keyId === activeIdentityKeyId) ?? identities[0] ?? null
 
   void source
   return (
@@ -186,53 +183,6 @@ function LandingAuthCard({
         </View>
       ) : null}
       <View style={styles.dropdownWrap}>
-        <TouchableOpacity
-          style={styles.dropdownField}
-          onPress={() => setIsIdentityMenuOpen((open) => !open)}
-          activeOpacity={PRESS_OPACITY}
-          disabled={isIdentityBusy || identities.length === 0}
-          accessibilityRole="button"
-          accessibilityLabel="Select identity"
-        >
-          <View style={styles.dropdownFieldText}>
-            <View style={styles.dropdownLabelRow}>
-              <Text style={styles.dropdownMark}>⊙</Text>
-              <Text style={styles.dropdownLabel}>{selectedIdentity?.label ?? 'Preparing identity…'}</Text>
-            </View>
-            <Text style={styles.dropdownSub}>
-              {selectedIdentity ? 'Device identity key' : 'Loading local identities'}
-            </Text>
-          </View>
-          <Text style={styles.dropdownChevron}>{isIdentityMenuOpen ? '▲' : '▼'}</Text>
-        </TouchableOpacity>
-
-        {isIdentityMenuOpen && identities.length > 0 ? (
-          <View style={styles.dropdownMenu}>
-            {identities.map((identity, index) => {
-              const isActive = identity.keyId === activeIdentityKeyId
-              return (
-                <TouchableOpacity
-                  key={identity.keyId}
-                  style={[
-                    styles.dropdownOption,
-                    index < identities.length - 1 && styles.dropdownOptionDivider,
-                    isActive && styles.dropdownOptionActive,
-                  ]}
-                  onPress={() => {
-                    setIsIdentityMenuOpen(false)
-                    void onSelectIdentity(identity.keyId)
-                  }}
-                  activeOpacity={PRESS_OPACITY}
-                  disabled={isIdentityBusy}
-                >
-                  <Text style={styles.dropdownLabel}>{identity.label}</Text>
-                  {isActive ? <Text style={styles.dropdownCheck}>✓</Text> : null}
-                </TouchableOpacity>
-              )
-            })}
-          </View>
-        ) : null}
-
         <TouchableOpacity
           style={styles.createPodLink}
           onPress={() => void onCreateIdentity()}
