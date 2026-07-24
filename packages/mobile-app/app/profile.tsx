@@ -150,7 +150,7 @@ export default function ProfileScreen(): JSX.Element {
 
     setSaving(true)
     try {
-      await managerRef.current.writeProfile(effectiveWebId, updatedProfile)
+      await managerRef.current.writeProfile(podRoot, updatedProfile)
 
       const urlsToScan: string[] = []
       if (updatedProfile.externalUrl) urlsToScan.push(updatedProfile.externalUrl)
