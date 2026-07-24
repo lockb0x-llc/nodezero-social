@@ -51,6 +51,13 @@ const VCARD_NOTE = 'http://www.w3.org/2006/vcard/ns#note'
 const VCARD_PHOTO = 'http://www.w3.org/2006/vcard/ns#hasPhoto'
 const VCARD_URL = 'http://www.w3.org/2006/vcard/ns#url'
 
+const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type'
+const FOAF_PERSON = 'http://xmlns.com/foaf/0.1/Person'
+const FOAF_PERSONAL_PROFILE_DOCUMENT = 'http://xmlns.com/foaf/0.1/PersonalProfileDocument'
+const FOAF_MAKER = 'http://xmlns.com/foaf/0.1/maker'
+const FOAF_PRIMARY_TOPIC = 'http://xmlns.com/foaf/0.1/primaryTopic'
+const FOAF_NAME = 'http://xmlns.com/foaf/0.1/name'
+const FOAF_IMG = 'http://xmlns.com/foaf/0.1/img'
 /** Shape of a NodeZero user profile stored in a Solid Pod. */
 export interface UserProfile {
   /** The user's display name. */
@@ -191,13 +198,23 @@ export class ProfileManager {
     }
     assertValidPublicProfileDocument(publicProfile)
 
-    // ── Build RDF Thing ────────────────────────────────────────────────────
+    // ── Build Document Thing ───────────────────────────────────────────────
+    const documentThing = buildThing(createThing({ url: datasetUrl }))
+      .setUrl(RDF_TYPE, FOAF_PERSONAL_PROFILE_DOCUMENT)
+      .setUrl(FOAF_MAKER, webId)
+      .setUrl(FOAF_PRIMARY_TOPIC, webId)
+      .build()
+
+    // ── Build Profile Thing ────────────────────────────────────────────────
     let thingBuilder = buildThing(createThing({ url: webId }))
+      .setUrl(RDF_TYPE, FOAF_PERSON)
       .setStringNoLocale(VCARD_FN, profile.displayName)
+      .setStringNoLocale(FOAF_NAME, profile.displayName)
       .setStringNoLocale(VCARD_NOTE, profile.bio)
 
     if (profile.avatarUrl) {
       thingBuilder = thingBuilder.setUrl(VCARD_PHOTO, profile.avatarUrl)
+      thingBuilder = thingBuilder.setUrl(FOAF_IMG, profile.avatarUrl)
     }
     if (profile.externalUrl) {
       thingBuilder = thingBuilder.setUrl(VCARD_URL, profile.externalUrl)
@@ -208,10 +225,12 @@ export class ProfileManager {
     let dataset: SolidDataset
     try {
       const existing = await getSolidDataset(datasetUrl, { fetch: this.session.fetch })
-      dataset = setThing(existing, profileThing)
+      dataset = setThing(existing, documentThing)
+      dataset = setThing(dataset, profileThing)
     } catch (err) {
       if (isNotFoundError(err)) {
-        dataset = setThing(createSolidDataset(), profileThing)
+        dataset = setThing(createSolidDataset(), documentThing)
+        dataset = setThing(dataset, profileThing)
       } else {
         throw err
       }
@@ -293,10 +312,10 @@ export class ProfileManager {
  * Deserialises an RDF `Thing` into a {@link UserProfile}.
  */
 function thingToProfile(thing: Thing): UserProfile {
-  const avatarUrl = getUrl(thing, VCARD_PHOTO)
+  const avatarUrl = getUrl(thing, VCARD_PHOTO) ?? getUrl(thing, FOAF_IMG)
   const externalUrl = getUrl(thing, VCARD_URL)
   return {
-    displayName: getStringNoLocale(thing, VCARD_FN) ?? '',
+    displayName: getStringNoLocale(thing, VCARD_FN) ?? getStringNoLocale(thing, FOAF_NAME) ?? '',
     bio: getStringNoLocale(thing, VCARD_NOTE) ?? '',
     ...(avatarUrl !== null ? { avatarUrl } : {}),
     ...(externalUrl !== null ? { externalUrl } : {}),
