@@ -21,9 +21,11 @@ import {
   buildThing,
   createThing,
   getUrlAll,
+  getStringNoLocale,
   getThingAll,
   getSourceUrl,
   type SolidDataset,
+  type Thing,
   type WithServerResourceInfo,
 } from '@inrupt/solid-client'
 import { assertValidConnectionRecord } from './contracts/SocialGraphContract.js'
@@ -44,10 +46,85 @@ interface AuthenticatedSession {
 const FOAF_KNOWS = 'http://xmlns.com/foaf/0.1/knows'
 const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type'
 const FOAF_PERSON = 'http://xmlns.com/foaf/0.1/Person'
+const SCHEMA_INTEREST = 'https://schema.org/interest'
+const FOAF_TOPIC_INTEREST = 'http://xmlns.com/foaf/0.1/topic_interest'
+
+function normalizeInterestValue(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, ' ')
+}
+
+function extractInterestCandidates(value: string): string[] {
+  const normalized = normalizeInterestValue(value)
+  if (!normalized) return []
+
+  const candidates = new Set<string>([normalized])
+
+  try {
+    const parsed = new URL(value)
+    const parts = [parsed.pathname, parsed.hash.replace(/^#/, '')]
+      .map((part) => decodeURIComponent(part))
+      .map((part) => part.split('/').filter(Boolean).at(-1) ?? '')
+      .map((part) => part.replace(/[-_]/g, ' '))
+      .map((part) => normalizeInterestValue(part))
+      .filter(Boolean)
+
+    for (const part of parts) {
+      candidates.add(part)
+    }
+  } catch {
+    // Literal values are already covered by normalized.
+  }
+
+  return Array.from(candidates)
+}
+
+function collectPeerInterestCandidates(thing: Thing): Set<string> {
+  const candidates = new Set<string>()
+  const addCandidates = (raw: string | null): void => {
+    if (!raw) return
+    for (const candidate of extractInterestCandidates(raw)) {
+      candidates.add(candidate)
+    }
+  }
+
+  for (const raw of getUrlAll(thing, SCHEMA_INTEREST)) addCandidates(raw)
+  for (const raw of getUrlAll(thing, FOAF_TOPIC_INTEREST)) addCandidates(raw)
+  addCandidates(getStringNoLocale(thing, SCHEMA_INTEREST))
+  addCandidates(getStringNoLocale(thing, FOAF_TOPIC_INTEREST))
+
+  return candidates
+}
 
 export function intersectInterests(localInterests: string[], peerInterests: Iterable<string>): string[] {
   const peerSet = new Set(peerInterests)
   return localInterests.filter((interest) => peerSet.has(interest))
+}
+
+export function computeSemanticOverlap(localInterests: string[], peerInterestCandidates: Iterable<string>): string[] {
+  const peerSet = new Set<string>()
+  for (const peerCandidate of peerInterestCandidates) {
+    for (const normalizedCandidate of extractInterestCandidates(peerCandidate)) {
+      peerSet.add(normalizedCandidate)
+    }
+  }
+
+  const overlap: string[] = []
+  const seenLocalKeys = new Set<string>()
+
+  for (const localInterest of localInterests) {
+    const raw = localInterest.trim()
+    if (!raw) continue
+
+    const normalizedLocal = normalizeInterestValue(raw)
+    if (seenLocalKeys.has(normalizedLocal)) continue
+
+    const matches = extractInterestCandidates(raw).some((candidate) => peerSet.has(candidate))
+    if (!matches) continue
+    seenLocalKeys.add(normalizedLocal)
+    overlap.push(raw)
+  }
+
+  return overlap
 }
 
 /** Represents a connection (follow relationship) in the social graph. */
@@ -261,9 +338,6 @@ export class SocialGraph {
    * @returns String array of overlapping interest values, or `[]` on any error.
    */
   async findSemanticOverlap(peerWebId: string, localInterests: string[] = []): Promise<string[]> {
-    const SCHEMA_INTEREST = 'https://schema.org/interest'
-    const FOAF_TOPIC_INTEREST = 'http://xmlns.com/foaf/0.1/topic_interest'
-
     let dataset: SolidDataset & WithServerResourceInfo
 
     try {
@@ -277,14 +351,11 @@ export class SocialGraph {
       const thing = getThing(dataset, peerWebId)
       if (!thing) return []
 
-      const peerInterests = new Set([
-        ...getUrlAll(thing, SCHEMA_INTEREST),
-        ...getUrlAll(thing, FOAF_TOPIC_INTEREST),
-      ])
+      const peerInterests = collectPeerInterestCandidates(thing)
 
       if (localInterests.length === 0 || peerInterests.size === 0) return []
 
-      return intersectInterests(localInterests, peerInterests)
+      return computeSemanticOverlap(localInterests, peerInterests)
     } catch {
       return []
     }

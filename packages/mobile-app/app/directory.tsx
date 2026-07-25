@@ -8,6 +8,7 @@ import { parseDirectoryRecords, resolveDirectoryEndpoint } from '../src/director
 import type { DirectoryEntry } from '../src/directory/types'
 import type { DirectoryRecord } from '../src/directory/types'
 import { buildDirectoryEntry } from '../src/directory/entryBuilder'
+import { buildDirectoryBadges } from '../src/directory/badgeModel'
 import { useConnections } from '../src/social/useConnections'
 import {
   addTrustCircleMember,
@@ -179,16 +180,26 @@ export default function CommunityDirectoryScreen(): JSX.Element {
             const isSelf = entry.webId === effectiveWebId
             const isConnected = connections.includes(entry.webId)
             const inTrustCircle = trustCircleMembers.includes(entry.webId)
+            const badges = buildDirectoryBadges({
+              isSelf,
+              isConnected,
+              isVerified: entry.verified,
+              inTrustCircle,
+            })
             return (
               <View key={entry.webId} style={styles.directoryRow}>
                 <View style={styles.directoryMetaWrap}>
                   <Text style={styles.directoryName}>{entry.displayName}</Text>
                   <Text style={styles.directoryWebId} numberOfLines={2}>{entry.webId}</Text>
                   <View style={styles.badgeRow}>
-                    {isSelf ? <Text style={styles.metaBadge}>You</Text> : null}
-                    {isConnected ? <Text style={styles.metaBadge}>Connected</Text> : null}
-                    {entry.verified ? <Text style={styles.metaBadgeVerified}>Verified</Text> : null}
-                    {inTrustCircle ? <Text style={styles.metaBadge}>In Trust Circle</Text> : null}
+                    {badges.map((badge) => (
+                      <Text
+                        key={`${entry.webId}-${badge.label}`}
+                        style={badge.kind === 'verified' ? styles.metaBadgeVerified : styles.metaBadge}
+                      >
+                        {badge.label}
+                      </Text>
+                    ))}
                   </View>
                 </View>
                 <View style={styles.actionColumn}>

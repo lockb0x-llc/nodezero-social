@@ -35,6 +35,7 @@ import { NsfwScanner } from '@nodezero/solid-pod-sync'
 import { Ionicons } from '@expo/vector-icons'
 import { aesthetic } from '../src/theme/aesthetic'
 import { useConnections } from '../src/social/useConnections'
+import { deriveProfileViewState } from '../src/profile/viewState'
 
 const EMPTY_PROFILE: UserProfile = {
   displayName: '',
@@ -64,9 +65,8 @@ export default function ProfileScreen(): JSX.Element {
 
   const { peerWebId } = useLocalSearchParams<{ peerWebId?: string }>()
   const router = useRouter()
-  const ownerWebId = webId
-  const viewedWebId = peerWebId ?? webId
-  const isPeerView = Boolean(peerWebId && peerWebId !== webId)
+  const profileView = deriveProfileViewState(webId, peerWebId)
+  const { ownerWebId, viewedWebId, isPeerView } = profileView
 
   const {
     connectionsLoading,
