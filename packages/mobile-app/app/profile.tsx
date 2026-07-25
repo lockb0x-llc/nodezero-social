@@ -34,10 +34,15 @@ import { aesthetic } from '../src/theme/aesthetic'
 import { useConnections } from '../src/social/useConnections'
 import { deriveProfileViewState } from '../src/profile/viewState'
 import {
+  buildUpdatedProfileDraft,
   interestsToInput,
   mergeProfileData,
 } from '../src/profile/mergeProfileData'
 import { saveProfileForScreen } from '../src/profile/profileSaveCoordinator'
+import {
+  getProfileSaveValidationMessage,
+  PROFILE_LIMITS,
+} from '../src/profile/profileValidation'
 
 const EMPTY_PROFILE: UserProfile = {
   displayName: '',
@@ -67,6 +72,10 @@ export default function ProfileScreen(): JSX.Element {
   const router = useRouter()
   const profileView = deriveProfileViewState(webId, peerWebId)
   const { ownerWebId, viewedWebId, isPeerView } = profileView
+  const draftProfile = buildUpdatedProfileDraft(profile, interestsInput)
+  const draftValidationMessage = !isPeerView
+    ? getProfileSaveValidationMessage(draftProfile)
+    : null
 
   const {
     connectionsLoading,
@@ -138,6 +147,10 @@ export default function ProfileScreen(): JSX.Element {
 
   const saveProfile = useCallback(async () => {
     if (!managerRef.current || !preferencesManagerRef.current) return
+    if (draftValidationMessage) {
+      Alert.alert('Profile Validation', draftValidationMessage)
+      return
+    }
 
     // Session invariant: being authenticated guarantees a live Pod write
     // path through the proxy — there is no "restoring" write state anymore.
@@ -183,7 +196,7 @@ export default function ProfileScreen(): JSX.Element {
     } finally {
       setSaving(false)
     }
-  }, [authFetch, interestsInput, isPeerView, ownerWebId, profile])
+  }, [draftValidationMessage, interestsInput, isPeerView, ownerWebId, profile])
 
   if (!isLoggedIn) {
     return (
@@ -313,6 +326,11 @@ export default function ProfileScreen(): JSX.Element {
           placeholderTextColor="#555"
           editable={!isPeerView}
         />
+        {!isPeerView ? (
+          <Text style={styles.helperText}>
+            {profile.displayName.length}/{PROFILE_LIMITS.displayNameMaxLength}
+          </Text>
+        ) : null}
 
         <Text style={styles.label}>Bio</Text>
         <TextInput
@@ -325,6 +343,11 @@ export default function ProfileScreen(): JSX.Element {
           numberOfLines={4}
           editable={!isPeerView}
         />
+        {!isPeerView ? (
+          <Text style={styles.helperText}>
+            {profile.bio.length}/{PROFILE_LIMITS.bioMaxLength}
+          </Text>
+        ) : null}
 
         <Text style={styles.label}>Avatar URL</Text>
         <TextInput
@@ -359,12 +382,20 @@ export default function ProfileScreen(): JSX.Element {
           placeholderTextColor="#555"
           editable={!isPeerView}
         />
+        {!isPeerView ? (
+          <Text style={styles.helperText}>
+            {draftProfile.interests.length}/{PROFILE_LIMITS.maxInterests} interests
+          </Text>
+        ) : null}
+        {!isPeerView && draftValidationMessage ? (
+          <Text style={styles.validationText}>{draftValidationMessage}</Text>
+        ) : null}
 
         {!isPeerView ? (
           <TouchableOpacity
             style={[styles.saveButton, saving && styles.saveButtonDisabled]}
             onPress={() => void saveProfile()}
-            disabled={saving}
+            disabled={saving || Boolean(draftValidationMessage)}
             activeOpacity={aesthetic.motion.pressOpacity}
             accessibilityRole="button"
             accessibilityLabel="Save profile"
@@ -470,6 +501,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   textArea: { minHeight: 100, textAlignVertical: 'top', paddingTop: 11 },
+  helperText: { color: aesthetic.color.textLow, fontSize: 11, marginTop: 4 },
+  validationText: { color: '#FCA5A5', fontSize: 12, marginTop: 8 },
   saveButton: { marginTop: 28, backgroundColor: aesthetic.color.accent, borderRadius: 10, paddingVertical: 14, alignItems: 'center' },
   saveButtonDisabled: { opacity: 0.6 },
   saveButtonText: { color: '#FFF', fontSize: 16, fontWeight: '700' },

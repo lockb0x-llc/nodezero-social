@@ -16,30 +16,39 @@ function isValidHttpUrl(value: string): boolean {
   }
 }
 
-export function validateProfileForSave(profile: UserProfile): void {
+export function getProfileSaveValidationMessage(profile: UserProfile): string | null {
   if (profile.displayName.length > PROFILE_LIMITS.displayNameMaxLength) {
-    throw new Error(`Display name must be ${PROFILE_LIMITS.displayNameMaxLength} characters or fewer.`)
+    return `Display name must be ${PROFILE_LIMITS.displayNameMaxLength} characters or fewer.`
   }
 
   if (profile.bio.length > PROFILE_LIMITS.bioMaxLength) {
-    throw new Error(`Bio must be ${PROFILE_LIMITS.bioMaxLength} characters or fewer.`)
+    return `Bio must be ${PROFILE_LIMITS.bioMaxLength} characters or fewer.`
   }
 
   if (profile.interests.length > PROFILE_LIMITS.maxInterests) {
-    throw new Error(`You can add up to ${PROFILE_LIMITS.maxInterests} interests.`)
+    return `You can add up to ${PROFILE_LIMITS.maxInterests} interests.`
   }
 
   for (const interest of profile.interests) {
     if (interest.length > PROFILE_LIMITS.interestMaxLength) {
-      throw new Error(`Each interest must be ${PROFILE_LIMITS.interestMaxLength} characters or fewer.`)
+      return `Each interest must be ${PROFILE_LIMITS.interestMaxLength} characters or fewer.`
     }
   }
 
   if (profile.avatarUrl && !isValidHttpUrl(profile.avatarUrl)) {
-    throw new Error('Avatar URL must be an absolute http(s) URL.')
+    return 'Avatar URL must be an absolute http(s) URL.'
   }
 
   if (profile.externalUrl && !isValidHttpUrl(profile.externalUrl)) {
-    throw new Error('External URL must be an absolute http(s) URL.')
+    return 'External URL must be an absolute http(s) URL.'
+  }
+
+  return null
+}
+
+export function validateProfileForSave(profile: UserProfile): void {
+  const message = getProfileSaveValidationMessage(profile)
+  if (message) {
+    throw new Error(message)
   }
 }
