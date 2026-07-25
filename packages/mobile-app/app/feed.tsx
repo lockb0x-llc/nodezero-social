@@ -28,6 +28,8 @@ import { createSyncState, mergeAndQueryActivities, type QueryableStreamItem, typ
 import { getSolidPodSyncManagers } from '../src/solid/podSyncManagers'
 import { loadFeedSyncCheckpoint, saveFeedSyncCheckpoint } from '../src/solid/syncCheckpointStore'
 import { aesthetic } from '../src/theme/aesthetic'
+import { readContentPreferences, writeContentPreferences } from '../src/preferences/contentPreferences'
+import { collectNsfwAuthors, filterVisiblePosts } from '../src/feed/postVisibility'
 
 interface FeedPost {
   id: string
@@ -51,7 +53,7 @@ export default function GlobalFeedScreen(): JSX.Element {
   const [isTunerOpen, setIsTunerOpen] = useState(false)
   const [serendipity, setSerendipity] = useState(80)
   const [deepTies, setDeepTies] = useState(50)
-  const [sfwMode, setSfwMode] = useState(true)
+  const [showNsfw, setShowNsfw] = useState(false)
   const [showAuthModeHint, setShowAuthModeHint] = useState(false)
   const [isSyncCheckpointReady, setIsSyncCheckpointReady] = useState(false)
   const syncStateRef = useRef(createSyncState())
@@ -87,6 +89,12 @@ export default function GlobalFeedScreen(): JSX.Element {
     }
   }, [webId])
 
+  useEffect(() => {
+    void readContentPreferences().then((preferences) => {
+      setShowNsfw(preferences.showNsfw)
+    })
+  }, [])
+
   const fetchFeed = useCallback(async (): Promise<void> => {
     if (!isLoggedIn || !webId || !isSyncCheckpointReady) return
 
@@ -96,6 +104,7 @@ export default function GlobalFeedScreen(): JSX.Element {
       const connections = await socialGraph.listConnections(podRoot)
 
       const authorNames = new Map<string, string>()
+      const authorMetadata: Array<{ authorWebId: string; externalUrl?: string; avatarUrl?: string }> = []
       const activityBatches: Array<{
         sourceWebId: string
         items: Array<StreamItem & { authorWebId: string }>
@@ -108,6 +117,11 @@ export default function GlobalFeedScreen(): JSX.Element {
             const profile = await profileManager.readProfile(connection.webId)
             const displayName = profile?.displayName?.trim() || deriveNameFromWebId(connection.webId)
             authorNames.set(connection.webId, displayName)
+            authorMetadata.push({
+              authorWebId: connection.webId,
+              externalUrl: profile?.externalUrl,
+              avatarUrl: profile?.avatarUrl,
+            })
             const streamItems = await docustreamManager.listActivities(peerPodRoot)
 
             if (streamItems.length > 0) {
@@ -165,15 +179,15 @@ export default function GlobalFeedScreen(): JSX.Element {
         return streamItemToFeedPost(item, authorWebId ?? 'unknown', authorName)
       })
 
-      setPosts(
-        [...mergedPosts, ...connectionPosts.flat()]
-          .flat()
-          .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
-      )
+      const combined = [...mergedPosts, ...connectionPosts.flat()]
+        .flat()
+        .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+      const nsfwAuthors = collectNsfwAuthors(authorMetadata)
+      setPosts(filterVisiblePosts(combined, showNsfw, nsfwAuthors))
     } catch (err) {
       console.error('[GlobalFeedScreen] fetchFeed error:', err)
     }
-  }, [authFetch, isLoggedIn, isSyncCheckpointReady, webId])
+  }, [authFetch, isLoggedIn, isSyncCheckpointReady, showNsfw, webId])
 
   useEffect(() => {
     if (!isSyncCheckpointReady) {
@@ -345,8 +359,12 @@ export default function GlobalFeedScreen(): JSX.Element {
                 <Text style={styles.sfwDescription}>Hide profiles tagged as NSFW.</Text>
               </View>
               <Switch
-                value={sfwMode}
-                onValueChange={setSfwMode}
+                value={!showNsfw}
+                onValueChange={(enabled) => {
+                  const nextShowNsfw = !enabled
+                  setShowNsfw(nextShowNsfw)
+                  void writeContentPreferences({ showNsfw: nextShowNsfw })
+                }}
                 trackColor={{ false: '#333', true: '#6C63FF' }}
                 thumbColor="#FFF"
               />

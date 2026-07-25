@@ -27,15 +27,15 @@ import type {
   ProfileManager,
   ProfilePreferencesManager,
   PrivateProfilePreferencesDocument,
-  NsfwScanResult,
   UserProfile,
 } from '@nodezero/solid-pod-sync'
 import { getSolidPodSyncManagers } from '../src/solid/podSyncManagers'
-import { NsfwScanner } from '@nodezero/solid-pod-sync'
 import { Ionicons } from '@expo/vector-icons'
 import { aesthetic } from '../src/theme/aesthetic'
 import { useConnections } from '../src/social/useConnections'
 import { deriveProfileViewState } from '../src/profile/viewState'
+import { interestsToInput, mergeProfileData } from '../src/profile/mergeProfileData'
+import { deriveProfileNsfwFlag } from '../src/content/nsfwDecision'
 
 const EMPTY_PROFILE: UserProfile = {
   displayName: '',
@@ -45,8 +45,6 @@ const EMPTY_PROFILE: UserProfile = {
   interests: [],
   isNsfw: false,
 }
-
-const nsfwScanner = new NsfwScanner()
 
 export default function ProfileScreen(): JSX.Element {
   const { status, webId, authFetch } = useNodeZeroSession()
@@ -126,13 +124,9 @@ export default function ProfileScreen(): JSX.Element {
     ])
       .then(([publicProfile, privatePreferences]) => {
         if (publicProfile) {
-          const mergedProfile: UserProfile = {
-            ...publicProfile,
-            interests: privatePreferences?.interests ?? [],
-            isNsfw: privatePreferences?.isNsfw ?? false,
-          }
+          const mergedProfile = mergeProfileData(publicProfile, privatePreferences)
           setProfile(mergedProfile)
-          setInterestsInput(mergedProfile.interests.join(', '))
+          setInterestsInput(interestsToInput(mergedProfile.interests))
         }
       })
       .finally(() => {
@@ -162,14 +156,9 @@ export default function ProfileScreen(): JSX.Element {
     try {
       await managerRef.current.writeProfile(podRoot, updatedProfile)
 
-      const urlsToScan: string[] = []
-      if (updatedProfile.externalUrl) urlsToScan.push(updatedProfile.externalUrl)
-      if (updatedProfile.avatarUrl) urlsToScan.push(updatedProfile.avatarUrl)
-      const scanResult: NsfwScanResult = nsfwScanner.scan(urlsToScan)
-
       const preferencesPayload: PrivateProfilePreferencesDocument = {
         interests: updatedProfile.interests,
-        isNsfw: updatedProfile.isNsfw || scanResult.isNsfw,
+        isNsfw: deriveProfileNsfwFlag(updatedProfile, updatedProfile.isNsfw),
       }
       await preferencesManagerRef.current.writePreferences(podRoot, preferencesPayload)
 
@@ -179,13 +168,9 @@ export default function ProfileScreen(): JSX.Element {
         preferencesManagerRef.current.readPreferences(podRoot),
       ])
       if (savedPublic) {
-        const mergedSaved: UserProfile = {
-          ...savedPublic,
-          interests: savedPrivate?.interests ?? [],
-          isNsfw: savedPrivate?.isNsfw ?? false,
-        }
+        const mergedSaved = mergeProfileData(savedPublic, savedPrivate)
         setProfile(mergedSaved)
-        setInterestsInput(mergedSaved.interests.join(', '))
+        setInterestsInput(interestsToInput(mergedSaved.interests))
       }
       Alert.alert('Saved', 'Your profile has been updated in your Solid Pod.')
     } catch (err) {

@@ -25,8 +25,7 @@ import { useRouter } from 'expo-router'
 import { useNodeZeroSession } from '../src/contexts/NodeZeroSessionContext'
 import { useWallet } from '../src/contexts/WalletContext'
 import { aesthetic } from '../src/theme/aesthetic'
-
-const SHOW_NSFW_KEY = 'settings.showNsfw'
+import { readContentPreferences, writeContentPreferences } from '../src/preferences/contentPreferences'
 
 export default function SettingsScreen(): JSX.Element {
   const { signOut, webId, podUrl, lockbox, sessionCreatedAt } = useNodeZeroSession()
@@ -57,14 +56,14 @@ export default function SettingsScreen(): JSX.Element {
 
   // Load persisted NSFW setting on mount.
   React.useEffect(() => {
-    void AsyncStorage.getItem(SHOW_NSFW_KEY).then((val) => {
-      if (val !== null) setShowNsfw(val === 'true')
+    void readContentPreferences().then((preferences) => {
+      setShowNsfw(preferences.showNsfw)
     })
   }, [])
 
   const toggleNsfw = useCallback(async (val: boolean) => {
     setShowNsfw(val)
-    await AsyncStorage.setItem(SHOW_NSFW_KEY, String(val))
+    await writeContentPreferences({ showNsfw: val })
   }, [])
 
   const clearCache = useCallback((): void => {

@@ -13,6 +13,12 @@ export interface TrustCircleLocalAdapter {
   writeLocal(ownerWebId: string, members: string[]): Promise<void>
 }
 
+interface PodTrustCircleState {
+  members: string[]
+  etag: string | null
+  exists: boolean
+}
+
 function normalizeMembers(members: string[]): string[] {
   return Array.from(
     new Set(
@@ -59,34 +65,75 @@ export function parseTrustCircleDocument(raw: string): string[] {
 }
 
 export function createTrustCircleStore(local: TrustCircleLocalAdapter) {
+  async function readPodState(
+    ownerWebId: string,
+    fetcher: typeof globalThis.fetch
+  ): Promise<PodTrustCircleState | null> {
+    const docUrl = deriveTrustCircleDocumentUrl(ownerWebId)
+    const response = await fetcher(docUrl, {
+      headers: { Accept: 'application/json' },
+    })
+
+    if (response.ok) {
+      const etag = response.headers.get('etag')
+      const members = parseTrustCircleDocument(await response.text())
+      return { members, etag, exists: true }
+    }
+
+    if (response.status === 404) {
+      return { members: [], etag: null, exists: false }
+    }
+
+    return null
+  }
+
+  async function writePodState(
+    ownerWebId: string,
+    members: string[],
+    fetcher: typeof globalThis.fetch,
+    etag: string | null
+  ): Promise<'ok' | 'conflict' | 'error'> {
+    const docUrl = deriveTrustCircleDocumentUrl(ownerWebId)
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    }
+    if (etag) {
+      headers['If-Match'] = etag
+    }
+
+    try {
+      const response = await fetcher(docUrl, {
+        method: 'PUT',
+        headers,
+        body: serializeTrustCircleDocument(members),
+      })
+
+      if (response.ok) return 'ok'
+      if (response.status === 409 || response.status === 412) return 'conflict'
+      return 'error'
+    } catch {
+      return 'error'
+    }
+  }
+
   async function list(ownerWebId: string, options: TrustCircleStoreOptions = {}): Promise<string[]> {
     const localMembers = normalizeMembers(await local.readLocal(ownerWebId))
     const fetcher = options.fetch
     if (!fetcher) return localMembers
 
-    const docUrl = deriveTrustCircleDocumentUrl(ownerWebId)
     try {
-      const response = await fetcher(docUrl, {
-        headers: { Accept: 'application/json' },
-      })
+      const podState = await readPodState(ownerWebId, fetcher)
+      if (!podState) return localMembers
 
-      if (response.ok) {
-        const podMembers = parseTrustCircleDocument(await response.text())
+      if (podState.exists) {
+        const podMembers = podState.members
         await local.writeLocal(ownerWebId, podMembers)
         return podMembers
       }
 
-      if (response.status === 404) {
+      if (!podState.exists) {
         if (localMembers.length > 0) {
-          try {
-            await fetcher(docUrl, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: serializeTrustCircleDocument(localMembers),
-            })
-          } catch {
-            // Keep local members if migration write fails.
-          }
+          await writePodState(ownerWebId, localMembers, fetcher, null)
         }
         return localMembers
       }
@@ -101,13 +148,18 @@ export function createTrustCircleStore(local: TrustCircleLocalAdapter) {
     const fetcher = options.fetch
     if (!fetcher) return
 
-    const docUrl = deriveTrustCircleDocumentUrl(ownerWebId)
     try {
-      await fetcher(docUrl, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: serializeTrustCircleDocument(members),
-      })
+      const podState = await readPodState(ownerWebId, fetcher)
+      if (!podState) return
+
+      const firstWrite = await writePodState(ownerWebId, members, fetcher, podState.etag)
+      if (firstWrite !== 'conflict') return
+
+      const latestState = await readPodState(ownerWebId, fetcher)
+      if (!latestState) return
+      const mergedMembers = normalizeMembers([...latestState.members, ...members])
+      await writePodState(ownerWebId, mergedMembers, fetcher, latestState.etag)
+      await local.writeLocal(ownerWebId, mergedMembers)
     } catch {
       // Keep local state when Pod write is unavailable.
     }

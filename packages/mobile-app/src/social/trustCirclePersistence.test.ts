@@ -10,6 +10,20 @@ function response(status: number, body = ''): Response {
   return {
     ok: status >= 200 && status < 300,
     status,
+    headers: {
+      get: (_name: string) => null,
+    },
+    text: async () => body,
+  } as Response
+}
+
+function responseWithEtag(status: number, etag: string | null, body = ''): Response {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    headers: {
+      get: (name: string) => (name.toLowerCase() === 'etag' ? etag : null),
+    },
     text: async () => body,
   } as Response
 }
@@ -70,13 +84,18 @@ void test('add/remove update local state and write to pod', async () => {
   const ownerWebId = 'https://pod.example/alice/profile/card#me'
   let localState: string[] = []
   let writeLocalCalls = 0
+  const calls: Array<{ url: string; init?: RequestInit }> = []
 
   const readLocal = async () => localState
   const writeLocal = async (_owner: string, members: string[]) => {
     localState = [...members]
     writeLocalCalls += 1
   }
-  const fetchMock = async () => response(404)
+  const fetchMock = async (url: string | URL | Request, init?: RequestInit) => {
+    calls.push({ url: String(url), init })
+    if (init?.method === 'PUT') return response(201)
+    return responseWithEtag(404, null)
+  }
 
   const store = createTrustCircleStore({ readLocal, writeLocal })
 
@@ -90,4 +109,53 @@ void test('add/remove update local state and write to pod', async () => {
   })
   assert.deepEqual(localState, [])
   assert.equal(writeLocalCalls, 2)
+  assert.equal(calls.filter((entry) => entry.init?.method === 'PUT').length, 3)
+})
+
+void test('writePod merges members and retries once on ETag conflict', async () => {
+  const ownerWebId = 'https://pod.example/alice/profile/card#me'
+  let localState: string[] = []
+  const writes: string[][] = []
+  let readStep = 0
+  let putStep = 0
+
+  const readLocal = async () => localState
+  const writeLocal = async (_owner: string, members: string[]) => {
+    localState = [...members]
+    writes.push([...members])
+  }
+  const fetchMock = async (_url: string | URL | Request, init?: RequestInit) => {
+    if (init?.method !== 'PUT') {
+      readStep += 1
+      if (readStep === 1) {
+        return responseWithEtag(200, 'W/"etag-v1"', '{"version":1,"members":["https://pod.example/alice#me"]}')
+      }
+      if (readStep === 2) {
+        return responseWithEtag(200, 'W/"etag-v1"', '{"version":1,"members":["https://pod.example/alice#me"]}')
+      }
+      return responseWithEtag(
+        200,
+        'W/"etag-v2"',
+        '{"version":1,"members":["https://pod.example/alice#me","https://pod.example/charlie#me"]}'
+      )
+    }
+
+    putStep += 1
+    if (putStep === 1) {
+      return response(412)
+    }
+    return response(200)
+  }
+
+  const store = createTrustCircleStore({ readLocal, writeLocal })
+  await store.add(ownerWebId, 'https://pod.example/bob#me', {
+    fetch: fetchMock as typeof globalThis.fetch,
+  })
+
+  assert.deepEqual(localState, [
+    'https://pod.example/alice#me',
+    'https://pod.example/bob#me',
+    'https://pod.example/charlie#me',
+  ])
+  assert.equal(writes.length >= 2, true)
 })
