@@ -103,3 +103,22 @@ void test('saveProfileForScreen returns error outcome on write failure', async (
     assert.equal(result.message, 'write failed')
   }
 })
+
+void test('saveProfileForScreen returns fallback error message on non-Error throw', async () => {
+  const result = await saveProfileForScreen({
+    isPeerView: false,
+    ownerWebId: 'https://solid.nodezero.social/alice/profile/card#me',
+    currentProfile: sampleProfile,
+    interestsInput: 'web3',
+    deps: createDeps({
+      writePublicProfile: async () => {
+        throw 'unexpected-failure'
+      },
+    }),
+  })
+
+  assert.equal(result.status, 'error')
+  if (result.status === 'error') {
+    assert.equal(result.message, 'Failed to save profile. Please try again.')
+  }
+})

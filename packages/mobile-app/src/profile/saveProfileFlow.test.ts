@@ -132,3 +132,105 @@ void test('executeProfileSaveFlow rejects invalid avatar URL before write operat
   assert.equal(wrotePublic, false)
   assert.equal(wrotePrivate, false)
 })
+
+void test('executeProfileSaveFlow rejects display name longer than 80 characters', async () => {
+  const deps: ProfileSaveDependencies = {
+    writePublicProfile: async () => undefined,
+    writePrivatePreferences: async () => undefined,
+    readPublicProfile: async () => null,
+    readPrivatePreferences: async () => null,
+  }
+
+  await assert.rejects(
+    () =>
+      executeProfileSaveFlow({
+        ownerWebId: 'https://solid.nodezero.social/alice/profile/card#me',
+        currentProfile: {
+          displayName: 'A'.repeat(81),
+          bio: 'Bio',
+          interests: [],
+          isNsfw: false,
+        },
+        interestsInput: 'x',
+        deps,
+      }),
+    /Display name must be 80 characters or fewer\./,
+  )
+})
+
+void test('executeProfileSaveFlow rejects bio longer than 280 characters', async () => {
+  const deps: ProfileSaveDependencies = {
+    writePublicProfile: async () => undefined,
+    writePrivatePreferences: async () => undefined,
+    readPublicProfile: async () => null,
+    readPrivatePreferences: async () => null,
+  }
+
+  await assert.rejects(
+    () =>
+      executeProfileSaveFlow({
+        ownerWebId: 'https://solid.nodezero.social/alice/profile/card#me',
+        currentProfile: {
+          displayName: 'Alice',
+          bio: 'B'.repeat(281),
+          interests: [],
+          isNsfw: false,
+        },
+        interestsInput: 'x',
+        deps,
+      }),
+    /Bio must be 280 characters or fewer\./,
+  )
+})
+
+void test('executeProfileSaveFlow rejects more than 20 interests', async () => {
+  const deps: ProfileSaveDependencies = {
+    writePublicProfile: async () => undefined,
+    writePrivatePreferences: async () => undefined,
+    readPublicProfile: async () => null,
+    readPrivatePreferences: async () => null,
+  }
+
+  const interestsInput = Array.from({ length: 21 }, (_, index) => `topic${index + 1}`).join(', ')
+
+  await assert.rejects(
+    () =>
+      executeProfileSaveFlow({
+        ownerWebId: 'https://solid.nodezero.social/alice/profile/card#me',
+        currentProfile: {
+          displayName: 'Alice',
+          bio: 'Bio',
+          interests: [],
+          isNsfw: false,
+        },
+        interestsInput,
+        deps,
+      }),
+    /You can add up to 20 interests\./,
+  )
+})
+
+void test('executeProfileSaveFlow rejects interests longer than 40 characters', async () => {
+  const deps: ProfileSaveDependencies = {
+    writePublicProfile: async () => undefined,
+    writePrivatePreferences: async () => undefined,
+    readPublicProfile: async () => null,
+    readPrivatePreferences: async () => null,
+  }
+
+  await assert.rejects(
+    () =>
+      executeProfileSaveFlow({
+        ownerWebId: 'https://solid.nodezero.social/alice/profile/card#me',
+        currentProfile: {
+          displayName: 'Alice',
+          bio: 'Bio',
+          interests: [],
+          isNsfw: false,
+        },
+        interestsInput: `${'x'.repeat(41)}`,
+        deps,
+      }),
+    /Each interest must be 40 characters or fewer\./,
+  )
+})
