@@ -26,7 +26,6 @@ import { useNodeZeroSession } from '../src/contexts/NodeZeroSessionContext'
 import type {
   ProfileManager,
   ProfilePreferencesManager,
-  PrivateProfilePreferencesDocument,
   UserProfile,
 } from '@nodezero/solid-pod-sync'
 import { getSolidPodSyncManagers } from '../src/solid/podSyncManagers'
@@ -34,8 +33,12 @@ import { Ionicons } from '@expo/vector-icons'
 import { aesthetic } from '../src/theme/aesthetic'
 import { useConnections } from '../src/social/useConnections'
 import { deriveProfileViewState } from '../src/profile/viewState'
-import { interestsToInput, mergeProfileData } from '../src/profile/mergeProfileData'
-import { deriveProfileNsfwFlag } from '../src/content/nsfwDecision'
+import {
+  buildPrivatePreferencesPayload,
+  buildUpdatedProfileDraft,
+  interestsToInput,
+  mergeProfileData,
+} from '../src/profile/mergeProfileData'
 
 const EMPTY_PROFILE: UserProfile = {
   displayName: '',
@@ -144,22 +147,13 @@ export default function ProfileScreen(): JSX.Element {
     // Session invariant: being authenticated guarantees a live Pod write
     // path through the proxy — there is no "restoring" write state anymore.
     const podRoot = ownerWebId.split('/profile/')[0] + '/'
-    const updatedProfile: UserProfile = {
-      ...profile,
-      interests: interestsInput
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean),
-    }
+    const updatedProfile = buildUpdatedProfileDraft(profile, interestsInput)
 
     setSaving(true)
     try {
       await managerRef.current.writeProfile(podRoot, updatedProfile)
 
-      const preferencesPayload: PrivateProfilePreferencesDocument = {
-        interests: updatedProfile.interests,
-        isNsfw: deriveProfileNsfwFlag(updatedProfile, updatedProfile.isNsfw),
-      }
+      const preferencesPayload = buildPrivatePreferencesPayload(updatedProfile)
       await preferencesManagerRef.current.writePreferences(podRoot, preferencesPayload)
 
       // Re-read to pick up any server-side mutations (e.g. NSFW auto-tag).
