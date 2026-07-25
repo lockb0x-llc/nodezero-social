@@ -1,11 +1,11 @@
-export type AudienceType = 'foaf' | 'verified' | 'trust-circle' | 'local'
+import type { AudienceType } from './composeAudience'
 
 /**
  * Resolves recipients for compose audiences.
  *
  * Current contract deliberately preserves existing broadcast behavior:
  * - Directory membership alone has no effect.
- * - Trust Circle membership is advisory metadata until a dedicated audience mode is introduced.
+ * - Trust Circle mode targets trust-circle members.
  */
 export function resolveAudienceRecipients(args: {
   audience: AudienceType

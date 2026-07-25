@@ -20,9 +20,8 @@ import { cellTopic, createBroadcastBody, createEnvelope } from '@nodezero/waku-c
 import { getSolidPodSyncManagers } from '../src/solid/podSyncManagers';
 import { aesthetic } from '../src/theme/aesthetic';
 import { resolveAudienceRecipients } from '../src/social/composeRecipients';
+import { getAudienceDescription, type AudienceType } from '../src/social/composeAudience';
 import { listTrustCircleMembers } from '../src/social/trustCircleStore';
-
-type AudienceType = 'foaf' | 'verified' | 'trust-circle' | 'local';
 
 function toWebIdList(connections: Array<unknown>): string[] {
   return connections
@@ -129,15 +128,6 @@ export default function ComposeScreen(): JSX.Element {
       Alert.alert('Broadcast Failed', err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setSending(false);
-    }
-  };
-
-  const getAudienceDescription = (): string => {
-    switch (audience) {
-      case 'foaf': return 'Close Ties (Your FOAF Network)';
-      case 'verified': return 'Verified Humans in your Grid';
-      case 'trust-circle': return 'Trust Circle Members';
-      case 'local': return 'Everyone in your Local H3 Grid';
     }
   };
 
@@ -259,7 +249,7 @@ export default function ComposeScreen(): JSX.Element {
           {/* Dynamic Audience Label */}
           <View style={styles.statusBadge}>
             <Text style={styles.statusBadgeText}>
-              Broadcasting to: {getAudienceDescription()}
+              Broadcasting to: {getAudienceDescription(audience)}
             </Text>
           </View>
         </View>
