@@ -4,8 +4,9 @@
  * Handles reading and writing NodeZero user profiles against a Solid Pod.
  *
  * All profile data is stored in the user's own Pod using standard RDF
- * vocabularies (vCard, FOAF) plus a NodeZero-specific namespace for
- * platform-specific metadata such as the `isNSFW` flag.
+ * vocabularies (vCard, FOAF). NSFW classification is handled by shared
+ * decision helpers and persisted through profile preferences, not the public
+ * profile document.
  *
  * NodeZero is a *client application* – it never stores profile data in its
  * own database. The Pod URL is authoritative.
@@ -27,6 +28,7 @@ import {
   type WithServerResourceInfo,
 } from '@inrupt/solid-client'
 import { NsfwScanner } from './NsfwScanner.js'
+import { hasNsfwSignals } from './NsfwDecision.js'
 import {
   assertValidPublicProfileDocument,
   type PublicProfileDocument,
@@ -72,8 +74,8 @@ export interface UserProfile {
   /** Free-form interest tags. */
   interests: string[]
   /**
-   * Automatically set to `true` when any supplied URL matches a known
-   * adult-content domain. Stored as `<nodezero:isNSFW> true` in the Pod.
+   * Effective NSFW state for the profile view. Public profile writes do not
+   * persist this value directly.
    */
   isNsfw: boolean
 }
@@ -163,10 +165,9 @@ export class ProfileManager {
   /**
    * Writes a profile to the Solid Pod.
    *
-   * The method will:
-   * 1. Scan all supplied URLs for adult-content domains.
-   * 2. Automatically set `isNsfw = true` in the dataset if a match is found.
-   * 3. Persist the dataset to `<podRoot>/<datasetPath>`.
+   * The method persists public profile fields to `<podRoot>/<datasetPath>`.
+   * NSFW scanning is still invoked through the shared decision helper for
+   * contract consistency with callers that persist private preferences.
    *
    * @param podRootUrl - Root URL of the user's Pod (e.g. `https://alice.solidcommunity.net/`).
    * @param profile - Profile data to write.
@@ -185,11 +186,15 @@ export class ProfileManager {
     const webId = `${datasetUrl}#me`
 
     // ── NSFW auto-detection ────────────────────────────────────────────────
-    const urlsToScan: string[] = []
-    if (profile.externalUrl) urlsToScan.push(profile.externalUrl)
-    if (profile.avatarUrl) urlsToScan.push(profile.avatarUrl)
-
-    this.nsfwScanner.scan(urlsToScan)
+    hasNsfwSignals(
+      {
+        externalUrl: profile.externalUrl,
+        avatarUrl: profile.avatarUrl,
+      },
+      {
+        scanner: this.nsfwScanner,
+      }
+    )
 
     const publicProfile: PublicProfileDocument = {
       displayName: profile.displayName,

@@ -16,6 +16,11 @@ export { ProfileManager } from './ProfileManager.js'
 export { ProfilePreferencesManager } from './ProfilePreferencesManager.js'
 export { SocialGraph } from './SocialGraph.js'
 export { NsfwScanner, NSFW_DOMAINS } from './NsfwScanner.js'
+export {
+	collectNsfwScanUrls,
+	hasNsfwSignals,
+	deriveProfileNsfwFlag,
+} from './NsfwDecision.js'
 export { DocustreamManager } from './DocustreamManager.js'
 export { DocustreamSourceManager } from './DocustreamSourceManager.js'
 export { NotificationManager } from './NotificationManager.js'
@@ -81,6 +86,7 @@ export type {
 } from './ProfilePreferencesManager.js'
 export type { Connection } from './SocialGraph.js'
 export type { NsfwScanResult } from './NsfwScanner.js'
+export type { NsfwUrlSource, NsfwDecisionOptions } from './NsfwDecision.js'
 export type { StreamItem } from './DocustreamManager.js'
 export type { DocustreamManagerOptions } from './DocustreamManager.js'
 export type {
