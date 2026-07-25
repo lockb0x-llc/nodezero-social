@@ -90,7 +90,7 @@ export default function ComposeScreen(): JSX.Element {
         const podRoot = (webId ?? '').split('/profile/')[0] + '/';
         const { socialGraph: graph } = getSolidPodSyncManagers({ fetch: authFetch });
         const connections = toWebIdList(await graph.listConnections(podRoot).catch(() => []));
-        const trustCircleMembers = webId ? await listTrustCircleMembers(webId) : [];
+        const trustCircleMembers = webId ? await listTrustCircleMembers(webId, { fetch: authFetch }) : [];
         const recipientIds = resolveAudienceRecipients({
           audience,
           connections,
@@ -119,7 +119,7 @@ export default function ComposeScreen(): JSX.Element {
         const podRoot = (webId ?? '').split('/profile/')[0] + '/';
         const { socialGraph: graph } = getSolidPodSyncManagers({ fetch: authFetch });
         const connections = toWebIdList(await graph.listConnections(podRoot).catch(() => []));
-        const trustCircleMembers = webId ? await listTrustCircleMembers(webId) : [];
+        const trustCircleMembers = webId ? await listTrustCircleMembers(webId, { fetch: authFetch }) : [];
         const recipientIds = resolveAudienceRecipients({
           audience,
           connections,

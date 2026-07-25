@@ -1,0 +1,143 @@
+export interface TrustCircleDocument {
+  version: 1
+  members: string[]
+  updatedAt: string
+}
+
+export interface TrustCircleStoreOptions {
+  fetch?: typeof globalThis.fetch
+}
+
+export interface TrustCircleLocalAdapter {
+  readLocal(ownerWebId: string): Promise<string[]>
+  writeLocal(ownerWebId: string, members: string[]): Promise<void>
+}
+
+function normalizeMembers(members: string[]): string[] {
+  return Array.from(
+    new Set(
+      members
+        .map((member) => member.trim())
+        .filter((member) => member.length > 0)
+    )
+  ).sort((a, b) => a.localeCompare(b))
+}
+
+export function deriveTrustCircleDocumentUrl(ownerWebId: string): string {
+  const podRoot = `${ownerWebId.split('/profile/')[0]}/`
+  return `${podRoot}backpack/preferences/trust-circle.json`
+}
+
+export function serializeTrustCircleDocument(members: string[], now = new Date()): string {
+  const payload: TrustCircleDocument = {
+    version: 1,
+    members: normalizeMembers(members),
+    updatedAt: now.toISOString(),
+  }
+
+  return JSON.stringify(payload, null, 2)
+}
+
+export function parseTrustCircleDocument(raw: string): string[] {
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    if (Array.isArray(parsed)) {
+      return normalizeMembers(parsed.filter((entry): entry is string => typeof entry === 'string'))
+    }
+
+    if (parsed && typeof parsed === 'object') {
+      const maybe = parsed as { members?: unknown }
+      if (Array.isArray(maybe.members)) {
+        return normalizeMembers(maybe.members.filter((entry): entry is string => typeof entry === 'string'))
+      }
+    }
+  } catch {
+    // Ignore malformed payloads and treat as empty.
+  }
+
+  return []
+}
+
+export function createTrustCircleStore(local: TrustCircleLocalAdapter) {
+  async function list(ownerWebId: string, options: TrustCircleStoreOptions = {}): Promise<string[]> {
+    const localMembers = normalizeMembers(await local.readLocal(ownerWebId))
+    const fetcher = options.fetch
+    if (!fetcher) return localMembers
+
+    const docUrl = deriveTrustCircleDocumentUrl(ownerWebId)
+    try {
+      const response = await fetcher(docUrl, {
+        headers: { Accept: 'application/json' },
+      })
+
+      if (response.ok) {
+        const podMembers = parseTrustCircleDocument(await response.text())
+        await local.writeLocal(ownerWebId, podMembers)
+        return podMembers
+      }
+
+      if (response.status === 404) {
+        if (localMembers.length > 0) {
+          try {
+            await fetcher(docUrl, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: serializeTrustCircleDocument(localMembers),
+            })
+          } catch {
+            // Keep local members if migration write fails.
+          }
+        }
+        return localMembers
+      }
+    } catch {
+      return localMembers
+    }
+
+    return localMembers
+  }
+
+  async function writePod(ownerWebId: string, members: string[], options: TrustCircleStoreOptions = {}): Promise<void> {
+    const fetcher = options.fetch
+    if (!fetcher) return
+
+    const docUrl = deriveTrustCircleDocumentUrl(ownerWebId)
+    try {
+      await fetcher(docUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: serializeTrustCircleDocument(members),
+      })
+    } catch {
+      // Keep local state when Pod write is unavailable.
+    }
+  }
+
+  async function add(ownerWebId: string, targetWebId: string, options: TrustCircleStoreOptions = {}): Promise<string[]> {
+    const members = await list(ownerWebId, options)
+    const updated = normalizeMembers([...members, targetWebId])
+    await local.writeLocal(ownerWebId, updated)
+    await writePod(ownerWebId, updated, options)
+    return updated
+  }
+
+  async function remove(ownerWebId: string, targetWebId: string, options: TrustCircleStoreOptions = {}): Promise<string[]> {
+    const members = await list(ownerWebId, options)
+    const updated = normalizeMembers(members.filter((member) => member !== targetWebId))
+    await local.writeLocal(ownerWebId, updated)
+    await writePod(ownerWebId, updated, options)
+    return updated
+  }
+
+  async function has(ownerWebId: string, targetWebId: string, options: TrustCircleStoreOptions = {}): Promise<boolean> {
+    const members = await list(ownerWebId, options)
+    return members.includes(targetWebId)
+  }
+
+  return {
+    list,
+    add,
+    remove,
+    has,
+  }
+}

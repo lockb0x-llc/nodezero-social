@@ -108,9 +108,9 @@ export default function CommunityDirectoryScreen(): JSX.Element {
       return
     }
 
-    void listTrustCircleMembers(effectiveWebId).then(setTrustCircleMembers)
+    void listTrustCircleMembers(effectiveWebId, { fetch: authFetch }).then(setTrustCircleMembers)
     void loadCommunityDirectory(connections)
-  }, [connections, effectiveWebId, isLoggedIn, loadCommunityDirectory])
+  }, [authFetch, connections, effectiveWebId, isLoggedIn, loadCommunityDirectory])
 
   const toggleTrustCircle = useCallback(async (targetWebId: string): Promise<void> => {
     if (!effectiveWebId || targetWebId === effectiveWebId) return
@@ -119,13 +119,13 @@ export default function CommunityDirectoryScreen(): JSX.Element {
     try {
       const isMember = trustCircleMembers.includes(targetWebId)
       const next = isMember
-        ? await removeTrustCircleMember(effectiveWebId, targetWebId)
-        : await addTrustCircleMember(effectiveWebId, targetWebId)
+        ? await removeTrustCircleMember(effectiveWebId, targetWebId, { fetch: authFetch })
+        : await addTrustCircleMember(effectiveWebId, targetWebId, { fetch: authFetch })
       setTrustCircleMembers(next)
     } finally {
       setTrustCircleBusyWebId(null)
     }
-  }, [effectiveWebId, trustCircleMembers])
+  }, [authFetch, effectiveWebId, trustCircleMembers])
 
   if (!isLoggedIn) {
     return (

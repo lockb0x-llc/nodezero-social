@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import { createTrustCircleStore, type TrustCircleStoreOptions } from './trustCirclePersistence'
 
 const TRUST_CIRCLE_PREFIX = 'nodezero.trust-circle.v1:'
 
@@ -24,27 +25,38 @@ async function writeMembers(ownerWebId: string, members: string[]): Promise<void
   await AsyncStorage.setItem(storageKey(ownerWebId), JSON.stringify(unique))
 }
 
-export async function listTrustCircleMembers(ownerWebId: string): Promise<string[]> {
-  return readMembers(ownerWebId)
+const podBackedStore = createTrustCircleStore({
+  readLocal: readMembers,
+  writeLocal: writeMembers,
+})
+
+export async function listTrustCircleMembers(
+  ownerWebId: string,
+  options: TrustCircleStoreOptions = {}
+): Promise<string[]> {
+  return podBackedStore.list(ownerWebId, options)
 }
 
-export async function addTrustCircleMember(ownerWebId: string, targetWebId: string): Promise<string[]> {
-  const members = await readMembers(ownerWebId)
-  if (!members.includes(targetWebId)) {
-    members.push(targetWebId)
-    await writeMembers(ownerWebId, members)
-  }
-  return members
+export async function addTrustCircleMember(
+  ownerWebId: string,
+  targetWebId: string,
+  options: TrustCircleStoreOptions = {}
+): Promise<string[]> {
+  return podBackedStore.add(ownerWebId, targetWebId, options)
 }
 
-export async function removeTrustCircleMember(ownerWebId: string, targetWebId: string): Promise<string[]> {
-  const members = await readMembers(ownerWebId)
-  const updated = members.filter((member) => member !== targetWebId)
-  await writeMembers(ownerWebId, updated)
-  return updated
+export async function removeTrustCircleMember(
+  ownerWebId: string,
+  targetWebId: string,
+  options: TrustCircleStoreOptions = {}
+): Promise<string[]> {
+  return podBackedStore.remove(ownerWebId, targetWebId, options)
 }
 
-export async function hasTrustCircleMember(ownerWebId: string, targetWebId: string): Promise<boolean> {
-  const members = await readMembers(ownerWebId)
-  return members.includes(targetWebId)
+export async function hasTrustCircleMember(
+  ownerWebId: string,
+  targetWebId: string,
+  options: TrustCircleStoreOptions = {}
+): Promise<boolean> {
+  return podBackedStore.has(ownerWebId, targetWebId, options)
 }
