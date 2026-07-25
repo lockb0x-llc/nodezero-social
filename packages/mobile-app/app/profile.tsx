@@ -37,7 +37,7 @@ import {
   interestsToInput,
   mergeProfileData,
 } from '../src/profile/mergeProfileData'
-import { executeProfileSaveFlow } from '../src/profile/saveProfileFlow'
+import { saveProfileForScreen } from '../src/profile/profileSaveCoordinator'
 
 const EMPTY_PROFILE: UserProfile = {
   displayName: '',
@@ -137,17 +137,14 @@ export default function ProfileScreen(): JSX.Element {
   }, [isPeerView, viewedWebId])
 
   const saveProfile = useCallback(async () => {
-    if (isPeerView) {
-      Alert.alert('Read-only', 'You can only edit your own profile.')
-      return
-    }
-    if (!ownerWebId || !managerRef.current || !preferencesManagerRef.current) return
+    if (!managerRef.current || !preferencesManagerRef.current) return
 
     // Session invariant: being authenticated guarantees a live Pod write
     // path through the proxy — there is no "restoring" write state anymore.
     setSaving(true)
     try {
-      const result = await executeProfileSaveFlow({
+      const result = await saveProfileForScreen({
+        isPeerView,
         ownerWebId,
         currentProfile: profile,
         interestsInput,
@@ -164,19 +161,29 @@ export default function ProfileScreen(): JSX.Element {
         },
       })
 
-      if (result.mergedSavedProfile) {
-        setProfile(result.mergedSavedProfile)
-        setInterestsInput(result.mergedSavedInterestsInput ?? interestsToInput(result.mergedSavedProfile.interests))
+      if (result.status === 'read-only') {
+        Alert.alert('Read-only', result.message)
+        return
       }
-      Alert.alert('Saved', 'Your profile has been updated in your Solid Pod.')
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to save profile. Please try again.'
-      Alert.alert('Error', message)
-      console.error('[ProfileScreen] saveProfile error:', err)
+
+      if (result.status === 'no-op') {
+        return
+      }
+
+      if (result.status === 'saved') {
+        if (result.mergedSavedProfile) {
+          setProfile(result.mergedSavedProfile)
+          setInterestsInput(result.mergedSavedInterestsInput ?? interestsToInput(result.mergedSavedProfile.interests))
+        }
+        Alert.alert('Saved', result.message)
+        return
+      }
+      Alert.alert('Error', result.message)
+      console.error('[ProfileScreen] saveProfile error:', result.error)
     } finally {
       setSaving(false)
     }
-  }, [interestsInput, isPeerView, ownerWebId, profile])
+  }, [authFetch, interestsInput, isPeerView, ownerWebId, profile])
 
   if (!isLoggedIn) {
     return (

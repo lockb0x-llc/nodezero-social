@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
 export interface CommunityDirectoryRecord {
@@ -67,7 +67,18 @@ export class CommunityDirectoryStore {
 
     const tempPath = `${this.persistenceFilePath}.tmp`
     writeFileSync(tempPath, JSON.stringify(payload, null, 2), 'utf8')
-    renameSync(tempPath, this.persistenceFilePath)
+    try {
+      renameSync(tempPath, this.persistenceFilePath)
+    } catch {
+      // Windows can intermittently reject renames when scanners/processes touch
+      // the destination. Fall back to direct write to keep persistence available.
+      writeFileSync(this.persistenceFilePath, JSON.stringify(payload, null, 2), 'utf8')
+      try {
+        unlinkSync(tempPath)
+      } catch {
+        // Best-effort cleanup only.
+      }
+    }
   }
 
   seedRecord(input: { webId: string; podUrl: string; issuer: string }): CommunityDirectoryRecord {

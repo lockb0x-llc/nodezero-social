@@ -3,6 +3,8 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { subtle } from 'node:crypto'
 import { lookup } from 'node:dns/promises'
 import { isIP } from 'node:net'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { ProvisionStore } from './store.js'
 import { verifyAttestation } from './attestation.js'
@@ -73,15 +75,17 @@ const INTERNAL_API_KEY = (process.env.JSS_INTERNAL_API_KEY ?? '').trim()
 // faucet exists). Off by default to preserve the testnet Friendbot self-funding
 // path; enable via JSS_TREASURY_FUND_MEMBERS=1 for MainNet readiness.
 const TREASURY_FUND_MEMBERS = /^(1|true|yes)$/i.test((process.env.JSS_TREASURY_FUND_MEMBERS ?? '').trim())
-const COMMUNITY_DIRECTORY_STORE_PATH = (process.env.JSS_COMMUNITY_DIRECTORY_STORE_PATH ?? '').trim()
+const COMMUNITY_DIRECTORY_STORE_PATH =
+  (process.env.JSS_COMMUNITY_DIRECTORY_STORE_PATH ?? '').trim() ||
+  join(tmpdir(), `nz-community-directory-${process.pid}.json`)
 const ALLOWED_ORIGINS = (process.env.JSS_ALLOWED_ORIGINS ?? 'https://staging.nodezero.social,https://nodezero.social,https://www.nodezero.social,https://solid.nodezero.social,http://localhost:19006,http://localhost:8081')
   .split(',')
   .map((origin) => origin.trim())
   .filter((origin) => origin.length > 0)
 const store = new ProvisionStore()
-const communityDirectory = COMMUNITY_DIRECTORY_STORE_PATH
-  ? new CommunityDirectoryStore({ persistenceFilePath: COMMUNITY_DIRECTORY_STORE_PATH })
-  : new CommunityDirectoryStore()
+const communityDirectory = new CommunityDirectoryStore({
+  persistenceFilePath: COMMUNITY_DIRECTORY_STORE_PATH,
+})
 const credentialStore = new CredentialStore()
 const sessions = new SessionTokenManager({ issuer: ISSUER })
 const knownSolidAccountEmails = new Set<string>()
