@@ -22,7 +22,7 @@ import { aesthetic } from '../src/theme/aesthetic';
 import { resolveAudienceRecipients } from '../src/social/composeRecipients';
 import { listTrustCircleMembers } from '../src/social/trustCircleStore';
 
-type AudienceType = 'foaf' | 'verified' | 'local';
+type AudienceType = 'foaf' | 'verified' | 'trust-circle' | 'local';
 
 function toWebIdList(connections: Array<unknown>): string[] {
   return connections
@@ -85,37 +85,9 @@ export default function ComposeScreen(): JSX.Element {
             ? firstError
             : new Error('Broadcast was not accepted by the local mesh.');
         }
-      } else if (audience === 'foaf') {
-        // Write payload to Pod /outbox/ container via the authenticated proxy fetch
-        const podRoot = (webId ?? '').split('/profile/')[0] + '/';
-        const { socialGraph: graph } = getSolidPodSyncManagers({ fetch: authFetch });
-        const connections = toWebIdList(await graph.listConnections(podRoot).catch(() => []));
-        const trustCircleMembers = webId ? await listTrustCircleMembers(webId, { fetch: authFetch }) : [];
-        const recipientIds = resolveAudienceRecipients({
-          audience,
-          connections,
-          trustCircleMembers,
-        });
-        const payload = JSON.stringify({ text: postText, audience, ts: Date.now() });
-        await Promise.allSettled(
-          recipientIds.map(() =>
-            authFetch(
-              podRoot +
-                'outbox/' +
-                Date.now() +
-                '-' +
-                Math.random().toString(36).slice(2) +
-                '.json',
-              {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: payload,
-              }
-            )
-          )
-        );
-      } else if (audience === 'verified') {
-        // Same as foaf but guard each recipient with verifyPoH check
+      } else if (audience === 'foaf' || audience === 'verified' || audience === 'trust-circle') {
+        // Write payload to Pod /outbox/ container via the authenticated proxy fetch.
+        // Verified mode applies an extra per-recipient PoH gate.
         const podRoot = (webId ?? '').split('/profile/')[0] + '/';
         const { socialGraph: graph } = getSolidPodSyncManagers({ fetch: authFetch });
         const connections = toWebIdList(await graph.listConnections(podRoot).catch(() => []));
@@ -128,11 +100,14 @@ export default function ComposeScreen(): JSX.Element {
         const payload = JSON.stringify({ text: postText, audience, ts: Date.now() });
         await Promise.allSettled(
           recipientIds.map(async (recipientWebId) => {
-            const isVerified = await verifyPoH(recipientWebId);
-            if (!isVerified) {
-              console.warn('[compose] skipping unverified recipient', recipientWebId);
-              return;
+            if (audience === 'verified') {
+              const isVerified = await verifyPoH(recipientWebId);
+              if (!isVerified) {
+                console.warn('[compose] skipping unverified recipient', recipientWebId);
+                return;
+              }
             }
+
             return authFetch(
               podRoot +
                 'outbox/' +
@@ -161,6 +136,7 @@ export default function ComposeScreen(): JSX.Element {
     switch (audience) {
       case 'foaf': return 'Close Ties (Your FOAF Network)';
       case 'verified': return 'Verified Humans in your Grid';
+      case 'trust-circle': return 'Trust Circle Members';
       case 'local': return 'Everyone in your Local H3 Grid';
     }
   };
@@ -204,6 +180,22 @@ export default function ComposeScreen(): JSX.Element {
         <View style={styles.orbitSection}>
           <Text style={styles.orbitTitle}>Trust Circle Audience</Text>
           <Text style={styles.orbitSubtitle}>Tap a ring to set your boundary</Text>
+
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => setAudience('trust-circle')}
+            style={[styles.trustCircleModeButton, audience === 'trust-circle' && styles.trustCircleModeButtonActive]}
+          >
+            <Ionicons name="people" size={14} color={audience === 'trust-circle' ? '#FFFFFF' : '#6B7280'} />
+            <Text
+              style={[
+                styles.trustCircleModeButtonText,
+                audience === 'trust-circle' && styles.trustCircleModeButtonTextActive,
+              ]}
+            >
+              Trust Circle Members
+            </Text>
+          </TouchableOpacity>
 
           <View style={styles.orbitContainer}>
             {/* Ring 3: Local Grid (outer) */}
@@ -315,6 +307,30 @@ const styles = StyleSheet.create({
   },
   orbitTitle: { fontSize: 16, fontWeight: '600', color: aesthetic.color.textHigh },
   orbitSubtitle: { fontSize: 13, color: aesthetic.color.textMid, marginBottom: 30 },
+  trustCircleModeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: aesthetic.color.border,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 14,
+    backgroundColor: '#F9FAFB',
+  },
+  trustCircleModeButtonActive: {
+    borderColor: '#0F766E',
+    backgroundColor: '#0F766E',
+  },
+  trustCircleModeButtonText: {
+    color: '#6B7280',
+    fontWeight: '600',
+    fontSize: 12,
+  },
+  trustCircleModeButtonTextActive: {
+    color: '#FFFFFF',
+  },
   orbitContainer: {
     width: 280,
     height: 280,

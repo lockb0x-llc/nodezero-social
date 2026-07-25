@@ -2,17 +2,26 @@ import { strict as assert } from 'node:assert'
 import { createServer } from 'node:http'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { once } from 'node:events'
-import { before, test } from 'node:test'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { after, before, test } from 'node:test'
 
 process.env.JSS_SOLID_CSS_BASE_URL = 'https://solid.nodezero.social'
 process.env.JSS_ISSUER_URL = 'https://staging.nodezero.social'
 process.env.JSS_INTERNAL_API_KEY = 'test-internal-key'
+const tempDirectory = mkdtempSync(join(tmpdir(), 'nz-jss-index-community-directory-'))
+process.env.JSS_COMMUNITY_DIRECTORY_STORE_PATH = join(tempDirectory, 'community-directory.json')
 
 let createRequestHandler: () => (req: IncomingMessage, res: ServerResponse) => void
 
 before(async () => {
   const mod = await import('./index.js')
   createRequestHandler = mod.createRequestHandler
+})
+
+after(() => {
+  rmSync(tempDirectory, { recursive: true, force: true })
 })
 
 async function withServer<T>(fn: (baseUrl: string) => Promise<T>): Promise<T> {

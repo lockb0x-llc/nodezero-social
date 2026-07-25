@@ -1,4 +1,4 @@
-export type AudienceType = 'foaf' | 'verified' | 'local'
+export type AudienceType = 'foaf' | 'verified' | 'trust-circle' | 'local'
 
 /**
  * Resolves recipients for compose audiences.
@@ -12,10 +12,14 @@ export function resolveAudienceRecipients(args: {
   connections: string[]
   trustCircleMembers: string[]
 }): string[] {
-  const { audience, connections } = args
+  const { audience, connections, trustCircleMembers } = args
 
   if (audience === 'foaf' || audience === 'verified') {
     return Array.from(new Set(connections))
+  }
+
+  if (audience === 'trust-circle') {
+    return Array.from(new Set(trustCircleMembers))
   }
 
   return []

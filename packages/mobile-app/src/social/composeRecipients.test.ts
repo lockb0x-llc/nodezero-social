@@ -39,6 +39,23 @@ void test('local audience does not target explicit WebID recipients', () => {
   assert.deepEqual(recipients, [])
 })
 
+void test('trust-circle audience is derived from trust-circle members', () => {
+  const recipients = resolveAudienceRecipients({
+    audience: 'trust-circle',
+    connections: ['https://solid.nodezero.social/v/profile/card#me'],
+    trustCircleMembers: [
+      'https://solid.nodezero.social/t/profile/card#me',
+      'https://solid.nodezero.social/t/profile/card#me',
+      'https://solid.nodezero.social/u/profile/card#me',
+    ],
+  })
+
+  assert.deepEqual(recipients, [
+    'https://solid.nodezero.social/t/profile/card#me',
+    'https://solid.nodezero.social/u/profile/card#me',
+  ])
+})
+
 void test('directory-only trust circle members do not change targeting', () => {
   const recipients = resolveAudienceRecipients({
     audience: 'verified',

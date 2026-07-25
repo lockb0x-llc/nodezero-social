@@ -1,3 +1,6 @@
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+
 export interface CommunityDirectoryRecord {
   webId: string
   podUrl: string
@@ -15,8 +18,57 @@ export interface CommunityDirectoryIndex {
   members: CommunityDirectoryRecord[]
 }
 
+interface PersistedCommunityDirectory {
+  version: 1
+  records: CommunityDirectoryRecord[]
+}
+
 export class CommunityDirectoryStore {
   private readonly records = new Map<string, CommunityDirectoryRecord>()
+  private readonly persistenceFilePath: string
+
+  constructor(options?: { persistenceFilePath?: string }) {
+    this.persistenceFilePath =
+      options?.persistenceFilePath?.trim() ||
+      join(process.cwd(), '.data', 'community-directory.json')
+    this.loadFromDisk()
+  }
+
+  private loadFromDisk(): void {
+    try {
+      const raw = readFileSync(this.persistenceFilePath, 'utf8')
+      const parsed = JSON.parse(raw) as Partial<PersistedCommunityDirectory>
+      const records = Array.isArray(parsed.records) ? parsed.records : []
+      for (const record of records) {
+        if (
+          record &&
+          typeof record.webId === 'string' &&
+          typeof record.podUrl === 'string' &&
+          typeof record.issuer === 'string' &&
+          typeof record.listed === 'boolean' &&
+          typeof record.updatedAt === 'string'
+        ) {
+          this.records.set(record.webId, { ...record })
+        }
+      }
+    } catch {
+      // Missing or malformed file should not block provisioning startup.
+    }
+  }
+
+  private persistToDisk(): void {
+    const payload: PersistedCommunityDirectory = {
+      version: 1,
+      records: Array.from(this.records.values()),
+    }
+
+    const directory = dirname(this.persistenceFilePath)
+    mkdirSync(directory, { recursive: true })
+
+    const tempPath = `${this.persistenceFilePath}.tmp`
+    writeFileSync(tempPath, JSON.stringify(payload, null, 2), 'utf8')
+    renameSync(tempPath, this.persistenceFilePath)
+  }
 
   seedRecord(input: { webId: string; podUrl: string; issuer: string }): CommunityDirectoryRecord {
     const now = new Date().toISOString()
@@ -26,6 +78,7 @@ export class CommunityDirectoryStore {
       existing.issuer = input.issuer
       existing.updatedAt = now
       this.records.set(input.webId, existing)
+      this.persistToDisk()
       return existing
     }
 
@@ -38,6 +91,7 @@ export class CommunityDirectoryStore {
     }
 
     this.records.set(input.webId, record)
+    this.persistToDisk()
     return record
   }
 
@@ -55,6 +109,7 @@ export class CommunityDirectoryStore {
     }
 
     this.records.set(webId, record)
+    this.persistToDisk()
     return record
   }
 

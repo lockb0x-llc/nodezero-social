@@ -159,3 +159,92 @@ void test('writePod merges members and retries once on ETag conflict', async () 
   ])
   assert.equal(writes.length >= 2, true)
 })
+
+void test('writePod merges members and retries once on 409 conflict', async () => {
+  const ownerWebId = 'https://pod.example/alice/profile/card#me'
+  let localState: string[] = []
+  let readStep = 0
+  let putStep = 0
+
+  const readLocal = async () => localState
+  const writeLocal = async (_owner: string, members: string[]) => {
+    localState = [...members]
+  }
+  const fetchMock = async (_url: string | URL | Request, init?: RequestInit) => {
+    if (init?.method !== 'PUT') {
+      readStep += 1
+      if (readStep <= 2) {
+        return responseWithEtag(200, 'W/"etag-v1"', '{"version":1,"members":["https://pod.example/alice#me"]}')
+      }
+      return responseWithEtag(
+        200,
+        'W/"etag-v2"',
+        '{"version":1,"members":["https://pod.example/alice#me","https://pod.example/delta#me"]}'
+      )
+    }
+
+    putStep += 1
+    if (putStep === 1) return response(409)
+    return response(200)
+  }
+
+  const store = createTrustCircleStore({ readLocal, writeLocal })
+  await store.add(ownerWebId, 'https://pod.example/bob#me', {
+    fetch: fetchMock as typeof globalThis.fetch,
+  })
+
+  assert.deepEqual(localState, [
+    'https://pod.example/alice#me',
+    'https://pod.example/bob#me',
+    'https://pod.example/delta#me',
+  ])
+})
+
+void test('list reconciles stale local cache to pod state when pod document exists', async () => {
+  const ownerWebId = 'https://pod.example/alice/profile/card#me'
+  let localState: string[] = ['https://pod.example/stale#me']
+
+  const readLocal = async () => localState
+  const writeLocal = async (_owner: string, members: string[]) => {
+    localState = [...members]
+  }
+  const fetchMock = async () =>
+    responseWithEtag(
+      200,
+      'W/"etag-live"',
+      '{"version":1,"members":["https://pod.example/fresh#me","https://pod.example/bob#me"]}'
+    )
+
+  const store = createTrustCircleStore({ readLocal, writeLocal })
+  const members = await store.list(ownerWebId, { fetch: fetchMock as typeof globalThis.fetch })
+
+  assert.deepEqual(members, ['https://pod.example/bob#me', 'https://pod.example/fresh#me'])
+  assert.deepEqual(localState, ['https://pod.example/bob#me', 'https://pod.example/fresh#me'])
+})
+
+void test('add reconciles stale local cache against pod baseline before appending target', async () => {
+  const ownerWebId = 'https://pod.example/alice/profile/card#me'
+  let localState: string[] = ['https://pod.example/stale#me']
+  let readStep = 0
+
+  const readLocal = async () => localState
+  const writeLocal = async (_owner: string, members: string[]) => {
+    localState = [...members]
+  }
+  const fetchMock = async (_url: string | URL | Request, init?: RequestInit) => {
+    if (init?.method === 'PUT') return response(201)
+    readStep += 1
+    if (readStep === 1) {
+      return responseWithEtag(200, 'W/"etag-v1"', '{"version":1,"members":["https://pod.example/fresh#me"]}')
+    }
+    return responseWithEtag(200, 'W/"etag-v1"', '{"version":1,"members":["https://pod.example/fresh#me","https://pod.example/new#me"]}')
+  }
+
+  const store = createTrustCircleStore({ readLocal, writeLocal })
+  const result = await store.add(ownerWebId, 'https://pod.example/new#me', {
+    fetch: fetchMock as typeof globalThis.fetch,
+  })
+
+  assert.deepEqual(result, ['https://pod.example/fresh#me', 'https://pod.example/new#me'])
+  assert.deepEqual(localState, ['https://pod.example/fresh#me', 'https://pod.example/new#me'])
+})
