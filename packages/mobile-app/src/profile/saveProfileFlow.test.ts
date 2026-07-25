@@ -96,3 +96,39 @@ void test('executeProfileSaveFlow returns null merged state when public re-read 
   assert.equal(result.mergedSavedProfile, null)
   assert.equal(result.mergedSavedInterestsInput, null)
 })
+
+void test('executeProfileSaveFlow rejects invalid avatar URL before write operations', async () => {
+  let wrotePublic = false
+  let wrotePrivate = false
+
+  const deps: ProfileSaveDependencies = {
+    writePublicProfile: async () => {
+      wrotePublic = true
+    },
+    writePrivatePreferences: async () => {
+      wrotePrivate = true
+    },
+    readPublicProfile: async () => null,
+    readPrivatePreferences: async () => null,
+  }
+
+  await assert.rejects(
+    () =>
+      executeProfileSaveFlow({
+        ownerWebId: 'https://solid.nodezero.social/alice/profile/card#me',
+        currentProfile: {
+          displayName: 'Alice',
+          bio: 'Bio',
+          avatarUrl: 'javascript:alert(1)',
+          interests: [],
+          isNsfw: false,
+        },
+        interestsInput: 'x',
+        deps,
+      }),
+    /Avatar URL must be an absolute http\(s\) URL\./,
+  )
+
+  assert.equal(wrotePublic, false)
+  assert.equal(wrotePrivate, false)
+})

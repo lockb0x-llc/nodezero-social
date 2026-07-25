@@ -20,15 +20,31 @@ export function interestsToInput(interests: string[]): string {
 }
 
 export function parseInterestsInput(input: string): string[] {
-  return input
+  const deduped = new Set<string>()
+
+  for (const value of input
     .split(',')
     .map((value) => value.trim())
-    .filter(Boolean)
+    .filter(Boolean)) {
+    deduped.add(value)
+  }
+
+  return Array.from(deduped)
+}
+
+function normalizeOptionalField(value: string | undefined): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : undefined
 }
 
 export function buildUpdatedProfileDraft(profile: UserProfile, interestsInput: string): UserProfile {
   return {
     ...profile,
+    displayName: profile.displayName.trim(),
+    bio: profile.bio.trim(),
+    avatarUrl: normalizeOptionalField(profile.avatarUrl),
+    externalUrl: normalizeOptionalField(profile.externalUrl),
     interests: parseInterestsInput(interestsInput),
   }
 }

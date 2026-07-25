@@ -56,11 +56,20 @@ void test('parseInterestsInput trims and removes empty values', () => {
   )
 })
 
+void test('parseInterestsInput de-duplicates repeated values preserving first occurrence', () => {
+  assert.deepEqual(
+    parseInterestsInput('solid, privacy, solid, zk, privacy'),
+    ['solid', 'privacy', 'zk'],
+  )
+})
+
 void test('buildUpdatedProfileDraft applies parsed interests to draft', () => {
   const draft = buildUpdatedProfileDraft(
     {
-      displayName: 'Alice',
-      bio: 'Bio',
+      displayName: ' Alice ',
+      bio: ' Bio ',
+      avatarUrl: '   ',
+      externalUrl: ' https://example.com/profile ',
       interests: [],
       isNsfw: false,
     },
@@ -69,6 +78,9 @@ void test('buildUpdatedProfileDraft applies parsed interests to draft', () => {
 
   assert.deepEqual(draft.interests, ['nodezero', 'privacy'])
   assert.equal(draft.displayName, 'Alice')
+  assert.equal(draft.bio, 'Bio')
+  assert.equal(draft.avatarUrl, undefined)
+  assert.equal(draft.externalUrl, 'https://example.com/profile')
 })
 
 void test('buildPrivatePreferencesPayload derives NSFW flag from shared policy helper', () => {

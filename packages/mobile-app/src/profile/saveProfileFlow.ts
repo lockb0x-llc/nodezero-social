@@ -8,6 +8,7 @@ import {
   interestsToInput,
   mergeProfileData,
 } from './mergeProfileData'
+import { validateProfileForSave } from './profileValidation'
 
 export interface ProfileSaveDependencies {
   writePublicProfile(podRoot: string, profile: UserProfile): Promise<void>
@@ -44,6 +45,7 @@ export async function executeProfileSaveFlow(
   const { ownerWebId, currentProfile, interestsInput, deps } = input
   const podRoot = derivePodRootFromWebId(ownerWebId)
   const updatedProfile = buildUpdatedProfileDraft(currentProfile, interestsInput)
+  validateProfileForSave(updatedProfile)
 
   await deps.writePublicProfile(podRoot, updatedProfile)
 
