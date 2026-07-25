@@ -34,11 +34,10 @@ import { aesthetic } from '../src/theme/aesthetic'
 import { useConnections } from '../src/social/useConnections'
 import { deriveProfileViewState } from '../src/profile/viewState'
 import {
-  buildPrivatePreferencesPayload,
-  buildUpdatedProfileDraft,
   interestsToInput,
   mergeProfileData,
 } from '../src/profile/mergeProfileData'
+import { executeProfileSaveFlow } from '../src/profile/saveProfileFlow'
 
 const EMPTY_PROFILE: UserProfile = {
   displayName: '',
@@ -146,25 +145,28 @@ export default function ProfileScreen(): JSX.Element {
 
     // Session invariant: being authenticated guarantees a live Pod write
     // path through the proxy — there is no "restoring" write state anymore.
-    const podRoot = ownerWebId.split('/profile/')[0] + '/'
-    const updatedProfile = buildUpdatedProfileDraft(profile, interestsInput)
-
     setSaving(true)
     try {
-      await managerRef.current.writeProfile(podRoot, updatedProfile)
+      const result = await executeProfileSaveFlow({
+        ownerWebId,
+        currentProfile: profile,
+        interestsInput,
+        deps: {
+          writePublicProfile: async (podRoot, updatedProfile) => {
+            await managerRef.current?.writeProfile(podRoot, updatedProfile)
+          },
+          writePrivatePreferences: async (podRoot, preferencesPayload) => {
+            await preferencesManagerRef.current?.writePreferences(podRoot, preferencesPayload)
+          },
+          readPublicProfile: async (webIdToRead) => managerRef.current?.readProfile(webIdToRead) ?? null,
+          readPrivatePreferences: async (podRoot) =>
+            preferencesManagerRef.current?.readPreferences(podRoot) ?? null,
+        },
+      })
 
-      const preferencesPayload = buildPrivatePreferencesPayload(updatedProfile)
-      await preferencesManagerRef.current.writePreferences(podRoot, preferencesPayload)
-
-      // Re-read to pick up any server-side mutations (e.g. NSFW auto-tag).
-      const [savedPublic, savedPrivate] = await Promise.all([
-        managerRef.current.readProfile(`${podRoot}profile/card#me`),
-        preferencesManagerRef.current.readPreferences(podRoot),
-      ])
-      if (savedPublic) {
-        const mergedSaved = mergeProfileData(savedPublic, savedPrivate)
-        setProfile(mergedSaved)
-        setInterestsInput(interestsToInput(mergedSaved.interests))
+      if (result.mergedSavedProfile) {
+        setProfile(result.mergedSavedProfile)
+        setInterestsInput(result.mergedSavedInterestsInput ?? interestsToInput(result.mergedSavedProfile.interests))
       }
       Alert.alert('Saved', 'Your profile has been updated in your Solid Pod.')
     } catch (err) {
