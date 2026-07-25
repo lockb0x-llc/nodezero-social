@@ -28,3 +28,28 @@ void test('buildDirectoryBadges preserves expected badge order', () => {
     'In Trust Circle',
   ])
 })
+
+void test('buildDirectoryBadges omits verified when trust signal is false', () => {
+  const badges = buildDirectoryBadges({
+    isSelf: false,
+    isConnected: true,
+    isVerified: false,
+    inTrustCircle: true,
+  })
+
+  assert.deepEqual(badges, [
+    { label: 'Connected', kind: 'default' },
+    { label: 'In Trust Circle', kind: 'default' },
+  ])
+})
+
+void test('buildDirectoryBadges supports trust-circle only state', () => {
+  const badges = buildDirectoryBadges({
+    isSelf: false,
+    isConnected: false,
+    isVerified: false,
+    inTrustCircle: true,
+  })
+
+  assert.deepEqual(badges, [{ label: 'In Trust Circle', kind: 'default' }])
+})

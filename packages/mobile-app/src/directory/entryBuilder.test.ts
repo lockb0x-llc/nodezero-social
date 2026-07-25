@@ -50,3 +50,22 @@ void test('buildDirectoryEntry marks self and connection source correctly', () =
   assert.equal(selfEntry.source, 'self')
   assert.equal(connectionEntry.source, 'connection')
 })
+
+void test('buildDirectoryEntry keeps connection source when directory metadata exists', () => {
+  const selfWebId = 'https://solid.nodezero.social/self/profile/card#me'
+  const connectionWebId = 'https://solid.nodezero.social/friend/profile/card#me'
+
+  const entry = buildDirectoryEntry({
+    candidateWebId: connectionWebId,
+    effectiveWebId: selfWebId,
+    connections: [connectionWebId],
+    directoryRecord: {
+      webId: connectionWebId,
+      displayName: 'Directory Friend',
+      trustSignals: { verified: true },
+    },
+  })
+
+  assert.equal(entry.source, 'connection')
+  assert.equal(entry.verified, true)
+})
