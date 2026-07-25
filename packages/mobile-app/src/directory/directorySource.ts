@@ -1,5 +1,8 @@
 import Constants from 'expo-constants'
 import type { DirectoryRecord } from './types'
+import { deriveNameFromWebId } from './webIdName'
+
+export { deriveNameFromWebId } from './webIdName'
 
 export function isLikelyWebId(value: string): boolean {
   try {
@@ -7,16 +10,6 @@ export function isLikelyWebId(value: string): boolean {
     return parsed.protocol === 'https:' && parsed.pathname.includes('/profile/card')
   } catch {
     return false
-  }
-}
-
-export function deriveNameFromWebId(candidate: string): string {
-  try {
-    const parsed = new URL(candidate)
-    const segment = parsed.pathname.split('/').filter(Boolean)[0]
-    return segment || parsed.hostname
-  } catch {
-    return candidate
   }
 }
 

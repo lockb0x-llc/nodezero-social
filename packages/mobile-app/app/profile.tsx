@@ -64,7 +64,9 @@ export default function ProfileScreen(): JSX.Element {
 
   const { peerWebId } = useLocalSearchParams<{ peerWebId?: string }>()
   const router = useRouter()
-  const effectiveWebId = webId
+  const ownerWebId = webId
+  const viewedWebId = peerWebId ?? webId
+  const isPeerView = Boolean(peerWebId && peerWebId !== webId)
 
   const {
     connectionsLoading,
@@ -75,7 +77,7 @@ export default function ProfileScreen(): JSX.Element {
     addConnection,
     removeConnection,
   } = useConnections({
-    effectiveWebId,
+    effectiveWebId: ownerWebId,
     authFetch,
   })
 
@@ -107,16 +109,20 @@ export default function ProfileScreen(): JSX.Element {
 
   // Load profile from Pod.
   useEffect(() => {
-    if (!effectiveWebId || !managerRef.current) {
+    if (!viewedWebId || !managerRef.current) {
       setLoading(false)
       return
     }
 
     setLoading(true)
-    const podRoot = effectiveWebId.split('/profile/')[0] + '/'
+    const viewedPodRoot = viewedWebId.split('/profile/')[0] + '/'
+    const preferenceRead = !isPeerView
+      ? (preferencesManagerRef.current?.readPreferences(viewedPodRoot) ?? Promise.resolve(null))
+      : Promise.resolve(null)
+
     void Promise.all([
-      managerRef.current.readProfile(effectiveWebId),
-      preferencesManagerRef.current?.readPreferences(podRoot) ?? Promise.resolve(null),
+      managerRef.current.readProfile(viewedWebId),
+      preferenceRead,
     ])
       .then(([publicProfile, privatePreferences]) => {
         if (publicProfile) {
@@ -132,14 +138,18 @@ export default function ProfileScreen(): JSX.Element {
       .finally(() => {
         setLoading(false)
       })
-  }, [effectiveWebId])
+  }, [isPeerView, viewedWebId])
 
   const saveProfile = useCallback(async () => {
-    if (!effectiveWebId || !managerRef.current || !preferencesManagerRef.current) return
+    if (isPeerView) {
+      Alert.alert('Read-only', 'You can only edit your own profile.')
+      return
+    }
+    if (!ownerWebId || !managerRef.current || !preferencesManagerRef.current) return
 
     // Session invariant: being authenticated guarantees a live Pod write
     // path through the proxy — there is no "restoring" write state anymore.
-    const podRoot = effectiveWebId.split('/profile/')[0] + '/'
+    const podRoot = ownerWebId.split('/profile/')[0] + '/'
     const updatedProfile: UserProfile = {
       ...profile,
       interests: interestsInput
@@ -185,7 +195,7 @@ export default function ProfileScreen(): JSX.Element {
     } finally {
       setSaving(false)
     }
-  }, [effectiveWebId, interestsInput, profile])
+  }, [interestsInput, isPeerView, ownerWebId, profile])
 
   if (!isLoggedIn) {
     return (
@@ -279,7 +289,7 @@ export default function ProfileScreen(): JSX.Element {
 
         <Text style={styles.sectionLabel}>WebID</Text>
         <View style={styles.webIdRow}>
-          <Text style={[styles.webIdText, { marginBottom: 0, flex: 1 }]} numberOfLines={2}>{effectiveWebId}</Text>
+          <Text style={[styles.webIdText, { marginBottom: 0, flex: 1 }]} numberOfLines={2}>{viewedWebId}</Text>
           {profile.isNsfw === false && (
             <TouchableOpacity
               onPress={() => setZkTooltipOpen(true)}
@@ -313,6 +323,7 @@ export default function ProfileScreen(): JSX.Element {
           onChangeText={(v) => setProfile((p) => ({ ...p, displayName: v }))}
           placeholder="Your name"
           placeholderTextColor="#555"
+          editable={!isPeerView}
         />
 
         <Text style={styles.label}>Bio</Text>
@@ -324,6 +335,7 @@ export default function ProfileScreen(): JSX.Element {
           placeholderTextColor="#555"
           multiline
           numberOfLines={4}
+          editable={!isPeerView}
         />
 
         <Text style={styles.label}>Avatar URL</Text>
@@ -335,6 +347,7 @@ export default function ProfileScreen(): JSX.Element {
           placeholderTextColor="#555"
           autoCapitalize="none"
           keyboardType="url"
+          editable={!isPeerView}
         />
 
         <Text style={styles.label}>External URL</Text>
@@ -346,6 +359,7 @@ export default function ProfileScreen(): JSX.Element {
           placeholderTextColor="#555"
           autoCapitalize="none"
           keyboardType="url"
+          editable={!isPeerView}
         />
 
         <Text style={styles.label}>Interests (comma-separated)</Text>
@@ -355,22 +369,25 @@ export default function ProfileScreen(): JSX.Element {
           onChangeText={setInterestsInput}
           placeholder="web3, privacy, music, art"
           placeholderTextColor="#555"
+          editable={!isPeerView}
         />
 
-        <TouchableOpacity
-          style={[styles.saveButton, saving && styles.saveButtonDisabled]}
-          onPress={() => void saveProfile()}
-          disabled={saving}
-          activeOpacity={aesthetic.motion.pressOpacity}
-          accessibilityRole="button"
-          accessibilityLabel="Save profile"
-        >
-          {saving ? (
-            <ActivityIndicator color="#FFF" />
-          ) : (
-            <Text style={styles.saveButtonText}>Save to Solid Pod</Text>
-          )}
-        </TouchableOpacity>
+        {!isPeerView ? (
+          <TouchableOpacity
+            style={[styles.saveButton, saving && styles.saveButtonDisabled]}
+            onPress={() => void saveProfile()}
+            disabled={saving}
+            activeOpacity={aesthetic.motion.pressOpacity}
+            accessibilityRole="button"
+            accessibilityLabel="Save profile"
+          >
+            {saving ? (
+              <ActivityIndicator color="#FFF" />
+            ) : (
+              <Text style={styles.saveButtonText}>Save to Solid Pod</Text>
+            )}
+          </TouchableOpacity>
+        ) : null}
 
         <View style={styles.sectionCard}>
           <View style={styles.sectionCardHeader}>

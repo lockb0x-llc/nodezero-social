@@ -4,8 +4,10 @@ import type { ProfileManager } from '@nodezero/solid-pod-sync'
 import { useNodeZeroSession } from '../src/contexts/NodeZeroSessionContext'
 import { getSolidPodSyncManagers } from '../src/solid/podSyncManagers'
 import { aesthetic } from '../src/theme/aesthetic'
-import { deriveNameFromWebId, parseDirectoryRecords, resolveDirectoryEndpoint } from '../src/directory/directorySource'
+import { parseDirectoryRecords, resolveDirectoryEndpoint } from '../src/directory/directorySource'
 import type { DirectoryEntry } from '../src/directory/types'
+import type { DirectoryRecord } from '../src/directory/types'
+import { buildDirectoryEntry } from '../src/directory/entryBuilder'
 import { useConnections } from '../src/social/useConnections'
 import {
   addTrustCircleMember,
@@ -33,6 +35,7 @@ export default function CommunityDirectoryScreen(): JSX.Element {
     setDirectoryLoading(true)
     try {
       const seed = new Set<string>([effectiveWebId, ...connections])
+      const directoryMeta = new Map<string, DirectoryRecord>()
       const directoryEndpoint = resolveDirectoryEndpoint()
 
       if (directoryEndpoint) {
@@ -43,6 +46,7 @@ export default function CommunityDirectoryScreen(): JSX.Element {
             for (const candidate of parseDirectoryRecords(payload)) {
               if (candidate.listed === false) continue
               seed.add(candidate.webId)
+              directoryMeta.set(candidate.webId, candidate)
             }
           }
         } catch {
@@ -53,14 +57,13 @@ export default function CommunityDirectoryScreen(): JSX.Element {
       const entries = await Promise.all(
         Array.from(seed).map(async (candidateWebId) => {
           const profileData = await managerRef.current?.readProfile(candidateWebId).catch(() => null)
-          const displayName = profileData?.displayName?.trim() || deriveNameFromWebId(candidateWebId)
-
-          return {
-            webId: candidateWebId,
-            displayName,
-            source: candidateWebId === effectiveWebId ? 'self' : connections.includes(candidateWebId) ? 'connection' : 'directory',
-            verified: false,
-          } as DirectoryEntry
+          return buildDirectoryEntry({
+            candidateWebId,
+            effectiveWebId,
+            connections,
+            profileDisplayName: profileData?.displayName,
+            directoryRecord: directoryMeta.get(candidateWebId),
+          })
         })
       )
 
@@ -184,6 +187,7 @@ export default function CommunityDirectoryScreen(): JSX.Element {
                   <View style={styles.badgeRow}>
                     {isSelf ? <Text style={styles.metaBadge}>You</Text> : null}
                     {isConnected ? <Text style={styles.metaBadge}>Connected</Text> : null}
+                    {entry.verified ? <Text style={styles.metaBadgeVerified}>Verified</Text> : null}
                     {inTrustCircle ? <Text style={styles.metaBadge}>In Trust Circle</Text> : null}
                   </View>
                 </View>
@@ -309,6 +313,17 @@ const styles = StyleSheet.create({
     color: '#9EC2FF',
     borderWidth: 1,
     borderColor: '#365586',
+    borderRadius: 8,
+    fontSize: 10,
+    fontWeight: '700',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    overflow: 'hidden',
+  },
+  metaBadgeVerified: {
+    color: '#86EFAC',
+    borderWidth: 1,
+    borderColor: '#166534',
     borderRadius: 8,
     fontSize: 10,
     fontWeight: '700',

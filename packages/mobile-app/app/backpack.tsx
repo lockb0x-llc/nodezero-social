@@ -13,15 +13,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNodeZeroSession } from '../src/contexts/NodeZeroSessionContext';
 import { getSolidPodSyncManagers } from '../src/solid/podSyncManagers';
 import { aesthetic } from '../src/theme/aesthetic';
-
-const CONTAINER_PATHS: Record<string, string> = {
-  profile: '/profile/',
-  interests: '/interests/',
-  location: '/location/',
-};
+import { resolveAclContainerUrl, type BackpackPermissionKey } from '../src/backpack/aclUrl';
 
 export default function BackpackScreen(): JSX.Element {
-  const { authFetch } = useNodeZeroSession();
+  const { authFetch, podUrl, webId } = useNodeZeroSession();
   const [permissions, setPermissions] = useState({
     profile: true,
     interests: true,
@@ -29,17 +24,24 @@ export default function BackpackScreen(): JSX.Element {
   });
   const [updating, setUpdating] = useState<string | null>(null);
 
-  const togglePermission = (key: keyof typeof permissions): void => {
+  const togglePermission = (key: BackpackPermissionKey): void => {
+    const containerUrl = resolveAclContainerUrl(key, podUrl, webId)
+    if (!containerUrl) {
+      Alert.alert('Error', 'Unable to resolve your Pod URL for ACL updates.')
+      return
+    }
+
     const newValue = !permissions[key];
     setPermissions(prev => ({ ...prev, [key]: newValue }));
     setUpdating(key);
     const { profileManager: manager } = getSolidPodSyncManagers({ fetch: authFetch });
     manager
-      .updateWebACL(CONTAINER_PATHS[key], newValue)
-      .catch(() => {
+      .updateWebACL(containerUrl, newValue)
+      .catch((error: unknown) => {
         // Revert on error
         setPermissions(prev => ({ ...prev, [key]: !newValue }));
-        Alert.alert('Error', 'Failed to update permissions');
+        const message = error instanceof Error ? error.message : 'Failed to update permissions.'
+        Alert.alert('Error', message);
       })
       .finally(() => setUpdating(null));
   };
