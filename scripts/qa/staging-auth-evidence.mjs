@@ -115,13 +115,36 @@ async function readStoredSession(page) {
   }
 }
 
+async function waitForStoredSession(page, timeoutMs) {
+  await page.waitForFunction(
+    (key) => {
+      const raw = window.localStorage.getItem(key)
+      if (!raw) return false
+      try {
+        const session = JSON.parse(raw)
+        return Boolean(session?.accessToken && session?.refreshToken && session?.webId && session?.podUrl)
+      } catch {
+        return false
+      }
+    },
+    SESSION_STORAGE_KEY,
+    { timeout: timeoutMs },
+  )
+}
+
 async function waitForAuthenticatedSurface(page, timeoutMs) {
   await page.waitForURL((url) => /\/(feed|onboarding|local)([/?#]|$)/.test(url.pathname), {
     timeout: timeoutMs,
   })
-  // Onboarding is a transition surface: wait until the verified session
-  // reaches the feed (the RouteGuard drives this once attestation verifies).
-  await page.waitForURL((url) => /\/feed([/?#]|$)/.test(url.pathname), { timeout: timeoutMs })
+  await waitForStoredSession(page, timeoutMs)
+  // Staging can briefly land on /feed before the asynchronous browser-session
+  // bootstrap persists local state. The RouteGuard then uses /onboarding while
+  // the V3 attestation is checked and returns to /feed once it is verified.
+  await page.waitForFunction(
+    () => window.location.pathname === '/feed' && !document.body.innerText.includes('Finalizing your onboarding'),
+    undefined,
+    { timeout: timeoutMs },
+  )
 }
 
 function assertExpectedHandoff(page, stage) {
