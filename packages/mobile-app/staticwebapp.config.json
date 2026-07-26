@@ -1,6 +1,7 @@
 {
   "globalHeaders": {
-    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"
+    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+    "Content-Security-Policy": "frame-ancestors 'self' https://nodezero.social https://www.nodezero.social https://staging.nodezero.social"
   },
   "navigationFallback": {
     "rewrite": "/index.html",

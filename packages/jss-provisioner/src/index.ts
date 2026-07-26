@@ -631,6 +631,10 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
         credentialBackend: credentialStore.backendKind,
         credentialKeyConfigured: !credentialStore.usesEphemeralKey,
       },
+      browserSession: {
+        enabled: BROWSER_SESSION_ENABLED,
+        cookieDomain: BROWSER_SESSION_ENABLED ? BROWSER_SESSION_COOKIE_DOMAIN : null,
+      },
       treasuryCreateAccount: {
         onboardingEnabled: TREASURY_FUND_MEMBERS,
         internalApiEnabled: Boolean(INTERNAL_API_KEY),

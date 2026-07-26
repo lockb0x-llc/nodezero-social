@@ -11,8 +11,12 @@ identity and content. It combines three open protocols into one coherent identit
 - **Groth16 zero-knowledge proofs** — browser-generated `pod_ownership` proof binding a
   WebID/Pod to a Stellar account, encrypted and anchored on-chain.
 
-The live staging environment is at **[https://staging.nodezero.social](https://staging.nodezero.social)**
-(Stellar TestNet; no real assets at risk).
+The public Testnet sign-in entry is **[https://nodezero.social](https://nodezero.social)**.
+After authentication, the internal Testnet app runs at
+**[https://staging.nodezero.social](https://staging.nodezero.social)**. The
+first-party provisioner and wallet-broker hosts are `api.nodezero.social` and
+`wallet.nodezero.social` respectively. All four hosts remain Testnet-only;
+no real assets are at risk.
 
 During active development, **`testnet` is the release branch** for staging/TestNet readiness.
 The repository default branch remains **`main`** for governance and stable entrypoint workflows.
@@ -24,13 +28,13 @@ The repository default branch remains **`main`** for governance and stable entry
 ```
    User Browser (Expo web)
    ┌─────────────────────────────────────────────────────┐
-   │  Embedded Wallet (Stellar keypair, localStorage)    │
+   │  Wallet broker (Stellar keypair, wallet.nodezero.social) │
    │  pod_ownership Groth16 Proof (snarkjs/WASM)         │
    │  AES-256-GCM claim encryption (Web Crypto)          │
    └─────────────┬────────────┬────────────┬─────────────┘
                  │            │            │
-    Solid OIDC   │  /v1/solid │  Soroban   │  wss relay
-    sign-in      │  -account  │  RPC       │  (geo-local)
+   API cookie   │  /v1/solid │  Soroban   │  wss relay
+   bootstrap    │  -account  │  RPC       │  (geo-local)
                  ▼            ▼            ▼
    Node Zero Community Server (self-hosted CSS)   Provisioner (Azure App Service)
    solid.nodezero.social   ┌──────────────────────────────┐

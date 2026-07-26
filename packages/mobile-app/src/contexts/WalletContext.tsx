@@ -238,9 +238,25 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
     payload: Record<string, string> = {},
   ): Promise<T> => requestWalletBroker<T>(await getBrokerFrame(), hostedWalletBrokerUrl ?? '', operation, payload), [getBrokerFrame, hostedWalletBrokerUrl])
 
+  const getBrokerPublicKey = useCallback(async (): Promise<string> => {
+    let lastError: unknown
+    for (let attempt = 0; attempt < 120; attempt += 1) {
+      try {
+        const result = await requestBroker<{ stellarPublicKey?: string }>('get-public-key')
+        if (result.stellarPublicKey) return result.stellarPublicKey
+        throw new Error('Wallet broker did not return a public key.')
+      } catch (error) {
+        lastError = error
+        if (!(error instanceof Error) || !error.message.includes('still initializing')) throw error
+        await new Promise<void>((resolve) => setTimeout(resolve, 250))
+      }
+    }
+    throw lastError instanceof Error ? lastError : new Error('Wallet broker did not become ready.')
+  }, [requestBroker])
+
   const refreshIdentities = useCallback(async (): Promise<void> => {
     if (hostedWalletBrokerUrl) {
-      const { stellarPublicKey } = await requestBroker<{ stellarPublicKey: string }>('get-public-key')
+      const stellarPublicKey = await getBrokerPublicKey()
       setIdentities([{ keyId: 'broker', label: 'Device identity', createdAt: '', lastUsedAt: null }])
       setActiveIdentityKeyId('broker')
       setWalletInfo({ keyId: 'broker', publicKey: stellarPublicKey, isFunded: false })
@@ -253,7 +269,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
     ])
     setIdentities(listed)
     setActiveIdentityKeyId(active)
-  }, [hostedWalletBrokerUrl, requestBroker])
+  }, [getBrokerPublicKey, hostedWalletBrokerUrl])
 
   const hydrateSelectedWallet = useCallback(async (keyId: string): Promise<void> => {
     if (hostedWalletBrokerUrl) {

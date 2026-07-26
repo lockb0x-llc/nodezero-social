@@ -33,6 +33,7 @@ export default function WalletBrokerScreen(): JSX.Element {
 
     const onConnect = (event: MessageEvent<WalletBrokerRequest>) => {
       if (!ALLOWED_PARENT_ORIGINS.has(event.origin)) return
+      if (event.source !== window.parent) return
       if (event.data?.protocol !== WALLET_BROKER_PROTOCOL) return
       const port = event.ports[0]
       if (!port) return

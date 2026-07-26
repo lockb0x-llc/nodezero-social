@@ -318,15 +318,6 @@ resource walletBrokerCname 'Microsoft.Network/dnsZones/CNAME@2018-05-01' = {
   }
 }
 
-resource walletBrokerCustomDomain 'Microsoft.Web/staticSites/customDomains@2022-09-01' = {
-  parent: staticWebApp
-  name: '${walletBrokerHostLabel}.${dnsZoneName}'
-  properties: {
-    validationMethod: 'cname-delegation'
-  }
-  dependsOn: [walletBrokerCname]
-}
-
 // api.nodezero.social is the first-party provisioner host. The App Service
 // hostname/certificate binding is applied by the deployment workflow after
 // this CNAME is live and Azure can validate ownership.

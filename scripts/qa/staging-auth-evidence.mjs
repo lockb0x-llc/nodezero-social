@@ -36,6 +36,8 @@ const solidHost = (process.env.SOLID_HOST || 'solid.nodezero.social').toLowerCas
 const createTimeoutMs = Number(process.env.AUTH_E2E_CREATE_TIMEOUT_MS || 8 * 60 * 1000)
 const sessionTimeoutMs = Number(process.env.AUTH_E2E_SESSION_TIMEOUT_MS || 4 * 60 * 1000)
 const bridgeV3FactoryId = process.env.AUTH_E2E_V3_FACTORY_ID || 'CDFHCQA3YJCITWEMNLCSRGQVVFEXGTONWSQJTD5VIZO7YV4IOKZUPCGT'
+const internalAppUrl = (process.env.NZ_INTERNAL_APP_URL || 'https://staging.nodezero.social').replace(/\/$/, '')
+const expectCrossHostHandoff = /^(1|true|yes)$/i.test(process.env.NZ_EXPECT_INTERNAL_STAGING_HANDOFF ?? 'false')
 
 const SESSION_STORAGE_KEY = 'nz.session.v2'
 
@@ -120,6 +122,14 @@ async function waitForAuthenticatedSurface(page, timeoutMs) {
   // Onboarding is a transition surface: wait until the verified session
   // reaches the feed (the RouteGuard drives this once attestation verifies).
   await page.waitForURL((url) => /\/feed([/?#]|$)/.test(url.pathname), { timeout: timeoutMs })
+}
+
+function assertExpectedHandoff(page, stage) {
+  if (!expectCrossHostHandoff) return
+  const current = new URL(page.url())
+  if (current.origin !== internalAppUrl || !/^\/feed\/?$/.test(current.pathname)) {
+    fail(`${stage} did not hand off to the internal staging feed: ${page.url()}`)
+  }
 }
 
 async function maybeSelectAccountForReturningSignIn(page, expectedWebId) {
@@ -244,6 +254,7 @@ async function main() {
   await waitForAuthenticatedSurface(page, createTimeoutMs).catch(async (error) => {
     fail(`New-user journey did not reach the feed: ${String(error?.message || error)}\nPage: ${await pageTextSnippet(page)}`)
   })
+  assertExpectedHandoff(page, 'New-user onboarding')
 
   const session = await readStoredSession(page)
   if (!session?.accessToken || !session?.refreshToken) {
@@ -290,6 +301,7 @@ async function main() {
   await waitForAuthenticatedSurface(page, sessionTimeoutMs).catch(async (error) => {
     fail(`Returning-user journey did not reach the feed: ${String(error?.message || error)}\nPage: ${await pageTextSnippet(page)}`)
   })
+  assertExpectedHandoff(page, 'Returning user sign-in')
 
   const returningSession = await readStoredSession(page)
   if (!returningSession?.accessToken) {

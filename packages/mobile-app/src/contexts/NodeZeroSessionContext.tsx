@@ -112,7 +112,8 @@ export function getProvisionerUrl(): string {
 
 function browserSessionBootstrapEnabled(): boolean {
   const configured = (getAppExtra()?.browserSessionEnabled ?? '').trim().toLowerCase()
-  return configured === 'true' && typeof window !== 'undefined'
+  if (configured !== 'true' || typeof window === 'undefined') return false
+  return window.location.hostname.toLowerCase() !== 'wallet.nodezero.social'
 }
 
 /** Origins whose URLs must be rewritten onto the Pod Access Proxy. */

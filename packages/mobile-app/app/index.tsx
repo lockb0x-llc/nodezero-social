@@ -503,8 +503,11 @@ export default function LandingScreen(): JSX.Element {
       const result = await stellarSignIn({ webId })
       setAccountChoices([])
       setSelectedAccountWebId(null)
+      if (shouldHandoffToInternalStaging()) {
+        handoffToInternalStaging()
+        return
+      }
       await adoptSession(result)
-      if (shouldHandoffToInternalStaging()) handoffToInternalStaging()
     } catch (err) {
       if (err instanceof NoAccountError) {
         setError('No node exists for this device key yet. Create your node below to get started.')
@@ -643,7 +646,7 @@ export default function LandingScreen(): JSX.Element {
 
       // Adopt the inline session — the user lands in the app authenticated,
       // with the RouteGuard driving the attestation-verified transition.
-      await adoptSession({
+      const sessionInput = {
         session: result.session,
         webId: result.webId,
         podUrl: result.podUrl,
@@ -653,8 +656,12 @@ export default function LandingScreen(): JSX.Element {
           proofRootHex: result.lockbox.proofRootHex ?? null,
         },
         createdAt: new Date().toISOString(),
-      })
-      if (shouldHandoffToInternalStaging()) handoffToInternalStaging()
+      }
+      if (shouldHandoffToInternalStaging()) {
+        handoffToInternalStaging()
+        return
+      }
+      await adoptSession(sessionInput)
     } catch (err) {
       console.error('[LandingScreen] create node failed:', err)
       failActiveCreateStep()

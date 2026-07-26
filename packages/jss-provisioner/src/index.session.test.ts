@@ -329,6 +329,11 @@ void test('browser session bootstraps a fresh staging-local session and logout r
   assert.ok(!setCookie?.includes((created.json.session as SessionShape).accessToken))
 
   const cookie = setCookie?.split(';', 1)[0] ?? ''
+  const rejectedOrigin = await fetch(`${baseUrl}/v1/auth/browser-session`, {
+    headers: { origin: 'https://evil.example.invalid', cookie },
+  })
+  assert.equal(rejectedOrigin.status, 403)
+
   const bootstrap = await fetch(`${baseUrl}/v1/auth/browser-session`, {
     headers: { origin: 'https://staging.nodezero.social', cookie },
   })

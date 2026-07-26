@@ -1,10 +1,17 @@
 # G3 Visual Evidence Index
 
-All artifacts in this directory were captured against `https://staging.nodezero.social` after QA journey matrix PASS confirmation.
+Artifacts cover the public `https://nodezero.social` entry journey and the
+internal `https://staging.nodezero.social` application journey after the
+relevant GitHub Actions release gate passes.
 
 ## Journey to screenshot mapping
 
 - Onboarding: `docs/screenshots/onboarding-solid-step1.png`
+- Apex-to-staging onboarding evidence: `docs/screenshots/onboarding/<run>-01-apex-create.png`,
+  `docs/screenshots/onboarding/<run>-02-staging-verified-feed.png`, and
+  `docs/screenshots/onboarding/<run>-03-apex-returning-signin-staging-feed.png`.
+  The matching `<run>-evidence.json` contains public Testnet/POD/lockb0x
+  evidence only.
 - Wallet creation and testnet funding: `docs/screenshots/wallet-creation-step1.png`
 - Feed view/post: `docs/screenshots/feed-view-post-step1.png`
 - Local messaging: `docs/screenshots/local-messaging-step1.png`

@@ -32,6 +32,9 @@ code.
 - [ ] ZK artifacts and manifest URLs published and reachable.
 - [x] Relay service deployed with a reachable `/health` endpoint.
 - [x] Static Web App custom domain `staging.nodezero.social` resolves with valid TLS.
+- [ ] `nodezero.social`, `staging.nodezero.social`, `api.nodezero.social`, and
+   `wallet.nodezero.social` resolve with valid TLS and the release marker
+   identifies the same successful GitHub Actions commit.
 
 ## Automated smoke (gate)
 
@@ -55,6 +58,9 @@ code.
 | AU5 | New-user seamless onboarding: handle + email → Create Your Node | ZK proof → Pod + WebID created → lockb0x anchored on-chain → **inline NodeZero session** → authenticated feed with no redirect leg and no password anywhere | RE-RUN REQUIRED (cutover) | Automated by `scripts/qa/staging-auth-evidence.mjs` (Journey 1); on-chain lockb0x asserted via stellar.expert. |
 | AU6 | Returning sign-in restores the same identity | Same WebID as onboarding; session carries lockb0x anchor metadata; client-side attestation check verifies | RE-RUN REQUIRED (cutover) | Automated (Journey 2); WebID equality asserted. |
 | AU7 | Fail-closed enforcement: tamper/clear the stored session, deep-link `/feed` | App lands on the sign-in page; forged record destroyed; no zombie state | RE-RUN REQUIRED (cutover) | Automated (Journey 3) + Playwright `auth-invariant.spec.ts` (I2). |
+| AU8 | New user begins on `nodezero.social`, creates a Node, and is handed to `staging.nodezero.social/feed` | Browser follows a first-party cookie handoff with no URL token, no browser↔CSS request, and a staging-local session only after direct V3 lockb0x commitment verification | RE-RUN REQUIRED | Headed `pnpm qa:evidence:apex-staging-onboarding`; retain sanitized screenshots, trace, Treasury funding transaction, and V3 child evidence. |
+| AU9 | Returning user begins on `nodezero.social` and taps **Sign In** | Wallet broker signs the challenge; the API rotates a first-party opaque session; the same WebID and lockb0x appear at `staging.nodezero.social/feed` without a second prompt | RE-RUN REQUIRED | Headed evidence script asserts same WebID, same lockb0x, no CSS requests, and no Friendbot requests. |
+| AU10 | Attempt cookie bootstrap from an unapproved origin or with a revoked cookie | Provisioner returns `403` for unapproved origin and `401 session_invalid` for revoked/expired session; no app route is opened | RE-RUN REQUIRED | Covered by `index.session.test.ts`; add browser negative proof in release evidence. |
 
 ### Navigation UX (nav overflow fix + Settings-via-Profile)
 

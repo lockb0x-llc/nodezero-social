@@ -114,6 +114,26 @@ jobs:
             --certificate-thumbprint "$thumbprint" \
             --ssl-type SNI
 
+      - name: Bind first-party wallet broker domain
+        run: |
+          set -euo pipefail
+          wallet_host="wallet.nodezero.social"
+          for attempt in {1..20}; do
+            if az staticwebapp hostname set \
+              --name "$STATIC_WEB_APP_NAME" \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --hostname "$wallet_host" \
+              --validation-method cname-delegation; then
+              echo "${wallet_host} bound successfully."
+              break
+            fi
+            if [ "$attempt" -eq 20 ]; then
+              echo "Unable to bind ${wallet_host} after DNS propagation retries."
+              exit 1
+            fi
+            sleep 15
+          done
+
       - name: Verify first-party host TLS
         run: |
           set -euo pipefail
@@ -445,6 +465,8 @@ jobs:
       - name: Run onboarding/authentication E2E gate
         env:
           STAGING_BASE_URL: https://nodezero.social
+          NZ_INTERNAL_APP_URL: https://staging.nodezero.social
+          NZ_EXPECT_INTERNAL_STAGING_HANDOFF: 'true'
           AUTH_E2E_SESSION_TIMEOUT_MS: '360000'
         run: pnpm qa:smoke:auth
 
