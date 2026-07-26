@@ -85,12 +85,13 @@ function RouteGuard(): null {
 
     if (attestationStatus === 'unlinked') {
       // 'unlinked' means the lockbox is confirmed absent after retries — sign
-      // out and clear local state so the user can re-onboard cleanly.
+      // out and clear local state so the user can re-onboard cleanly. Preserve
+      // a landing-page reason so legacy nodes do not look like a redirect loop.
       pendingProtectedRouteRef.current = null
       if (!isSignOutInFlightRef.current) {
         isSignOutInFlightRef.current = true
         void signOut().finally(() => {
-          router.replace('/')
+          router.replace('/?reason=legacy-attestation')
           isSignOutInFlightRef.current = false
         })
       }

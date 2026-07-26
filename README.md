@@ -185,6 +185,9 @@ Identity release gate note:
 - Staging deploy (`.github/workflows/staging-deploy.yml`) runs
    `pnpm qa:smoke:auth` as a blocking onboarding/authentication gate with a
    single retry for transient IdP/OIDC timing failures.
+- Treat staging as deployed only when the latest `Staging Deploy` GitHub
+   Actions run succeeds and its `deploy-marker.json` provenance matches the
+   intended commit. Direct Azure changes do not replace this release evidence.
 
 ---
 

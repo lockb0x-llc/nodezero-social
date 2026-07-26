@@ -111,7 +111,15 @@ jobs:
 
       - name: Package JSS provisioner artifact
         working-directory: packages/jss-provisioner
-        run: zip -r deploy.zip dist package.json startup.sh
+        run: |
+          set -euo pipefail
+          # App Service removes root node_modules during startup. Keep runtime
+          # dependencies next to dist/index.js so Node can resolve snarkjs for
+          # the V3 bridge proof verifier after deployment.
+          cp package.json dist/package.json
+          npm install --prefix dist --omit=dev --ignore-scripts --no-package-lock
+          node -e "console.log(require.resolve('snarkjs', { paths: ['dist'] }))"
+          zip -r deploy.zip dist package.json startup.sh
 
       - name: Configure JSS provisioner runtime
         run: |
@@ -130,7 +138,16 @@ jobs:
               JSS_ISSUER_URL="https://solid.nodezero.social" \
               JSS_PUBLIC_PROVISIONER_BASE_URL="https://${JSS_PROVISIONER_APP_NAME}.azurewebsites.net" \
               JSS_SOLID_CSS_BASE_URL="https://solid.nodezero.social" \
-              JSS_ALLOWED_ORIGINS="https://staging.nodezero.social,https://nodezero.social,https://www.nodezero.social,https://solid.nodezero.social,http://localhost:19006,http://localhost:8081"
+              JSS_ALLOWED_ORIGINS="https://staging.nodezero.social,https://nodezero.social,https://www.nodezero.social,https://solid.nodezero.social,http://localhost:19006,http://localhost:8081" \
+              JSS_LOCKBOX_FACTORY_MODE="soroban" \
+              JSS_LOCKBOX_FACTORY_VERSION="v3" \
+              JSS_LOCKBOX_FACTORY_CONTRACT_ID="CDFHCQA3YJCITWEMNLCSRGQVVFEXGTONWSQJTD5VIZO7YV4IOKZUPCGT" \
+              JSS_LOCKBOX_FACTORY_OPERATOR_ADDRESS="GDMJ3GFM2RPB5FRX5DS2IRRSVF6RFYILXZ2WIUIJQJJOHXJTQXOQVBHR" \
+              JSS_LOCKBOX_BRIDGE_V3_VK_URL="https://stki7yquyjmnskg.blob.core.windows.net/zk-artifacts/lockb0x_bridge_v3/pod_stellar_bridge_v3_vk.json" \
+              JSS_IDENTITY_CONTRACT_ID="CCHFYOKLGVTXEYYHWEFPI22FR26VRGG2CBBUTP6XPW3ZSIWIKEVQQ44K" \
+              JSS_TREASURY_SOURCE_ACCOUNT="nodezero-testnet-treasury" \
+              JSS_DEPLOYER_SOURCE_ACCOUNT="nodezero-testnet-lockbox-deployer" \
+              JSS_TREASURY_FUND_MEMBERS="true"
 
           # Session/credential secrets: only overwrite when the GitHub secret is
           # configured, so values managed directly on the App Service (e.g. set
@@ -224,9 +241,10 @@ jobs:
           NZ_RELAY_URL: wss://nodezero-social-staging-testnet-relay.azurewebsites.net
           NZ_IDENTITY_CONTRACT_ID: CCHFYOKLGVTXEYYHWEFPI22FR26VRGG2CBBUTP6XPW3ZSIWIKEVQQ44K
           NZ_LOCKBOX_CONTRACT_ID: CB36LY5WZLJNMY4DHRXQER6LU3L4E5MGFYT2XSJG7ZJZV5SIIOKODT2H
-          NZ_LOCKBOX_FACTORY_CONTRACT_ID: CA5MASVC7CH646QUZM6HFC3JAYIG4TCRHJDSBDOBFP66IW7TXYYHFUVB
+          NZ_LOCKBOX_FACTORY_CONTRACT_ID: CDFHCQA3YJCITWEMNLCSRGQVVFEXGTONWSQJTD5VIZO7YV4IOKZUPCGT
+          NZ_LOCKBOX_FACTORY_VERSION: '3'
           NZ_ZK_ARTIFACTS_URL: https://stki7yquyjmnskg.blob.core.windows.net/zk-artifacts/
-          NZ_ZK_MANIFEST_URL: https://stki7yquyjmnskg.blob.core.windows.net/zk-artifacts/zk-testnet-artifacts.json
+          NZ_ZK_MANIFEST_URL: https://stki7yquyjmnskg.blob.core.windows.net/zk-artifacts/lockb0x-bridge-v3/zk-testnet-lockbox-bridge-v3-artifacts.json
           NZ_NODEZERO_ISSUER_URL: https://solid.nodezero.social/
           NZ_NODEZERO_DIRECTORY_URL: https://solid.nodezero.social/public/nodezero-pod-holders.json
           NZ_SEAMLESS_ONBOARDING_ENABLED: 'true'
@@ -373,8 +391,10 @@ jobs:
           NZ_RELAY_URL: wss://nodezero-social-staging-testnet-relay.azurewebsites.net
           NZ_IDENTITY_CONTRACT_ID: CCHFYOKLGVTXEYYHWEFPI22FR26VRGG2CBBUTP6XPW3ZSIWIKEVQQ44K
           NZ_LOCKBOX_CONTRACT_ID: CB36LY5WZLJNMY4DHRXQER6LU3L4E5MGFYT2XSJG7ZJZV5SIIOKODT2H
+          NZ_LOCKBOX_FACTORY_CONTRACT_ID: CDFHCQA3YJCITWEMNLCSRGQVVFEXGTONWSQJTD5VIZO7YV4IOKZUPCGT
+          NZ_LOCKBOX_FACTORY_VERSION: '3'
           NZ_ZK_ARTIFACTS_URL: https://stki7yquyjmnskg.blob.core.windows.net/zk-artifacts/
-          NZ_ZK_MANIFEST_URL: https://stki7yquyjmnskg.blob.core.windows.net/zk-artifacts/zk-testnet-artifacts.json
+          NZ_ZK_MANIFEST_URL: https://stki7yquyjmnskg.blob.core.windows.net/zk-artifacts/lockb0x-bridge-v3/zk-testnet-lockbox-bridge-v3-artifacts.json
           NZ_NODEZERO_ISSUER_URL: https://solid.nodezero.social/
           NZ_JSS_PROVISIONER_URL: https://nodezero-social-staging-testnet-provisioner.azurewebsites.net
           NZ_SOLID_BOOTSTRAP_ENABLED: 'true'

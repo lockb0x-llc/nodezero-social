@@ -81,6 +81,23 @@ Do not mark work complete without objective evidence.
 ## Editing and review priorities
 Prefer correctness and release safety over feature breadth.
 
+## Deployment Verification Policy
+Before troubleshooting a staging or deployed behavior locally, verify the
+latest relevant GitHub Actions deployment run for the target branch and
+environment:
+- Confirm its conclusion is `success`, not merely that Azure endpoints respond.
+- Confirm the deployed commit/run provenance matches the code under
+  investigation (use the staging `deploy-marker.json` where available).
+- If the latest deployment failed, inspect its failed job logs and fix or
+  explicitly account for that release failure before drawing conclusions from
+  direct/manual infrastructure changes.
+- Do not describe staging as updated, validated, or release-ready unless the
+  latest relevant workflow run is successful and its blocking gates passed.
+
+Manual Azure deployments are recovery tools, not release evidence. After any
+manual deployment, reconcile the workflow and obtain a successful GitHub
+Actions deployment before treating the change as delivered.
+
 Priority order:
 1. Environment safety and chain/cloud invariants.
 2. User-visible functional correctness.

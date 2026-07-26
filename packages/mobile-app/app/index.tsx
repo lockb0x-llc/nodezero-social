@@ -22,7 +22,7 @@ import {
   Linking,
   Modal,
 } from 'react-native'
-import { useRouter, usePathname } from 'expo-router'
+import { useLocalSearchParams, useRouter, usePathname } from 'expo-router'
 import Constants from 'expo-constants'
 import { useNodeZeroSession } from '../src/contexts/NodeZeroSessionContext'
 import { useWallet } from '../src/contexts/WalletContext'
@@ -80,6 +80,12 @@ function mapCreateNodeError(err: unknown): string {
   }
   if (lower.includes('lock expired after') || lower.includes('pod provisioning is temporarily busy')) {
     return 'Pod provisioning is temporarily busy. Please wait a few seconds and tap Create Your Node again.'
+  }
+  if (lower.includes('bridge proof claimhash does not match')) {
+    return (
+      'Your zero-knowledge proof did not match the active Testnet bridge configuration. ' +
+      'Refresh the page to load the current release, then create a new test node.'
+    )
   }
   return err.message || 'Could not create your node. Try again.'
 }
@@ -412,6 +418,7 @@ export default function LandingScreen(): JSX.Element {
   } = useWallet()
   const router = useRouter()
   const pathname = usePathname()
+  const { reason } = useLocalSearchParams<{ reason?: string }>()
   const landingMode = getLandingMode()
   const showMarketingContent = landingMode === 'marketing'
   const seamlessConfig = getSeamlessSignupConfig()
@@ -427,6 +434,16 @@ export default function LandingScreen(): JSX.Element {
   const [accountChoices, setAccountChoices] = useState<Array<{ webId: string; podUrl: string }>>([])
   const [selectedAccountWebId, setSelectedAccountWebId] = useState<string | null>(null)
   const knownExistingEmailsRef = React.useRef<Set<string>>(new Set())
+
+  React.useEffect(() => {
+    if (reason === 'legacy-attestation') {
+      setError(
+        'This device belongs to a legacy Testnet node without a V3 on-chain attestation. ' +
+        'It cannot sign in to this release. Create a new test node with a new identity.',
+      )
+      setErrorAction(null)
+    }
+  }, [reason])
 
   /** Marks the given step done and activates the next pending step. */
   const advanceCreateStep = (doneKey: string): void => {
