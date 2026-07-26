@@ -95,7 +95,6 @@ jobs:
 
           thumbprint="$(az webapp config ssl list \
             --resource-group "$AZURE_RESOURCE_GROUP" \
-            --name "$JSS_PROVISIONER_APP_NAME" \
             --query "[?contains(hostNames, '${api_host}')].thumbprint | [0]" -o tsv)"
           if [ -z "$thumbprint" ]; then
             thumbprint="$(az webapp config ssl create \
