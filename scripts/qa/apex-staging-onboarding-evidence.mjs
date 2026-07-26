@@ -106,6 +106,7 @@ async function main() {
 
   const browser = await chromium.launch({ headless })
   const context = await browser.newContext({ viewport: { width: 1440, height: 1024 } })
+  await context.tracing.start({ screenshots: true, snapshots: true, sources: true })
   const page = await context.newPage()
   const cssRequests = []
   const friendbotRequests = []
@@ -196,10 +197,13 @@ async function main() {
         `${runStamp}-02-staging-verified-feed.png`,
         `${runStamp}-03-apex-returning-signin-staging-feed.png`,
       ],
+      trace: `${runStamp}-playwright-trace.zip`,
     }
     await writeFile(join(evidenceDir, `${runStamp}-evidence.json`), `${JSON.stringify(evidence, null, 2)}\n`, 'utf8')
+    await context.tracing.stop({ path: join(evidenceDir, `${runStamp}-playwright-trace.zip`) })
     log(`PASS: wrote sanitized evidence to ${evidenceDir}`)
   } finally {
+    await context.tracing.stop().catch(() => undefined)
     await browser.close()
   }
 }

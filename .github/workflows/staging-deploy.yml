@@ -271,10 +271,12 @@ jobs:
 
       - name: Deploy JSS provisioner to App Service
         run: |
-          az webapp deployment source config-zip \
+          az webapp deploy \
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --name "$JSS_PROVISIONER_APP_NAME" \
-            --src packages/jss-provisioner/deploy.zip
+            --src-path packages/jss-provisioner/deploy.zip \
+            --type zip \
+            --async true
 
       - name: Restart JSS provisioner
         run: |
