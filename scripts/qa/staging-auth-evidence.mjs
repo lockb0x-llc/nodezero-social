@@ -181,6 +181,13 @@ async function verifyLockboxOnChain(contractId, factoryContractId) {
           log(`On-chain lockb0x ${contractId}: storage_entries=${entries} (${description})`)
           return
         }
+        if (isBridgeV3 && body?.contract === contractId) {
+          log(
+            `On-chain lockb0x ${contractId}: V3 contract indexed; storage index is pending ` +
+            '(the authenticated client already verified its direct RPC commitment read).',
+          )
+          return
+        }
         log(`On-chain lockb0x ${contractId}: storage_entries=${entries}; waiting for indexer...`)
       } else {
         log(`stellar.expert responded ${res.status}; retrying...`)

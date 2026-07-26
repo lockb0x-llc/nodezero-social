@@ -18,6 +18,6 @@
       "@nodezero/zk-crypto/attestation-cipher": ["../zk-crypto/src/attestation-cipher.ts"]
     }
   },
-  "include": ["app/**/*", "src/**/*"],
+  "include": ["app/**/*", "src/**/*", "../zk-crypto/src/circomlibjs-direct.d.ts"],
   "exclude": ["node_modules"]
 }

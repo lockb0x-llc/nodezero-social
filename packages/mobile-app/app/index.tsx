@@ -568,7 +568,7 @@ export default function LandingScreen(): JSX.Element {
         proofHex: attestation.proofHex,
         proofHashHex: attestation.proofHashHex,
         publicSignals: attestation.publicSignals,
-        circuitVersion: 1,
+        circuitVersion: attestation.claim.circuitVersion ?? 1,
       })
       advanceCreateStep('pod')
       setCreateNotice('Confirming your on-chain lockb0x anchor…')
