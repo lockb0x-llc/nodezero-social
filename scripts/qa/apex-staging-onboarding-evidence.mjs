@@ -65,6 +65,34 @@ async function waitForStagingFeed(page, timeoutMs) {
   }, { timeout: timeoutMs })
 }
 
+async function waitForSession(page, timeoutMs) {
+  await page.waitForFunction(
+    (key) => {
+      const raw = window.localStorage.getItem(key)
+      if (!raw) return false
+      try {
+        const session = JSON.parse(raw)
+        return Boolean(session?.accessToken && session?.refreshToken && session?.webId && session?.podUrl)
+      } catch {
+        return false
+      }
+    },
+    sessionStorageKey,
+    { timeout: timeoutMs },
+  )
+}
+
+async function waitForVerifiedStagingFeed(page, timeoutMs) {
+  await page.waitForFunction(
+    () =>
+      window.location.pathname === '/feed' &&
+      !document.body.innerText.includes('Finalizing your onboarding') &&
+      document.body.innerText.toLowerCase().includes('nodezero session'),
+    undefined,
+    { timeout: timeoutMs },
+  )
+}
+
 async function verifyTreasuryCreation(publicKey) {
   for (let attempt = 1; attempt <= 20; attempt += 1) {
     const response = await fetch(
@@ -135,6 +163,8 @@ async function main() {
     await page.getByLabel('Notification email').first().fill(email)
     await page.getByText('Create Your Node', { exact: true }).first().click()
     await waitForStagingFeed(page, createTimeoutMs)
+    await waitForSession(page, createTimeoutMs)
+    await waitForVerifiedStagingFeed(page, createTimeoutMs)
     await page.screenshot({ path: join(evidenceDir, `${runStamp}-02-staging-verified-feed.png`), fullPage: true })
 
     const createdSession = await readSession(page)
@@ -158,6 +188,8 @@ async function main() {
     await page.goto(`${apexUrl}/`, { waitUntil: 'domcontentloaded', timeout: 60_000 })
     await page.getByText('Sign In', { exact: true }).first().click()
     await waitForStagingFeed(page, sessionTimeoutMs)
+    await waitForSession(page, sessionTimeoutMs)
+    await waitForVerifiedStagingFeed(page, sessionTimeoutMs)
     await page.screenshot({ path: join(evidenceDir, `${runStamp}-03-apex-returning-signin-staging-feed.png`), fullPage: true })
 
     const returningSession = await readSession(page)

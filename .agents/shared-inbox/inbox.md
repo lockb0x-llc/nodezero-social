@@ -39852,3 +39852,9 @@ Context: AUDIT_AGENT and the V3 lockb0x auditor are configured. The auditor vali
 Request: Run `NZ_ENV_PROFILE=staging-testnet NZ_LOCKBOX_FACTORY_CONTRACT_ID=CDFHCQA3YJCITWEMNLCSRGQVVFEXGTONWSQJTD5VIZO7YV4IOKZUPCGT pnpm qa:audit:lockbox` immediately after a successful Testnet onboarding creation, then attach the resulting PASS/NO-GO output to release evidence.
 Evidence: `package.json` (`qa:audit:lockbox`); `scripts/qa/lockbox-auditor.mjs`; `.agents/agents/AUDIT_AGENT.md`; focused Testnet audit PASS (no V3 child deployments in ledgers 3813264-3814764); Prettier check PASS for the audit command and role configuration.
 Due: Before the next staging release sign-off.
+
+[2026-07-26 21:32 UTC] [AUDIT_AGENT->QA_RELEASE_AGENT,PROJECT_MANAGER] [P1] [DONE]
+Context: GitHub Actions staging deployment `30220192118` succeeded for commit `d2324a2`; the blocking onboarding/authentication gate, smoke suite, and runtime proofs passed.
+Request: Treat the staged Testnet release as chain-audited. Preserve the evidence bundle and use the same audit command after future onboarding releases.
+Evidence: Headed Playwright run `ms2b99rkfq6x` in `docs/screenshots/onboarding/` proves apex-to-staging and returning handoff, same WebID/lockb0x, Treasury account creation, and zero browser CSS/Friendbot traffic. `pnpm qa:audit:lockbox` passed 13 Factory V3 child instances, including `CALVPRGQC44DGZPPNFSNNS3E4LMPUXRRFGWKCJJG6VDYJ2QKZGSZRNQW`.
+Due: Complete.

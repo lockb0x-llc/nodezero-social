@@ -32,15 +32,21 @@ function isNonZeroBytes(value) {
 }
 
 function parseV3CreationEvent(event) {
+  if (!Array.isArray(event.topic) || event.topic.length !== 2) {
+    throw new Error('Factory event does not have the expected V3 indexed commitment topic.')
+  }
+
+  const indexedCommitment = scValToNative(event.topic[1])
+  if (!isNonZeroBytes(indexedCommitment)) {
+    throw new Error('Factory event has an invalid indexed account commitment.')
+  }
+
   const value = scValToNative(event.value)
-  if (!Array.isArray(value) || value.length !== 4) {
+  if (!Array.isArray(value) || value.length !== 3) {
     throw new Error('Factory event does not match the V3 BridgeLockboxCreated payload.')
   }
 
-  const [accountCommitment, lockboxId, bridgeFingerprint, version] = value
-  if (!isNonZeroBytes(accountCommitment)) {
-    throw new Error('Factory event has an invalid account commitment.')
-  }
+  const [lockboxId, bridgeFingerprint, version] = value
   if (typeof lockboxId !== 'string' || !CONTRACT_ID_PATTERN.test(lockboxId)) {
     throw new Error('Factory event has an invalid child contract ID.')
   }

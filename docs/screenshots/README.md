@@ -12,6 +12,10 @@ relevant GitHub Actions release gate passes.
   `docs/screenshots/onboarding/<run>-03-apex-returning-signin-staging-feed.png`.
   The matching `<run>-evidence.json` contains public Testnet/POD/lockb0x
   evidence only.
+    Latest verified run: `ms2b99rkfq6x` on GitHub Actions staging deployment
+    `30220192118` (commit `d2324a2`); its V3 child
+    `CALVPRGQC44DGZPPNFSNNS3E4LMPUXRRFGWKCJJG6VDYJ2QKZGSZRNQW` passed
+    `pnpm qa:audit:lockbox`.
 - Wallet creation and testnet funding: `docs/screenshots/wallet-creation-step1.png`
 - Feed view/post: `docs/screenshots/feed-view-post-step1.png`
 - Local messaging: `docs/screenshots/local-messaging-step1.png`

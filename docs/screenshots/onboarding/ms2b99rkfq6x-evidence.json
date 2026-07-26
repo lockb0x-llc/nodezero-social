@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "generatedAtUtc": "2026-07-26T21:30:10.672Z",
+  "publicApex": "https://nodezero.social",
+  "internalStaging": "https://staging.nodezero.social",
+  "handle": "e2ems2b99rkfq6x",
+  "email": "hotkane+ms2b99rkfq6x@gmail.com",
+  "webId": "https://solid.nodezero.social/e2ems2b99rkfq6x/profile/card#me",
+  "stellarPublicKey": "GBZGY7WCEO63OT5JXKS5NFV7RLYFNKXQONECASRCTV4KPLVPXDNFCHKK",
+  "lockbox": {
+    "contractId": "CALVPRGQC44DGZPPNFSNNS3E4LMPUXRRFGWKCJJG6VDYJ2QKZGSZRNQW",
+    "creator": "GDMJ3GFM2RPB5FRX5DS2IRRSVF6RFYILXZ2WIUIJQJJOHXJTQXOQVBHR",
+    "wasm": "309e22a8bd29c5c27dfa98243b46c1229855414e3c503d1aa12dd60f8f2cf33b",
+    "storageEntries": 1
+  },
+  "treasuryCreateAccount": {
+    "transactionHash": "71e5cbd37a057e4916d7567f2b77703be1c2150f1815dc8f49156905d266f96a",
+    "sourceAccount": "GAUMNOPBK5WYUGIV2VH7JXMHACFSB4QV4HCJM5LB7ERUYKUN6UEZGEYI"
+  },
+  "assertions": {
+    "apexToStagingHandoff": true,
+    "returningApexToStagingHandoff": true,
+    "sameWebId": true,
+    "sameLockbox": true,
+    "zeroCssBrowserRequests": true,
+    "zeroFriendbotBrowserRequests": true
+  },
+  "screenshots": [
+    "ms2b99rkfq6x-01-apex-create.png",
+    "ms2b99rkfq6x-02-staging-verified-feed.png",
+    "ms2b99rkfq6x-03-apex-returning-signin-staging-feed.png"
+  ],
+  "trace": "ms2b99rkfq6x-playwright-trace.zip"
+}
