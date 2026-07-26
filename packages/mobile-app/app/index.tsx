@@ -621,6 +621,7 @@ export default function LandingScreen(): JSX.Element {
         createdAt: new Date().toISOString(),
       })
     } catch (err) {
+      console.error('[LandingScreen] create node failed:', err)
       failActiveCreateStep()
       if (isEmailAlreadyRegisteredError(err)) {
         if (normalizedEmail) {

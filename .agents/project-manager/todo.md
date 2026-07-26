@@ -78,3 +78,6 @@
 
 ## Milestone M: Legacy onboarding notes (deprecated)
 - [DONE] M1: Legacy CSS-optional bootstrap path is superseded by OIDC-only staging baseline; no active implementation work remains.
+
+## Milestone N: Provisioning wait-state UX hardening (2026-07-25)
+- [TODO] N1: Improve account provisioning progress UX for 30-60s waits by adding explicit step status text and a non-telemetry fallback rotator (short decentralized-web quotes) while Pod creation is in progress.

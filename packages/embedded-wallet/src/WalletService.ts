@@ -25,6 +25,7 @@ import {
   xdr,
   type Transaction,
 } from '@stellar/stellar-sdk'
+import { Buffer } from 'buffer'
 import type { EnclaveAdapter } from './EnclaveAdapter.js'
 import type {
   WalletInfo,
@@ -247,8 +248,8 @@ export class WalletService {
     const active = await this.adapter.getActiveIdentityKeyId()
     const secret = await this.adapter.loadOrCreate(active ?? undefined)
     const keypair = Keypair.fromSecret(secret)
-    const payloadBytes = Buffer.from(trimmedPayload, 'utf8')
-    const signatureBytes = keypair.sign(payloadBytes)
+    const payloadBytes = new TextEncoder().encode(trimmedPayload)
+    const signatureBytes = keypair.sign(payloadBytes as any)
 
     return {
       stellarPublicKey: keypair.publicKey(),

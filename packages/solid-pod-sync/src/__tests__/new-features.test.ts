@@ -174,6 +174,34 @@ describe('ProfileManager.writeProfile', () => {
   })
 })
 
+describe('ProfileManager.readProfile', () => {
+  it('reads profile data when the dataset subject is proxy-shaped', async () => {
+    const turtle = `
+@prefix vcard: <http://www.w3.org/2006/vcard/ns#> .
+@prefix foaf: <http://xmlns.com/foaf/0.1/> .
+
+<https://nodezero-social-staging-testnet-provisioner.azurewebsites.net/v1/pod-proxy/qaprof/profile/card#me>
+  a foaf:Person ;
+  vcard:fn "Proxy Alice" ;
+  vcard:note "Saved through proxy" .
+`
+
+    const fetch = jestGlobal.fn().mockResolvedValue(
+      new Response(turtle, {
+        status: 200,
+        headers: { 'Content-Type': 'text/turtle' },
+      })
+    )
+
+    const manager = new ProfileManager({ fetch })
+    const profile = await manager.readProfile('https://qaprof.example/profile/card#me')
+
+    expect(profile).not.toBeNull()
+    expect(profile?.displayName).toBe('Proxy Alice')
+    expect(profile?.bio).toBe('Saved through proxy')
+  })
+})
+
 describe('SocialGraph.addConnection', () => {
   it('rejects invalid WebID values before writing', async () => {
     const fetch = jestGlobal.fn().mockResolvedValue({ ok: true })

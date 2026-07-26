@@ -38,15 +38,48 @@ interface AttestationConfig {
   zkManifestUrl: string
 }
 
+const STAGING_WEB_HOSTS = new Set([
+  'staging.nodezero.social',
+  'mango-glacier-0abee9e0f.7.azurestaticapps.net',
+])
+
+function isStagingWebHost(): boolean {
+  if (typeof window === 'undefined' || !window.location?.hostname) return false
+  return STAGING_WEB_HOSTS.has(window.location.hostname.toLowerCase())
+}
+
 function getConfig(): AttestationConfig {
   const extra = (Constants.expoConfig?.extra ?? {}) as Record<string, string>
+  const hostFallbackEnabled = isStagingWebHost()
+  const envProfile = extra.envProfile ?? 'local'
+  const isStagingProfile = envProfile === 'staging-testnet' || (hostFallbackEnabled && envProfile === 'local')
+
+  const identityContractId =
+    extra.identityContractId ??
+    (isStagingProfile ? 'CCHFYOKLGVTXEYYHWEFPI22FR26VRGG2CBBUTP6XPW3ZSIWIKEVQQ44K' : '')
+  const lockboxFactoryContractId =
+    extra.lockboxFactoryContractId ??
+    (isStagingProfile ? 'CA5MASVC7CH646QUZM6HFC3JAYIG4TCRHJDSBDOBFP66IW7TXYYHFUVB' : '')
+  const zkArtifactsUrl =
+    (extra.zkArtifactsUrl ??
+      (isStagingProfile ? 'https://stki7yquyjmnskg.blob.core.windows.net/zk-artifacts/' : ''))
+      .replace(/\/+$/, '')
+  const zkManifestUrl =
+    (extra.zkManifestUrl ??
+      (isStagingProfile
+        ? 'https://stki7yquyjmnskg.blob.core.windows.net/zk-artifacts/zk-testnet-artifacts.json'
+        : ''))
+      .trim()
+
   return {
-    envProfile: extra.envProfile ?? 'local',
-    stellarNetworkPassphrase: extra.stellarNetworkPassphrase ?? '',
-    identityContractId: extra.identityContractId ?? '',
-    lockboxFactoryContractId: extra.lockboxFactoryContractId ?? '',
-    zkArtifactsUrl: (extra.zkArtifactsUrl ?? '').replace(/\/+$/, ''),
-    zkManifestUrl: (extra.zkManifestUrl ?? '').trim(),
+    envProfile: isStagingProfile ? 'staging-testnet' : envProfile,
+    stellarNetworkPassphrase:
+      extra.stellarNetworkPassphrase ??
+      (isStagingProfile ? 'Test SDF Network ; September 2015' : ''),
+    identityContractId,
+    lockboxFactoryContractId,
+    zkArtifactsUrl,
+    zkManifestUrl,
   }
 }
 

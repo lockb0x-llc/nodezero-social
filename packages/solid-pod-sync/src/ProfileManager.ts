@@ -18,11 +18,13 @@ import {
   saveSolidDatasetAt,
   getSolidDataset,
   getThing,
+  getThingAll,
   buildThing,
   getStringNoLocale,
   getUrl,
   setThing,
   getSourceUrl,
+  asUrl,
   type SolidDataset,
   type Thing,
   type WithServerResourceInfo,
@@ -156,7 +158,7 @@ export class ProfileManager {
       throw err
     }
 
-    const thing = getThing(dataset, webId)
+    const thing = resolveProfileThing(dataset, webId)
     if (!thing) return null
 
     return thingToProfile(thing)
@@ -342,6 +344,80 @@ function thingToProfile(thing: Thing): UserProfile {
     interests: [],
     isNsfw: false,
   }
+}
+
+function resolveProfileThing(dataset: SolidDataset, webId: string): Thing | null {
+  const datasetUrl = webId.split('#')[0]
+  const direct = getThing(dataset, webId)
+  if (direct) return direct
+
+  const canonicalDefault = getThing(dataset, `${datasetUrl}#me`)
+  if (canonicalDefault) return canonicalDefault
+
+  const targetWebIdPath = pathAndHash(webId)
+  const targetDatasetPath = pathOnly(datasetUrl)
+
+  for (const candidate of getThingAll(dataset)) {
+    const candidateUrl = asUrl(candidate)
+    if (normalizeIri(candidateUrl) === normalizeIri(webId)) {
+      return candidate
+    }
+
+    const candidatePath = pathAndHash(candidateUrl)
+    if (
+      targetWebIdPath &&
+      candidatePath &&
+      candidatePath.endsWith(targetWebIdPath)
+    ) {
+      return candidate
+    }
+
+    const candidateDatasetPath = pathOnly(candidateUrl)
+    if (
+      targetDatasetPath &&
+      candidateDatasetPath &&
+      candidateDatasetPath.endsWith(targetDatasetPath) &&
+      candidateUrl.includes('#me')
+    ) {
+      return candidate
+    }
+  }
+
+  for (const candidate of getThingAll(dataset)) {
+    if (
+      getStringNoLocale(candidate, VCARD_FN) !== null ||
+      getStringNoLocale(candidate, FOAF_NAME) !== null ||
+      getStringNoLocale(candidate, VCARD_NOTE) !== null ||
+      getUrl(candidate, VCARD_PHOTO) !== null ||
+      getUrl(candidate, FOAF_IMG) !== null ||
+      getUrl(candidate, VCARD_URL) !== null
+    ) {
+      return candidate
+    }
+  }
+
+  return null
+}
+
+function pathOnly(iri: string): string | null {
+  try {
+    return new URL(iri).pathname
+  } catch {
+    return null
+  }
+}
+
+function pathAndHash(iri: string): string | null {
+  try {
+    const url = new URL(iri)
+    return `${url.pathname}${url.hash}`
+  } catch {
+    return null
+  }
+}
+
+function normalizeIri(iri: string): string {
+  return iri.replace(/\/$/, '')
 }
 
 /**

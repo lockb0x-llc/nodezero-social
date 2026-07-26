@@ -20,8 +20,13 @@ import { StatusBar } from 'expo-status-bar'
 import { View, Text, StyleSheet, Platform, ScrollView, type ViewStyle } from 'react-native'
 import Constants from 'expo-constants'
 import React from 'react'
+import { Buffer } from 'buffer'
 import { aesthetic } from '../src/theme/aesthetic'
 import * as mashlibPaneProvider from '../src/solid/mashlibPaneProvider'
+
+if (typeof globalThis.Buffer === 'undefined') {
+  ;(globalThis as any).Buffer = Buffer as any
+}
 
 const PUBLIC_ROUTES = new Set(['/'])
 const TRANSITION_ROUTES = new Set(['/onboarding'])

@@ -24,20 +24,41 @@ config.resolver.unstable_enablePackageExports = true
 // web, so `require('buffer').Buffer` returns undefined). snarkjs/circomlibjs
 // need Buffer.from. Resolve the package dir, falling back to the pnpm store.
 function resolveBufferDir() {
+  const pnpmDir = path.join(workspaceRoot, 'node_modules/.pnpm')
+  const entry = require('node:fs').readdirSync(pnpmDir).find((d) => d.startsWith('buffer@'))
+  if (entry) {
+    return path.join(pnpmDir, entry, 'node_modules/buffer')
+  }
+
   try {
     return path.dirname(require.resolve('buffer/package.json', { paths: [workspaceRoot, projectRoot] }))
   } catch {
-    const pnpmDir = path.join(workspaceRoot, 'node_modules/.pnpm')
-    const entry = require('node:fs').readdirSync(pnpmDir).find((d) => d.startsWith('buffer@'))
-    if (!entry) throw new Error('buffer package not found in pnpm store')
-    return path.join(pnpmDir, entry, 'node_modules/buffer')
+    throw new Error('buffer package not found in workspace pnpm store')
   }
+}
+
+function resolveBufferEntry() {
+  return path.join(resolveBufferDir(), 'index.js')
 }
 config.resolver.extraNodeModules = {
   ...(config.resolver.extraNodeModules ?? {}),
   buffer: resolveBufferDir(),
 }
 config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (moduleName === 'buffer') {
+    return {
+      type: 'sourceFile',
+      filePath: resolveBufferEntry(),
+    }
+  }
+
+  if (moduleName.startsWith('buffer/')) {
+    return {
+      type: 'sourceFile',
+      filePath: path.join(resolveBufferDir(), moduleName.slice('buffer/'.length)),
+    }
+  }
+
   try {
     return defaultResolveRequest
       ? defaultResolveRequest(context, moduleName, platform)
