@@ -37,6 +37,22 @@ export interface StoredCredentialRecord {
   updatedAt: string
 }
 
+/**
+ * Server-held state for a browser session cookie. The cookie contains only a
+ * random opaque token; this record holds the identity metadata needed to mint
+ * a fresh origin-local NodeZero session after a first-party host handoff.
+ */
+export interface StoredBrowserSessionRecord {
+  webId: string
+  podUrl: string
+  stellarPublicKey: string | null
+  userLockboxContractId: string | null
+  lockboxFactoryContractId: string | null
+  proofRootHex: string | null
+  expiresAt: string
+  createdAt: string
+}
+
 interface PersistedRecord {
   webId: string
   podUrl: string
@@ -57,6 +73,8 @@ interface PersistedIndexRecord {
 }
 
 const CIPHER_VERSION = 1
+const BROWSER_SESSION_ROW_PREFIX = 'browser-session-'
+const BROWSER_SESSION_WEBID_ROW_PREFIX = 'browser-session-webid-'
 
 function decodeKeyMaterial(raw: string): Buffer {
   const trimmed = raw.trim()
@@ -97,6 +115,14 @@ export function webIdRowKey(webId: string): string {
 /** Table-safe deterministic row key for the Stellar-key index. */
 export function stellarKeyRowKey(stellarPublicKey: string): string {
   return `spk-${createHash('sha256').update(stellarPublicKey.trim()).digest('hex')}`
+}
+
+function browserSessionRowKey(token: string): string {
+  return `${BROWSER_SESSION_ROW_PREFIX}${createHash('sha256').update(token).digest('hex')}`
+}
+
+function browserSessionWebIdRowKey(webId: string): string {
+  return `${BROWSER_SESSION_WEBID_ROW_PREFIX}${webIdRowKey(webId)}`
 }
 
 type BackendRow = Record<string, unknown>
@@ -390,6 +416,67 @@ export class CredentialStore {
     return records.filter((record): record is StoredCredentialRecord => record !== null)
   }
 
+  async saveBrowserSession(
+    token: string,
+    record: Omit<StoredBrowserSessionRecord, 'createdAt'>,
+  ): Promise<void> {
+    const rowKey = browserSessionRowKey(token)
+    const persisted: StoredBrowserSessionRecord = {
+      webId: record.webId.trim(),
+      podUrl: record.podUrl.trim(),
+      stellarPublicKey: record.stellarPublicKey?.trim() || null,
+      userLockboxContractId: record.userLockboxContractId?.trim() || null,
+      lockboxFactoryContractId: record.lockboxFactoryContractId?.trim() || null,
+      proofRootHex: record.proofRootHex?.trim() || null,
+      expiresAt: record.expiresAt,
+      createdAt: new Date().toISOString(),
+    }
+    await this.backend.put(rowKey, persisted as unknown as BackendRow)
+
+    const indexKey = browserSessionWebIdRowKey(persisted.webId)
+    const existing = await this.backend.get(indexKey)
+    const tokenRows = this.readBrowserSessionRows(existing)
+    await this.backend.put(indexKey, {
+      tokenRowsJson: JSON.stringify([rowKey, ...tokenRows.filter((value) => value !== rowKey)]),
+    })
+  }
+
+  async findBrowserSession(token: string): Promise<StoredBrowserSessionRecord | null> {
+    const rowKey = browserSessionRowKey(token)
+    const persisted = await this.backend.get(rowKey)
+    if (!persisted) return null
+    const expiresAt = typeof persisted.expiresAt === 'string' ? persisted.expiresAt : ''
+    if (!expiresAt || new Date(expiresAt).getTime() <= Date.now()) {
+      await this.deleteBrowserSessionByRowKey(rowKey, typeof persisted.webId === 'string' ? persisted.webId : '')
+      return null
+    }
+    return {
+      webId: String(persisted.webId ?? ''),
+      podUrl: String(persisted.podUrl ?? ''),
+      stellarPublicKey: typeof persisted.stellarPublicKey === 'string' && persisted.stellarPublicKey ? persisted.stellarPublicKey : null,
+      userLockboxContractId: typeof persisted.userLockboxContractId === 'string' && persisted.userLockboxContractId ? persisted.userLockboxContractId : null,
+      lockboxFactoryContractId: typeof persisted.lockboxFactoryContractId === 'string' && persisted.lockboxFactoryContractId ? persisted.lockboxFactoryContractId : null,
+      proofRootHex: typeof persisted.proofRootHex === 'string' && persisted.proofRootHex ? persisted.proofRootHex : null,
+      expiresAt,
+      createdAt: String(persisted.createdAt ?? ''),
+    }
+  }
+
+  async revokeBrowserSession(token: string): Promise<boolean> {
+    const rowKey = browserSessionRowKey(token)
+    const existing = await this.backend.get(rowKey)
+    return this.deleteBrowserSessionByRowKey(rowKey, typeof existing?.webId === 'string' ? existing.webId : '')
+  }
+
+  async revokeBrowserSessionsByWebId(webId: string): Promise<number> {
+    const indexKey = browserSessionWebIdRowKey(webId)
+    const index = await this.backend.get(indexKey)
+    const tokenRows = this.readBrowserSessionRows(index)
+    await Promise.all(tokenRows.map((rowKey) => this.backend.delete(rowKey)))
+    await this.backend.delete(indexKey)
+    return tokenRows.length
+  }
+
   /** Server-side revocation: removing the record invalidates every session. */
   async revokeByWebId(webId: string): Promise<boolean> {
     const existing = await this.backend.get(webIdRowKey(webId))
@@ -405,7 +492,34 @@ export class CredentialStore {
         await this.backend.put(keyRow, { webIdsJson: JSON.stringify(remaining) }).catch(() => false)
       }
     }
+    await this.revokeBrowserSessionsByWebId(webId)
     return removed
+  }
+
+  private async deleteBrowserSessionByRowKey(rowKey: string, webId: string): Promise<boolean> {
+    const removed = await this.backend.delete(rowKey)
+    if (!webId) return removed
+    const indexKey = browserSessionWebIdRowKey(webId)
+    const index = await this.backend.get(indexKey)
+    const remaining = this.readBrowserSessionRows(index).filter((value) => value !== rowKey)
+    if (remaining.length === 0) {
+      await this.backend.delete(indexKey)
+    } else {
+      await this.backend.put(indexKey, { tokenRowsJson: JSON.stringify(remaining) })
+    }
+    return removed
+  }
+
+  private readBrowserSessionRows(index: BackendRow | null): string[] {
+    if (typeof index?.tokenRowsJson !== 'string') return []
+    try {
+      const parsed: unknown = JSON.parse(index.tokenRowsJson)
+      return Array.isArray(parsed)
+        ? parsed.filter((value): value is string => typeof value === 'string' && value.startsWith(BROWSER_SESSION_ROW_PREFIX))
+        : []
+    } catch {
+      return []
+    }
   }
 
   private readIndexedWebIds(index: BackendRow | null): string[] {

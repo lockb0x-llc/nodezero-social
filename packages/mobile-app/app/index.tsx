@@ -116,6 +116,18 @@ function getLandingMode(): LandingMode {
   return 'onboarding'
 }
 
+function shouldHandoffToInternalStaging(): boolean {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return false
+  const extra = (Constants.expoConfig?.extra ?? {}) as Record<string, string>
+  const browserSessionsEnabled = (extra.browserSessionEnabled ?? '').trim().toLowerCase() === 'true'
+  const host = window.location.hostname.toLowerCase()
+  return browserSessionsEnabled && (host === 'nodezero.social' || host === 'www.nodezero.social')
+}
+
+function handoffToInternalStaging(): void {
+  window.location.assign('https://staging.nodezero.social/feed')
+}
+
 interface LandingAuthCardProps {
   source: AuthCardSource
   error: string | null
@@ -492,6 +504,7 @@ export default function LandingScreen(): JSX.Element {
       setAccountChoices([])
       setSelectedAccountWebId(null)
       await adoptSession(result)
+      if (shouldHandoffToInternalStaging()) handoffToInternalStaging()
     } catch (err) {
       if (err instanceof NoAccountError) {
         setError('No node exists for this device key yet. Create your node below to get started.')
@@ -641,6 +654,7 @@ export default function LandingScreen(): JSX.Element {
         },
         createdAt: new Date().toISOString(),
       })
+      if (shouldHandoffToInternalStaging()) handoffToInternalStaging()
     } catch (err) {
       console.error('[LandingScreen] create node failed:', err)
       failActiveCreateStep()

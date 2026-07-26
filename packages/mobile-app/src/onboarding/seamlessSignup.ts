@@ -178,6 +178,7 @@ export async function createSeamlessNode(input: CreateNodeInput): Promise<Create
   const res = await fetch(`${config.provisionerUrl}/v1/solid-account`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', accept: 'application/json' },
+    credentials: 'include',
     body: JSON.stringify(body),
   })
   const text = await res.text()

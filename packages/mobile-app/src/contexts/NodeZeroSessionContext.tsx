@@ -110,6 +110,11 @@ export function getProvisionerUrl(): string {
   return ''
 }
 
+function browserSessionBootstrapEnabled(): boolean {
+  const configured = (getAppExtra()?.browserSessionEnabled ?? '').trim().toLowerCase()
+  return configured === 'true' && typeof window !== 'undefined'
+}
+
 /** Origins whose URLs must be rewritten onto the Pod Access Proxy. */
 function getPodOrigins(podUrl: string | null): Set<string> {
   const origins = new Set<string>()
@@ -218,6 +223,7 @@ export function NodeZeroSessionProvider({ children }: { children: ReactNode }): 
       void fetch(`${provisionerUrl}/v1/auth/logout`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ refreshToken: current.refreshToken, webId: current.webId }),
       }).catch(() => undefined)
     }
@@ -242,6 +248,7 @@ export function NodeZeroSessionProvider({ children }: { children: ReactNode }): 
         const res = await fetch(`${provisionerUrl}/v1/auth/refresh`, {
           method: 'POST',
           headers: { 'content-type': 'application/json', accept: 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({ refreshToken: current.refreshToken }),
         })
         if (!res.ok) {
@@ -280,13 +287,40 @@ export function NodeZeroSessionProvider({ children }: { children: ReactNode }): 
     }
   }, [applySession, clearSession])
 
+  const tryBrowserSessionBootstrap = useCallback(async (): Promise<boolean> => {
+    const provisionerUrl = getProvisionerUrl()
+    if (!browserSessionBootstrapEnabled() || !provisionerUrl) return false
+    try {
+      const res = await fetch(`${provisionerUrl}/v1/auth/browser-session`, {
+        headers: { accept: 'application/json' },
+        credentials: 'include',
+      })
+      if (!res.ok) return false
+      const payload = (await res.json()) as RefreshResponse
+      if (!payload.session?.accessToken || !payload.webId || !payload.podUrl) return false
+      await applySession({
+        version: 2,
+        accessToken: payload.session.accessToken,
+        refreshToken: payload.session.refreshToken,
+        expiresAt: payload.session.expiresAt,
+        webId: payload.webId,
+        podUrl: payload.podUrl,
+        lockbox: payload.lockbox ?? null,
+        createdAt: new Date().toISOString(),
+      })
+      return true
+    } catch {
+      return false
+    }
+  }, [applySession])
+
   // Initial restore: adopt a stored, unexpired session; refresh an expired
   // one exactly once; otherwise land on the sign-in page.
   useEffect(() => {
     void (async (): Promise<void> => {
       const stored = await loadPersistedSession()
       if (!stored) {
-        setStatus('unauthenticated')
+        if (!(await tryBrowserSessionBootstrap())) setStatus('unauthenticated')
         return
       }
       sessionRef.current = stored
@@ -295,9 +329,9 @@ export function NodeZeroSessionProvider({ children }: { children: ReactNode }): 
         await applySession(stored)
         return
       }
-      await tryRefresh()
+      if (!(await tryRefresh())) await tryBrowserSessionBootstrap()
     })()
-  }, [applySession, tryRefresh])
+  }, [applySession, tryBrowserSessionBootstrap, tryRefresh])
 
   const adoptSession = useCallback(
     async (input: AdoptSessionInput): Promise<void> => {

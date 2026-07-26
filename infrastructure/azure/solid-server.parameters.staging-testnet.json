@@ -19,6 +19,6 @@
     "smtpStartTls": { "value": true },
     "logAnalyticsRetentionDays": { "value": 30 },
     "logAnalyticsDailyQuotaGb": { "value": 1 },
-    "stellarAuthProvisionerOrigins": { "value": "https://staging.nodezero.social" }
+    "stellarAuthProvisionerOrigins": { "value": "https://api.nodezero.social,https://nodezero-social-staging-testnet-provisioner.azurewebsites.net" }
   }
 }

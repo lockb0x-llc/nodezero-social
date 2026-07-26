@@ -209,6 +209,8 @@ before(async () => {
   process.env.JSS_LOCKBOX_FACTORY_ALLOW_MOCK_READY = '1'
   process.env.JSS_INTERNAL_API_KEY = INTERNAL_KEY
   process.env.JSS_SESSION_SIGNING_KEY = 'unit-test-session-signing-key-32b!'
+  process.env.JSS_BROWSER_SESSION_ENABLED = 'true'
+  process.env.JSS_BROWSER_SESSION_COOKIE_DOMAIN = '.nodezero.social'
   process.env.NZ_ENV_PROFILE = 'local'
   delete process.env.JSS_CREDENTIALS_TABLE_SAS_URL
   delete process.env.JSS_CREDENTIALS_FILE
@@ -232,14 +234,14 @@ beforeEach(() => {
   cssState.rejectTokenExchange = false
 })
 
-async function postJson(path: string, body: unknown, headers: Record<string, string> = {}): Promise<{ status: number; json: Record<string, unknown> }> {
+async function postJson(path: string, body: unknown, headers: Record<string, string> = {}): Promise<{ status: number; json: Record<string, unknown>; headers: Headers }> {
   const res = await fetch(`${baseUrl}${path}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', accept: 'application/json', ...headers },
     body: JSON.stringify(body),
   })
   const payload = (await res.json().catch(() => ({}))) as Record<string, unknown>
-  return { status: res.status, json: payload }
+  return { status: res.status, json: payload, headers: res.headers }
 }
 
 interface SessionShape {
@@ -309,6 +311,43 @@ void test('solid-account: returns a session that immediately proxies Pod writes'
   })
   assert.equal(read.status, 200)
   assert.match(await read.text(), /nodezero\.social\/ns#Note/)
+})
+
+void test('browser session bootstraps a fresh staging-local session and logout revokes it', async () => {
+  const keypair = Keypair.random()
+  counter += 1
+  const created = await postJson('/v1/solid-account', {
+    name: `browser${counter}`,
+    email: `browser${counter}@example.com`,
+    stellarPublicKey: keypair.publicKey(),
+  }, { origin: 'https://nodezero.social' })
+  assert.equal(created.status, 200)
+  const setCookie = created.headers.get('set-cookie')
+  assert.ok(setCookie?.includes('nz_browser_session='), 'expected opaque browser-session cookie')
+  assert.ok(setCookie?.includes('HttpOnly'))
+  assert.ok(setCookie?.includes('Domain=.nodezero.social'))
+  assert.ok(!setCookie?.includes((created.json.session as SessionShape).accessToken))
+
+  const cookie = setCookie?.split(';', 1)[0] ?? ''
+  const bootstrap = await fetch(`${baseUrl}/v1/auth/browser-session`, {
+    headers: { origin: 'https://staging.nodezero.social', cookie },
+  })
+  const bootstrapPayload = await bootstrap.json() as { session?: SessionShape; webId?: string }
+  assert.equal(bootstrap.status, 200)
+  assert.ok(bootstrapPayload.session?.accessToken)
+  assert.equal(bootstrapPayload.webId, created.json.webId)
+  assert.equal(bootstrap.headers.get('access-control-allow-credentials'), 'true')
+
+  const logout = await postJson('/v1/auth/logout', {
+    webId: created.json.webId,
+  }, { origin: 'https://staging.nodezero.social', cookie })
+  assert.equal(logout.status, 200)
+  assert.ok(logout.headers.get('set-cookie')?.includes('Max-Age=0'))
+
+  const revoked = await fetch(`${baseUrl}/v1/auth/browser-session`, {
+    headers: { origin: 'https://staging.nodezero.social', cookie },
+  })
+  assert.equal(revoked.status, 401)
 })
 
 void test('solid-account: rejects missing stellarPublicKey', async () => {

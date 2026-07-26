@@ -70,6 +70,10 @@ const LOCKBOX_FACTORY_MODE = (process.env.JSS_LOCKBOX_FACTORY_MODE ?? 'mock').to
 const LOCKBOX_FACTORY_VERSION = (process.env.JSS_LOCKBOX_FACTORY_VERSION ?? 'v2').trim().toLowerCase()
 const LOCKBOX_BRIDGE_V3_VK_URL = (process.env.JSS_LOCKBOX_BRIDGE_V3_VK_URL ?? '').trim()
 const BN254_SCALAR_FIELD_SIZE = 21888242871839275222246405745257275088548364400416034343698204186575808495617n
+const BROWSER_SESSION_ENABLED = /^(1|true|yes)$/i.test((process.env.JSS_BROWSER_SESSION_ENABLED ?? '').trim())
+const BROWSER_SESSION_COOKIE_NAME = (process.env.JSS_BROWSER_SESSION_COOKIE_NAME ?? 'nz_browser_session').trim()
+const BROWSER_SESSION_COOKIE_DOMAIN = (process.env.JSS_BROWSER_SESSION_COOKIE_DOMAIN ?? '.nodezero.social').trim()
+const BROWSER_SESSION_TTL_MS = Number(process.env.JSS_BROWSER_SESSION_TTL_MS ?? 30 * 24 * 60 * 60_000)
 // P3: Treasury-sponsored member account creation is a privileged, funds-moving
 // operation. It is disabled unless an internal API key is configured, and every
 // request must present it (fail-closed). This prevents an open endpoint from
@@ -170,10 +174,12 @@ function isDuplicateEmailProvisioningMessage(message: string): boolean {
 
 function corsHeaders(req: IncomingMessage): Record<string, string> {
   const origin = req.headers.origin
-  const allowOrigin = origin && ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0] ?? '*'
+  const isAllowedOrigin = isAllowedBrowserOrigin(req)
+  const allowOrigin = isAllowedOrigin ? origin! : ALLOWED_ORIGINS[0] ?? '*'
 
   return {
     'access-control-allow-origin': allowOrigin,
+    ...(isAllowedOrigin ? { 'access-control-allow-credentials': 'true' } : {}),
     'access-control-allow-methods': 'GET,HEAD,POST,PUT,PATCH,DELETE,OPTIONS',
     'access-control-allow-headers':
       'content-type,authorization,x-nz-internal-key,accept,if-match,if-none-match,slug,link',
@@ -182,12 +188,69 @@ function corsHeaders(req: IncomingMessage): Record<string, string> {
   }
 }
 
-function sendJson(req: IncomingMessage, res: ServerResponse, statusCode: number, payload: unknown): void {
+function isAllowedBrowserOrigin(req: IncomingMessage): boolean {
+  const origin = req.headers.origin
+  return typeof origin === 'string' && ALLOWED_ORIGINS.includes(origin)
+}
+
+function sendJson(
+  req: IncomingMessage,
+  res: ServerResponse,
+  statusCode: number,
+  payload: unknown,
+  extraHeaders: Record<string, string> = {},
+): void {
   res.writeHead(statusCode, {
     ...corsHeaders(req),
+    ...extraHeaders,
     'content-type': 'application/json; charset=utf-8',
   })
   res.end(JSON.stringify(payload))
+}
+
+function readCookie(req: IncomingMessage, name: string): string | null {
+  const raw = req.headers.cookie ?? ''
+  for (const entry of raw.split(';')) {
+    const [key, ...rest] = entry.trim().split('=')
+    if (key === name) return rest.join('=') || null
+  }
+  return null
+}
+
+function clearBrowserSessionCookie(): Record<string, string> {
+  return {
+    'set-cookie': `${BROWSER_SESSION_COOKIE_NAME}=; Path=/; Domain=${BROWSER_SESSION_COOKIE_DOMAIN}; Max-Age=0; HttpOnly; Secure; SameSite=Lax`,
+  }
+}
+
+async function issueBrowserSessionCookie(input: {
+  webId: string
+  podUrl: string
+  stellarPublicKey: string | null
+  lockbox: { userLockboxContractId: string | null; factoryContractId: string | null; proofRootHex: string | null }
+}): Promise<Record<string, string>> {
+  if (!BROWSER_SESSION_ENABLED) return {}
+  if (!BROWSER_SESSION_COOKIE_NAME || !BROWSER_SESSION_COOKIE_DOMAIN.startsWith('.')) {
+    throw new Error('Browser session cookie name/domain configuration is invalid.')
+  }
+  if (!Number.isFinite(BROWSER_SESSION_TTL_MS) || BROWSER_SESSION_TTL_MS <= 0) {
+    throw new Error('JSS_BROWSER_SESSION_TTL_MS must be positive.')
+  }
+  const token = randomBytes(32).toString('base64url')
+  const expiresAt = new Date(Date.now() + BROWSER_SESSION_TTL_MS).toISOString()
+  await credentialStore.saveBrowserSession(token, {
+    webId: input.webId,
+    podUrl: input.podUrl,
+    stellarPublicKey: input.stellarPublicKey,
+    userLockboxContractId: input.lockbox.userLockboxContractId,
+    lockboxFactoryContractId: input.lockbox.factoryContractId,
+    proofRootHex: input.lockbox.proofRootHex,
+    expiresAt,
+  })
+  const maxAgeSeconds = Math.floor(BROWSER_SESSION_TTL_MS / 1000)
+  return {
+    'set-cookie': `${BROWSER_SESSION_COOKIE_NAME}=${token}; Path=/; Domain=${BROWSER_SESSION_COOKIE_DOMAIN}; Max-Age=${maxAgeSeconds}; HttpOnly; Secure; SameSite=Lax`,
+  }
 }
 
 async function readJsonBody<T>(req: IncomingMessage): Promise<T> {
@@ -937,6 +1000,17 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
         return
       }
 
+      const lockboxResponse = {
+        userLockboxContractId: lockbox?.userLockboxContractId ?? null,
+        factoryContractId: lockbox?.factoryContractId ?? null,
+        proofRootHex: lockbox?.proofRootHex ?? null,
+      }
+      const browserSessionHeaders = await issueBrowserSessionCookie({
+        webId: account.webId,
+        podUrl: account.podUrl,
+        stellarPublicKey: stellarPublicKey || null,
+        lockbox: lockboxResponse,
+      })
       sendJson(req, res, 200, {
         status: 'ready',
         webId: account.webId,
@@ -946,7 +1020,7 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
         session,
         lockbox: lockbox ?? null,
         attestation,
-      })
+      }, browserSessionHeaders)
 
       emitLifecycleEvent('account.created', {
         webId: account.webId,
@@ -1085,16 +1159,23 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
         stellarPublicKey: challenge.stellarPublicKey,
         credentials: { id: credentials.clientCredentialsId, secret: credentials.clientCredentialsSecret },
       })
+      const lockbox = {
+        userLockboxContractId: credentials.userLockboxContractId,
+        factoryContractId: credentials.lockboxFactoryContractId,
+        proofRootHex: credentials.proofRootHex,
+      }
+      const browserSessionHeaders = await issueBrowserSessionCookie({
+        webId: credentials.webId,
+        podUrl: credentials.podUrl,
+        stellarPublicKey: challenge.stellarPublicKey,
+        lockbox,
+      })
       sendJson(req, res, 200, {
         session,
         webId: credentials.webId,
         podUrl: credentials.podUrl,
-        lockbox: {
-          userLockboxContractId: credentials.userLockboxContractId,
-          factoryContractId: credentials.lockboxFactoryContractId,
-          proofRootHex: credentials.proofRootHex,
-        },
-      })
+        lockbox,
+      }, browserSessionHeaders)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Solid access verification failed.'
       console.warn('[auth:stellar-token] session issuance failed:', message)
@@ -1134,21 +1215,79 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
         stellarPublicKey: identity.stellarPublicKey,
         credentials: { id: credentials.clientCredentialsId, secret: credentials.clientCredentialsSecret },
       })
+      const lockbox = {
+        userLockboxContractId: credentials.userLockboxContractId,
+        factoryContractId: credentials.lockboxFactoryContractId,
+        proofRootHex: credentials.proofRootHex,
+      }
+      const browserSessionHeaders = await issueBrowserSessionCookie({
+        webId: credentials.webId,
+        podUrl: credentials.podUrl,
+        stellarPublicKey: identity.stellarPublicKey,
+        lockbox,
+      })
       sendJson(req, res, 200, {
         session,
         webId: credentials.webId,
         podUrl: credentials.podUrl,
-        lockbox: {
-          userLockboxContractId: credentials.userLockboxContractId,
-          factoryContractId: credentials.lockboxFactoryContractId,
-          proofRootHex: credentials.proofRootHex,
-        },
-      })
+        lockbox,
+      }, browserSessionHeaders)
     } catch {
       sendJson(req, res, 401, {
         error: 'Solid access could not be verified for this account.',
         code: 'session_invalid',
       })
+    }
+    return
+  }
+
+  if (req.method === 'GET' && url.pathname === '/v1/auth/browser-session') {
+    if (!BROWSER_SESSION_ENABLED) {
+      sendJson(req, res, 404, { error: 'Browser-session bootstrap is not enabled.' })
+      return
+    }
+    if (!isAllowedBrowserOrigin(req)) {
+      sendJson(req, res, 403, { error: 'Browser session bootstrap requires an allowed first-party origin.' })
+      return
+    }
+    const token = readCookie(req, BROWSER_SESSION_COOKIE_NAME)
+    if (!token) {
+      sendJson(req, res, 401, { error: 'Browser session is missing.', code: 'session_invalid' }, clearBrowserSessionCookie())
+      return
+    }
+    const browserSession = await credentialStore.findBrowserSession(token).catch(() => null)
+    if (!browserSession) {
+      sendJson(req, res, 401, { error: 'Browser session is invalid or expired.', code: 'session_invalid' }, clearBrowserSessionCookie())
+      return
+    }
+    const credentials = await credentialStore.findByWebId(browserSession.webId).catch(() => null)
+    if (!credentials) {
+      await credentialStore.revokeBrowserSession(token)
+      sendJson(req, res, 401, { error: 'Browser session has been revoked.', code: 'session_invalid' }, clearBrowserSessionCookie())
+      return
+    }
+    try {
+      const session = await issueVerifiedSession({
+        webId: credentials.webId,
+        podUrl: credentials.podUrl,
+        stellarPublicKey: credentials.stellarPublicKey,
+        credentials: { id: credentials.clientCredentialsId, secret: credentials.clientCredentialsSecret },
+      })
+      await credentialStore.revokeBrowserSession(token)
+      const lockbox = {
+        userLockboxContractId: credentials.userLockboxContractId,
+        factoryContractId: credentials.lockboxFactoryContractId,
+        proofRootHex: credentials.proofRootHex,
+      }
+      const browserSessionHeaders = await issueBrowserSessionCookie({
+        webId: credentials.webId,
+        podUrl: credentials.podUrl,
+        stellarPublicKey: credentials.stellarPublicKey,
+        lockbox,
+      })
+      sendJson(req, res, 200, { session, webId: credentials.webId, podUrl: credentials.podUrl, lockbox }, browserSessionHeaders)
+    } catch {
+      sendJson(req, res, 401, { error: 'Solid access could not be verified for this account.', code: 'session_invalid' }, clearBrowserSessionCookie())
     }
     return
   }
@@ -1160,8 +1299,11 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
     }
     if (isNonEmpty(body.webId)) {
       sessions.revokeByWebId(body.webId.trim())
+      await credentialStore.revokeBrowserSessionsByWebId(body.webId.trim())
     }
-    sendJson(req, res, 200, { status: 'ok' })
+    const cookie = readCookie(req, BROWSER_SESSION_COOKIE_NAME)
+    if (cookie) await credentialStore.revokeBrowserSession(cookie)
+    sendJson(req, res, 200, { status: 'ok' }, clearBrowserSessionCookie())
     return
   }
 

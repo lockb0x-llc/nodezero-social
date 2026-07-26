@@ -34,6 +34,15 @@
     },
     "zkManifestUrl": {
       "value": "https://stki7yquyjmnskg.blob.core.windows.net/zk-artifacts/zk-testnet-artifacts.json"
+    },
+    "walletBrokerHostLabel": {
+      "value": "wallet"
+    },
+    "apiHostLabel": {
+      "value": "api"
+    },
+    "provisionerPublicHostName": {
+      "value": "nodezero-social-staging-testnet-provisioner.azurewebsites.net"
     }
   }
 }

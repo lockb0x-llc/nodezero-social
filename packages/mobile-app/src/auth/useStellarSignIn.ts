@@ -89,6 +89,7 @@ export function useStellarSignIn(): (options?: { webId?: string }) => Promise<Ad
     const challengeResp = await fetchWithTimeout(`${provisionerUrl}/v1/auth/stellar-challenge`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', accept: 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ stellarPublicKey: walletInfo.publicKey }),
     })
     if (!challengeResp.ok) {
@@ -109,6 +110,7 @@ export function useStellarSignIn(): (options?: { webId?: string }) => Promise<Ad
     const loginResp = await fetchWithTimeout(`${provisionerUrl}/v1/auth/stellar-token`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', accept: 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({
         challengeId: challenge.challengeId,
         stellarPublicKey: walletInfo.publicKey,

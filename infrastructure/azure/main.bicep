@@ -52,6 +52,15 @@ param dnsZoneName string = 'nodezero.social'
 @description('DNS host label for the staging Static Web App custom domain.')
 param stagingHostLabel string = 'staging'
 
+@description('DNS host label for the first-party wallet broker Static Web App custom domain.')
+param walletBrokerHostLabel string = 'wallet'
+
+@description('DNS host label for the first-party provisioner API custom domain.')
+param apiHostLabel string = 'api'
+
+@description('Public Azure hostname of the staging provisioner App Service.')
+param provisionerPublicHostName string = '${appName}-${environmentName}-provisioner.azurewebsites.net'
+
 var resourceToken = toLower(uniqueString(resourceGroup().id, appName, environmentName))
 var storageAccountName = 'st${take(resourceToken, 22)}'
 var keyVaultName = take('${replace(appName, '-', '')}${replace(environmentName, '-', '')}kv${resourceToken}', 24)
@@ -295,6 +304,43 @@ resource wwwCustomDomain 'Microsoft.Web/staticSites/customDomains@2022-09-01' = 
   dependsOn: [wwwCnameRecord]
 }
 
+// wallet.nodezero.social is a broker-only first-party origin. It shares the
+// same Static Web App artifact but receives its own CNAME/TLS binding so the
+// Stellar secret never lives on the apex or internal app origins.
+resource walletBrokerCname 'Microsoft.Network/dnsZones/CNAME@2018-05-01' = {
+  parent: dnsZone
+  name: walletBrokerHostLabel
+  properties: {
+    TTL: 300
+    CNAMERecord: {
+      cname: staticWebApp.properties.defaultHostname
+    }
+  }
+}
+
+resource walletBrokerCustomDomain 'Microsoft.Web/staticSites/customDomains@2022-09-01' = {
+  parent: staticWebApp
+  name: '${walletBrokerHostLabel}.${dnsZoneName}'
+  properties: {
+    validationMethod: 'cname-delegation'
+  }
+  dependsOn: [walletBrokerCname]
+}
+
+// api.nodezero.social is the first-party provisioner host. The App Service
+// hostname/certificate binding is applied by the deployment workflow after
+// this CNAME is live and Azure can validate ownership.
+resource provisionerApiCname 'Microsoft.Network/dnsZones/CNAME@2018-05-01' = {
+  parent: dnsZone
+  name: apiHostLabel
+  properties: {
+    TTL: 300
+    CNAMERecord: {
+      cname: provisionerPublicHostName
+    }
+  }
+}
+
 // NOTE: nodezero.social apex custom domain is NOT managed here.
 // The apex domain is registered via manual ARM operation and monitored separately.
 // The apexAliasRecord above provides the DNS A alias required for validation.
@@ -302,6 +348,8 @@ resource wwwCustomDomain 'Microsoft.Web/staticSites/customDomains@2022-09-01' = 
 output staticWebAppName string = staticWebApp.name
 output staticWebAppDefaultHostname string = staticWebApp.properties.defaultHostname
 output stagingCustomHostname string = '${stagingHostLabel}.${dnsZoneName}'
+output walletBrokerCustomHostname string = '${walletBrokerHostLabel}.${dnsZoneName}'
+output provisionerApiCustomHostname string = '${apiHostLabel}.${dnsZoneName}'
 output azureDnsNameServers array = dnsZone.properties.nameServers
 output appInsightsConnectionString string = appInsights.properties.ConnectionString
 output keyVaultUri string = keyVault.properties.vaultUri

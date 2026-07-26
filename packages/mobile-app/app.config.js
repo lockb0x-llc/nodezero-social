@@ -85,6 +85,8 @@ const nodeZeroIssuerUrl =
 const jssProvisionerUrl =
   process.env.NZ_JSS_PROVISIONER_URL ??
   (envProfile === 'staging-testnet' ? 'https://nodezero-social-staging-testnet-provisioner.azurewebsites.net' : '')
+const browserSessionEnabled = process.env.NZ_BROWSER_SESSION_ENABLED ?? 'false'
+const walletBrokerUrl = process.env.NZ_WALLET_BROKER_URL ?? ''
 const qaLocalOverridesEnabled = process.env.NZ_QA_LOCAL_OVERRIDES_ENABLED ?? 'false'
 const seamlessOnboardingEnabled =
   process.env.NZ_SEAMLESS_ONBOARDING_ENABLED ?? (envProfile === 'staging-testnet' ? 'true' : 'false')
@@ -132,6 +134,12 @@ if (profile.enforceStrictVariables) {
   // without it there is no authentication path at all (fail-closed).
   if (!jssProvisionerUrl) {
     throw new Error(`NZ_JSS_PROVISIONER_URL is required for ${envProfile}.`)
+  }
+  if (browserSessionEnabled === 'true' && jssProvisionerUrl !== 'https://api.nodezero.social') {
+    throw new Error(`NZ_JSS_PROVISIONER_URL must be https://api.nodezero.social when browser sessions are enabled.`)
+  }
+  if (browserSessionEnabled === 'true' && walletBrokerUrl !== 'https://wallet.nodezero.social') {
+    throw new Error(`NZ_WALLET_BROKER_URL must be https://wallet.nodezero.social when browser sessions are enabled.`)
   }
 }
 
@@ -231,6 +239,8 @@ module.exports = {
     nodeZeroIssuerUrl,
     nodeZeroDirectoryUrl,
     jssProvisionerUrl,
+    browserSessionEnabled,
+    walletBrokerUrl,
     qaLocalOverridesEnabled,
     seamlessOnboardingEnabled,
     solidBootstrapEnabled,

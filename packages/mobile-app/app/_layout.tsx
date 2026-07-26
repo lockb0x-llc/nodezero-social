@@ -28,7 +28,7 @@ if (typeof globalThis.Buffer === 'undefined') {
   ;(globalThis as any).Buffer = Buffer as any
 }
 
-const PUBLIC_ROUTES = new Set(['/'])
+const PUBLIC_ROUTES = new Set(['/', '/wallet-broker'])
 const TRANSITION_ROUTES = new Set(['/onboarding'])
 
 function normalizeRoute(pathname: string): string {
@@ -254,6 +254,7 @@ export default function RootLayout(): JSX.Element {
                 <Stack.Screen name="backpack" />
                 <Stack.Screen name="compose" />
                 <Stack.Screen name="docustream" />
+                <Stack.Screen name="wallet-broker" options={{ headerShown: false }} />
               </Stack>
               <WebNavBar />
             </PresenceProvider>

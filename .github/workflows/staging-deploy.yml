@@ -68,6 +68,68 @@ jobs:
           AZURE_ENVIRONMENT_NAME: staging-testnet
         run: pnpm deploy:azure
 
+      - name: Bind first-party provisioner API domain
+        run: |
+          set -euo pipefail
+          api_host="api.nodezero.social"
+
+          for attempt in {1..20}; do
+            if az webapp config hostname list \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --webapp-name "$JSS_PROVISIONER_APP_NAME" \
+              --query "[?name=='${api_host}'].name | [0]" -o tsv | grep -qx "$api_host"; then
+              break
+            fi
+            if az webapp config hostname add \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --webapp-name "$JSS_PROVISIONER_APP_NAME" \
+              --hostname "$api_host"; then
+              break
+            fi
+            if [ "$attempt" -eq 20 ]; then
+              echo "Unable to bind ${api_host} after DNS propagation retries."
+              exit 1
+            fi
+            sleep 15
+          done
+
+          thumbprint="$(az webapp config ssl list \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$JSS_PROVISIONER_APP_NAME" \
+            --query "[?contains(hostNames, '${api_host}')].thumbprint | [0]" -o tsv)"
+          if [ -z "$thumbprint" ]; then
+            thumbprint="$(az webapp config ssl create \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --name "$JSS_PROVISIONER_APP_NAME" \
+              --hostname "$api_host" \
+              --query thumbprint -o tsv)"
+          fi
+          if [ -z "$thumbprint" ]; then
+            echo "Unable to resolve managed certificate for ${api_host}."
+            exit 1
+          fi
+          az webapp config ssl bind \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$JSS_PROVISIONER_APP_NAME" \
+            --certificate-thumbprint "$thumbprint" \
+            --ssl-type SNI
+
+      - name: Verify first-party host TLS
+        run: |
+          set -euo pipefail
+          for url in https://api.nodezero.social/health https://wallet.nodezero.social/; do
+            for attempt in {1..20}; do
+              if curl --fail --silent --show-error --max-time 20 "$url" >/dev/null; then
+                break
+              fi
+              if [ "$attempt" -eq 20 ]; then
+                echo "First-party host did not become reachable: $url"
+                exit 1
+              fi
+              sleep 15
+            done
+          done
+
       # Non-blocking: this workflow does not deploy the solid-server stack
       # directly, so runtime image drift can exist independently of this run.
       - name: Verify Solid CSS image matches staging parameters (non-blocking)
@@ -136,9 +198,11 @@ jobs:
             --name "$JSS_PROVISIONER_APP_NAME" \
             --settings \
               JSS_ISSUER_URL="https://solid.nodezero.social" \
-              JSS_PUBLIC_PROVISIONER_BASE_URL="https://${JSS_PROVISIONER_APP_NAME}.azurewebsites.net" \
+              JSS_PUBLIC_PROVISIONER_BASE_URL="https://api.nodezero.social" \
               JSS_SOLID_CSS_BASE_URL="https://solid.nodezero.social" \
-              JSS_ALLOWED_ORIGINS="https://staging.nodezero.social,https://nodezero.social,https://www.nodezero.social,https://solid.nodezero.social,http://localhost:19006,http://localhost:8081" \
+              JSS_ALLOWED_ORIGINS="https://staging.nodezero.social,https://nodezero.social,https://www.nodezero.social,https://wallet.nodezero.social,https://solid.nodezero.social,http://localhost:19006,http://localhost:8081" \
+              JSS_BROWSER_SESSION_ENABLED="true" \
+              JSS_BROWSER_SESSION_COOKIE_DOMAIN=".nodezero.social" \
               JSS_LOCKBOX_FACTORY_MODE="soroban" \
               JSS_LOCKBOX_FACTORY_VERSION="v3" \
               JSS_LOCKBOX_FACTORY_CONTRACT_ID="CDFHCQA3YJCITWEMNLCSRGQVVFEXGTONWSQJTD5VIZO7YV4IOKZUPCGT" \
@@ -248,7 +312,9 @@ jobs:
           NZ_NODEZERO_ISSUER_URL: https://solid.nodezero.social/
           NZ_NODEZERO_DIRECTORY_URL: https://solid.nodezero.social/public/nodezero-pod-holders.json
           NZ_SEAMLESS_ONBOARDING_ENABLED: 'true'
-          NZ_JSS_PROVISIONER_URL: https://nodezero-social-staging-testnet-provisioner.azurewebsites.net
+          NZ_JSS_PROVISIONER_URL: https://api.nodezero.social
+          NZ_BROWSER_SESSION_ENABLED: 'true'
+          NZ_WALLET_BROKER_URL: https://wallet.nodezero.social
           NZ_SOLID_BOOTSTRAP_ENABLED: 'true'
           NZ_MASHLIB_EXPLORER_ENABLED: 'true'
           NZ_MASHLIB_MODULE_ID: nodezero:mashlib-pane-provider
@@ -396,7 +462,9 @@ jobs:
           NZ_ZK_ARTIFACTS_URL: https://stki7yquyjmnskg.blob.core.windows.net/zk-artifacts/
           NZ_ZK_MANIFEST_URL: https://stki7yquyjmnskg.blob.core.windows.net/zk-artifacts/lockb0x-bridge-v3/zk-testnet-lockbox-bridge-v3-artifacts.json
           NZ_NODEZERO_ISSUER_URL: https://solid.nodezero.social/
-          NZ_JSS_PROVISIONER_URL: https://nodezero-social-staging-testnet-provisioner.azurewebsites.net
+          NZ_JSS_PROVISIONER_URL: https://api.nodezero.social
+          NZ_BROWSER_SESSION_ENABLED: 'true'
+          NZ_WALLET_BROKER_URL: https://wallet.nodezero.social
           NZ_SOLID_BOOTSTRAP_ENABLED: 'true'
           NZ_MASHLIB_EXPLORER_ENABLED: 'true'
           NZ_MASHLIB_MODULE_ID: nodezero:mashlib-pane-provider
