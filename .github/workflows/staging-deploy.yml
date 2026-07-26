@@ -340,13 +340,13 @@ jobs:
       - name: Install Playwright browsers for auth gate
         run: pnpm exec playwright install chromium --with-deps
 
-      - name: Verify staging domain marker convergence for auth gate
+      - name: Verify public apex marker convergence for auth gate
         env:
           EXPECTED_COMMIT: ${{ github.sha }}
         run: |
           set -euo pipefail
-          marker_url="https://staging.nodezero.social/deploy-marker.json"
-          echo "Checking staging marker: ${marker_url}"
+          marker_url="https://nodezero.social/deploy-marker.json"
+          echo "Checking public apex marker: ${marker_url}"
 
           for attempt in {1..24}; do
             marker_json="$(curl -sS --max-time 20 "$marker_url" || true)"
@@ -359,15 +359,15 @@ jobs:
             if [ "$marker_env" = "staging-testnet" ] && \
                [ "$marker_workflow" = "staging-deploy" ] && \
                [ "$marker_commit" = "$EXPECTED_COMMIT" ]; then
-              echo "Staging domain marker converged on attempt ${attempt}."
+              echo "Public apex marker converged on attempt ${attempt}."
               exit 0
             fi
 
-            echo "Attempt ${attempt}/24: staging marker not converged (env='${marker_env}', workflow='${marker_workflow}', commit='${marker_commit}'). Retrying in 10s..."
+            echo "Attempt ${attempt}/24: public apex marker not converged (env='${marker_env}', workflow='${marker_workflow}', commit='${marker_commit}'). Retrying in 10s..."
             sleep 10
           done
 
-          echo "Staging domain marker did not converge to commit '$EXPECTED_COMMIT' before auth gate."
+          echo "Public apex marker did not converge to commit '$EXPECTED_COMMIT' before auth gate."
           exit 1
 
       # BLOCKING auth release gate: new-user onboarding (Pod + WebID + Stellar
@@ -378,7 +378,7 @@ jobs:
       # redirect-timing window.
       - name: Run onboarding/authentication E2E gate
         env:
-          STAGING_BASE_URL: https://staging.nodezero.social
+          STAGING_BASE_URL: https://nodezero.social
           AUTH_E2E_SESSION_TIMEOUT_MS: '360000'
         run: pnpm qa:smoke:auth
 

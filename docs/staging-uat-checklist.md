@@ -14,10 +14,11 @@ code.
    ```sh
    STAGING_BASE_URL=https://staging.nodezero.social pnpm qa:smoke
    ```
-3. Run the blocking onboarding/authentication E2E gate (identity only —
+3. Run the blocking onboarding/authentication E2E gate from the public apex
+   sign-in entry point (identity only —
    application-feature proofs run separately and never block this gate):
    ```sh
-   STAGING_BASE_URL=https://staging.nodezero.social pnpm qa:smoke:auth
+   STAGING_BASE_URL=https://nodezero.social pnpm qa:smoke:auth
    ```
    PASS requires all three journeys green: new-user create (Pod + WebID +
    on-chain lockb0x + inline NodeZero session, zero browser↔CSS requests),

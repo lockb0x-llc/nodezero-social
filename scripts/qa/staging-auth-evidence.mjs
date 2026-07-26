@@ -23,12 +23,15 @@
  *
  * Usage:
  *   node scripts/qa/staging-auth-evidence.mjs
- *   STAGING_BASE_URL=https://staging.nodezero.social node scripts/qa/staging-auth-evidence.mjs
+ *   STAGING_BASE_URL=https://nodezero.social node scripts/qa/staging-auth-evidence.mjs
  */
 
 import { chromium } from '@playwright/test'
 
-const baseUrl = (process.env.STAGING_BASE_URL || 'https://staging.nodezero.social').replace(/\/$/, '')
+// Authentication starts at the public apex landing page. The authenticated
+// application itself is exercised through its internal staging routes after
+// the inline session is issued.
+const baseUrl = (process.env.STAGING_BASE_URL || 'https://nodezero.social').replace(/\/$/, '')
 const solidHost = (process.env.SOLID_HOST || 'solid.nodezero.social').toLowerCase()
 const createTimeoutMs = Number(process.env.AUTH_E2E_CREATE_TIMEOUT_MS || 8 * 60 * 1000)
 const sessionTimeoutMs = Number(process.env.AUTH_E2E_SESSION_TIMEOUT_MS || 4 * 60 * 1000)

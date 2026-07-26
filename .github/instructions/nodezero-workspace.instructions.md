@@ -88,6 +88,9 @@ environment:
 - Confirm its conclusion is `success`, not merely that Azure endpoints respond.
 - Confirm the deployed commit/run provenance matches the code under
   investigation (use the staging `deploy-marker.json` where available).
+- Verify the correct host for the user journey: public sign-in begins at
+	`https://nodezero.social`; `https://staging.nodezero.social` is the internal
+	Testnet application host and is used for app-route checks.
 - If the latest deployment failed, inspect its failed job logs and fix or
   explicitly account for that release failure before drawing conclusions from
   direct/manual infrastructure changes.
