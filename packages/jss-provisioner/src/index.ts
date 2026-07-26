@@ -569,7 +569,8 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
         credentialKeyConfigured: !credentialStore.usesEphemeralKey,
       },
       treasuryCreateAccount: {
-        enabled: Boolean(INTERNAL_API_KEY),
+        onboardingEnabled: TREASURY_FUND_MEMBERS,
+        internalApiEnabled: Boolean(INTERNAL_API_KEY),
       },
       notificationEvents: {
         mode: notificationPublisher.mode,
