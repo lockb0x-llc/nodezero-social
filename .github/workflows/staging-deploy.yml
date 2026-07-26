@@ -97,11 +97,28 @@ jobs:
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --query "[?contains(hostNames, '${api_host}')].thumbprint | [0]" -o tsv)"
           if [ -z "$thumbprint" ]; then
-            thumbprint="$(az webapp config ssl create \
+            az webapp config ssl create \
               --resource-group "$AZURE_RESOURCE_GROUP" \
               --name "$JSS_PROVISIONER_APP_NAME" \
               --hostname "$api_host" \
-              --query thumbprint -o tsv)"
+              --certificate-name "$api_host" \
+              --output none || true
+          fi
+          if [ -z "$thumbprint" ]; then
+            for attempt in {1..40}; do
+              thumbprint="$(az webapp config ssl show \
+                --resource-group "$AZURE_RESOURCE_GROUP" \
+                --certificate-name "$api_host" \
+                --query thumbprint -o tsv 2>/dev/null || true)"
+              if [ -n "$thumbprint" ]; then
+                break
+              fi
+              if [ "$attempt" -eq 40 ]; then
+                echo "Managed certificate for ${api_host} was not ready after 10 minutes."
+                exit 1
+              fi
+              sleep 15
+            done
           fi
           if [ -z "$thumbprint" ]; then
             echo "Unable to resolve managed certificate for ${api_host}."
