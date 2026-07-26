@@ -33,6 +33,7 @@ import {
   walletBrokerOrigin,
   WALLET_BROKER_PROTOCOL,
   WALLET_BROKER_READY,
+  WALLET_BROKER_READY_REQUEST,
   type WalletBrokerOperation,
   type WalletBrokerReady,
 } from '../wallet/brokerProtocol'
@@ -96,7 +97,7 @@ interface WalletContextValue {
   createSeamlessAttestation: (
     webId: string,
     podUrl: string,
-    stellarPublicKey: string,
+    stellarPublicKey: string
   ) => Promise<SeamlessAttestation>
   /**
    * Signs an arbitrary UTF-8 string with the device Stellar keypair and
@@ -171,7 +172,8 @@ function getWalletService(): WalletService {
   if (!_walletService) {
     const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
     const rpcUrl = appExtra?.stellarRpcUrl ?? 'https://soroban-testnet.stellar.org'
-    const networkPassphrase = appExtra?.stellarNetworkPassphrase ?? 'Test SDF Network ; September 2015'
+    const networkPassphrase =
+      appExtra?.stellarNetworkPassphrase ?? 'Test SDF Network ; September 2015'
     assertNetworkCoherence(appExtra)
 
     _walletService = new WalletService(_adapter, rpcUrl, networkPassphrase)
@@ -229,24 +231,45 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
       frame.src = `${hostedWalletBrokerUrl}/wallet-broker`
       frame.title = 'NodeZero wallet broker'
       frame.setAttribute('aria-hidden', 'true')
-      frame.style.cssText = 'position:fixed;width:1px;height:1px;border:0;opacity:0;pointer-events:none;'
+      frame.style.cssText =
+        'position:fixed;width:1px;height:1px;border:0;opacity:0;pointer-events:none;'
       const brokerOrigin = walletBrokerOrigin(hostedWalletBrokerUrl)
-      const timeout = setTimeout(() => {
+      let retryTimer: ReturnType<typeof setInterval> | null = null
+      const cleanup = () => {
+        clearTimeout(timeout)
+        if (retryTimer) clearInterval(retryTimer)
         window.removeEventListener('message', onReady)
+      }
+      const requestReady = () => {
+        frame.contentWindow?.postMessage(
+          { protocol: WALLET_BROKER_PROTOCOL, type: WALLET_BROKER_READY_REQUEST },
+          brokerOrigin
+        )
+      }
+      const timeout = setTimeout(() => {
+        cleanup()
+        brokerFramePromiseRef.current = null
         reject(new Error('Wallet broker did not become ready.'))
       }, 30_000)
       const onReady = (event: MessageEvent<WalletBrokerReady>) => {
         if (event.origin !== brokerOrigin || event.source !== frame.contentWindow) return
-        if (event.data?.protocol !== WALLET_BROKER_PROTOCOL || event.data?.type !== WALLET_BROKER_READY) return
-        clearTimeout(timeout)
-        window.removeEventListener('message', onReady)
+        if (
+          event.data?.protocol !== WALLET_BROKER_PROTOCOL ||
+          event.data?.type !== WALLET_BROKER_READY
+        )
+          return
+        cleanup()
         brokerFrameRef.current = frame
         resolve(frame)
       }
       window.addEventListener('message', onReady)
+      frame.onload = () => {
+        requestReady()
+        retryTimer = setInterval(requestReady, 250)
+      }
       frame.onerror = () => {
-        clearTimeout(timeout)
-        window.removeEventListener('message', onReady)
+        cleanup()
+        brokerFramePromiseRef.current = null
         reject(new Error('Wallet broker could not be loaded.'))
       }
       document.body.appendChild(frame)
@@ -254,10 +277,19 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
     return brokerFramePromiseRef.current
   }, [hostedWalletBrokerUrl])
 
-  const requestBroker = useCallback(async <T,>(
-    operation: WalletBrokerOperation,
-    payload: Record<string, string> = {},
-  ): Promise<T> => requestWalletBroker<T>(await getBrokerFrame(), hostedWalletBrokerUrl ?? '', operation, payload), [getBrokerFrame, hostedWalletBrokerUrl])
+  const requestBroker = useCallback(
+    async <T,>(
+      operation: WalletBrokerOperation,
+      payload: Record<string, string> = {}
+    ): Promise<T> =>
+      requestWalletBroker<T>(
+        await getBrokerFrame(),
+        hostedWalletBrokerUrl ?? '',
+        operation,
+        payload
+      ),
+    [getBrokerFrame, hostedWalletBrokerUrl]
+  )
 
   const getBrokerPublicKey = useCallback(async (): Promise<string> => {
     let lastError: unknown
@@ -278,7 +310,9 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
   const refreshIdentities = useCallback(async (): Promise<void> => {
     if (hostedWalletBrokerUrl) {
       const stellarPublicKey = await getBrokerPublicKey()
-      setIdentities([{ keyId: 'broker', label: 'Device identity', createdAt: '', lastUsedAt: null }])
+      setIdentities([
+        { keyId: 'broker', label: 'Device identity', createdAt: '', lastUsedAt: null },
+      ])
       setActiveIdentityKeyId('broker')
       setWalletInfo({ keyId: 'broker', publicKey: stellarPublicKey, isFunded: false })
       return
@@ -292,29 +326,36 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
     setActiveIdentityKeyId(active)
   }, [getBrokerPublicKey, hostedWalletBrokerUrl])
 
-  const hydrateSelectedWallet = useCallback(async (keyId: string): Promise<void> => {
-    if (hostedWalletBrokerUrl) {
-      await refreshIdentities()
-      return
-    }
-    const service = getWalletService()
-    const publicKey = await service.getWalletPublicKeyForIdentity(keyId)
-    setWalletInfo({ keyId, publicKey, isFunded: false })
-
-    void (async (): Promise<void> => {
-      try {
-        const hydrated = await service.getWalletInfoForIdentity(keyId)
-        setWalletInfo(hydrated)
-      } catch (err) {
-        console.warn('[WalletContext] Wallet funding hydration failed:', err)
+  const hydrateSelectedWallet = useCallback(
+    async (keyId: string): Promise<void> => {
+      if (hostedWalletBrokerUrl) {
+        await refreshIdentities()
+        return
       }
-    })()
-  }, [hostedWalletBrokerUrl, refreshIdentities])
+      const service = getWalletService()
+      const publicKey = await service.getWalletPublicKeyForIdentity(keyId)
+      setWalletInfo({ keyId, publicKey, isFunded: false })
+
+      void (async (): Promise<void> => {
+        try {
+          const hydrated = await service.getWalletInfoForIdentity(keyId)
+          setWalletInfo(hydrated)
+        } catch (err) {
+          console.warn('[WalletContext] Wallet funding hydration failed:', err)
+        }
+      })()
+    },
+    [hostedWalletBrokerUrl, refreshIdentities]
+  )
 
   /** Initialises the verification ladder: first step active, rest pending. */
   const initVerificationSteps = useCallback((defs: Array<[key: string, label: string]>): void => {
     setVerificationSteps(
-      defs.map(([key, label], index) => ({ key, label, status: index === 0 ? 'active' : 'pending' })),
+      defs.map(([key, label], index) => ({
+        key,
+        label,
+        status: index === 0 ? 'active' : 'pending',
+      }))
     )
   }, [])
 
@@ -325,7 +366,8 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
       if (doneIndex === -1) return steps
       return steps.map((step, index) => {
         if (index <= doneIndex) return step.status === 'done' ? step : { ...step, status: 'done' }
-        if (index === doneIndex + 1 && step.status === 'pending') return { ...step, status: 'active' }
+        if (index === doneIndex + 1 && step.status === 'pending')
+          return { ...step, status: 'active' }
         return step
       })
     })
@@ -336,10 +378,12 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
   // the step that was running as failed.
   useEffect(() => {
     if (attestationStatus === 'verified') {
-      setVerificationSteps((steps) => steps.map((step) => (step.status === 'done' ? step : { ...step, status: 'done' })))
+      setVerificationSteps((steps) =>
+        steps.map((step) => (step.status === 'done' ? step : { ...step, status: 'done' }))
+      )
     } else if (attestationStatus === 'error' || attestationStatus === 'unlinked') {
       setVerificationSteps((steps) =>
-        steps.map((step) => (step.status === 'active' ? { ...step, status: 'error' } : step)),
+        steps.map((step) => (step.status === 'active' ? { ...step, status: 'error' } : step))
       )
     }
   }, [attestationStatus])
@@ -360,7 +404,8 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
       try {
         // Make onboarding actionable as soon as a key exists without blocking
         // on funding checks.
-        const active = (await service.getActiveIdentityKeyId()) ?? (await service.getWalletInfo()).keyId
+        const active =
+          (await service.getActiveIdentityKeyId()) ?? (await service.getWalletInfo()).keyId
         await refreshIdentities()
         if (active) {
           await hydrateSelectedWallet(active)
@@ -373,47 +418,54 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
     })()
   }, [hostedWalletBrokerUrl, hydrateSelectedWallet, refreshIdentities])
 
-  const selectIdentity = useCallback(async (keyId: string): Promise<void> => {
-    setIsIdentityBusy(true)
-    try {
-      if (hostedWalletBrokerUrl) {
-        if (keyId !== 'broker') throw new Error('Hosted wallet broker exposes only the active device identity.')
-        await refreshIdentities()
-        return
-      }
-      const service = getWalletService()
-      await service.setActiveIdentity(keyId)
-      await refreshIdentities()
-      await hydrateSelectedWallet(keyId)
-    } finally {
-      setIsIdentityBusy(false)
-    }
-  }, [hostedWalletBrokerUrl, hydrateSelectedWallet, refreshIdentities])
-
-  const createIdentity = useCallback(async (label?: string): Promise<void> => {
-    setIsIdentityBusy(true)
-    try {
-      if (hostedWalletBrokerUrl) {
-        await requestBroker('create-identity', label ? { label } : {})
-        await refreshIdentities()
-        return
-      }
-      const service = getWalletService()
-      const created = await service.createIdentity(label)
-      await refreshIdentities()
-      setWalletInfo(created)
-      void (async (): Promise<void> => {
-        try {
-          const hydrated = await service.getWalletInfoForIdentity(created.keyId)
-          setWalletInfo(hydrated)
-        } catch (err) {
-          console.warn('[WalletContext] Wallet funding hydration failed:', err)
+  const selectIdentity = useCallback(
+    async (keyId: string): Promise<void> => {
+      setIsIdentityBusy(true)
+      try {
+        if (hostedWalletBrokerUrl) {
+          if (keyId !== 'broker')
+            throw new Error('Hosted wallet broker exposes only the active device identity.')
+          await refreshIdentities()
+          return
         }
-      })()
-    } finally {
-      setIsIdentityBusy(false)
-    }
-  }, [hostedWalletBrokerUrl, refreshIdentities, requestBroker])
+        const service = getWalletService()
+        await service.setActiveIdentity(keyId)
+        await refreshIdentities()
+        await hydrateSelectedWallet(keyId)
+      } finally {
+        setIsIdentityBusy(false)
+      }
+    },
+    [hostedWalletBrokerUrl, hydrateSelectedWallet, refreshIdentities]
+  )
+
+  const createIdentity = useCallback(
+    async (label?: string): Promise<void> => {
+      setIsIdentityBusy(true)
+      try {
+        if (hostedWalletBrokerUrl) {
+          await requestBroker('create-identity', label ? { label } : {})
+          await refreshIdentities()
+          return
+        }
+        const service = getWalletService()
+        const created = await service.createIdentity(label)
+        await refreshIdentities()
+        setWalletInfo(created)
+        void (async (): Promise<void> => {
+          try {
+            const hydrated = await service.getWalletInfoForIdentity(created.keyId)
+            setWalletInfo(hydrated)
+          } catch (err) {
+            console.warn('[WalletContext] Wallet funding hydration failed:', err)
+          }
+        })()
+      } finally {
+        setIsIdentityBusy(false)
+      }
+    },
+    [hostedWalletBrokerUrl, refreshIdentities, requestBroker]
+  )
 
   // Fail-closed post-login verification (single path): every account is
   // provisioned with an on-chain per-user lockb0x, and the session carries the
@@ -462,7 +514,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
     if (!lockboxId) {
       setAttestationStatus('error')
       setAttestationMessage(
-        'Your session is missing its on-chain lockb0x anchor. Re-create your node to finish onboarding.',
+        'Your session is missing its on-chain lockb0x anchor. Re-create your node to finish onboarding.'
       )
       setAttestationDetails({
         registeredWebId: webId,
@@ -514,7 +566,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
             if (hostedWalletBrokerUrl) {
               const result = await requestBroker<{ accountCommitmentHex?: string | null }>(
                 'get-lockbox-commitment',
-                { contractId: lockboxId },
+                { contractId: lockboxId }
               )
               onchain = result.accountCommitmentHex ?? null
             } else {
@@ -528,7 +580,9 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
           }
           if (attempt < MAX_RETRIES - 1) {
             const delay = RETRY_BASE_MS * Math.pow(2, attempt)
-            setAttestationMessage(`Waiting for on-chain confirmation… (attempt ${attempt + 2}/${MAX_RETRIES})`)
+            setAttestationMessage(
+              `Waiting for on-chain confirmation… (attempt ${attempt + 2}/${MAX_RETRIES})`
+            )
             await new Promise<void>((res) => setTimeout(res, delay))
           }
         }
@@ -539,20 +593,24 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
         if (!onchain) {
           setAttestationStatus('unlinked')
           setAttestationMessage(
-            'Your node is missing an on-chain attestation anchor. Re-create your node to link a lockb0x attestation before continuing.',
+            'Your node is missing an on-chain attestation anchor. Re-create your node to link a lockb0x attestation before continuing.'
           )
           setAttestationDetails(details({}))
           return
         }
         let deviceCommitment: string
         if (hostedWalletBrokerUrl) {
-          const result = await requestBroker<{ accountCommitmentHex?: string }>('get-account-commitment')
-          if (!result.accountCommitmentHex) throw new Error('wallet broker did not return an account commitment')
+          const result = await requestBroker<{ accountCommitmentHex?: string }>(
+            'get-account-commitment'
+          )
+          if (!result.accountCommitmentHex)
+            throw new Error('wallet broker did not return an account commitment')
           deviceCommitment = result.accountCommitmentHex
         } else {
           const secret = await _adapter?.loadOrCreate(walletInfo?.keyId)
           if (!secret) throw new Error('wallet secret unavailable')
-          const { deriveAccountCommitmentHex } = await import('@nodezero/zk-crypto/attestation-cipher')
+          const { deriveAccountCommitmentHex } =
+            await import('@nodezero/zk-crypto/attestation-cipher')
           deviceCommitment = await deriveAccountCommitmentHex(secret)
         }
         const norm = (h: string): string => h.trim().toLowerCase().replace(/^0x/, '')
@@ -560,12 +618,14 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
           advanceVerificationStep('identity')
           setAttestationStatus('verified')
           setAttestationMessage('On-chain ZK identity attestation verified.')
-          setAttestationDetails(details({ verifiedAt: sessionCreatedAt ?? new Date().toISOString() }))
+          setAttestationDetails(
+            details({ verifiedAt: sessionCreatedAt ?? new Date().toISOString() })
+          )
         } else {
           // Fail-closed: the device does not control the anchored identity.
           setAttestationStatus('error')
           setAttestationMessage(
-            'Your device identity does not match the on-chain attestation. Re-create your node to continue.',
+            'Your device identity does not match the on-chain attestation. Re-create your node to continue.'
           )
           setAttestationDetails(details({}))
         }
@@ -574,14 +634,27 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
         setAttestationMessage(
           err instanceof Error
             ? `Attestation verification failed: ${err.message}`
-            : 'Attestation verification failed.',
+            : 'Attestation verification failed.'
         )
         setAttestationDetails(details({}))
       }
     })()
-  }, [advanceVerificationStep, hostedWalletBrokerUrl, initVerificationSteps, lockbox, requestBroker, sessionCreatedAt, sessionStatus, walletInfo?.keyId, webId])
+  }, [
+    advanceVerificationStep,
+    hostedWalletBrokerUrl,
+    initVerificationSteps,
+    lockbox,
+    requestBroker,
+    sessionCreatedAt,
+    sessionStatus,
+    walletInfo?.keyId,
+    webId,
+  ])
 
-  const exportRecoveryBundle = useCallback(async (): Promise<{ fileName: string; json: string }> => {
+  const exportRecoveryBundle = useCallback(async (): Promise<{
+    fileName: string
+    json: string
+  }> => {
     if (hostedWalletBrokerUrl) {
       throw new Error('Recovery export is unavailable from an embedded wallet broker session.')
     }
@@ -613,7 +686,10 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
   }, [attestationDetails, hostedWalletBrokerUrl, walletInfo, webId])
 
   const deleteNodeData = useCallback(
-    async (options?: { unlinkIdentity?: boolean; clearAllLocalCache?: boolean }): Promise<DeleteNodeDataResult> => {
+    async (options?: {
+      unlinkIdentity?: boolean
+      clearAllLocalCache?: boolean
+    }): Promise<DeleteNodeDataResult> => {
       if (hostedWalletBrokerUrl) {
         throw new Error('Delete Node Data must be completed from the wallet broker host.')
       }
@@ -633,7 +709,10 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
         } catch (err) {
           const warning = err instanceof Error ? err.message : 'On-chain identity unlink failed.'
           warnings.push(warning)
-          console.warn('[WalletContext] On-chain identity unlink failed; continuing local delete:', err)
+          console.warn(
+            '[WalletContext] On-chain identity unlink failed; continuing local delete:',
+            err
+          )
         }
       }
 
@@ -678,10 +757,14 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
     async (
       webId: string,
       podUrl: string,
-      stellarPublicKey: string,
+      stellarPublicKey: string
     ): Promise<SeamlessAttestation> => {
       if (hostedWalletBrokerUrl) {
-        return requestBroker<SeamlessAttestation>('create-attestation', { webId, podUrl, stellarPublicKey })
+        return requestBroker<SeamlessAttestation>('create-attestation', {
+          webId,
+          podUrl,
+          stellarPublicKey,
+        })
       }
       // Ensure the wallet service/adapter singletons are initialised, then read
       // the secret via loadOrCreate (mirrors runCustodyProvisioning). On web,
@@ -700,10 +783,11 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
   const signAttestationChallenge = useCallback(
     async (challengePayload: string) => {
       if (hostedWalletBrokerUrl) {
-        return requestBroker<{ stellarPublicKey: string; challengePayload: string; signatureBase64: string }>(
-          'sign-challenge',
-          { challengePayload },
-        )
+        return requestBroker<{
+          stellarPublicKey: string
+          challengePayload: string
+          signatureBase64: string
+        }>('sign-challenge', { challengePayload })
       }
       return getWalletService().signAttestationChallenge(challengePayload)
     },
@@ -713,18 +797,24 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
   const getLockboxAccountCommitment = useCallback(
     async (contractId: string): Promise<string | null> => {
       if (hostedWalletBrokerUrl) {
-        const result = await requestBroker<{ accountCommitmentHex?: string | null }>('get-lockbox-commitment', { contractId })
+        const result = await requestBroker<{ accountCommitmentHex?: string | null }>(
+          'get-lockbox-commitment',
+          { contractId }
+        )
         return result.accountCommitmentHex ?? null
       }
       return getWalletService().getLockboxAccountCommitment(contractId)
     },
-    [hostedWalletBrokerUrl, requestBroker],
+    [hostedWalletBrokerUrl, requestBroker]
   )
 
   const deriveAccountCommitment = useCallback(async (): Promise<string> => {
     if (hostedWalletBrokerUrl) {
-      const result = await requestBroker<{ accountCommitmentHex?: string }>('get-account-commitment')
-      if (!result.accountCommitmentHex) throw new Error('Wallet broker did not return an account commitment.')
+      const result = await requestBroker<{ accountCommitmentHex?: string }>(
+        'get-account-commitment'
+      )
+      if (!result.accountCommitmentHex)
+        throw new Error('Wallet broker did not return an account commitment.')
       return result.accountCommitmentHex
     }
     getWalletService()
@@ -735,25 +825,27 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
   }, [hostedWalletBrokerUrl, requestBroker, walletInfo?.keyId])
 
   return (
-    <WalletContext.Provider value={{
-      walletInfo,
-      identities,
-      activeIdentityKeyId,
-      isLoading,
-      isIdentityBusy,
-      attestationStatus,
-      attestationMessage,
-      verificationSteps,
-      attestationDetails,
-      exportRecoveryBundle,
-      deleteNodeData,
-      createSeamlessAttestation,
-      signAttestationChallenge,
-      getLockboxAccountCommitment,
-      deriveAccountCommitment,
-      selectIdentity,
-      createIdentity,
-    }}>
+    <WalletContext.Provider
+      value={{
+        walletInfo,
+        identities,
+        activeIdentityKeyId,
+        isLoading,
+        isIdentityBusy,
+        attestationStatus,
+        attestationMessage,
+        verificationSteps,
+        attestationDetails,
+        exportRecoveryBundle,
+        deleteNodeData,
+        createSeamlessAttestation,
+        signAttestationChallenge,
+        getLockboxAccountCommitment,
+        deriveAccountCommitment,
+        selectIdentity,
+        createIdentity,
+      }}
+    >
       {children}
     </WalletContext.Provider>
   )

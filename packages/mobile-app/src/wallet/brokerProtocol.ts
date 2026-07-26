@@ -1,5 +1,6 @@
 export const WALLET_BROKER_PROTOCOL = 'nz-wallet-broker-v1'
 export const WALLET_BROKER_READY = 'ready'
+export const WALLET_BROKER_READY_REQUEST = 'ready-request'
 
 export type WalletBrokerOperation =
   | 'get-public-key'
@@ -43,7 +44,7 @@ export async function requestWalletBroker<T>(
   frame: HTMLIFrameElement,
   brokerUrl: string,
   operation: WalletBrokerOperation,
-  payload: Record<string, string> = {},
+  payload: Record<string, string> = {}
 ): Promise<T> {
   const target = frame.contentWindow
   if (!target) throw new Error('Wallet broker frame is unavailable.')
@@ -59,7 +60,12 @@ export async function requestWalletBroker<T>(
 
     channel.port1.onmessage = (event: MessageEvent<WalletBrokerResponse>) => {
       const response = event.data
-      if (!response || response.protocol !== WALLET_BROKER_PROTOCOL || response.requestId !== requestId) return
+      if (
+        !response ||
+        response.protocol !== WALLET_BROKER_PROTOCOL ||
+        response.requestId !== requestId
+      )
+        return
       clearTimeout(timeout)
       channel.port1.close()
       if (!response.ok) {
@@ -82,4 +88,9 @@ export async function requestWalletBroker<T>(
 export interface WalletBrokerReady {
   protocol: typeof WALLET_BROKER_PROTOCOL
   type: typeof WALLET_BROKER_READY
+}
+
+export interface WalletBrokerReadyRequest {
+  protocol: typeof WALLET_BROKER_PROTOCOL
+  type: typeof WALLET_BROKER_READY_REQUEST
 }

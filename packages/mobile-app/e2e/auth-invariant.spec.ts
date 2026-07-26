@@ -14,7 +14,16 @@ import { test, expect } from '@playwright/test'
 
 const CSS_ORIGIN_PATTERN = /solid\.nodezero\.social/
 
-const PROTECTED_ROUTES = ['/feed', '/directory', '/backpack', '/profile', '/docustream', '/local', '/compose', '/settings']
+const PROTECTED_ROUTES = [
+  '/feed',
+  '/directory',
+  '/backpack',
+  '/profile',
+  '/docustream',
+  '/local',
+  '/compose',
+  '/settings',
+]
 
 // ─── I1: every protected deep link redirects to the sign-in page ────────────
 for (const route of PROTECTED_ROUTES) {
@@ -39,14 +48,15 @@ test('I2: tampered session token is rejected and user lands on sign-in', async (
       'nz.session.v2',
       JSON.stringify({
         version: 2,
-        accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJodHRwczovL2V2aWwiLCJhdWQiOiJuei1zZXNzaW9uLXYxIiwiZXhwIjo5OTk5OTk5OTk5fQ.forged',
+        accessToken:
+          'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJodHRwczovL2V2aWwiLCJhdWQiOiJuei1zZXNzaW9uLXYxIiwiZXhwIjo5OTk5OTk5OTk5fQ.forged',
         refreshToken: 'forged-refresh-token',
         expiresAt: new Date(Date.now() - 60_000).toISOString(),
         webId: 'https://solid.nodezero.social/evil/profile/card#me',
         podUrl: 'https://solid.nodezero.social/evil/',
         lockbox: null,
         createdAt: new Date().toISOString(),
-      }),
+      })
     )
   })
 
@@ -72,7 +82,9 @@ test('I3: landing page issues zero requests to the CSS origin', async ({ page })
   await page.goto('/')
   await page.waitForLoadState('networkidle')
 
-  expect(cssRequests, `browser must not talk to CSS, saw: ${cssRequests.join(', ')}`).toHaveLength(0)
+  expect(cssRequests, `browser must not talk to CSS, saw: ${cssRequests.join(', ')}`).toHaveLength(
+    0
+  )
 })
 
 // ─── I4: no legacy auth artefacts exist anywhere ─────────────────────────────
@@ -84,18 +96,30 @@ test('I4: no bridge params in URL and no Inrupt storage keys', async ({ page }) 
 
   const inruptKeys = await page.evaluate(() =>
     Object.keys(window.localStorage).filter(
-      (key) => key.startsWith('solidClientAuthn') || key.includes('solid-client-authn'),
-    ),
+      (key) => key.startsWith('solidClientAuthn') || key.includes('solid-client-authn')
+    )
   )
   expect(inruptKeys).toHaveLength(0)
 })
 
 // ─── I5: sign-in page carries no password fields and no IdP picker ──────────
-test('I5: sign-in surface exposes no password input and no identity-provider picker', async ({ page }) => {
+test('I5: sign-in surface exposes no password input and no identity-provider picker', async ({
+  page,
+}) => {
   await page.goto('/')
   await page.waitForLoadState('networkidle')
 
   await expect(page.locator('input[type="password"]')).toHaveCount(0)
   await expect(page.getByText('solidcommunity.net')).toHaveCount(0)
   await expect(page.getByText('Sign in to your node').first()).toBeVisible()
+})
+
+// ─── I6: first-party wallet broker becomes ready before onboarding ──────────
+test('I6: wallet broker makes Node creation available', async ({ page }) => {
+  await page.goto('/')
+
+  await expect(page.locator('iframe[title="NodeZero wallet broker"]')).toHaveCount(1)
+  await expect(page.getByText('Create Your Node', { exact: true }).first()).toBeVisible({
+    timeout: 30_000,
+  })
 })

@@ -4,7 +4,9 @@ import { useWallet } from '../src/contexts/WalletContext'
 import {
   WALLET_BROKER_PROTOCOL,
   WALLET_BROKER_READY,
+  WALLET_BROKER_READY_REQUEST,
   type WalletBrokerRequest,
+  type WalletBrokerReadyRequest,
   type WalletBrokerResponse,
 } from '../src/wallet/brokerProtocol'
 
@@ -32,17 +34,30 @@ export default function WalletBrokerScreen(): JSX.Element {
   React.useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return
 
-    const onConnect = (event: MessageEvent<WalletBrokerRequest>) => {
+    const onConnect = (event: MessageEvent<WalletBrokerRequest | WalletBrokerReadyRequest>) => {
       if (!ALLOWED_PARENT_ORIGINS.has(event.origin)) return
       if (event.source !== window.parent) return
       if (event.data?.protocol !== WALLET_BROKER_PROTOCOL) return
+      if ('type' in event.data && event.data.type === WALLET_BROKER_READY_REQUEST) {
+        window.parent.postMessage(
+          { protocol: WALLET_BROKER_PROTOCOL, type: WALLET_BROKER_READY },
+          event.origin
+        )
+        return
+      }
       const port = event.ports[0]
       if (!port) return
 
       const handleRequest = async (request: WalletBrokerRequest) => {
         if (!request || request.protocol !== WALLET_BROKER_PROTOCOL) return
         const reply = (ok: boolean, result?: Record<string, unknown>, error?: string) =>
-          send(port, { protocol: WALLET_BROKER_PROTOCOL, requestId: request.requestId, ok, result, error })
+          send(port, {
+            protocol: WALLET_BROKER_PROTOCOL,
+            requestId: request.requestId,
+            ok,
+            result,
+            error,
+          })
 
         try {
           if (!walletInfo?.publicKey) throw new Error('Wallet is still initializing.')
@@ -84,30 +99,35 @@ export default function WalletBrokerScreen(): JSX.Element {
           }
           throw new Error('Wallet broker operation is not supported.')
         } catch (error) {
-          reply(false, undefined, error instanceof Error ? error.message : 'Wallet broker operation failed.')
+          reply(
+            false,
+            undefined,
+            error instanceof Error ? error.message : 'Wallet broker operation failed.'
+          )
         }
       }
       port.onmessage = (messageEvent: MessageEvent<WalletBrokerRequest>) => {
         void handleRequest(messageEvent.data)
       }
       port.start()
-      void handleRequest(event.data)
+      void handleRequest(event.data as WalletBrokerRequest)
     }
 
     window.addEventListener('message', onConnect)
-    try {
-      const parentOrigin = new URL(document.referrer).origin
-      if (ALLOWED_PARENT_ORIGINS.has(parentOrigin)) {
-        window.parent.postMessage(
-          { protocol: WALLET_BROKER_PROTOCOL, type: WALLET_BROKER_READY },
-          parentOrigin,
-        )
-      }
-    } catch {
-      // Standalone broker pages have no trusted parent to notify.
-    }
     return () => window.removeEventListener('message', onConnect)
-  }, [createIdentity, createSeamlessAttestation, deriveAccountCommitment, getLockboxAccountCommitment, selectIdentity, signAttestationChallenge, walletInfo?.publicKey])
+  }, [
+    createIdentity,
+    createSeamlessAttestation,
+    deriveAccountCommitment,
+    getLockboxAccountCommitment,
+    selectIdentity,
+    signAttestationChallenge,
+    walletInfo?.publicKey,
+  ])
 
-  return <View accessible={false}><Text>Wallet broker ready.</Text></View>
+  return (
+    <View accessible={false}>
+      <Text>Wallet broker ready.</Text>
+    </View>
+  )
 }
