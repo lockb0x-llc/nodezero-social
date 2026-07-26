@@ -21,6 +21,7 @@
     "qa:smoke:solid-bootstrap": "bash ./scripts/qa/staging-solid-bootstrap-policy-smoke.sh",
     "qa:smoke:gate": "bash ./scripts/qa/staging-smoke.sh && bash ./scripts/qa/staging-solid-bootstrap-policy-smoke.sh",
     "qa:smoke:auth": "node ./scripts/qa/staging-auth-evidence.mjs",
+    "qa:audit:lockbox": "node ./scripts/qa/lockbox-auditor.mjs",
     "qa:evidence:apex-staging-onboarding": "node ./scripts/qa/apex-staging-onboarding-evidence.mjs",
     "qa:smoke:community-directory": "node ./scripts/qa/staging-community-directory-evidence.mjs",
     "qa:smoke:mashlib-runtime": "bash ./scripts/qa/staging-mashlib-runtime-proof.sh",
@@ -52,6 +53,7 @@
     "deploy:azure:notifications": "bash ./scripts/azure/deploy-notification-infra.sh"
   },
   "devDependencies": {
+    "@stellar/stellar-sdk": "^16.0.0",
     "typescript": "^5.4.5",
     "@playwright/test": "^1.45.0",
     "@typescript-eslint/eslint-plugin": "^7.13.0",

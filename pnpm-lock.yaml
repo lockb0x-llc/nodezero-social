@@ -11,6 +11,9 @@ importers:
       '@playwright/test':
         specifier: ^1.45.0
         version: 1.61.1
+      '@stellar/stellar-sdk':
+        specifier: ^16.0.0
+        version: 16.0.1
       '@typescript-eslint/eslint-plugin':
         specifier: ^7.13.0
         version: 7.18.0(@typescript-eslint/parser@7.18.0(eslint@8.57.1)(typescript@5.9.3))(eslint@8.57.1)(typescript@5.9.3)

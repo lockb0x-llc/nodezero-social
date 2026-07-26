@@ -81,3 +81,6 @@
 
 ## Milestone N: Provisioning wait-state UX hardening (2026-07-25)
 - [TODO] N1: Improve account provisioning progress UX for 30-60s waits by adding explicit step status text and a non-telemetry fallback rotator (short decentralized-web quotes) while Pod creation is in progress.
+
+## Milestone O: Lockb0x V3 audit integration (2026-07-26)
+- [DONE] O1: Configure AUDIT_AGENT and add the Testnet-only Factory V3 child-state auditor (`pnpm qa:audit:lockbox`).

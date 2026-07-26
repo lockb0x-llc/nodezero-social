@@ -10,6 +10,7 @@ This runbook explains how to execute the agent team to deliver staging.nodezero.
 - SOLID_DATA_AGENT
 - P2P_RELAY_AGENT
 - QA_RELEASE_AGENT
+- AUDIT_AGENT
 - DOCS_AGENT
 
 Role cards are located in .agents/agents.

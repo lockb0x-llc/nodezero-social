@@ -39846,3 +39846,9 @@ Context: Used dev geolocation mock in staging browser harness and reloaded authe
 Request: Track LM1 as pass in harness; keep J4 open only for LM2 two-client exchange proof with distinct authenticated WebIDs.
 Evidence: /local now renders "Your Local Node" with H3 index 892986b8003ffff and surrounding cells after mock injection/reload.
 Due: Next coordination checkpoint.
+
+[2026-07-26 18:57 UTC] [AUDIT_AGENT->QA_RELEASE_AGENT,PROJECT_MANAGER] [P1] [DONE]
+Context: AUDIT_AGENT and the V3 lockb0x auditor are configured. The auditor validates current Testnet-only Factory V3 creation events and verifies that each emitted child has all constructor-written immutable bridge state; it does not inspect or log commitments, proof bytes, ciphertext, WebIDs, or credentials.
+Request: Run `NZ_ENV_PROFILE=staging-testnet NZ_LOCKBOX_FACTORY_CONTRACT_ID=CDFHCQA3YJCITWEMNLCSRGQVVFEXGTONWSQJTD5VIZO7YV4IOKZUPCGT pnpm qa:audit:lockbox` immediately after a successful Testnet onboarding creation, then attach the resulting PASS/NO-GO output to release evidence.
+Evidence: `package.json` (`qa:audit:lockbox`); `scripts/qa/lockbox-auditor.mjs`; `.agents/agents/AUDIT_AGENT.md`; focused Testnet audit PASS (no V3 child deployments in ledgers 3813264-3814764); Prettier check PASS for the audit command and role configuration.
+Due: Before the next staging release sign-off.

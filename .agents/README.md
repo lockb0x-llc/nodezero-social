@@ -3,7 +3,7 @@
 This folder defines the working agreement for a multi-agent team delivering staging.nodezero.social.
 
 ## Structure
-- agents/: role cards and operating instructions.
+- agents/: role cards and operating instructions, including AUDIT_AGENT for V3 lockb0x state evidence.
 - project-manager/todo.md: canonical PM task board.
 - project-manager/parallel-work-items.json: branch-level parallel assignment plan.
 - project-manager/merge-queue.txt: ordered reintegration queue.
