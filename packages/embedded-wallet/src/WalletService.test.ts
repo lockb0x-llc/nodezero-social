@@ -105,3 +105,23 @@ void test('supports creating and switching between identities', async () => {
   const secondPublicKey = await service.getWalletPublicKeyForIdentity(second.keyId)
   assert.equal(secondPublicKey, second.publicKey)
 })
+
+void test('does not call Friendbot when a Testnet wallet is unfunded', async () => {
+  const originalFetch = globalThis.fetch
+  const requestedUrls: string[] = []
+  globalThis.fetch = async (input) => {
+    requestedUrls.push(String(input))
+    return new Response(null, { status: 404 })
+  }
+
+  try {
+    const service = new WalletService(new EnclaveAdapter(createMemoryStore()))
+    const info = await service.getWalletInfo()
+
+    assert.equal(info.isFunded, false)
+    assert.equal(requestedUrls.some((url) => url.includes('friendbot.stellar.org')), false)
+    assert.equal(requestedUrls.length, 1)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})

@@ -42,7 +42,6 @@ export const ServerEndpoint = {
   MAINNET: 'https://soroban.stellar.org',
 } as const
 
-const TESTNET_FRIENDBOT_URL = 'https://friendbot.stellar.org'
 const HorizonEndpoint = {
   TESTNET: 'https://horizon-testnet.stellar.org',
   MAINNET: 'https://horizon.stellar.org',
@@ -546,29 +545,8 @@ export class WalletService {
       this.fundedAccounts.add(publicKey)
       return true
     } catch {
-      // Testnet staging can safely fund throwaway embedded wallets. Mainnet must never auto-fund.
-      if (this.network !== String(Networks.TESTNET)) return false
-    }
-
-    try {
-      const response = await fetch(`${TESTNET_FRIENDBOT_URL}?addr=${encodeURIComponent(publicKey)}`)
-      if (!response.ok) {
-        const body = await response.text().catch(() => '')
-        const alreadyFunded = response.status === 400 && /already funded to starting balance/i.test(body)
-        if (!alreadyFunded) return false
-      }
-      for (let attempt = 0; attempt < 12; attempt += 1) {
-        await delay(1_500)
-        try {
-          await this.getHorizonAccount(publicKey)
-          this.fundedAccounts.add(publicKey)
-          return true
-        } catch {
-          // Friendbot can return before Soroban RPC has indexed the account.
-        }
-      }
-      return false
-    } catch {
+      // Wallets are funded only by the provisioner during node creation. The
+      // browser must never call Friendbot or hold a Treasury funding capability.
       return false
     }
   }

@@ -85,6 +85,18 @@ function trackNavigations(page, sink) {
   })
 }
 
+function trackFriendbotRequests(page, sink) {
+  page.on('request', (request) => {
+    try {
+      if (new URL(request.url()).hostname.toLowerCase() === 'friendbot.stellar.org') {
+        sink.push(`${request.method()} ${request.url()}`)
+      }
+    } catch {
+      // ignore unparsable URLs
+    }
+  })
+}
+
 async function readStoredSession(page) {
   const raw = await page.evaluate(
     (key) => window.localStorage.getItem(key),
@@ -146,6 +158,12 @@ function assertNoLegacyLegs(navigations, cssRequests) {
   }
 }
 
+function assertNoFriendbotRequests(friendbotRequests) {
+  if (friendbotRequests.length > 0) {
+    fail(`Browser issued ${friendbotRequests.length} Friendbot request(s):\n  ${friendbotRequests.join('\n  ')}`)
+  }
+}
+
 async function verifyLockboxOnChain(contractId, factoryContractId) {
   const isBridgeV3 = factoryContractId === bridgeV3FactoryId
   const minimumEntries = isBridgeV3 ? 1 : 3
@@ -189,8 +207,10 @@ async function main() {
 
   const cssRequests = []
   const navigations = []
+  const friendbotRequests = []
   trackCssRequests(page, cssRequests)
   trackNavigations(page, navigations)
+  trackFriendbotRequests(page, friendbotRequests)
 
   // ── Journey 1: new-user onboarding with inline session ────────────────────
   log('Journey 1: create node → inline session → authenticated feed')
@@ -227,6 +247,7 @@ async function main() {
     fail('Session carries no on-chain lockb0x contract id.')
   }
   assertNoLegacyLegs(navigations, cssRequests)
+  assertNoFriendbotRequests(friendbotRequests)
 
   const inruptKeys = await page.evaluate(() =>
     Object.keys(window.localStorage).filter((key) => key.toLowerCase().includes('solidclientauthn')),
@@ -268,6 +289,7 @@ async function main() {
     fail(`Returning session webId mismatch: ${returningSession.webId} != ${session.webId}`)
   }
   assertNoLegacyLegs(navigations, cssRequests)
+  assertNoFriendbotRequests(friendbotRequests)
   log('Journey 2 PASS: returning sign-in restored the same identity with no CSS contact')
 
   // ── Journey 3: negative — destroyed session must fail closed ──────────────
