@@ -40,16 +40,28 @@ interface CssControls {
 }
 
 const CSS_POD_LOCK_RETRY_ATTEMPTS = Number(process.env.JSS_SOLID_CSS_POD_LOCK_RETRY_ATTEMPTS ?? 3)
-const CSS_POD_LOCK_RETRY_BASE_DELAY_MS = Number(process.env.JSS_SOLID_CSS_POD_LOCK_RETRY_BASE_DELAY_MS ?? 350)
+const CSS_POD_LOCK_RETRY_BASE_DELAY_MS = Number(
+  process.env.JSS_SOLID_CSS_POD_LOCK_RETRY_BASE_DELAY_MS ?? 350
+)
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-function isCssPodLockTimeoutError(error: unknown): boolean {
+function isTransientCssPodCreationError(error: unknown): boolean {
   if (!(error instanceof Error)) return false
   const lower = error.message.toLowerCase()
-  return lower.includes('lock expired after') && lower.includes('/pod')
+  if (lower.includes('lock expired after') && lower.includes('/pod')) return true
+
+  // CSS can report a short-lived account/pod state conflict as a generic 400
+  // immediately after account setup. Restrict retries to its exact Pod endpoint
+  // envelope so invalid account/password requests continue to fail closed.
+  return (
+    lower.includes('css post') &&
+    lower.includes('/pod') &&
+    lower.includes('failed (400)') &&
+    lower.includes('badrequesthttperror')
+  )
 }
 
 async function getControls(baseUrl: string, authorization?: string): Promise<CssControls> {
@@ -63,8 +75,15 @@ async function getControls(baseUrl: string, authorization?: string): Promise<Css
   return body.controls
 }
 
-async function postJson<T>(url: string, authorization: string | undefined, payload: unknown): Promise<T> {
-  const headers: Record<string, string> = { 'content-type': 'application/json', accept: 'application/json' }
+async function postJson<T>(
+  url: string,
+  authorization: string | undefined,
+  payload: unknown
+): Promise<T> {
+  const headers: Record<string, string> = {
+    'content-type': 'application/json',
+    accept: 'application/json',
+  }
   if (authorization) headers.authorization = `CSS-Account-Token ${authorization}`
   const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload ?? {}) })
   const text = await res.text()
@@ -77,7 +96,7 @@ async function postJson<T>(url: string, authorization: string | undefined, paylo
 async function createPodWithRetry(
   podEndpoint: string,
   token: string,
-  name: string,
+  name: string
 ): Promise<{ pod?: string; webId?: string }> {
   const attempts = Math.max(1, CSS_POD_LOCK_RETRY_ATTEMPTS)
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
@@ -85,9 +104,11 @@ async function createPodWithRetry(
       return await postJson<{ pod?: string; webId?: string }>(podEndpoint, token, { name })
     } catch (error) {
       const isLastAttempt = attempt === attempts
-      if (!isCssPodLockTimeoutError(error) || isLastAttempt) {
-        if (isCssPodLockTimeoutError(error) && isLastAttempt) {
-          throw new Error('Pod provisioning is temporarily busy. Please wait a few seconds and try again.')
+      if (!isTransientCssPodCreationError(error) || isLastAttempt) {
+        if (isTransientCssPodCreationError(error) && isLastAttempt) {
+          throw new Error(
+            'Pod provisioning is temporarily busy. Please wait a few seconds and try again.'
+          )
         }
         throw error
       }
@@ -105,7 +126,7 @@ async function createPodWithRetry(
  */
 export async function createSolidAccount(
   baseUrl: string,
-  input: CreateSolidAccountInput,
+  input: CreateSolidAccountInput
 ): Promise<CreateSolidAccountResult> {
   const normalizedBase = baseUrl.replace(/\/+$/, '')
 
@@ -117,7 +138,10 @@ export async function createSolidAccount(
   }
 
   const authedControls = await getControls(normalizedBase, token)
-  await postJson(authedControls.password.create, token, { email: input.email, password: input.password })
+  await postJson(authedControls.password.create, token, {
+    email: input.email,
+    password: input.password,
+  })
   const pod = await createPodWithRetry(authedControls.account.pod, token, input.name)
 
   const refreshed = await getControls(normalizedBase, token)
@@ -136,7 +160,7 @@ export async function createSolidAccount(
   const cc = await postJson<{ id?: string; secret?: string; resource?: string }>(
     refreshed.account.clientCredentials,
     token,
-    { name: `nz-${input.name}`, webId },
+    { name: `nz-${input.name}`, webId }
   )
   if (!cc.id || !cc.secret) {
     throw new Error('CSS clientCredentials did not return an id/secret.')
@@ -172,7 +196,12 @@ interface DpopSigner {
 async function createDpopSigner(): Promise<DpopSigner> {
   const { generateKeyPairSync, sign, randomUUID } = await import('node:crypto')
   const keyPair = generateKeyPairSync('ec', { namedCurve: 'P-256' })
-  const pub = keyPair.publicKey.export({ format: 'jwk' }) as { crv?: string; kty?: string; x?: string; y?: string }
+  const pub = keyPair.publicKey.export({ format: 'jwk' }) as {
+    crv?: string
+    kty?: string
+    x?: string
+    y?: string
+  }
   const jwk = { crv: pub.crv, kty: pub.kty, x: pub.x, y: pub.y }
 
   return {
@@ -204,11 +233,11 @@ interface TokenExchangeResult {
 async function exchangeClientCredentials(
   baseUrl: string,
   credentials: ClientCredentials,
-  signer: DpopSigner,
+  signer: DpopSigner
 ): Promise<TokenExchangeResult> {
   const tokenUrl = `${baseUrl}/.oidc/token`
   const basic = Buffer.from(
-    `${encodeURIComponent(credentials.id)}:${encodeURIComponent(credentials.secret)}`,
+    `${encodeURIComponent(credentials.id)}:${encodeURIComponent(credentials.secret)}`
   ).toString('base64')
   const res = await fetch(tokenUrl, {
     method: 'POST',
@@ -223,7 +252,8 @@ async function exchangeClientCredentials(
   if (!res.ok || !body.access_token) {
     throw new Error(`CSS token exchange failed (${res.status}): ${JSON.stringify(body)}`)
   }
-  const expiresInSec = typeof body.expires_in === 'number' && body.expires_in > 0 ? body.expires_in : 600
+  const expiresInSec =
+    typeof body.expires_in === 'number' && body.expires_in > 0 ? body.expires_in : 600
   return {
     accessToken: body.access_token,
     expiresAtMs: Date.now() + expiresInSec * 1000,
@@ -244,7 +274,7 @@ export interface PodAccessToken {
  */
 export async function mintPodAccessToken(
   baseUrl: string,
-  credentials: ClientCredentials,
+  credentials: ClientCredentials
 ): Promise<PodAccessToken> {
   const { createHash } = await import('node:crypto')
   const normalizedBase = baseUrl.replace(/\/+$/, '')
@@ -284,7 +314,7 @@ export async function probePodAccess(token: PodAccessToken, podUrl: string): Pro
 export async function writePodDocument(
   baseUrl: string,
   credentials: ClientCredentials,
-  options: { resourceUrl: string; contentType: string; body: string },
+  options: { resourceUrl: string; contentType: string; body: string }
 ): Promise<string> {
   const token = await mintPodAccessToken(baseUrl, credentials)
 
@@ -298,7 +328,9 @@ export async function writePodDocument(
     body: options.body,
   })
   if (!res.ok) {
-    throw new Error(`CSS Pod PUT ${options.resourceUrl} failed (${res.status}): ${await res.text()}`)
+    throw new Error(
+      `CSS Pod PUT ${options.resourceUrl} failed (${res.status}): ${await res.text()}`
+    )
   }
   return options.resourceUrl
 }
@@ -312,7 +344,7 @@ export async function writePodAccountDocument(
   baseUrl: string,
   credentials: ClientCredentials,
   podUrl: string,
-  account: Record<string, unknown>,
+  account: Record<string, unknown>
 ): Promise<string> {
   const normalizedPod = podUrl.replace(/\/+$/, '')
   const resourceUrl = `${normalizedPod}/nodezero-account.json`
@@ -337,7 +369,7 @@ export async function patchPodProfileAnchor(
   baseUrl: string,
   credentials: ClientCredentials,
   webId: string,
-  anchor: { lockboxContractId: string; stellarPublicKey: string; accountCommitmentHex: string },
+  anchor: { lockboxContractId: string; stellarPublicKey: string; accountCommitmentHex: string }
 ): Promise<string> {
   const cardUrl = webId.split('#')[0]
   const token = await mintPodAccessToken(baseUrl, credentials)

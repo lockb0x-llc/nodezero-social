@@ -28,6 +28,8 @@ interface MockCssState {
   pods: Map<string, Map<string, { contentType: string; body: string }>>
   /** When true the token endpoint rejects every exchange (revoked upstream). */
   rejectTokenExchange: boolean
+  /** Number of transient CSS Pod creation 400 responses to emit. */
+  transientPodBadRequests: number
   tokenExchanges: number
 }
 
@@ -36,6 +38,7 @@ const cssState: MockCssState = {
   credentials: new Map(),
   pods: new Map(),
   rejectTokenExchange: false,
+  transientPodBadRequests: 0,
   tokenExchanges: 0,
 }
 
@@ -96,6 +99,11 @@ async function handleMockCss(req: IncomingMessage, res: ServerResponse): Promise
     return
   }
   if (req.method === 'POST' && path === '/.account/pod') {
+    if (cssState.transientPodBadRequests > 0) {
+      cssState.transientPodBadRequests -= 1
+      json(res, 400, { name: 'BadRequestHttpError', message: 'temporary Pod state conflict' })
+      return
+    }
     const body = JSON.parse(await readBody(req)) as { name: string }
     const podUrl = `${cssBaseUrl}/${body.name}/`
     const webId = `${podUrl}profile/card#me`
@@ -128,7 +136,11 @@ async function handleMockCss(req: IncomingMessage, res: ServerResponse): Promise
       json(res, 401, { error: 'unknown client' })
       return
     }
-    json(res, 200, { access_token: `at-${id}-${randomUUID()}`, expires_in: 600, token_type: 'DPoP' })
+    json(res, 200, {
+      access_token: `at-${id}-${randomUUID()}`,
+      expires_in: 600,
+      token_type: 'DPoP',
+    })
     return
   }
 
@@ -232,9 +244,14 @@ after(() => {
 
 beforeEach(() => {
   cssState.rejectTokenExchange = false
+  cssState.transientPodBadRequests = 0
 })
 
-async function postJson(path: string, body: unknown, headers: Record<string, string> = {}): Promise<{ status: number; json: Record<string, unknown>; headers: Headers }> {
+async function postJson(
+  path: string,
+  body: unknown,
+  headers: Record<string, string> = {}
+): Promise<{ status: number; json: Record<string, unknown>; headers: Headers }> {
   const res = await fetch(`${baseUrl}${path}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', accept: 'application/json', ...headers },
@@ -254,7 +271,7 @@ interface SessionShape {
 
 let counter = 0
 async function provisionUserWith(
-  keypair: Keypair,
+  keypair: Keypair
 ): Promise<{ session: SessionShape; webId: string; podUrl: string; keypair: Keypair }> {
   counter += 1
   const { status, json: payload } = await postJson('/v1/solid-account', {
@@ -269,7 +286,12 @@ async function provisionUserWith(
   return { session, webId: payload.webId as string, podUrl: payload.podUrl as string, keypair }
 }
 
-async function provisionUser(): Promise<{ session: SessionShape; webId: string; podUrl: string; keypair: Keypair }> {
+async function provisionUser(): Promise<{
+  session: SessionShape
+  webId: string
+  podUrl: string
+  keypair: Keypair
+}> {
   const keypair = Keypair.random()
   return provisionUserWith(keypair)
 }
@@ -313,14 +335,27 @@ void test('solid-account: returns a session that immediately proxies Pod writes'
   assert.match(await read.text(), /nodezero\.social\/ns#Note/)
 })
 
+void test('solid-account: retries a transient CSS Pod creation 400', async () => {
+  cssState.transientPodBadRequests = 1
+  const { session, webId } = await provisionUser()
+
+  assert.ok(session.accessToken)
+  assert.match(webId, /profile\/card#me$/)
+  assert.equal(cssState.transientPodBadRequests, 0)
+})
+
 void test('browser session bootstraps a fresh staging-local session and logout revokes it', async () => {
   const keypair = Keypair.random()
   counter += 1
-  const created = await postJson('/v1/solid-account', {
-    name: `browser${counter}`,
-    email: `browser${counter}@example.com`,
-    stellarPublicKey: keypair.publicKey(),
-  }, { origin: 'https://nodezero.social' })
+  const created = await postJson(
+    '/v1/solid-account',
+    {
+      name: `browser${counter}`,
+      email: `browser${counter}@example.com`,
+      stellarPublicKey: keypair.publicKey(),
+    },
+    { origin: 'https://nodezero.social' }
+  )
   assert.equal(created.status, 200)
   const setCookie = created.headers.get('set-cookie')
   assert.ok(setCookie?.includes('nz_browser_session='), 'expected opaque browser-session cookie')
@@ -337,15 +372,19 @@ void test('browser session bootstraps a fresh staging-local session and logout r
   const bootstrap = await fetch(`${baseUrl}/v1/auth/browser-session`, {
     headers: { origin: 'https://staging.nodezero.social', cookie },
   })
-  const bootstrapPayload = await bootstrap.json() as { session?: SessionShape; webId?: string }
+  const bootstrapPayload = (await bootstrap.json()) as { session?: SessionShape; webId?: string }
   assert.equal(bootstrap.status, 200)
   assert.ok(bootstrapPayload.session?.accessToken)
   assert.equal(bootstrapPayload.webId, created.json.webId)
   assert.equal(bootstrap.headers.get('access-control-allow-credentials'), 'true')
 
-  const logout = await postJson('/v1/auth/logout', {
-    webId: created.json.webId,
-  }, { origin: 'https://staging.nodezero.social', cookie })
+  const logout = await postJson(
+    '/v1/auth/logout',
+    {
+      webId: created.json.webId,
+    },
+    { origin: 'https://staging.nodezero.social', cookie }
+  )
   assert.equal(logout.status, 200)
   assert.ok(logout.headers.get('set-cookie')?.includes('Max-Age=0'))
 
@@ -369,7 +408,7 @@ void test('solid-account: rejects missing stellarPublicKey', async () => {
 
 async function loginWith(
   keypair: Keypair,
-  options?: { webId?: string },
+  options?: { webId?: string }
 ): Promise<{ status: number; json: Record<string, unknown> }> {
   const challengeResp = await postJson('/v1/auth/stellar-challenge', {
     stellarPublicKey: keypair.publicKey(),
@@ -422,7 +461,10 @@ void test('login: requires account selection when multiple webIds share the same
   const accounts = result.json.accounts as Array<{ webId: string; podUrl: string }>
   assert.ok(Array.isArray(accounts))
   assert.equal(accounts.length, 2)
-  assert.equal(accounts.some((account) => account.webId === first.webId), true)
+  assert.equal(
+    accounts.some((account) => account.webId === first.webId),
+    true
+  )
 })
 
 void test('login: selected webId signs into the requested account', async () => {
