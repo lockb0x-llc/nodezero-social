@@ -100,7 +100,6 @@ jobs:
           if [ -z "$thumbprint" ]; then
             thumbprint="$(az webapp config ssl create \
               --resource-group "$AZURE_RESOURCE_GROUP" \
-              --name "$JSS_PROVISIONER_APP_NAME" \
               --hostname "$api_host" \
               --query thumbprint -o tsv)"
           fi
