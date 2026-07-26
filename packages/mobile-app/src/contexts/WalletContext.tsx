@@ -28,7 +28,14 @@ import { produceSeamlessAttestation, type SeamlessAttestation } from '../onboard
 import type { ProgressStep } from '../components/ProgressStepLadder'
 import Constants from 'expo-constants'
 import { useNodeZeroSession } from './NodeZeroSessionContext'
-import { requestWalletBroker, type WalletBrokerOperation } from '../wallet/brokerProtocol'
+import {
+  requestWalletBroker,
+  walletBrokerOrigin,
+  WALLET_BROKER_PROTOCOL,
+  WALLET_BROKER_READY,
+  type WalletBrokerOperation,
+  type WalletBrokerReady,
+} from '../wallet/brokerProtocol'
 
 type AttestationStatus = 'idle' | 'verifying' | 'verified' | 'unlinked' | 'error'
 
@@ -223,11 +230,25 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
       frame.title = 'NodeZero wallet broker'
       frame.setAttribute('aria-hidden', 'true')
       frame.style.cssText = 'position:fixed;width:1px;height:1px;border:0;opacity:0;pointer-events:none;'
-      frame.onload = () => {
+      const brokerOrigin = walletBrokerOrigin(hostedWalletBrokerUrl)
+      const timeout = setTimeout(() => {
+        window.removeEventListener('message', onReady)
+        reject(new Error('Wallet broker did not become ready.'))
+      }, 30_000)
+      const onReady = (event: MessageEvent<WalletBrokerReady>) => {
+        if (event.origin !== brokerOrigin || event.source !== frame.contentWindow) return
+        if (event.data?.protocol !== WALLET_BROKER_PROTOCOL || event.data?.type !== WALLET_BROKER_READY) return
+        clearTimeout(timeout)
+        window.removeEventListener('message', onReady)
         brokerFrameRef.current = frame
         resolve(frame)
       }
-      frame.onerror = () => reject(new Error('Wallet broker could not be loaded.'))
+      window.addEventListener('message', onReady)
+      frame.onerror = () => {
+        clearTimeout(timeout)
+        window.removeEventListener('message', onReady)
+        reject(new Error('Wallet broker could not be loaded.'))
+      }
       document.body.appendChild(frame)
     })
     return brokerFramePromiseRef.current

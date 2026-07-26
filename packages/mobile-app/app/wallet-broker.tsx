@@ -3,6 +3,7 @@ import { Platform, Text, View } from 'react-native'
 import { useWallet } from '../src/contexts/WalletContext'
 import {
   WALLET_BROKER_PROTOCOL,
+  WALLET_BROKER_READY,
   type WalletBrokerRequest,
   type WalletBrokerResponse,
 } from '../src/wallet/brokerProtocol'
@@ -94,6 +95,17 @@ export default function WalletBrokerScreen(): JSX.Element {
     }
 
     window.addEventListener('message', onConnect)
+    try {
+      const parentOrigin = new URL(document.referrer).origin
+      if (ALLOWED_PARENT_ORIGINS.has(parentOrigin)) {
+        window.parent.postMessage(
+          { protocol: WALLET_BROKER_PROTOCOL, type: WALLET_BROKER_READY },
+          parentOrigin,
+        )
+      }
+    } catch {
+      // Standalone broker pages have no trusted parent to notify.
+    }
     return () => window.removeEventListener('message', onConnect)
   }, [createIdentity, createSeamlessAttestation, deriveAccountCommitment, getLockboxAccountCommitment, selectIdentity, signAttestationChallenge, walletInfo?.publicKey])
 

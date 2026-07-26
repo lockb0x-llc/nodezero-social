@@ -1,4 +1,5 @@
 export const WALLET_BROKER_PROTOCOL = 'nz-wallet-broker-v1'
+export const WALLET_BROKER_READY = 'ready'
 
 export type WalletBrokerOperation =
   | 'get-public-key'
@@ -76,4 +77,9 @@ export async function requestWalletBroker<T>(
     }
     target.postMessage(request, targetOrigin, [channel.port2])
   })
+}
+
+export interface WalletBrokerReady {
+  protocol: typeof WALLET_BROKER_PROTOCOL
+  type: typeof WALLET_BROKER_READY
 }
