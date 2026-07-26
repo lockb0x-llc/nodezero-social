@@ -156,7 +156,7 @@ async function waitForAuthenticatedSurface(page, timeoutMs) {
   )
 }
 
-async function revokeBrowserSessionForReturningSignIn(page, session) {
+async function revokeBrowserSession(page, session) {
   const status = await page.evaluate(
     async ({ apiUrl, refreshToken, webId }) => {
       const response = await fetch(`${apiUrl}/v1/auth/logout`, {
@@ -342,7 +342,7 @@ async function main() {
 
   // ── Journey 2: returning-user one-tap sign-in ──────────────────────────────
   log('Journey 2: revoke session (keep wallet) → one-tap Stellar sign-in')
-  await revokeBrowserSessionForReturningSignIn(page, session)
+  await revokeBrowserSession(page, session)
   await page.goto(`${baseUrl}/`, { waitUntil: 'domcontentloaded', timeout: 60_000 })
 
   await page.waitForFunction(
@@ -376,6 +376,7 @@ async function main() {
 
   // ── Journey 3: negative — destroyed session must fail closed ──────────────
   log('Journey 3: tampered session lands on sign-in (fail-closed)')
+  await revokeBrowserSession(page, returningSession)
   await page.evaluate((key) => {
     window.localStorage.setItem(
       key,
