@@ -35,9 +35,17 @@ const baseUrl = (process.env.STAGING_BASE_URL || 'https://nodezero.social').repl
 const solidHost = (process.env.SOLID_HOST || 'solid.nodezero.social').toLowerCase()
 const createTimeoutMs = Number(process.env.AUTH_E2E_CREATE_TIMEOUT_MS || 8 * 60 * 1000)
 const sessionTimeoutMs = Number(process.env.AUTH_E2E_SESSION_TIMEOUT_MS || 4 * 60 * 1000)
-const bridgeV3FactoryId = process.env.AUTH_E2E_V3_FACTORY_ID || 'CDFHCQA3YJCITWEMNLCSRGQVVFEXGTONWSQJTD5VIZO7YV4IOKZUPCGT'
-const internalAppUrl = (process.env.NZ_INTERNAL_APP_URL || 'https://staging.nodezero.social').replace(/\/$/, '')
-const expectCrossHostHandoff = /^(1|true|yes)$/i.test(process.env.NZ_EXPECT_INTERNAL_STAGING_HANDOFF ?? 'false')
+const bridgeV3FactoryId =
+  process.env.AUTH_E2E_V3_FACTORY_ID || 'CDFHCQA3YJCITWEMNLCSRGQVVFEXGTONWSQJTD5VIZO7YV4IOKZUPCGT'
+const internalAppUrl = (
+  process.env.NZ_INTERNAL_APP_URL || 'https://staging.nodezero.social'
+).replace(/\/$/, '')
+const provisionerUrl = (
+  process.env.NZ_JSS_PROVISIONER_URL || 'https://api.nodezero.social'
+).replace(/\/$/, '')
+const expectCrossHostHandoff = /^(1|true|yes)$/i.test(
+  process.env.NZ_EXPECT_INTERNAL_STAGING_HANDOFF ?? 'false'
+)
 
 const SESSION_STORAGE_KEY = 'nz.session.v2'
 
@@ -103,10 +111,7 @@ function trackFriendbotRequests(page, sink) {
 }
 
 async function readStoredSession(page) {
-  const raw = await page.evaluate(
-    (key) => window.localStorage.getItem(key),
-    SESSION_STORAGE_KEY,
-  )
+  const raw = await page.evaluate((key) => window.localStorage.getItem(key), SESSION_STORAGE_KEY)
   if (!raw) return null
   try {
     return JSON.parse(raw)
@@ -122,13 +127,15 @@ async function waitForStoredSession(page, timeoutMs) {
       if (!raw) return false
       try {
         const session = JSON.parse(raw)
-        return Boolean(session?.accessToken && session?.refreshToken && session?.webId && session?.podUrl)
+        return Boolean(
+          session?.accessToken && session?.refreshToken && session?.webId && session?.podUrl
+        )
       } catch {
         return false
       }
     },
     SESSION_STORAGE_KEY,
-    { timeout: timeoutMs },
+    { timeout: timeoutMs }
   )
 }
 
@@ -141,10 +148,34 @@ async function waitForAuthenticatedSurface(page, timeoutMs) {
   // bootstrap persists local state. The RouteGuard then uses /onboarding while
   // the V3 attestation is checked and returns to /feed once it is verified.
   await page.waitForFunction(
-    () => window.location.pathname === '/feed' && !document.body.innerText.includes('Finalizing your onboarding'),
+    () =>
+      window.location.pathname === '/feed' &&
+      !document.body.innerText.includes('Finalizing your onboarding'),
     undefined,
-    { timeout: timeoutMs },
+    { timeout: timeoutMs }
   )
+}
+
+async function revokeBrowserSessionForReturningSignIn(page, session) {
+  const status = await page.evaluate(
+    async ({ apiUrl, refreshToken, webId }) => {
+      const response = await fetch(`${apiUrl}/v1/auth/logout`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ refreshToken, webId }),
+      })
+      return response.status
+    },
+    {
+      apiUrl: provisionerUrl,
+      refreshToken: session.refreshToken,
+      webId: session.webId,
+    }
+  )
+  if (status !== 200)
+    fail(`Could not revoke browser session before returning sign-in: HTTP ${status}.`)
+  await page.evaluate((key) => window.localStorage.removeItem(key), SESSION_STORAGE_KEY)
 }
 
 function assertExpectedHandoff(page, stage) {
@@ -157,16 +188,12 @@ function assertExpectedHandoff(page, stage) {
 
 async function maybeSelectAccountForReturningSignIn(page, expectedWebId) {
   const modalTitle = page.getByText('Choose an account', { exact: true }).first()
-  const isVisible = await modalTitle
-    .isVisible({ timeout: 5_000 })
-    .catch(() => false)
+  const isVisible = await modalTitle.isVisible({ timeout: 5_000 }).catch(() => false)
   if (!isVisible) return false
 
   log('Returning sign-in surfaced internal account chooser; selecting the expected WebID.')
   const matchingOption = page.getByText(expectedWebId, { exact: true }).first()
-  const hasMatch = await matchingOption
-    .isVisible({ timeout: 5_000 })
-    .catch(() => false)
+  const hasMatch = await matchingOption.isVisible({ timeout: 5_000 }).catch(() => false)
   if (!hasMatch) {
     fail(`Account chooser did not contain expected WebID: ${expectedWebId}`)
   }
@@ -190,13 +217,17 @@ function assertNoLegacyLegs(navigations, cssRequests) {
     }
   }
   if (cssRequests.length > 0) {
-    fail(`Browser issued ${cssRequests.length} request(s) to the CSS origin:\n  ${cssRequests.join('\n  ')}`)
+    fail(
+      `Browser issued ${cssRequests.length} request(s) to the CSS origin:\n  ${cssRequests.join('\n  ')}`
+    )
   }
 }
 
 function assertNoFriendbotRequests(friendbotRequests) {
   if (friendbotRequests.length > 0) {
-    fail(`Browser issued ${friendbotRequests.length} Friendbot request(s):\n  ${friendbotRequests.join('\n  ')}`)
+    fail(
+      `Browser issued ${friendbotRequests.length} Friendbot request(s):\n  ${friendbotRequests.join('\n  ')}`
+    )
   }
 }
 
@@ -220,7 +251,7 @@ async function verifyLockboxOnChain(contractId, factoryContractId) {
         if (isBridgeV3 && body?.contract === contractId) {
           log(
             `On-chain lockb0x ${contractId}: V3 contract indexed; storage index is pending ` +
-            '(the authenticated client already verified its direct RPC commitment read).',
+              '(the authenticated client already verified its direct RPC commitment read).'
           )
           return
         }
@@ -233,7 +264,9 @@ async function verifyLockboxOnChain(contractId, factoryContractId) {
     }
     await new Promise((resolve) => setTimeout(resolve, 15_000))
   }
-  fail(`On-chain lockb0x ${contractId} did not reach storage_entries>=${minimumEntries} via stellar.expert`)
+  fail(
+    `On-chain lockb0x ${contractId} did not reach storage_entries>=${minimumEntries} via stellar.expert`
+  )
 }
 
 async function main() {
@@ -270,12 +303,14 @@ async function main() {
       return allEls.some((el) => (el.textContent || '').trim() === 'Create Your Node')
     },
     undefined,
-    { timeout: 120_000 },
+    { timeout: 120_000 }
   )
   await page.getByText('Create Your Node', { exact: true }).first().click()
 
   await waitForAuthenticatedSurface(page, createTimeoutMs).catch(async (error) => {
-    fail(`New-user journey did not reach the feed: ${String(error?.message || error)}\nPage: ${await pageTextSnippet(page)}`)
+    fail(
+      `New-user journey did not reach the feed: ${String(error?.message || error)}\nPage: ${await pageTextSnippet(page)}`
+    )
   })
   assertExpectedHandoff(page, 'New-user onboarding')
 
@@ -294,7 +329,7 @@ async function main() {
   assertNoFriendbotRequests(friendbotRequests)
 
   const inruptKeys = await page.evaluate(() =>
-    Object.keys(window.localStorage).filter((key) => key.toLowerCase().includes('solidclientauthn')),
+    Object.keys(window.localStorage).filter((key) => key.toLowerCase().includes('solidclientauthn'))
   )
   if (inruptKeys.length > 0) {
     fail(`Legacy Inrupt session keys present: ${inruptKeys.join(', ')}`)
@@ -306,8 +341,8 @@ async function main() {
   await verifyLockboxOnChain(lockboxContractId, session?.lockbox?.factoryContractId)
 
   // ── Journey 2: returning-user one-tap sign-in ──────────────────────────────
-  log('Journey 2: destroy session (keep wallet) → one-tap Stellar sign-in')
-  await page.evaluate((key) => window.localStorage.removeItem(key), SESSION_STORAGE_KEY)
+  log('Journey 2: revoke session (keep wallet) → one-tap Stellar sign-in')
+  await revokeBrowserSessionForReturningSignIn(page, session)
   await page.goto(`${baseUrl}/`, { waitUntil: 'domcontentloaded', timeout: 60_000 })
 
   await page.waitForFunction(
@@ -316,13 +351,15 @@ async function main() {
       return allEls.some((el) => (el.textContent || '').trim() === 'Sign In')
     },
     undefined,
-    { timeout: 120_000 },
+    { timeout: 120_000 }
   )
   await page.getByText('Sign In', { exact: true }).first().click()
   await maybeSelectAccountForReturningSignIn(page, session.webId)
 
   await waitForAuthenticatedSurface(page, sessionTimeoutMs).catch(async (error) => {
-    fail(`Returning-user journey did not reach the feed: ${String(error?.message || error)}\nPage: ${await pageTextSnippet(page)}`)
+    fail(
+      `Returning-user journey did not reach the feed: ${String(error?.message || error)}\nPage: ${await pageTextSnippet(page)}`
+    )
   })
   assertExpectedHandoff(page, 'Returning user sign-in')
 
@@ -351,7 +388,7 @@ async function main() {
         podUrl: 'https://example.invalid/evil/',
         lockbox: null,
         createdAt: new Date().toISOString(),
-      }),
+      })
     )
   }, SESSION_STORAGE_KEY)
 
@@ -359,7 +396,9 @@ async function main() {
   await page
     .waitForURL((url) => url.pathname === '/' || url.pathname === '', { timeout: 60_000 })
     .catch(async () => {
-      fail(`Tampered session was not rejected; current URL: ${page.url()}\nPage: ${await pageTextSnippet(page)}`)
+      fail(
+        `Tampered session was not rejected; current URL: ${page.url()}\nPage: ${await pageTextSnippet(page)}`
+      )
     })
 
   const tamperedRemnant = await readStoredSession(page)
