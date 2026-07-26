@@ -1,0 +1,62 @@
+{
+  "network": "testnet",
+  "protocolMajor": 27,
+  "circuit": "pod_stellar_bridge_v3",
+  "circuitVersion": 3,
+  "ptauPower": 11,
+  "publicSignals": [
+    "claimHash",
+    "accountCommitment",
+    "podBinding"
+  ],
+  "circomVersion": "2.2.2",
+  "snarkjsVersion": "0.7.5",
+  "generatedAt": "2026-07-26T03:44:08.264Z",
+  "publishedPrefix": "lockb0x-bridge-v3/",
+  "contracts": {
+    "bridgeFactoryId": "CDFHCQA3YJCITWEMNLCSRGQVVFEXGTONWSQJTD5VIZO7YV4IOKZUPCGT",
+    "bridgeVerifierId": "CDQKUKF2AB2UIGNMXM2DTE7JDV5OMPRUDBYOW7OVMYXXUK2UTIFVXMIF",
+    "accountWasmHash": "309e22a8bd29c5c27dfa98243b46c1229855414e3c503d1aa12dd60f8f2cf33b",
+    "factoryDeployTx": "4087f50dcae050e0c42b116ec3fbc370f251c2772d248aad49e8fe2ed0970a33",
+    "factorySmokeTx": "23b1da1320288f222d67cc69cae2a32df941fd32fd8aab85f844053393a476d2",
+    "factorySmokeLockboxId": "CB6DUQUSYQVDQELM26TU4YC5CGHDYP6LM7NCUW2A6JJIB4ZHD7CVE7QV",
+    "proofVerification": "provisioner-offchain-required"
+  },
+  "artifacts": [
+    {
+      "file": "packages/zk-crypto/build/lockb0x_bridge_v3/pod_stellar_bridge_v3.r1cs",
+      "bytes": 122204,
+      "sha256": "c0bcb2769a1ca0461b6b51f4c0d2eb1b0aadd1e1cd6edac56301225254ac7906"
+    },
+    {
+      "file": "packages/zk-crypto/build/lockb0x_bridge_v3/pod_stellar_bridge_v3.sym",
+      "bytes": 65372,
+      "sha256": "3a48b0f31f82b28738130b5c5609441644690d2fc21a1a8015edb755895cecdf"
+    },
+    {
+      "file": "packages/zk-crypto/build/lockb0x_bridge_v3/pod_stellar_bridge_v3_js/pod_stellar_bridge_v3.wasm",
+      "bytes": 1962956,
+      "sha256": "a878e467bf4e11f82a67aaf46e36786bc66b909baa21ae2c802ac1e66b4d3150"
+    },
+    {
+      "file": "packages/zk-crypto/build/lockb0x_bridge_v3/pot11_final.ptau",
+      "bytes": 2360736,
+      "sha256": "23d752d162b14f55796661a04854a3d21e3f132995358f9a840b416f44124d9e"
+    },
+    {
+      "file": "packages/zk-crypto/build/lockb0x_bridge_v3/pod_stellar_bridge_v3_final.zkey",
+      "bytes": 406564,
+      "sha256": "9cbc69f2d398fcee1309a815fef968866851e432f0f1fbaf39fb5992dbbf8784"
+    },
+    {
+      "file": "packages/zk-crypto/build/lockb0x_bridge_v3/pod_stellar_bridge_v3_vk.json",
+      "bytes": 3290,
+      "sha256": "b6bbc440444299e6d449ca0f2f594341f50c7e71a79f0c98734655fdcae8a39b"
+    },
+    {
+      "file": "packages/zk-crypto/build/lockb0x_bridge_v3/pod_stellar_bridge_v3_arkworks_vk.hex",
+      "bytes": 721,
+      "sha256": "0a231008b83aededf848b24e7f02931b22164a307fc01074957e8ed65ecb7112"
+    }
+  ]
+}

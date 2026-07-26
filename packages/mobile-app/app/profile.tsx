@@ -61,6 +61,7 @@ export default function ProfileScreen(): JSX.Element {
 
   const [profile, setProfile] = useState<UserProfile>(EMPTY_PROFILE)
   const [loading, setLoading] = useState(true)
+  const [managersReady, setManagersReady] = useState(false)
   const [saving, setSaving] = useState(false)
   const [nsfwWarningDismissed, setNsfwWarningDismissed] = useState(false)
   const [interestsInput, setInterestsInput] = useState('')
@@ -107,19 +108,21 @@ export default function ProfileScreen(): JSX.Element {
   // Initialise ProfileManager once the session is available.
   useEffect(() => {
     if (!isLoggedIn) {
+      setManagersReady(false)
       return
     }
 
     const managers = getSolidPodSyncManagers({ fetch: authFetch })
     managerRef.current = managers.profileManager
     preferencesManagerRef.current = managers.profilePreferencesManager
+    setManagersReady(true)
     void loadConnections()
   }, [authFetch, isLoggedIn, loadConnections])
 
   // Load profile from Pod.
   useEffect(() => {
-    if (!viewedWebId || !managerRef.current) {
-      setLoading(false)
+    if (!viewedWebId || !managersReady || !managerRef.current) {
+      setLoading(!managersReady)
       return
     }
 
@@ -143,10 +146,13 @@ export default function ProfileScreen(): JSX.Element {
       .finally(() => {
         setLoading(false)
       })
-  }, [isPeerView, viewedWebId])
+  }, [isPeerView, managersReady, viewedWebId])
 
   const saveProfile = useCallback(async () => {
-    if (!managerRef.current || !preferencesManagerRef.current) return
+    if (!managerRef.current || !preferencesManagerRef.current) {
+      Alert.alert('Profile unavailable', 'Your Pod profile is still loading. Please try again.')
+      return
+    }
     if (draftValidationMessage) {
       Alert.alert('Profile Validation', draftValidationMessage)
       return
@@ -163,7 +169,9 @@ export default function ProfileScreen(): JSX.Element {
         interestsInput,
         deps: {
           writePublicProfile: async (podRoot, updatedProfile) => {
-            await managerRef.current?.writeProfile(podRoot, updatedProfile)
+            await managerRef.current?.writeProfile(podRoot, updatedProfile, {
+              bootstrapPodLayout: false,
+            })
           },
           writePrivatePreferences: async (podRoot, preferencesPayload) => {
             await preferencesManagerRef.current?.writePreferences(podRoot, preferencesPayload)
@@ -395,7 +403,7 @@ export default function ProfileScreen(): JSX.Element {
           <TouchableOpacity
             style={[styles.saveButton, saving && styles.saveButtonDisabled]}
             onPress={() => void saveProfile()}
-            disabled={saving || Boolean(draftValidationMessage)}
+            disabled={!managersReady || saving || Boolean(draftValidationMessage)}
             activeOpacity={aesthetic.motion.pressOpacity}
             accessibilityRole="button"
             accessibilityLabel="Save profile"

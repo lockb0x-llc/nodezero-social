@@ -13,7 +13,12 @@ export {
 	hashClaimToField,
 	verifyPodOwnershipProof,
 } from './pod-ownership-prover.js'
-export { serializeProof, serializePublicSignal, proofToSorobanArgs } from './serializer.js'
+export {
+	serializeProof,
+	serializePublicSignal,
+	proofToSorobanArgs,
+	podOwnershipProofToBridgeArgs,
+} from './serializer.js'
 
 export {
 	encryptAttestation,

@@ -14,6 +14,15 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(__dirname, '..')
 const circuitsDir = path.join(root, 'circuits')
 const buildDir = path.join(root, 'build')
+const requiredCircomVersion = process.env.ZK_CIRCOM_VERSION ?? '2.1.6'
+
+const circomVersionOutput = execSync('circom --version', { encoding: 'utf8' })
+const detectedCircomVersion = circomVersionOutput.match(/([0-9]+\.[0-9]+\.[0-9]+)/)?.[1]
+if (detectedCircomVersion !== requiredCircomVersion) {
+  throw new Error(
+    `circom ${requiredCircomVersion} is required for reproducible artifacts; detected ${detectedCircomVersion ?? 'unknown'}.`
+  )
+}
 
 mkdirSync(buildDir, { recursive: true })
 

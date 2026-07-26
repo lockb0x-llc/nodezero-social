@@ -565,6 +565,10 @@ export default function LandingScreen(): JSX.Element {
         stellarPublicKey: walletInfo.publicKey,
         accountCommitmentHex: attestation.accountCommitmentHex,
         ciphertextHex: attestation.ciphertextHex,
+        proofHex: attestation.proofHex,
+        proofHashHex: attestation.proofHashHex,
+        publicSignals: attestation.publicSignals,
+        circuitVersion: 1,
       })
       advanceCreateStep('pod')
       setCreateNotice('Confirming your on-chain lockb0x anchor…')

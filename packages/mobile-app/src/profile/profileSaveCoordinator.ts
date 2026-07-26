@@ -58,7 +58,9 @@ export async function saveProfileForScreen(args: {
 
     return {
       status: 'saved',
-      message: 'Your profile has been updated in your Solid Pod.',
+      message: result.privatePreferencesSaved
+        ? 'Your profile has been updated in your Solid Pod.'
+        : 'Your public profile has been updated in your Solid Pod.',
       mergedSavedProfile: result.mergedSavedProfile,
       mergedSavedInterestsInput: result.mergedSavedInterestsInput,
     }

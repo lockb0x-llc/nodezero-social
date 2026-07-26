@@ -33,6 +33,7 @@ export interface ExecuteProfileSaveFlowResult {
   preferencesPayload: PrivateProfilePreferencesDocument
   mergedSavedProfile: UserProfile | null
   mergedSavedInterestsInput: string | null
+  privatePreferencesSaved: boolean
 }
 
 export function derivePodRootFromWebId(webId: string): string {
@@ -50,12 +51,20 @@ export async function executeProfileSaveFlow(
   await deps.writePublicProfile(podRoot, updatedProfile)
 
   const preferencesPayload = buildPrivatePreferencesPayload(updatedProfile)
-  await deps.writePrivatePreferences(podRoot, preferencesPayload)
+  let privatePreferencesSaved = true
+  try {
+    await deps.writePrivatePreferences(podRoot, preferencesPayload)
+  } catch {
+    // Public profile data is the primary profile record. Preference storage
+    // provisions optional Backpack containers and must not make a completed
+    // profile-card write appear to fail.
+    privatePreferencesSaved = false
+  }
 
-  const [savedPublic, savedPrivate] = await Promise.all([
-    deps.readPublicProfile(`${podRoot}profile/card#me`),
-    deps.readPrivatePreferences(podRoot),
-  ])
+  const savedPublic = await deps.readPublicProfile(`${podRoot}profile/card#me`)
+  const savedPrivate = privatePreferencesSaved
+    ? await deps.readPrivatePreferences(podRoot).catch(() => null)
+    : null
 
   const mergedSavedProfile = savedPublic ? mergeProfileData(savedPublic, savedPrivate) : null
   const mergedSavedInterestsInput = mergedSavedProfile
@@ -68,5 +77,6 @@ export async function executeProfileSaveFlow(
     preferencesPayload,
     mergedSavedProfile,
     mergedSavedInterestsInput,
+    privatePreferencesSaved,
   }
 }

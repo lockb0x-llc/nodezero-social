@@ -4,7 +4,7 @@
  * Poseidon is a ZK-friendly hash function designed for use inside arithmetic circuits.
  */
 
-import { buildPoseidon as buildPoseidonNative } from 'circomlibjs'
+import { buildPoseidon as buildPoseidonNative } from 'circomlibjs/src/poseidon_wasm.js'
 
 export type PoseidonFn = {
   (inputs: bigint[]): Uint8Array

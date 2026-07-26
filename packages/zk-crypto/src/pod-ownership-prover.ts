@@ -13,6 +13,8 @@ const DEFAULT_ZKEY_PATH = 'build/pod_ownership_final.zkey'
 const DEFAULT_VK_PATH = 'build/pod_ownership_vk.json'
 
 export interface PodOwnershipClaim {
+  /** Circuit/claim schema version. Defaults to legacy pod_ownership V2. */
+  circuitVersion?: number
   envProfile: string
   stellarNetworkPassphrase: string
   webId: string
@@ -55,7 +57,8 @@ function canonicalPodUrl(value: string): string {
 
 export function buildPodOwnershipClaim(claim: PodOwnershipClaim): string {
   return [
-    'NZ_POD_OWNER_V1',
+    claim.circuitVersion === 3 ? 'NZ_POD_STELLAR_BRIDGE_V3' : 'NZ_POD_OWNER_V1',
+    String(claim.circuitVersion ?? 2),
     canonicalField(claim.envProfile),
     canonicalField(claim.stellarNetworkPassphrase),
     canonicalField(claim.webId),

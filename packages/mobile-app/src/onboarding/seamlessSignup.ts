@@ -32,6 +32,14 @@ export interface CreateNodeInput {
   accountCommitmentHex?: string
   /** Hex of the Stellar-encrypted attestation claim ciphertext. */
   ciphertextHex?: string
+  /** Serialized 256-byte Groth16 `pod_ownership` proof for Lockb0x Bridge v3. */
+  proofHex?: string
+  /** SHA-256 of the proof and public signals for Lockb0x Bridge v3. */
+  proofHashHex?: string
+  /** Ordered `pod_ownership` public signals: claim, account commitment, Pod binding. */
+  publicSignals?: string[]
+  /** Versioned bridge circuit identifier. */
+  circuitVersion?: number
 }
 
 export interface CreateNodeResult {
@@ -146,6 +154,25 @@ export async function createSeamlessNode(input: CreateNodeInput): Promise<Create
   if (accountCommitmentHex && ciphertextHex) {
     body.accountCommitmentHex = accountCommitmentHex
     body.ciphertextHex = ciphertextHex
+  }
+
+  const proofHex = (input.proofHex ?? '').trim().toLowerCase().replace(/^0x/, '')
+  const proofHashHex = (input.proofHashHex ?? '').trim().toLowerCase().replace(/^0x/, '')
+  const publicSignals = input.publicSignals ?? []
+  if (proofHex || proofHashHex || publicSignals.length > 0) {
+    if (!/^[0-9a-f]{512}$/.test(proofHex)) {
+      throw new Error('Bridge proof must be a 256-byte hex value.')
+    }
+    if (!/^[0-9a-f]{64}$/.test(proofHashHex) || publicSignals.length !== 3) {
+      throw new Error('Bridge proof hash and three public signals are required.')
+    }
+    if (!publicSignals.every((signal) => /^\d+$/.test(signal.trim()))) {
+      throw new Error('Bridge public signals must be decimal field elements.')
+    }
+    body.proofHex = proofHex
+    body.proofHashHex = proofHashHex
+    body.publicSignals = JSON.stringify(publicSignals.map((signal) => signal.trim()))
+    body.circuitVersion = String(input.circuitVersion ?? 1)
   }
 
   const res = await fetch(`${config.provisionerUrl}/v1/solid-account`, {

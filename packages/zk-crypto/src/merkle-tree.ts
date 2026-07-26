@@ -7,7 +7,7 @@
  * Empty nodes are filled with the zero-value subtree hash.
  */
 
-import { SNARK_FIELD_SIZE, poseidonHash } from './poseidon.js'
+import { poseidonHash } from './poseidon.js'
 
 export interface MerkleProof {
   pathElements: bigint[]  // sibling hashes, bottom → root

@@ -32,6 +32,7 @@ const baseUrl = (process.env.STAGING_BASE_URL || 'https://staging.nodezero.socia
 const solidHost = (process.env.SOLID_HOST || 'solid.nodezero.social').toLowerCase()
 const createTimeoutMs = Number(process.env.AUTH_E2E_CREATE_TIMEOUT_MS || 8 * 60 * 1000)
 const sessionTimeoutMs = Number(process.env.AUTH_E2E_SESSION_TIMEOUT_MS || 4 * 60 * 1000)
+const bridgeV3FactoryId = process.env.AUTH_E2E_V3_FACTORY_ID || 'CDFHCQA3YJCITWEMNLCSRGQVVFEXGTONWSQJTD5VIZO7YV4IOKZUPCGT'
 
 const SESSION_STORAGE_KEY = 'nz.session.v2'
 
@@ -145,7 +146,12 @@ function assertNoLegacyLegs(navigations, cssRequests) {
   }
 }
 
-async function verifyLockboxOnChain(contractId) {
+async function verifyLockboxOnChain(contractId, factoryContractId) {
+  const isBridgeV3 = factoryContractId === bridgeV3FactoryId
+  const minimumEntries = isBridgeV3 ? 1 : 3
+  const description = isBridgeV3
+    ? 'constructor-initialized V3 bridge state'
+    : 'deployed + initialized + attested'
   const url = `https://api.stellar.expert/explorer/testnet/contract/${contractId}`
   for (let attempt = 1; attempt <= 5; attempt += 1) {
     try {
@@ -153,8 +159,8 @@ async function verifyLockboxOnChain(contractId) {
       if (res.ok) {
         const body = await res.json()
         const entries = Number(body?.storage_entries ?? 0)
-        if (entries >= 3) {
-          log(`On-chain lockb0x ${contractId}: storage_entries=${entries} (deployed + initialized + attested)`)
+        if (entries >= minimumEntries) {
+          log(`On-chain lockb0x ${contractId}: storage_entries=${entries} (${description})`)
           return
         }
         log(`On-chain lockb0x ${contractId}: storage_entries=${entries}; waiting for indexer...`)
@@ -166,7 +172,7 @@ async function verifyLockboxOnChain(contractId) {
     }
     await new Promise((resolve) => setTimeout(resolve, 15_000))
   }
-  fail(`On-chain lockb0x ${contractId} did not reach storage_entries>=3 via stellar.expert`)
+  fail(`On-chain lockb0x ${contractId} did not reach storage_entries>=${minimumEntries} via stellar.expert`)
 }
 
 async function main() {
@@ -190,6 +196,7 @@ async function main() {
   log('Journey 1: create node → inline session → authenticated feed')
   await page.goto(`${baseUrl}/`, { waitUntil: 'domcontentloaded', timeout: 60_000 })
 
+  await page.getByLabel('Node handle').first().waitFor({ state: 'visible', timeout: 180_000 })
   await page.getByLabel('Node handle').first().fill(handle)
   await page.getByLabel('Notification email').first().fill(email)
 
@@ -231,7 +238,7 @@ async function main() {
   log(`  lockb0x=${lockboxContractId}`)
 
   // On-chain evidence for the anchor the session claims.
-  await verifyLockboxOnChain(lockboxContractId)
+  await verifyLockboxOnChain(lockboxContractId, session?.lockbox?.factoryContractId)
 
   // ── Journey 2: returning-user one-tap sign-in ──────────────────────────────
   log('Journey 2: destroy session (keep wallet) → one-tap Stellar sign-in')

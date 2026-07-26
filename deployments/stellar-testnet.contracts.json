@@ -32,6 +32,13 @@ xdr (68fa1ac55692f68ad2a2ca549d0a283273554439)",
       "initTx": "b8ad8700f1717519b42f64677106ac54b0ba031018b4d9197795fa834d9e57fd",
       "deployedAt": "2026-07-01T00:00:00Z",
       "previousFactoryId": "CBV5KWYWK4O44JX4JK57IDGPA2IZSKJR2SC2UNYV65RU4S7MSK66F2WA"
+    },
+    "lockboxBridgeV3": {
+      "id": "CDFHCQA3YJCITWEMNLCSRGQVVFEXGTONWSQJTD5VIZO7YV4IOKZUPCGT",
+      "bridgeVerifierId": "CDQKUKF2AB2UIGNMXM2DTE7JDV5OMPRUDBYOW7OVMYXXUK2UTIFVXMIF",
+      "accountWasmHash": "309e22a8bd29c5c27dfa98243b46c1229855414e3c503d1aa12dd60f8f2cf33b",
+      "artifactManifest": "deployments/zk-testnet-lockbox-bridge-v3-artifacts.json",
+      "deploymentMode": "testnet-live"
     }
   },
   "generatedAt": "2026-06-26T11:25:49Z"

@@ -13,6 +13,7 @@
  */
 
 import {
+  Account,
   Keypair,
   Networks,
   TransactionBuilder,
@@ -42,6 +43,10 @@ export const ServerEndpoint = {
 } as const
 
 const TESTNET_FRIENDBOT_URL = 'https://friendbot.stellar.org'
+const HorizonEndpoint = {
+  TESTNET: 'https://horizon-testnet.stellar.org',
+  MAINNET: 'https://horizon.stellar.org',
+} as const
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -136,6 +141,7 @@ export class WalletService {
   private readonly adapter: EnclaveAdapter
   private readonly server: rpc.Server
   private readonly network: string
+  private readonly horizonUrl: string
   private readonly fundedAccounts = new Set<string>()
 
   /**
@@ -151,6 +157,7 @@ export class WalletService {
     this.adapter = adapter
     this.server = new rpc.Server(rpcUrl)
     this.network = network
+    this.horizonUrl = network === Networks.PUBLIC ? HorizonEndpoint.MAINNET : HorizonEndpoint.TESTNET
   }
 
   async listIdentities(): Promise<WalletIdentity[]> {
@@ -496,7 +503,7 @@ export class WalletService {
     }
   }
 
-  private async getSourceAccount(publicKey: string): Promise<Awaited<ReturnType<rpc.Server['getAccount']>>> {
+  private async getSourceAccount(publicKey: string): Promise<Account> {
     const isFunded = await this.ensureAccountExists(publicKey)
     if (!isFunded && !this.fundedAccounts.has(publicKey)) {
       throw new Error('Stellar account is not funded. Fund the embedded wallet before contract operations.')
@@ -505,11 +512,11 @@ export class WalletService {
     return this.getAccountWithRetry(publicKey)
   }
 
-  private async getAccountWithRetry(publicKey: string): Promise<Awaited<ReturnType<rpc.Server['getAccount']>>> {
+  private async getAccountWithRetry(publicKey: string): Promise<Account> {
     let lastError: unknown
     for (let attempt = 0; attempt < 8; attempt += 1) {
       try {
-        const account = await this.server.getAccount(publicKey)
+        const account = await this.getHorizonAccount(publicKey)
         this.fundedAccounts.add(publicKey)
         return account
       } catch (err) {
@@ -521,9 +528,21 @@ export class WalletService {
     throw lastError instanceof Error ? lastError : new Error('Unable to load Stellar source account.')
   }
 
+  private async getHorizonAccount(publicKey: string): Promise<Account> {
+    const response = await fetch(`${this.horizonUrl}/accounts/${encodeURIComponent(publicKey)}`)
+    if (!response.ok) {
+      throw new Error(`Horizon account lookup failed (${response.status}).`)
+    }
+    const body = await response.json() as { sequence?: unknown }
+    if (typeof body.sequence !== 'string' || !/^\d+$/.test(body.sequence)) {
+      throw new Error('Horizon account response did not include a sequence number.')
+    }
+    return new Account(publicKey, body.sequence)
+  }
+
   private async ensureAccountExists(publicKey: string): Promise<boolean> {
     try {
-      await this.server.getAccount(publicKey)
+      await this.getHorizonAccount(publicKey)
       this.fundedAccounts.add(publicKey)
       return true
     } catch {
@@ -533,15 +552,19 @@ export class WalletService {
 
     try {
       const response = await fetch(`${TESTNET_FRIENDBOT_URL}?addr=${encodeURIComponent(publicKey)}`)
-      if (!response.ok) return false
-      for (let attempt = 0; attempt < 5; attempt += 1) {
+      if (!response.ok) {
+        const body = await response.text().catch(() => '')
+        const alreadyFunded = response.status === 400 && /already funded to starting balance/i.test(body)
+        if (!alreadyFunded) return false
+      }
+      for (let attempt = 0; attempt < 12; attempt += 1) {
         await delay(1_500)
         try {
-          await this.server.getAccount(publicKey)
+          await this.getHorizonAccount(publicKey)
           this.fundedAccounts.add(publicKey)
           return true
         } catch {
-          // Friendbot succeeded, but Soroban RPC may lag Horizon by a few seconds.
+          // Friendbot can return before Soroban RPC has indexed the account.
         }
       }
       return false

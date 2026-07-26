@@ -89,6 +89,13 @@ export interface ProfileWriteOptions {
    * Defaults to `profile/card`.
    */
   datasetPath?: string
+  /**
+   * Whether to provision optional DocuStream/Social/Backpack containers before
+   * saving. Profile documents already exist at onboarding, so callers can
+   * disable this to keep an unrelated bootstrap failure from blocking a
+   * profile update.
+   */
+  bootstrapPodLayout?: boolean
 }
 
 export interface ProfileManagerOptions {
@@ -181,7 +188,9 @@ export class ProfileManager {
     profile: UserProfile,
     options: ProfileWriteOptions = {}
   ): Promise<string> {
-    await this.ensurePodLayoutIfEnabled(podRootUrl)
+    if (options.bootstrapPodLayout ?? true) {
+      await this.ensurePodLayoutIfEnabled(podRootUrl)
+    }
 
     const datasetPath = options.datasetPath ?? 'profile/card'
     const datasetUrl = `${podRootUrl.replace(/\/$/, '')}/${datasetPath}`

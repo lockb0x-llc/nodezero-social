@@ -23,6 +23,15 @@
     "previousFactoryId": "CBV5KWYWK4O44JX4JK57IDGPA2IZSKJR2SC2UNYV65RU4S7MSK66F2WA",
     "wasmNote": "Current factory wasm includes Lockb0x.set_attestation (ZK identity commitment + AES-256-GCM encrypted claim). Previous 795157cc hash was pre-attestation lockb0x wasm."
   },
+  "lockboxBridgeV3": {
+    "alias": "nodezero-lockbox-bridge-factory-testnet-v3",
+    "id": "CDFHCQA3YJCITWEMNLCSRGQVVFEXGTONWSQJTD5VIZO7YV4IOKZUPCGT",
+    "verifierId": "CDQKUKF2AB2UIGNMXM2DTE7JDV5OMPRUDBYOW7OVMYXXUK2UTIFVXMIF",
+    "operator": "GDMJ3GFM2RPB5FRX5DS2IRRSVF6RFYILXZ2WIUIJQJJOHXJTQXOQVBHR",
+    "accountWasmHash": "309e22a8bd29c5c27dfa98243b46c1229855414e3c503d1aa12dd60f8f2cf33b",
+    "artifactManifest": "deployments/zk-testnet-lockbox-bridge-v3-artifacts.json",
+    "note": "Fresh V3 Testnet factory: one operator-authorized deterministic child deployment with constructor-initialized bridge evidence; no V2 factory fallback or post-deploy initialize transaction."
+  },
   "evidence": {
     "testLockbox": {
       "id": "CCEYVXVGD6E3UKOMLOSWO4OL2CGH32U7OAHJ3BX7UZLZB6M2LKR6EZ5N",

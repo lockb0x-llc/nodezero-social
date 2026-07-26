@@ -72,6 +72,7 @@ const lockboxContractId = process.env.NZ_LOCKBOX_CONTRACT_ID ?? ''
 const lockboxFactoryContractId = process.env.NZ_LOCKBOX_FACTORY_CONTRACT_ID ?? ''
 const zkArtifactsUrl = process.env.NZ_ZK_ARTIFACTS_URL ?? ''
 const zkManifestUrl = process.env.NZ_ZK_MANIFEST_URL ?? ''
+const lockboxFactoryVersion = process.env.NZ_LOCKBOX_FACTORY_VERSION ?? '2'
 // The Node Zero Community Server hosts every user's Pod. Users never
 // authenticate against it directly — all Pod traffic flows through the
 // provisioner's Pod Access Proxy — but the origin is still needed to
@@ -120,6 +121,9 @@ if (profile.enforceStrictVariables) {
   }
   if (!zkArtifactsUrl || !zkManifestUrl) {
     throw new Error(`NZ_ZK_ARTIFACTS_URL and NZ_ZK_MANIFEST_URL are required for ${envProfile}.`)
+  }
+  if (!['2', '3'].includes(lockboxFactoryVersion)) {
+    throw new Error(`NZ_LOCKBOX_FACTORY_VERSION must be 2 or 3 for ${envProfile}.`)
   }
   if (!nodeZeroIssuerUrl) {
     throw new Error(`NZ_NODEZERO_ISSUER_URL (Node Zero Community Server / Pod host) is required for ${envProfile}.`)
@@ -242,6 +246,7 @@ module.exports = {
     identityContractId,
     lockboxContractId,
     lockboxFactoryContractId,
+    lockboxFactoryVersion,
     zkArtifactsUrl,
     zkManifestUrl,
   },

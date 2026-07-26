@@ -40,6 +40,7 @@ function resolveBufferDir() {
 function resolveBufferEntry() {
   return path.join(resolveBufferDir(), 'index.js')
 }
+
 config.resolver.extraNodeModules = {
   ...(config.resolver.extraNodeModules ?? {}),
   buffer: resolveBufferDir(),

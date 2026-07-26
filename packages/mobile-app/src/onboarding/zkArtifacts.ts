@@ -18,6 +18,8 @@ export interface PodOwnershipArtifactPaths {
   zkeyPath: string
 }
 
+export type BridgeCircuitVersion = 2 | 3
+
 export type ZkArtifactResolutionErrorCode =
   | 'manifest-fetch-failed'
   | 'manifest-invalid'
@@ -46,6 +48,7 @@ function joinUrl(baseUrl: string, filePath: string): string {
 export async function resolvePodOwnershipArtifacts(params: {
   zkArtifactsUrl: string
   zkManifestUrl: string
+  circuitVersion?: BridgeCircuitVersion
 }): Promise<PodOwnershipArtifactPaths> {
   const manifestResponse = await fetch(params.zkManifestUrl)
   if (!manifestResponse.ok) {
@@ -66,12 +69,19 @@ export async function resolvePodOwnershipArtifacts(params: {
   }
 
   const artifacts = manifest.artifacts ?? []
-  const wasm = artifacts.find((artifact) => artifact.file.endsWith('pod_ownership_js/pod_ownership.wasm'))
-  const zkey = artifacts.find((artifact) => artifact.file.endsWith('pod_ownership_final.zkey'))
+  const v3 = params.circuitVersion === 3
+  const wasmSuffix = v3
+    ? 'pod_stellar_bridge_v3_js/pod_stellar_bridge_v3.wasm'
+    : 'pod_ownership_js/pod_ownership.wasm'
+  const zkeySuffix = v3
+    ? 'pod_stellar_bridge_v3_final.zkey'
+    : 'pod_ownership_final.zkey'
+  const wasm = artifacts.find((artifact) => artifact.file.endsWith(wasmSuffix))
+  const zkey = artifacts.find((artifact) => artifact.file.endsWith(zkeySuffix))
   if (!wasm || !zkey) {
     throw new ZkArtifactResolutionError(
       'artifact-missing',
-      'Pod ownership proving artifacts are missing from the ZK manifest.',
+      `${v3 ? 'Lockb0x Bridge V3' : 'Pod ownership'} proving artifacts are missing from the ZK manifest.`,
     )
   }
 

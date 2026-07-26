@@ -26,6 +26,12 @@ function bigintToBytes32(n: bigint): Uint8Array {
   return bytes
 }
 
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes)
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('')
+}
+
 function g1ToBytes(point: string[]): Uint8Array {
   const out = new Uint8Array(64)
   out.set(bigintToBytes32(BigInt(point[0])), 0)
@@ -78,15 +84,36 @@ export function proofToSorobanArgs(
   const nullifierBytes = serializePublicSignal(publicSignals[1])
   const scopeBytes = serializePublicSignal(publicSignals[2])
 
-  const toHex = (b: Uint8Array) =>
-    Array.from(b)
-      .map((byte) => byte.toString(16).padStart(2, '0'))
-      .join('')
+  return {
+    proofHex: bytesToHex(proofBytes),
+    rootHex: bytesToHex(rootBytes),
+    nullifierHex: bytesToHex(nullifierBytes),
+    scopeHex: bytesToHex(scopeBytes),
+  }
+}
+
+/**
+ * Encodes the `pod_ownership` circuit output for the atomic Lockb0x Bridge
+ * Factory v3 verifier. The circuit's public-signal order is fixed as
+ * claimHash, accountCommitment, podBinding.
+ */
+export function podOwnershipProofToBridgeArgs(
+  proof: Groth16Proof,
+  publicSignals: string[]
+): {
+  proofHex: string
+  claimHashHex: string
+  accountCommitmentHex: string
+  podBindingHex: string
+} {
+  if (publicSignals.length !== 3) {
+    throw new Error('pod_ownership proof must contain claimHash, accountCommitment, and podBinding.')
+  }
 
   return {
-    proofHex: toHex(proofBytes),
-    rootHex: toHex(rootBytes),
-    nullifierHex: toHex(nullifierBytes),
-    scopeHex: toHex(scopeBytes),
+    proofHex: bytesToHex(serializeProof(proof)),
+    claimHashHex: bytesToHex(serializePublicSignal(publicSignals[0])),
+    accountCommitmentHex: bytesToHex(serializePublicSignal(publicSignals[1])),
+    podBindingHex: bytesToHex(serializePublicSignal(publicSignals[2])),
   }
 }

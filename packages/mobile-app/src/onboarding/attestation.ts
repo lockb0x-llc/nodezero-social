@@ -36,6 +36,7 @@ interface AttestationConfig {
   lockboxFactoryContractId: string
   zkArtifactsUrl: string
   zkManifestUrl: string
+  lockboxFactoryVersion: 2 | 3
 }
 
 const STAGING_WEB_HOSTS = new Set([
@@ -60,6 +61,8 @@ function getConfig(): AttestationConfig {
   const lockboxFactoryContractId =
     extra.lockboxFactoryContractId ??
     (isStagingProfile ? 'CA5MASVC7CH646QUZM6HFC3JAYIG4TCRHJDSBDOBFP66IW7TXYYHFUVB' : '')
+  const configuredFactoryVersion = Number(extra.lockboxFactoryVersion ?? '2')
+  const lockboxFactoryVersion: 2 | 3 = configuredFactoryVersion === 3 ? 3 : 2
   const zkArtifactsUrl =
     (extra.zkArtifactsUrl ??
       (isStagingProfile ? 'https://stki7yquyjmnskg.blob.core.windows.net/zk-artifacts/' : ''))
@@ -80,6 +83,7 @@ function getConfig(): AttestationConfig {
     lockboxFactoryContractId,
     zkArtifactsUrl,
     zkManifestUrl,
+    lockboxFactoryVersion,
   }
 }
 
@@ -97,6 +101,10 @@ export interface SeamlessAttestationInput {
 export interface SeamlessAttestation {
   /** 32-byte hex `Poseidon(identitySecret)` — the on-chain identity anchor. */
   accountCommitmentHex: string
+  /** Serialized 256-byte Groth16 proof used by Lockb0x Bridge Factory v3. */
+  proofHex: string
+  /** SHA-256 of the serialized proof plus its public signals. */
+  proofHashHex: string
   /** Hex of the AES-256-GCM encrypted canonical claim (on-chain + Pod). */
   ciphertextHex: string
   /** SHA-256 of the ciphertext bytes, hex. */
@@ -125,6 +133,7 @@ export function buildSeamlessClaim(input: {
     stellarPublicKey: input.stellarPublicKey.trim(),
     identityContractId: config.identityContractId,
     lockboxFactoryContractId: config.lockboxFactoryContractId,
+    circuitVersion: config.lockboxFactoryVersion,
     challengeId: SEAMLESS_CHALLENGE_ID,
     nonce: SEAMLESS_NONCE,
     expiresAt: SEAMLESS_EXPIRES_AT,
@@ -168,6 +177,7 @@ export async function produceSeamlessAttestation(
   const artifactPaths = await resolvePodOwnershipArtifacts({
     zkArtifactsUrl: config.zkArtifactsUrl,
     zkManifestUrl: config.zkManifestUrl,
+    circuitVersion: config.lockboxFactoryVersion,
   })
 
   const proof = await generatePodOwnershipProof({
@@ -181,6 +191,8 @@ export async function produceSeamlessAttestation(
 
   return {
     accountCommitmentHex: fieldToBytes32Hex(proof.accountCommitment.toString()),
+    proofHex: proof.proofHex,
+    proofHashHex: proof.proofHashHex,
     ciphertextHex: encrypted.hex,
     ciphertextSha256Hex: encrypted.sha256Hex,
     publicSignals: proof.publicSignals,
