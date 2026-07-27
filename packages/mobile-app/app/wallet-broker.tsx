@@ -1,6 +1,7 @@
 import React from 'react'
 import { Platform, Text, View } from 'react-native'
 import { useWallet } from '../src/contexts/WalletContext'
+import { MissingIdentitySecretError } from '@nodezero/embedded-wallet'
 import {
   WALLET_BROKER_PROTOCOL,
   WALLET_BROKER_READY,
@@ -9,6 +10,7 @@ import {
   type WalletBrokerReadyRequest,
   type WalletBrokerResponse,
 } from '../src/wallet/brokerProtocol'
+import type { OnboardingConfigDescriptor } from '../src/onboarding/seamlessSignup'
 
 const ALLOWED_PARENT_ORIGINS = new Set([
   'https://nodezero.social',
@@ -23,6 +25,7 @@ function send(port: MessagePort, response: WalletBrokerResponse): void {
 export default function WalletBrokerScreen(): JSX.Element {
   const {
     walletInfo,
+    initializationError,
     signAttestationChallenge,
     createSeamlessAttestation,
     getLockboxAccountCommitment,
@@ -51,16 +54,23 @@ export default function WalletBrokerScreen(): JSX.Element {
 
       const handleRequest = async (request: WalletBrokerRequest) => {
         if (!request || request.protocol !== WALLET_BROKER_PROTOCOL) return
-        const reply = (ok: boolean, result?: Record<string, unknown>, error?: string) =>
+        const reply = (
+          ok: boolean,
+          result?: Record<string, unknown>,
+          error?: string,
+          errorCode?: string,
+        ) =>
           send(port, {
             protocol: WALLET_BROKER_PROTOCOL,
             requestId: request.requestId,
             ok,
             result,
             error,
+            errorCode,
           })
 
         try {
+          if (initializationError) throw new Error(initializationError)
           if (!walletInfo?.publicKey) throw new Error('Wallet is still initializing.')
           if (request.operation === 'get-public-key') {
             reply(true, { stellarPublicKey: walletInfo.publicKey })
@@ -75,7 +85,15 @@ export default function WalletBrokerScreen(): JSX.Element {
           if (request.operation === 'create-attestation') {
             const webId = request.payload.webId ?? ''
             const podUrl = request.payload.podUrl ?? ''
-            const attestation = await createSeamlessAttestation(webId, podUrl, walletInfo.publicKey)
+            const onboardingConfig = JSON.parse(
+              request.payload.onboardingConfig ?? '{}'
+            ) as OnboardingConfigDescriptor
+            const attestation = await createSeamlessAttestation(
+              webId,
+              podUrl,
+              walletInfo.publicKey,
+              onboardingConfig,
+            )
             reply(true, attestation as unknown as Record<string, unknown>)
             return
           }
@@ -113,7 +131,8 @@ export default function WalletBrokerScreen(): JSX.Element {
           reply(
             false,
             undefined,
-            error instanceof Error ? error.message : 'Wallet broker operation failed.'
+            error instanceof Error ? error.message : 'Wallet broker operation failed.',
+            error instanceof MissingIdentitySecretError ? 'missing_identity_secret' : undefined,
           )
         }
       }
@@ -132,6 +151,7 @@ export default function WalletBrokerScreen(): JSX.Element {
     deriveAccountCommitment,
     findIdentityKeyIdByPublicKey,
     getLockboxAccountCommitment,
+    initializationError,
     selectIdentity,
     signAttestationChallenge,
     walletInfo?.publicKey,

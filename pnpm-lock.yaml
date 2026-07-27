@@ -79,6 +79,9 @@ importers:
 
   packages/jss-provisioner:
     dependencies:
+      '@nodezero/zk-crypto':
+        specifier: workspace:*
+        version: link:../zk-crypto
       '@stellar/stellar-sdk':
         specifier: ^16.0.0
         version: 16.0.1

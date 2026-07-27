@@ -27,6 +27,7 @@
  */
 
 import { chromium } from '@playwright/test'
+import { appendFile } from 'node:fs/promises'
 
 // Authentication starts at the public apex landing page. The authenticated
 // application itself is exercised through its internal staging routes after
@@ -64,6 +65,12 @@ function nowStamp() {
 
 function randomSuffix() {
   return Math.floor(Math.random() * 1e6).toString(36)
+}
+
+async function publishOutput(name, value) {
+  const outputPath = process.env.GITHUB_OUTPUT
+  if (!outputPath) return
+  await appendFile(outputPath, `${name}=${value}\n`, 'utf8')
 }
 
 async function pageTextSnippet(page, length = 600) {
@@ -233,7 +240,7 @@ function assertNoFriendbotRequests(friendbotRequests) {
 
 async function verifyLockboxOnChain(contractId, factoryContractId) {
   const isBridgeV3 = factoryContractId === bridgeV3FactoryId
-  const minimumEntries = isBridgeV3 ? 1 : 3
+  const minimumEntries = isBridgeV3 ? 9 : 3
   const description = isBridgeV3
     ? 'constructor-initialized V3 bridge state'
     : 'deployed + initialized + attested'
@@ -246,13 +253,6 @@ async function verifyLockboxOnChain(contractId, factoryContractId) {
         const entries = Number(body?.storage_entries ?? 0)
         if (entries >= minimumEntries) {
           log(`On-chain lockb0x ${contractId}: storage_entries=${entries} (${description})`)
-          return
-        }
-        if (isBridgeV3 && body?.contract === contractId) {
-          log(
-            `On-chain lockb0x ${contractId}: V3 contract indexed; storage index is pending ` +
-              '(the authenticated client already verified its direct RPC commitment read).'
-          )
           return
         }
         log(`On-chain lockb0x ${contractId}: storage_entries=${entries}; waiting for indexer...`)
@@ -336,6 +336,7 @@ async function main() {
   }
   log(`Journey 1 PASS: webId=${session.webId}`)
   log(`  lockb0x=${lockboxContractId}`)
+  await publishOutput('lockbox_contract_id', lockboxContractId)
 
   // On-chain evidence for the anchor the session claims.
   await verifyLockboxOnChain(lockboxContractId, session?.lockbox?.factoryContractId)

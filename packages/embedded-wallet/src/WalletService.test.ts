@@ -22,6 +22,29 @@ function createMemoryStore(initial: Record<string, string> = {}): ISecureStore {
   }
 }
 
+function createInspectableMemoryStore(initial: Record<string, string> = {}): {
+  secureStore: ISecureStore
+  values: Map<string, string>
+} {
+  const values = new Map<string, string>(Object.entries(initial))
+  return {
+    values,
+    secureStore: {
+      getItemAsync(key: string): Promise<string | null> {
+        return Promise.resolve(values.get(key) ?? null)
+      },
+      setItemAsync(key: string, value: string): Promise<void> {
+        values.set(key, value)
+        return Promise.resolve()
+      },
+      deleteItemAsync(key: string): Promise<void> {
+        values.delete(key)
+        return Promise.resolve()
+      },
+    },
+  }
+}
+
 void test('signAttestationChallenge produces a verifiable Ed25519 signature', async () => {
   const keypair = Keypair.random()
   const service = new WalletService(
@@ -117,6 +140,23 @@ void test('supports creating and switching between identities', async () => {
 
   const secondPublicKey = await service.getWalletPublicKeyForIdentity(second.keyId)
   assert.equal(secondPublicKey, second.publicKey)
+})
+
+void test('fails closed when an indexed identity secret is missing', async () => {
+  const store = createInspectableMemoryStore()
+  const adapter = new EnclaveAdapter(store.secureStore)
+  const identity = await adapter.createIdentity('Recovery required')
+  const secretStorageKey = `nodezero.stellar.secret.${identity.keyId}`
+  store.values.delete(secretStorageKey)
+
+  await assert.rejects(
+    adapter.loadOrCreate(identity.keyId),
+    (error: unknown) =>
+      error instanceof Error &&
+      error.name === 'MissingIdentitySecretError' &&
+      error.message.includes('recovery bundle'),
+  )
+  assert.equal(store.values.has(secretStorageKey), false)
 })
 
 void test('does not call Friendbot when a Testnet wallet is unfunded', async () => {

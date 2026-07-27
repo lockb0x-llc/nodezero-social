@@ -30,6 +30,7 @@ import { aesthetic } from '../src/theme/aesthetic'
 import {
   checkSeamlessEmailExists,
   createSeamlessNode,
+  getCompatibleOnboardingConfig,
   getSeamlessSignupConfig,
 } from '../src/onboarding/seamlessSignup'
 import { ProgressStepLadder, type ProgressStep } from '../src/components/ProgressStepLadder'
@@ -424,6 +425,7 @@ export default function LandingScreen(): JSX.Element {
     identities,
     activeIdentityKeyId,
     isIdentityBusy,
+    initializationError,
     selectIdentity,
     createIdentity,
     createSeamlessAttestation,
@@ -456,6 +458,12 @@ export default function LandingScreen(): JSX.Element {
       setErrorAction(null)
     }
   }, [reason])
+
+  React.useEffect(() => {
+    if (!initializationError) return
+    setError(initializationError)
+    setErrorAction(null)
+  }, [initializationError])
 
   /** Marks the given step done and activates the next pending step. */
   const advanceCreateStep = (doneKey: string): void => {
@@ -566,6 +574,9 @@ export default function LandingScreen(): JSX.Element {
     setCreateNotice('Checking account availability…')
 
     try {
+      setCreateNotice('Verifying the active Testnet configuration…')
+      const onboardingConfig = await getCompatibleOnboardingConfig()
+
       // Fast path: ask the provisioner for a server-side duplicate check before
       // we spend time generating ZK artifacts for an already-registered email.
       if (normalizedEmail) {
@@ -588,6 +599,7 @@ export default function LandingScreen(): JSX.Element {
         expectedWebId,
         expectedPodUrl,
         walletInfo.publicKey,
+        onboardingConfig,
       )
       advanceCreateStep('proof')
       setCreateNotice('Creating your Pod on the Node Zero Community Server…')
@@ -602,6 +614,7 @@ export default function LandingScreen(): JSX.Element {
         proofHashHex: attestation.proofHashHex,
         publicSignals: attestation.publicSignals,
         circuitVersion: attestation.claim.circuitVersion ?? 1,
+        configFingerprint: onboardingConfig.configFingerprint,
       })
       advanceCreateStep('pod')
       setCreateNotice('Confirming your on-chain lockb0x anchor…')

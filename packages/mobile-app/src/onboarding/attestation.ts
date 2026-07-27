@@ -18,6 +18,7 @@
 import Constants from 'expo-constants'
 import type { PodOwnershipClaim } from '@nodezero/zk-crypto/pod-ownership'
 import { resolvePodOwnershipArtifacts } from './zkArtifacts'
+import type { OnboardingConfigDescriptor } from './seamlessSignup'
 
 /**
  * Fixed placeholders for the seamless (non-interactive) attestation claim. The
@@ -96,6 +97,8 @@ export interface SeamlessAttestationInput {
   stellarPublicKey: string
   /** The embedded wallet secret (S...), used in-process for proof + encryption. */
   stellarSecret: string
+  /** Server-verified claim and artifact configuration for this proof. */
+  onboardingConfig?: OnboardingConfigDescriptor
 }
 
 export interface SeamlessAttestation {
@@ -123,21 +126,46 @@ export function buildSeamlessClaim(input: {
   webId: string
   podUrl: string
   stellarPublicKey: string
+  onboardingConfig?: OnboardingConfigDescriptor
 }): PodOwnershipClaim {
   const config = getConfig()
+  const descriptor = input.onboardingConfig
   return {
-    envProfile: config.envProfile,
-    stellarNetworkPassphrase: config.stellarNetworkPassphrase,
+    envProfile: descriptor?.envProfile ?? config.envProfile,
+    stellarNetworkPassphrase: descriptor?.networkPassphrase ?? config.stellarNetworkPassphrase,
     webId: input.webId.trim(),
     podUrl: input.podUrl.trim(),
     stellarPublicKey: input.stellarPublicKey.trim(),
-    identityContractId: config.identityContractId,
-    lockboxFactoryContractId: config.lockboxFactoryContractId,
-    circuitVersion: config.lockboxFactoryVersion,
+    identityContractId: descriptor?.identityContractId ?? config.identityContractId,
+    lockboxFactoryContractId:
+      descriptor?.lockboxFactoryContractId ?? config.lockboxFactoryContractId,
+    circuitVersion: descriptor?.circuitVersion ?? config.lockboxFactoryVersion,
     challengeId: SEAMLESS_CHALLENGE_ID,
     nonce: SEAMLESS_NONCE,
     expiresAt: SEAMLESS_EXPIRES_AT,
+    ...(descriptor ? { configFingerprint: descriptor.configFingerprint } : {}),
   }
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes).map((byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+
+async function fetchVerifiedArtifact(url: string, expectedSha256: string): Promise<ArrayBuffer> {
+  const response = await fetch(url)
+  if (!response.ok) {
+    throw new Error(`Unable to load ZK artifact (${response.status}).`)
+  }
+  const bytes = await response.arrayBuffer()
+  const digest = await crypto.subtle.digest('SHA-256', bytes)
+  if (bytesToHex(new Uint8Array(digest)) !== expectedSha256) {
+    throw new Error('ZK artifact digest does not match the active onboarding configuration.')
+  }
+  return bytes
+}
+
+function artifactBlobUrl(bytes: ArrayBuffer, contentType: string): string {
+  return URL.createObjectURL(new Blob([bytes], { type: contentType }))
 }
 
 /**
@@ -174,18 +202,44 @@ export async function produceSeamlessAttestation(
   // Resolve the proving artifact URLs from the published manifest (same path
   // as custody provisioning) instead of hardcoding filenames, so artifact
   // bundle layout changes cannot silently break seamless onboarding.
-  const artifactPaths = await resolvePodOwnershipArtifacts({
-    zkArtifactsUrl: config.zkArtifactsUrl,
-    zkManifestUrl: config.zkManifestUrl,
-    circuitVersion: config.lockboxFactoryVersion,
-  })
+  let wasmPath: string
+  let zkeyPath: string
+  const temporaryUrls: string[] = []
+  if (input.onboardingConfig) {
+    const [wasmBytes, zkeyBytes] = await Promise.all([
+      fetchVerifiedArtifact(
+        input.onboardingConfig.artifacts.wasm.url,
+        input.onboardingConfig.artifacts.wasm.sha256,
+      ),
+      fetchVerifiedArtifact(
+        input.onboardingConfig.artifacts.zkey.url,
+        input.onboardingConfig.artifacts.zkey.sha256,
+      ),
+    ])
+    wasmPath = artifactBlobUrl(wasmBytes, 'application/wasm')
+    zkeyPath = artifactBlobUrl(zkeyBytes, 'application/octet-stream')
+    temporaryUrls.push(wasmPath, zkeyPath)
+  } else {
+    const artifactPaths = await resolvePodOwnershipArtifacts({
+      zkArtifactsUrl: config.zkArtifactsUrl,
+      zkManifestUrl: config.zkManifestUrl,
+      circuitVersion: config.lockboxFactoryVersion,
+    })
+    wasmPath = artifactPaths.wasmPath
+    zkeyPath = artifactPaths.zkeyPath
+  }
 
-  const proof = await generatePodOwnershipProof({
-    stellarSecretKey: input.stellarSecret,
-    claim,
-    wasmPath: artifactPaths.wasmPath,
-    zkeyPath: artifactPaths.zkeyPath,
-  })
+  let proof
+  try {
+    proof = await generatePodOwnershipProof({
+      stellarSecretKey: input.stellarSecret,
+      claim,
+      wasmPath,
+      zkeyPath,
+    })
+  } finally {
+    for (const url of temporaryUrls) URL.revokeObjectURL(url)
+  }
 
   const encrypted = await encryptAttestation(canonicalClaim, input.stellarSecret)
 

@@ -31,6 +31,16 @@ export interface EnclaveIdentityRecord {
   lastUsedAt: string | null
 }
 
+export class MissingIdentitySecretError extends Error {
+  readonly keyId: string
+
+  constructor(keyId: string) {
+    super('This identity exists in the wallet index, but its secret key is missing. Import its recovery bundle to continue.')
+    this.name = 'MissingIdentitySecretError'
+    this.keyId = keyId
+  }
+}
+
 /** Interface that every enclave implementation must satisfy. */
 export interface ISecureStore {
   /** Retrieves the secret for a given key. */
@@ -369,21 +379,7 @@ export class EnclaveAdapter {
       return existing
     }
 
-    // Repair a partially-missing identity secret by provisioning a fresh key.
-    const { Keypair } = await import('@stellar/stellar-sdk')
-    const secret = Keypair.random().secret()
-    await this.store.setItemAsync(toSecretKey(resolvedKeyId), secret)
-
-    const meta = await this.loadIdentityMeta(resolvedKeyId)
-    if (meta) {
-      await this.saveIdentityMeta({
-        ...meta,
-        lastUsedAt: nowIso(),
-      })
-    }
-
-    await this.store.setItemAsync(ACTIVE_KEY_ID_KEY, resolvedKeyId)
-    return secret
+    throw new MissingIdentitySecretError(resolvedKeyId)
   }
 
   /**

@@ -7,25 +7,16 @@ import * as snarkjs from 'snarkjs'
 import { deriveIdentity } from './identity.js'
 import { poseidonHash, SNARK_FIELD_SIZE } from './poseidon.js'
 import { serializeProof, serializePublicSignal } from './serializer.js'
+import {
+  buildPodOwnershipClaim,
+  type PodOwnershipClaim,
+} from './pod-ownership-claim.js'
+
+export { buildPodOwnershipClaim, type PodOwnershipClaim } from './pod-ownership-claim.js'
 
 const DEFAULT_WASM_PATH = 'build/pod_ownership_js/pod_ownership.wasm'
 const DEFAULT_ZKEY_PATH = 'build/pod_ownership_final.zkey'
 const DEFAULT_VK_PATH = 'build/pod_ownership_vk.json'
-
-export interface PodOwnershipClaim {
-  /** Circuit/claim schema version. Defaults to legacy pod_ownership V2. */
-  circuitVersion?: number
-  envProfile: string
-  stellarNetworkPassphrase: string
-  webId: string
-  podUrl: string
-  stellarPublicKey: string
-  identityContractId: string
-  lockboxFactoryContractId: string
-  challengeId: string
-  nonce: string
-  expiresAt: string
-}
 
 export interface PodOwnershipProofInputs {
   stellarSecretKey: string
@@ -44,32 +35,6 @@ export interface PodOwnershipProof {
   proofHex: string
   proofHashHex: string
   proofRootHex: string
-}
-
-function canonicalField(value: string): string {
-  return value.trim()
-}
-
-function canonicalPodUrl(value: string): string {
-  const trimmed = value.trim()
-  return trimmed.endsWith('/') ? trimmed : `${trimmed}/`
-}
-
-export function buildPodOwnershipClaim(claim: PodOwnershipClaim): string {
-  return [
-    claim.circuitVersion === 3 ? 'NZ_POD_STELLAR_BRIDGE_V3' : 'NZ_POD_OWNER_V1',
-    String(claim.circuitVersion ?? 2),
-    canonicalField(claim.envProfile),
-    canonicalField(claim.stellarNetworkPassphrase),
-    canonicalField(claim.webId),
-    canonicalPodUrl(claim.podUrl),
-    canonicalField(claim.stellarPublicKey),
-    canonicalField(claim.identityContractId),
-    canonicalField(claim.lockboxFactoryContractId),
-    canonicalField(claim.challengeId),
-    canonicalField(claim.nonce),
-    canonicalField(claim.expiresAt),
-  ].join('|')
 }
 
 async function sha256Bytes(input: string | Uint8Array): Promise<Uint8Array> {

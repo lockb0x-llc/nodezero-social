@@ -224,6 +224,21 @@ before(async () => {
   process.env.JSS_BROWSER_SESSION_ENABLED = 'true'
   process.env.JSS_BROWSER_SESSION_COOKIE_DOMAIN = '.nodezero.social'
   process.env.NZ_ENV_PROFILE = 'local'
+  process.env.JSS_BUILD_COMMIT = 'test-build-commit'
+  process.env.JSS_BUILD_ARTIFACT_SHA256 = 'a'.repeat(64)
+  process.env.JSS_PUBLIC_PROVISIONER_BASE_URL = 'https://api.nodezero.social'
+  process.env.JSS_WALLET_BROKER_URL = 'https://wallet.nodezero.social'
+  process.env.JSS_IDENTITY_CONTRACT_ID = 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM'
+  process.env.JSS_LOCKBOX_FACTORY_VERSION = 'v2'
+  process.env.JSS_LOCKBOX_FACTORY_CONTRACT_ID = 'CBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAG4'
+  process.env.JSS_LOCKBOX_BRIDGE_V3_MANIFEST_URL = 'https://artifacts.example/manifest.json'
+  process.env.JSS_LOCKBOX_BRIDGE_V3_MANIFEST_SHA256 = 'b'.repeat(64)
+  process.env.JSS_LOCKBOX_BRIDGE_V3_WASM_URL = 'https://artifacts.example/prover.wasm'
+  process.env.JSS_LOCKBOX_BRIDGE_V3_WASM_SHA256 = 'c'.repeat(64)
+  process.env.JSS_LOCKBOX_BRIDGE_V3_ZKEY_URL = 'https://artifacts.example/prover.zkey'
+  process.env.JSS_LOCKBOX_BRIDGE_V3_ZKEY_SHA256 = 'd'.repeat(64)
+  process.env.JSS_LOCKBOX_BRIDGE_V3_VK_URL = 'https://artifacts.example/vk.json'
+  process.env.JSS_LOCKBOX_BRIDGE_V3_VK_SHA256 = 'e'.repeat(64)
   delete process.env.JSS_CREDENTIALS_TABLE_SAS_URL
   delete process.env.JSS_CREDENTIALS_FILE
   delete process.env.JSS_CREDENTIALS_ENC_KEY
@@ -299,6 +314,20 @@ async function provisionUser(): Promise<{
 // ---------------------------------------------------------------------------
 // Onboarding contract
 // ---------------------------------------------------------------------------
+
+void test('solid-account: rejects a stale config fingerprint before CSS account creation', async () => {
+  const accountsBefore = cssState.accounts.size
+  const { status, json: payload } = await postJson('/v1/solid-account', {
+    name: 'stale-config',
+    email: 'stale-config@example.com',
+    stellarPublicKey: Keypair.random().publicKey(),
+    configFingerprint: 'f'.repeat(64),
+  })
+  assert.equal(status, 409)
+  assert.equal(payload.code, 'config_stale')
+  assert.match(String(payload.configFingerprint ?? ''), /^[0-9a-f]{64}$/)
+  assert.equal(cssState.accounts.size, accountsBefore)
+})
 
 void test('solid-account: no password field exists in the contract', async () => {
   const { status, json: payload } = await postJson('/v1/solid-account', {
@@ -633,9 +662,36 @@ void test('logout: consumed refresh token cannot be replayed', async () => {
 void test('health: reports session + credential store configuration', async () => {
   const res = await fetch(`${baseUrl}/health`)
   const payload = (await res.json()) as {
+    build?: { commit: string; payloadSha256: string; configuredArtifactSha256: string }
     session?: { signingKeyConfigured: boolean; credentialBackend: string }
   }
   assert.equal(res.status, 200)
+  assert.equal(payload.build?.commit, 'test-build-commit')
+  assert.equal(payload.build?.payloadSha256, 'unknown')
+  assert.equal(payload.build?.configuredArtifactSha256, 'a'.repeat(64))
   assert.equal(payload.session?.signingKeyConfigured, true)
   assert.equal(payload.session?.credentialBackend, 'memory')
+})
+
+void test('onboarding config: reports a stable fingerprint and fails readiness outside V3', async () => {
+  const first = await fetch(`${baseUrl}/v1/onboarding/config`)
+  const descriptor = (await first.json()) as {
+    ready?: boolean
+    claimDomain?: string
+    circuitVersion?: number
+    configFingerprint?: string
+    artifacts?: { wasm?: { sha256?: string } }
+  }
+  assert.equal(first.status, 200)
+  assert.equal(first.headers.get('cache-control'), 'public, max-age=60, must-revalidate')
+  assert.equal(descriptor.ready, false)
+  assert.equal(descriptor.claimDomain, 'NZ_POD_STELLAR_BRIDGE_V3')
+  assert.equal(descriptor.circuitVersion, 3)
+  assert.match(descriptor.configFingerprint ?? '', /^[0-9a-f]{64}$/)
+  assert.equal(first.headers.get('etag'), `"${descriptor.configFingerprint}"`)
+  assert.equal(descriptor.artifacts?.wasm?.sha256, 'c'.repeat(64))
+
+  const second = await fetch(`${baseUrl}/v1/onboarding/config`)
+  const repeated = (await second.json()) as { configFingerprint?: string }
+  assert.equal(repeated.configFingerprint, descriptor.configFingerprint)
 })

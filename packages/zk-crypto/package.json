@@ -14,6 +14,11 @@
       "import": "./src/pod-ownership-prover.ts",
       "types": "./src/pod-ownership-prover.ts"
     },
+    "./pod-claim": {
+      "import": "./src/pod-ownership-claim.ts",
+      "require": "./src/pod-ownership-claim.ts",
+      "types": "./src/pod-ownership-claim.ts"
+    },
     "./attestation-cipher": {
       "import": "./src/attestation-cipher.ts",
       "types": "./src/attestation-cipher.ts"

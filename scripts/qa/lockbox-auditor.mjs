@@ -9,6 +9,8 @@
  *   NZ_LOCKBOX_FACTORY_CONTRACT_ID
  *   NZ_LOCKBOX_AUDIT_LEDGER_WINDOW (default: 1500)
  *   NZ_LOCKBOX_AUDIT_MAX_EVENTS (default: 500)
+ *   NZ_LOCKBOX_AUDIT_REQUIRE_EVENTS (default: false)
+ *   NZ_LOCKBOX_AUDIT_EXPECTED_CHILD_IDS (comma-separated contract IDs)
  */
 
 import { Contract, rpc, scValToNative } from '@stellar/stellar-sdk'
@@ -29,6 +31,26 @@ function readPositiveInteger(name, fallback) {
 
 function isNonZeroBytes(value) {
   return Buffer.isBuffer(value) && value.length === 32 && value.some((byte) => byte !== 0)
+}
+
+function readBoolean(name, fallback = false) {
+  const raw = process.env[name]
+  if (!raw) return fallback
+  if (/^(1|true|yes)$/i.test(raw.trim())) return true
+  if (/^(0|false|no)$/i.test(raw.trim())) return false
+  throw new Error(`${name} must be true or false.`)
+}
+
+function readExpectedChildIds() {
+  const raw = (process.env.NZ_LOCKBOX_AUDIT_EXPECTED_CHILD_IDS ?? '').trim()
+  if (!raw) return new Set()
+  const ids = raw.split(',').map((value) => value.trim()).filter(Boolean)
+  for (const id of ids) {
+    if (!CONTRACT_ID_PATTERN.test(id)) {
+      throw new Error(`NZ_LOCKBOX_AUDIT_EXPECTED_CHILD_IDS contains invalid contract ID ${id}.`)
+    }
+  }
+  return new Set(ids)
 }
 
 function parseV3CreationEvent(event) {
@@ -57,7 +79,7 @@ function parseV3CreationEvent(event) {
     throw new Error(`Factory event has unexpected bridge version ${String(version)}.`)
   }
 
-  return lockboxId
+  return { lockboxId, accountCommitment: indexedCommitment }
 }
 
 function readFactoryId() {
@@ -120,17 +142,64 @@ async function listFactoryEvents(server, factoryId, startLedger, maxEvents) {
   return events
 }
 
-async function assertInitializedBridgeAccount(server, lockboxId) {
+async function assertInitializedBridgeAccount(server, factoryId, eventState) {
+  const { lockboxId, accountCommitment } = eventState
   const response = await server.getLedgerEntries(new Contract(lockboxId).getFootprint())
   const entry = response.entries[0]
   const storage = entry?.val?.contractData?.().val().instance().storage()
   const storageEntries = Array.from(storage ?? [])
+  const decoded = new Map()
+  for (const storageEntry of storageEntries) {
+    const key = scValToNative(storageEntry.key())
+    if (!Array.isArray(key) || key.length !== 1 || typeof key[0] !== 'string') {
+      throw new Error('Child instance contains an invalid constructor storage key.')
+    }
+    if (decoded.has(key[0])) {
+      throw new Error(`Child instance contains duplicate ${key[0]} storage.`)
+    }
+    decoded.set(key[0], scValToNative(storageEntry.val()))
+  }
 
-  // V3 writes all nine immutable bridge fields in its child constructor.
-  if (storageEntries.length < 9) {
+  const expectedKeys = [
+    'AccountCommitment',
+    'Ciphertext',
+    'CiphertextHash',
+    'CircuitVersion',
+    'ClaimHash',
+    'Factory',
+    'Operator',
+    'PodBinding',
+    'ProofHash',
+  ]
+  const actualKeys = [...decoded.keys()].sort()
+  if (actualKeys.length !== expectedKeys.length || actualKeys.some((key, index) => key !== expectedKeys[index])) {
     throw new Error(
-      `Child instance has ${String(storageEntries.length)} storage entries; expected all V3 bridge fields.`
+      `Child instance storage keys are incomplete or unexpected: ${actualKeys.join(',')}.`
     )
+  }
+
+  if (decoded.get('Factory') !== factoryId) {
+    throw new Error('Child Factory storage does not match the audited V3 factory.')
+  }
+  const operator = decoded.get('Operator')
+  if (typeof operator !== 'string' || !/^[GC][A-Z0-9]{55}$/.test(operator)) {
+    throw new Error('Child Operator storage is not a valid Stellar address.')
+  }
+  const storedCommitment = decoded.get('AccountCommitment')
+  if (!Buffer.isBuffer(storedCommitment) || !storedCommitment.equals(accountCommitment)) {
+    throw new Error('Child AccountCommitment does not match the indexed factory event topic.')
+  }
+  for (const key of ['PodBinding', 'ClaimHash', 'ProofHash', 'CiphertextHash']) {
+    if (!isNonZeroBytes(decoded.get(key))) {
+      throw new Error(`Child ${key} storage is not a nonzero 32-byte value.`)
+    }
+  }
+  const ciphertext = decoded.get('Ciphertext')
+  if (!Buffer.isBuffer(ciphertext) || ciphertext.length === 0 || ciphertext.length > 4096) {
+    throw new Error('Child Ciphertext storage is empty or exceeds 4096 bytes.')
+  }
+  if (Number(decoded.get('CircuitVersion')) !== 3) {
+    throw new Error(`Child CircuitVersion is ${String(decoded.get('CircuitVersion'))}; expected 3.`)
   }
 }
 
@@ -139,6 +208,8 @@ async function runAudit() {
   const factoryId = readFactoryId()
   const ledgerWindow = readPositiveInteger('NZ_LOCKBOX_AUDIT_LEDGER_WINDOW', 1500)
   const maxEvents = readPositiveInteger('NZ_LOCKBOX_AUDIT_MAX_EVENTS', 500)
+  const requireEvents = readBoolean('NZ_LOCKBOX_AUDIT_REQUIRE_EVENTS')
+  const expectedChildIds = readExpectedChildIds()
   const server = new rpc.Server(rpcUrl)
 
   const network = await server.getNetwork()
@@ -155,18 +226,23 @@ async function runAudit() {
 
   const events = await listFactoryEvents(server, factoryId, startLedger, maxEvents)
   if (events.length === 0) {
+    if (requireEvents || expectedChildIds.size > 0) {
+      throw new Error('No V3 child deployments were found in a release audit that requires events.')
+    }
     console.log('[lockbox-audit] PASS: no V3 child deployments in the audit window.')
     return
   }
 
   let healthy = 0
   let failed = 0
+  const auditedChildIds = new Set()
   for (const event of events) {
     try {
-      const lockboxId = parseV3CreationEvent(event)
-      await assertInitializedBridgeAccount(server, lockboxId)
+      const eventState = parseV3CreationEvent(event)
+      await assertInitializedBridgeAccount(server, factoryId, eventState)
+      auditedChildIds.add(eventState.lockboxId)
       healthy += 1
-      console.log(`[lockbox-audit] PASS ${event.id}: ${lockboxId} has immutable V3 bridge state.`)
+      console.log(`[lockbox-audit] PASS ${event.id}: ${eventState.lockboxId} has exact immutable V3 bridge state.`)
     } catch (error) {
       failed += 1
       const message = error instanceof Error ? error.message : String(error)
@@ -179,6 +255,10 @@ async function runAudit() {
   )
   if (failed > 0) {
     throw new Error('Lockb0x audit found invalid V3 factory event or child state.')
+  }
+  const missingExpected = [...expectedChildIds].filter((id) => !auditedChildIds.has(id))
+  if (missingExpected.length > 0) {
+    throw new Error(`Expected V3 child contracts were not found in the audit window: ${missingExpected.join(',')}`)
   }
 }
 

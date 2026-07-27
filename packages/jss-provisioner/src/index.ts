@@ -5,6 +5,7 @@ import { lookup } from 'node:dns/promises'
 import { isIP } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { readFileSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { ProvisionStore } from './store.js'
 import { verifyAttestation } from './attestation.js'
@@ -27,6 +28,7 @@ import {
 import { CommunityDirectoryStore } from './communityDirectory.js'
 import type { BridgeProofPayload } from './lockboxFactory.js'
 import { verifyBridgeProof } from './bridgeProofVerifier.js'
+import { buildPodOwnershipClaim } from '@nodezero/zk-crypto/pod-claim'
 // Stellar StrKey base32 decode + Ed25519 verify using Web Crypto API
 const _B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
 function _b32Decode(s: string): Uint8Array {
@@ -69,6 +71,38 @@ const LOCKBOX_FACTORY_CONTRACT_ID =
 const LOCKBOX_FACTORY_MODE = (process.env.JSS_LOCKBOX_FACTORY_MODE ?? 'mock').toLowerCase()
 const LOCKBOX_FACTORY_VERSION = (process.env.JSS_LOCKBOX_FACTORY_VERSION ?? 'v2').trim().toLowerCase()
 const LOCKBOX_BRIDGE_V3_VK_URL = (process.env.JSS_LOCKBOX_BRIDGE_V3_VK_URL ?? '').trim()
+const LOCKBOX_BRIDGE_V3_MANIFEST_URL = (process.env.JSS_LOCKBOX_BRIDGE_V3_MANIFEST_URL ?? '').trim()
+const LOCKBOX_BRIDGE_V3_MANIFEST_SHA256 = (process.env.JSS_LOCKBOX_BRIDGE_V3_MANIFEST_SHA256 ?? '').trim().toLowerCase()
+const LOCKBOX_BRIDGE_V3_WASM_URL = (process.env.JSS_LOCKBOX_BRIDGE_V3_WASM_URL ?? '').trim()
+const LOCKBOX_BRIDGE_V3_WASM_SHA256 = (process.env.JSS_LOCKBOX_BRIDGE_V3_WASM_SHA256 ?? '').trim().toLowerCase()
+const LOCKBOX_BRIDGE_V3_ZKEY_URL = (process.env.JSS_LOCKBOX_BRIDGE_V3_ZKEY_URL ?? '').trim()
+const LOCKBOX_BRIDGE_V3_ZKEY_SHA256 = (process.env.JSS_LOCKBOX_BRIDGE_V3_ZKEY_SHA256 ?? '').trim().toLowerCase()
+const LOCKBOX_BRIDGE_V3_VK_SHA256 = (process.env.JSS_LOCKBOX_BRIDGE_V3_VK_SHA256 ?? '').trim().toLowerCase()
+interface EmbeddedBuildInfo {
+  commit: string
+  payloadSha256: string
+}
+
+function readEmbeddedBuildInfo(): EmbeddedBuildInfo {
+  try {
+    const parsed = JSON.parse(readFileSync(join(__dirname, 'build-info.json'), 'utf8')) as Partial<EmbeddedBuildInfo>
+    if (
+      typeof parsed.commit === 'string' && parsed.commit.trim() &&
+      typeof parsed.payloadSha256 === 'string' && /^[0-9a-f]{64}$/i.test(parsed.payloadSha256)
+    ) {
+      return { commit: parsed.commit.trim(), payloadSha256: parsed.payloadSha256.toLowerCase() }
+    }
+  } catch {
+    // Local tests and development builds do not require an embedded marker.
+  }
+  return {
+    commit: (process.env.JSS_BUILD_COMMIT ?? 'unknown').trim(),
+    payloadSha256: (process.env.JSS_BUILD_PAYLOAD_SHA256 ?? 'unknown').trim().toLowerCase(),
+  }
+}
+
+const EMBEDDED_BUILD = readEmbeddedBuildInfo()
+const CONFIGURED_ARTIFACT_SHA256 = (process.env.JSS_BUILD_ARTIFACT_SHA256 ?? 'unknown').trim().toLowerCase()
 const BN254_SCALAR_FIELD_SIZE = 21888242871839275222246405745257275088548364400416034343698204186575808495617n
 const BROWSER_SESSION_ENABLED = /^(1|true|yes)$/i.test((process.env.JSS_BROWSER_SESSION_ENABLED ?? '').trim())
 const BROWSER_SESSION_COOKIE_NAME = (process.env.JSS_BROWSER_SESSION_COOKIE_NAME ?? 'nz_browser_session').trim()
@@ -206,6 +240,95 @@ function sendJson(
     'content-type': 'application/json; charset=utf-8',
   })
   res.end(JSON.stringify(payload))
+}
+
+interface OnboardingConfigDescriptor {
+  schemaVersion: number
+  claimDomain: string
+  circuitVersion: number
+  envProfile: string
+  networkPassphrase: string
+  issuer: string
+  solidPodOrigin: string
+  provisionerOrigin: string
+  walletOrigin: string
+  identityContractId: string
+  lockboxFactoryContractId: string
+  lockboxFactoryVersion: string
+  artifacts: {
+    manifest: { url: string; sha256: string }
+    wasm: { url: string; sha256: string }
+    zkey: { url: string; sha256: string }
+    verificationKey: { url: string; sha256: string }
+  }
+  ready: boolean
+  configFingerprint: string
+}
+
+function buildOnboardingConfigDescriptor(): OnboardingConfigDescriptor {
+  const envProfile = (process.env.NZ_ENV_PROFILE ?? 'local').trim()
+  const networkPassphrase = (
+    process.env.JSS_STELLAR_NETWORK_PASSPHRASE ??
+    process.env.NZ_STELLAR_NETWORK_PASSPHRASE ??
+    'Test SDF Network ; September 2015'
+  ).trim()
+  const identityContractId = (
+    process.env.JSS_IDENTITY_CONTRACT_ID ?? process.env.NZ_IDENTITY_CONTRACT_ID ?? ''
+  ).trim()
+  const provisionerOrigin = (process.env.JSS_PUBLIC_PROVISIONER_BASE_URL ?? '').trim().replace(/\/+$/, '')
+  const walletOrigin = (process.env.JSS_WALLET_BROKER_URL ?? '').trim().replace(/\/+$/, '')
+  const fingerprintInput = {
+    schemaVersion: 1,
+    claimDomain: 'NZ_POD_STELLAR_BRIDGE_V3',
+    circuitVersion: 3,
+    envProfile,
+    networkPassphrase,
+    issuer: ISSUER.replace(/\/+$/, ''),
+    solidPodOrigin: SOLID_CSS_BASE_URL,
+    provisionerOrigin,
+    walletOrigin,
+    identityContractId,
+    lockboxFactoryContractId: LOCKBOX_FACTORY_CONTRACT_ID.trim(),
+    lockboxFactoryVersion: LOCKBOX_FACTORY_VERSION,
+    artifacts: {
+      manifest: { url: LOCKBOX_BRIDGE_V3_MANIFEST_URL, sha256: LOCKBOX_BRIDGE_V3_MANIFEST_SHA256 },
+      wasm: { url: LOCKBOX_BRIDGE_V3_WASM_URL, sha256: LOCKBOX_BRIDGE_V3_WASM_SHA256 },
+      zkey: { url: LOCKBOX_BRIDGE_V3_ZKEY_URL, sha256: LOCKBOX_BRIDGE_V3_ZKEY_SHA256 },
+      verificationKey: { url: LOCKBOX_BRIDGE_V3_VK_URL, sha256: LOCKBOX_BRIDGE_V3_VK_SHA256 },
+    },
+  }
+  const requiredValues = [
+    envProfile,
+    networkPassphrase,
+    fingerprintInput.issuer,
+    SOLID_CSS_BASE_URL,
+    provisionerOrigin,
+    walletOrigin,
+    identityContractId,
+    fingerprintInput.lockboxFactoryContractId,
+    LOCKBOX_BRIDGE_V3_MANIFEST_URL,
+    LOCKBOX_BRIDGE_V3_MANIFEST_SHA256,
+    LOCKBOX_BRIDGE_V3_WASM_URL,
+    LOCKBOX_BRIDGE_V3_WASM_SHA256,
+    LOCKBOX_BRIDGE_V3_ZKEY_URL,
+    LOCKBOX_BRIDGE_V3_ZKEY_SHA256,
+    LOCKBOX_BRIDGE_V3_VK_URL,
+    LOCKBOX_BRIDGE_V3_VK_SHA256,
+  ]
+  const ready =
+    LOCKBOX_FACTORY_VERSION === 'v3' &&
+    requiredValues.every((value) => value.length > 0) &&
+    [
+      LOCKBOX_BRIDGE_V3_MANIFEST_SHA256,
+      LOCKBOX_BRIDGE_V3_WASM_SHA256,
+      LOCKBOX_BRIDGE_V3_ZKEY_SHA256,
+      LOCKBOX_BRIDGE_V3_VK_SHA256,
+    ].every((value) => /^[0-9a-f]{64}$/.test(value))
+  const configFingerprint = createHash('sha256')
+    .update(JSON.stringify(fingerprintInput), 'utf8')
+    .digest('hex')
+
+  return { ...fingerprintInput, ready, configFingerprint }
 }
 
 function readCookie(req: IncomingMessage, name: string): string | null {
@@ -359,6 +482,7 @@ async function verifyCanonicalBridgeClaim(input: {
   podUrl: string
   stellarPublicKey: string
   factoryContractId: string
+  configFingerprint: string
 }): Promise<void> {
   const identityContractId = (process.env.JSS_IDENTITY_CONTRACT_ID ?? process.env.NZ_IDENTITY_CONTRACT_ID ?? '').trim()
   if (!identityContractId) {
@@ -369,21 +493,20 @@ async function verifyCanonicalBridgeClaim(input: {
     process.env.NZ_STELLAR_NETWORK_PASSPHRASE ??
     'Test SDF Network ; September 2015'
   ).trim()
-  const canonicalPodUrl = input.podUrl.trim().endsWith('/') ? input.podUrl.trim() : `${input.podUrl.trim()}/`
-  const canonicalClaim = [
-    'NZ_POD_STELLAR_BRIDGE_V3',
-    String(input.bridgeProof.circuitVersion),
-    (process.env.NZ_ENV_PROFILE ?? 'local').trim(),
-    networkPassphrase,
-    input.webId.trim(),
-    canonicalPodUrl,
-    input.stellarPublicKey.trim(),
+  const canonicalClaim = buildPodOwnershipClaim({
+    circuitVersion: input.bridgeProof.circuitVersion,
+    envProfile: process.env.NZ_ENV_PROFILE ?? 'local',
+    stellarNetworkPassphrase: networkPassphrase,
+    webId: input.webId,
+    podUrl: input.podUrl,
+    stellarPublicKey: input.stellarPublicKey,
     identityContractId,
-    input.factoryContractId.trim(),
-    'nz-seamless-v1',
-    'nz-seamless-v1',
-    'nz-seamless-v1',
-  ].join('|')
+    lockboxFactoryContractId: input.factoryContractId,
+    challengeId: 'nz-seamless-v1',
+    nonce: 'nz-seamless-v1',
+    expiresAt: 'nz-seamless-v1',
+    configFingerprint: input.configFingerprint,
+  })
   const expectedClaimHash = (
     BigInt(`0x${createHash('sha256').update(canonicalClaim, 'utf8').digest('hex')}`) % BN254_SCALAR_FIELD_SIZE
   ).toString(16).padStart(64, '0')
@@ -398,6 +521,7 @@ async function verifyCanonicalBridgeClaim(input: {
       BigInt(`0x${input.bridgeProof.podBindingHex}`).toString(),
     ],
     verificationKeyUrl: LOCKBOX_BRIDGE_V3_VK_URL,
+    verificationKeySha256: LOCKBOX_BRIDGE_V3_VK_SHA256,
   })
 }
 
@@ -616,6 +740,11 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
     sendJson(req, res, 200, {
       ok: true,
       service: 'jss-provisioner',
+      build: {
+        commit: EMBEDDED_BUILD.commit,
+        payloadSha256: EMBEDDED_BUILD.payloadSha256,
+        configuredArtifactSha256: CONFIGURED_ARTIFACT_SHA256,
+      },
       envProfile: process.env.NZ_ENV_PROFILE ?? 'local',
       issuer: ISSUER,
       lockboxFactory: {
@@ -644,6 +773,15 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
         webhookConfigured: Boolean((process.env.JSS_NOTIFICATION_WEBHOOK_URL ?? '').trim()),
       },
       uptimeMs: Math.round(process.uptime() * 1000),
+    })
+    return
+  }
+
+  if (req.method === 'GET' && url.pathname === '/v1/onboarding/config') {
+    const descriptor = buildOnboardingConfigDescriptor()
+    sendJson(req, res, 200, descriptor, {
+      'cache-control': 'public, max-age=60, must-revalidate',
+      etag: `"${descriptor.configFingerprint}"`,
     })
     return
   }
@@ -762,6 +900,7 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
       proofHashHex?: string
       publicSignals?: string
       circuitVersion?: string
+      configFingerprint?: string
     }>(req)
     if (!isNonEmpty(body.name)) {
       sendJson(req, res, 400, { error: 'name is required.' })
@@ -792,6 +931,22 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
       return
     }
 
+    const activeConfig = buildOnboardingConfigDescriptor()
+    const suppliedFingerprint = isNonEmpty(body.configFingerprint)
+      ? body.configFingerprint.trim().toLowerCase()
+      : null
+    if (
+      (suppliedFingerprint !== null && suppliedFingerprint !== activeConfig.configFingerprint) ||
+      (LOCKBOX_FACTORY_VERSION === 'v3' && (suppliedFingerprint === null || !activeConfig.ready))
+    ) {
+      sendJson(req, res, 409, {
+        error: 'The onboarding configuration changed. Refresh the app before creating a node.',
+        code: 'config_stale',
+        configFingerprint: activeConfig.configFingerprint,
+      })
+      return
+    }
+
     try {
       const email = normalizeEmail(body.email)
       // The CSS account password is internal machinery only: generated here,
@@ -807,6 +962,27 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
         sendJson(req, res, 409, { error: 'There already is a login for this e-mail address.' })
         return
       }
+
+      // Validate every deterministic V3 proof input before creating anything
+      // in CSS. The provisioned Pod/WebID paths are derived from the same
+      // normalized handle, so a stale or malformed proof cannot orphan a Pod.
+      const accountCommitmentHex = typeof body.accountCommitmentHex === 'string' ? body.accountCommitmentHex.trim() : ''
+      const ciphertextHex = typeof body.ciphertextHex === 'string' ? body.ciphertextHex.trim() : ''
+      const bridgeProof = LOCKBOX_FACTORY_VERSION === 'v3'
+        ? parseBridgeProof(body, accountCommitmentHex, ciphertextHex)
+        : undefined
+      if (bridgeProof) {
+        const expectedPodUrl = `${SOLID_CSS_BASE_URL}/${normalizedName}/`
+        await verifyCanonicalBridgeClaim({
+          bridgeProof,
+          webId: `${expectedPodUrl}profile/card#me`,
+          podUrl: expectedPodUrl,
+          stellarPublicKey,
+          factoryContractId: LOCKBOX_FACTORY_CONTRACT_ID,
+          configFingerprint: activeConfig.configFingerprint,
+        })
+      }
+
       const account = await createSolidAccount(SOLID_CSS_BASE_URL, {
         name: normalizedName,
         email,
@@ -852,20 +1028,6 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
         const proofRootHex = createHash('sha256')
           .update(`NZ_POD_PAIR_V1|${account.webId}|${stellarPublicKey}|${account.podUrl}`)
           .digest('hex')
-        const accountCommitmentHex = typeof body.accountCommitmentHex === 'string' ? body.accountCommitmentHex.trim() : ''
-        const ciphertextHex = typeof body.ciphertextHex === 'string' ? body.ciphertextHex.trim() : ''
-        const bridgeProof = LOCKBOX_FACTORY_VERSION === 'v3'
-          ? parseBridgeProof(body, accountCommitmentHex, ciphertextHex)
-          : undefined
-        if (bridgeProof) {
-          await verifyCanonicalBridgeClaim({
-            bridgeProof,
-            webId: account.webId,
-            podUrl: account.podUrl,
-            stellarPublicKey,
-            factoryContractId: LOCKBOX_FACTORY_CONTRACT_ID,
-          })
-        }
         lockbox = await store.provisionLockbox({
           webId: account.webId,
           stellarPublicKey,
@@ -890,8 +1052,6 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
       // replaces the earlier sha256 pairing root as the authoritative anchor.
       // Fail-closed when supplied: onboarding must not complete half-anchored.
       let attestation: { accountCommitmentHex: string; ciphertextSha256Hex: string } | null = null
-      const accountCommitmentHex = typeof body.accountCommitmentHex === 'string' ? body.accountCommitmentHex.trim() : ''
-      const ciphertextHex = typeof body.ciphertextHex === 'string' ? body.ciphertextHex.trim() : ''
       if (lockbox?.userLockboxContractId && accountCommitmentHex && ciphertextHex) {
         try {
           if (LOCKBOX_FACTORY_VERSION !== 'v3') {

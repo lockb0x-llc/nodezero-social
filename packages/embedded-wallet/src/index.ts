@@ -12,7 +12,7 @@
  * The user never sees a seed phrase, wallet address, or gas fee prompt.
  */
 
-export { EnclaveAdapter } from './EnclaveAdapter.js'
+export { EnclaveAdapter, MissingIdentitySecretError } from './EnclaveAdapter.js'
 export { WalletService } from './WalletService.js'
 export type {
 	WalletInfo,

@@ -25,11 +25,13 @@ import {
   type WalletIdentity,
 } from '@nodezero/embedded-wallet'
 import { produceSeamlessAttestation, type SeamlessAttestation } from '../onboarding/attestation'
+import type { OnboardingConfigDescriptor } from '../onboarding/seamlessSignup'
 import type { ProgressStep } from '../components/ProgressStepLadder'
 import Constants from 'expo-constants'
 import { useNodeZeroSession } from './NodeZeroSessionContext'
 import {
   requestWalletBroker,
+  WalletBrokerError,
   walletBrokerOrigin,
   WALLET_BROKER_PROTOCOL,
   WALLET_BROKER_READY,
@@ -73,6 +75,8 @@ interface WalletContextValue {
   activeIdentityKeyId: string | null
   /** Whether the wallet is currently loading / initialising. */
   isLoading: boolean
+  /** Sanitized wallet initialization failure, or null when the wallet is usable. */
+  initializationError: string | null
   /** Whether identity switch/create work is currently running. */
   isIdentityBusy: boolean
   /** Current pairing verification status for this session. */
@@ -97,7 +101,8 @@ interface WalletContextValue {
   createSeamlessAttestation: (
     webId: string,
     podUrl: string,
-    stellarPublicKey: string
+    stellarPublicKey: string,
+    onboardingConfig: OnboardingConfigDescriptor,
   ) => Promise<SeamlessAttestation>
   /**
    * Signs an arbitrary UTF-8 string with the device Stellar keypair and
@@ -206,6 +211,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
   const [identities, setIdentities] = useState<WalletIdentity[]>([])
   const [activeIdentityKeyId, setActiveIdentityKeyId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [initializationError, setInitializationError] = useState<string | null>(null)
   const [isIdentityBusy, setIsIdentityBusy] = useState(false)
   const [attestationStatus, setAttestationStatus] = useState<AttestationStatus>('idle')
   const [attestationMessage, setAttestationMessage] = useState<string | null>(null)
@@ -323,6 +329,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
       ])
       setActiveIdentityKeyId('broker')
       setWalletInfo({ keyId: 'broker', publicKey: stellarPublicKey, isFunded: false })
+      setInitializationError(null)
       return
     }
     const service = getWalletService()
@@ -332,6 +339,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
     ])
     setIdentities(listed)
     setActiveIdentityKeyId(active)
+    setInitializationError(null)
   }, [getBrokerPublicKey, hostedWalletBrokerUrl])
 
   const hydrateSelectedWallet = useCallback(
@@ -403,6 +411,13 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
           await refreshIdentities()
         } catch (err) {
           console.warn('[WalletContext] Failed to load wallet broker:', err)
+          setInitializationError(
+            err instanceof WalletBrokerError && err.code === 'missing_identity_secret'
+              ? 'Your saved device identity is missing its secret key. Import its recovery bundle to continue.'
+              : err instanceof Error
+                ? err.message
+                : 'Wallet broker initialization failed.'
+          )
         } finally {
           setIsLoading(false)
         }
@@ -420,6 +435,9 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
         }
       } catch (err) {
         console.warn('[WalletContext] Failed to load wallet info:', err)
+        setInitializationError(
+          err instanceof Error ? err.message : 'Wallet initialization failed.'
+        )
       } finally {
         setIsLoading(false)
       }
@@ -794,13 +812,15 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
     async (
       webId: string,
       podUrl: string,
-      stellarPublicKey: string
+      stellarPublicKey: string,
+      onboardingConfig: OnboardingConfigDescriptor,
     ): Promise<SeamlessAttestation> => {
       if (hostedWalletBrokerUrl) {
         return requestBroker<SeamlessAttestation>('create-attestation', {
           webId,
           podUrl,
           stellarPublicKey,
+          onboardingConfig: JSON.stringify(onboardingConfig),
         })
       }
       // Ensure the wallet service/adapter singletons are initialised, then read
@@ -812,7 +832,13 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
       if (!secret) {
         throw new Error('Embedded wallet secret is unavailable for attestation.')
       }
-      return produceSeamlessAttestation({ webId, podUrl, stellarPublicKey, stellarSecret: secret })
+      return produceSeamlessAttestation({
+        webId,
+        podUrl,
+        stellarPublicKey,
+        stellarSecret: secret,
+        onboardingConfig,
+      })
     },
     [hostedWalletBrokerUrl, requestBroker, walletInfo?.keyId]
   )
@@ -868,6 +894,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
         identities,
         activeIdentityKeyId,
         isLoading,
+        initializationError,
         isIdentityBusy,
         attestationStatus,
         attestationMessage,

@@ -84,3 +84,12 @@
 
 ## Milestone O: Lockb0x V3 audit integration (2026-07-26)
 - [DONE] O1: Configure AUDIT_AGENT and add the Testnet-only Factory V3 child-state auditor (`pnpm qa:audit:lockbox`).
+
+## Milestone P: Attested authentication reliability refactor (2026-07-27)
+- [DONE] P1: Centralize V3 canonical claim framing, bind claims/proofs to a fingerprinted onboarding descriptor, digest-verify proving/VK artifacts, and reject stale V3 configuration before CSS side effects.
+- [DONE] P2: Add embedded provisioner build provenance, synchronous deployment verification, exact auth-created child audit correlation, and strict V3 constructor-state validation.
+- [DONE] P3: Fail closed when an indexed wallet identity loses its secret; propagate a stable recovery-required broker error instead of silently replacing the key.
+- [TODO] P4: Implement durable provisioning reservations/saga with ETags, leases, response-loss reconciliation, and atomic credential/index publication. Owner: SOLID_DATA_AGENT.
+- [TODO] P5: Implement encrypted recovery bundle v2 plus v1 import and inactive key restoration. Owner: MOBILE_APP_AGENT.
+- [TODO] P6: Adopt the provisioner App Service into staged Bicep/slot deployment after no-op resource inventory and secret-continuity proof. Owner: AZURE_PLATFORM_AGENT.
+- [TODO] P7: Expand zero-retry browser/device E2E, rollback rehearsal, orphan reconciliation, and 24-hour observation. Owner: QA_RELEASE_AGENT + AUDIT_AGENT.

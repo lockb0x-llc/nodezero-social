@@ -40,6 +40,31 @@ export interface CreateNodeInput {
   publicSignals?: string[]
   /** Versioned bridge circuit identifier. */
   circuitVersion?: number
+  /** Fingerprint of the provisioner's claim-bound onboarding configuration. */
+  configFingerprint?: string
+}
+
+export interface OnboardingConfigDescriptor {
+  schemaVersion: number
+  ready: boolean
+  claimDomain: string
+  circuitVersion: number
+  envProfile: string
+  networkPassphrase: string
+  issuer: string
+  solidPodOrigin: string
+  provisionerOrigin: string
+  walletOrigin: string
+  identityContractId: string
+  lockboxFactoryContractId: string
+  lockboxFactoryVersion: string
+  artifacts: {
+    manifest: { url: string; sha256: string }
+    wasm: { url: string; sha256: string }
+    zkey: { url: string; sha256: string }
+    verificationKey: { url: string; sha256: string }
+  }
+  configFingerprint: string
 }
 
 export interface CreateNodeResult {
@@ -110,6 +135,79 @@ export function getProvisionerBaseUrl(): string {
   return getSeamlessSignupConfig().provisionerUrl
 }
 
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes).map((byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+
+async function sha256Text(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))
+  return bytesToHex(new Uint8Array(digest))
+}
+
+export async function getCompatibleOnboardingConfig(): Promise<OnboardingConfigDescriptor> {
+  const config = getSeamlessSignupConfig()
+  if (!config.enabled) {
+    throw new Error('Seamless onboarding is not enabled in this build.')
+  }
+
+  const response = await fetchWithTimeout(
+    `${config.provisionerUrl}/v1/onboarding/config`,
+    { headers: { accept: 'application/json' }, credentials: 'include' },
+    CHECK_EMAIL_TIMEOUT_MS,
+  )
+  if (!response.ok) {
+    throw new Error(`Onboarding configuration is unavailable (${response.status}).`)
+  }
+  const descriptor = (await response.json()) as Partial<OnboardingConfigDescriptor>
+  const extra = Constants.expoConfig?.extra as Record<string, string> | undefined
+  const expected = {
+    schemaVersion: 1,
+    claimDomain: 'NZ_POD_STELLAR_BRIDGE_V3',
+    circuitVersion: Number(extra?.lockboxFactoryVersion ?? '0'),
+    envProfile: extra?.envProfile ?? '',
+    networkPassphrase: extra?.stellarNetworkPassphrase ?? '',
+    issuer: (extra?.nodeZeroIssuerUrl ?? '').replace(/\/+$/, ''),
+    solidPodOrigin: (extra?.nodeZeroIssuerUrl ?? '').replace(/\/+$/, ''),
+    provisionerOrigin: config.provisionerUrl,
+    walletOrigin: (extra?.walletBrokerUrl ?? '').replace(/\/+$/, ''),
+    identityContractId: extra?.identityContractId ?? '',
+    lockboxFactoryContractId: extra?.lockboxFactoryContractId ?? '',
+    lockboxFactoryVersion: `v${extra?.lockboxFactoryVersion ?? ''}`,
+  }
+  const matchesBuild = Object.entries(expected).every(
+    ([key, value]) => descriptor[key as keyof typeof expected] === value,
+  )
+  if (
+    descriptor.ready !== true ||
+    !matchesBuild ||
+    typeof descriptor.configFingerprint !== 'string' ||
+    !/^[0-9a-f]{64}$/.test(descriptor.configFingerprint)
+  ) {
+    throw new Error(
+      'This app release does not match the active Testnet onboarding configuration. Refresh the page before creating a node.',
+    )
+  }
+  const fingerprintInput = {
+    schemaVersion: descriptor.schemaVersion,
+    claimDomain: descriptor.claimDomain,
+    circuitVersion: descriptor.circuitVersion,
+    envProfile: descriptor.envProfile,
+    networkPassphrase: descriptor.networkPassphrase,
+    issuer: descriptor.issuer,
+    solidPodOrigin: descriptor.solidPodOrigin,
+    provisionerOrigin: descriptor.provisionerOrigin,
+    walletOrigin: descriptor.walletOrigin,
+    identityContractId: descriptor.identityContractId,
+    lockboxFactoryContractId: descriptor.lockboxFactoryContractId,
+    lockboxFactoryVersion: descriptor.lockboxFactoryVersion,
+    artifacts: descriptor.artifacts,
+  }
+  if (await sha256Text(JSON.stringify(fingerprintInput)) !== descriptor.configFingerprint) {
+    throw new Error('The onboarding configuration fingerprint could not be verified.')
+  }
+  return descriptor as OnboardingConfigDescriptor
+}
+
 function normalizeHandle(raw: string): string {
   return raw.trim().toLowerCase().replace(/[^a-z0-9-]/g, '')
 }
@@ -145,6 +243,13 @@ export async function createSeamlessNode(input: CreateNodeInput): Promise<Create
     name: handle,
     email,
     stellarPublicKey,
+  }
+  const configFingerprint = (input.configFingerprint ?? '').trim().toLowerCase()
+  if (configFingerprint) {
+    if (!/^[0-9a-f]{64}$/.test(configFingerprint)) {
+      throw new Error('Onboarding configuration fingerprint is invalid.')
+    }
+    body.configFingerprint = configFingerprint
   }
 
   // Include the on-device attestation (identity commitment + encrypted claim)

@@ -25,6 +25,17 @@ export interface WalletBrokerResponse {
   ok: boolean
   result?: Record<string, unknown>
   error?: string
+  errorCode?: string
+}
+
+export class WalletBrokerError extends Error {
+  readonly code: string | null
+
+  constructor(message: string, code?: string) {
+    super(message)
+    this.name = 'WalletBrokerError'
+    this.code = code ?? null
+  }
 }
 
 const REQUEST_TIMEOUT_MS = 30_000
@@ -70,7 +81,7 @@ export async function requestWalletBroker<T>(
       clearTimeout(timeout)
       channel.port1.close()
       if (!response.ok) {
-        reject(new Error(response.error ?? 'Wallet broker request failed.'))
+        reject(new WalletBrokerError(response.error ?? 'Wallet broker request failed.', response.errorCode))
         return
       }
       resolve((response.result ?? {}) as T)

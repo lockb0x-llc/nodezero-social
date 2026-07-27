@@ -4,6 +4,12 @@ Format:
 [YYYY-MM-DD HH:MM UTC] [FROM->TO] [P0|P1|P2] [OPEN|NEEDS-INFO|DONE]
 Context:
 
+[2026-07-27 21:00 UTC] [PROJECT_MANAGER->SOLID_DATA_AGENT,QA_RELEASE_AGENT,AZURE_PLATFORM_AGENT] [P0] [DONE]
+Context: Milestone P1-P3 implementation slice is complete and specialist-reviewed GO. V3 claim framing now includes the active descriptor fingerprint; client proof generation verifies descriptor fingerprint plus wasm/zkey digests; provisioner verifies VK digest and canonical proof before CSS creation; stale/missing V3 configuration fails before external side effects. API build provenance is embedded and asserted, the auth gate exports its exact child ID to a strict constructor-state audit, and missing indexed wallet secrets fail closed with a stable broker code.
+Request: SOLID_DATA_AGENT owns P4 next: design and implement the durable reservation/saga backend with ETags, leases, immutable request digests, response-loss `manual_review`, and atomic credential/index publication. AZURE_PLATFORM_AGENT must complete read-only App Service inventory/no-op adoption evidence before P6. QA_RELEASE_AGENT should add failure injection around each future saga side effect.
+Evidence: packages/zk-crypto/src/pod-ownership-claim.ts; packages/mobile-app/src/onboarding/seamlessSignup.ts; packages/mobile-app/src/onboarding/attestation.ts; packages/jss-provisioner/src/index.ts; packages/jss-provisioner/src/bridgeProofVerifier.ts; packages/embedded-wallet/src/EnclaveAdapter.ts; scripts/qa/lockbox-auditor.mjs; .github/workflows/staging-deploy.yml. Validation: provisioner 21/21 tests; embedded-wallet 8/8; broker 2/2; canonical claims 4/4; all touched package type-checks PASS; provisioner lint PASS; environment and fail-closed policies PASS. Pre-existing debt: broader ZK Jest suite cannot resolve circomlibjs/src/poseidon_wasm.js; unrelated mobile lint baseline remains.
+Due: P4 architecture checkpoint before implementation dispatch.
+
 [2026-07-25 00:00 UTC] [QA_RELEASE_AGENT->PROJECT_MANAGER,MOBILE_APP_AGENT] [P2] [OPEN]
 Context: Manual staging test confirms account provisioning commonly takes 30-60s and appears stalled to users during Pod creation.
 Request: Add resilient wait-state UX during provisioning: display current step status when telemetry is available; when not available, show fallback progress copy with a rotating set of short decentralized-web quotes.

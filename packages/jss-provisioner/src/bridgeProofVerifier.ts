@@ -1,4 +1,5 @@
 import * as snarkjs from 'snarkjs'
+import { createHash } from 'node:crypto'
 
 interface BridgeProof {
   pi_a: [string, string, string]
@@ -8,7 +9,7 @@ interface BridgeProof {
   curve: 'bn128'
 }
 
-let verificationKeyCache: Promise<unknown> | null = null
+const verificationKeyCache = new Map<string, Promise<unknown>>()
 
 function fieldAt(bytes: Buffer, offset: number): string {
   return BigInt(`0x${bytes.subarray(offset, offset + 32).toString('hex')}`).toString()
@@ -33,21 +34,27 @@ function deserializeProof(proofHex: string): BridgeProof {
   }
 }
 
-async function getVerificationKey(url: string): Promise<unknown> {
-  if (!verificationKeyCache) {
-    verificationKeyCache = (async () => {
+async function getVerificationKey(url: string, expectedSha256: string): Promise<unknown> {
+  const cacheKey = `${url}|${expectedSha256}`
+  if (!verificationKeyCache.has(cacheKey)) {
+    verificationKeyCache.set(cacheKey, (async (): Promise<unknown> => {
       const response = await fetch(url, { headers: { accept: 'application/json' } })
       if (!response.ok) {
         throw new Error(`Bridge verification key fetch failed (${response.status}).`)
       }
-      return response.json()
-    })()
+      const bytes = Buffer.from(await response.arrayBuffer())
+      const actualSha256 = createHash('sha256').update(bytes).digest('hex')
+      if (actualSha256 !== expectedSha256) {
+        throw new Error('Bridge verification key digest does not match the active onboarding configuration.')
+      }
+      return JSON.parse(bytes.toString('utf8')) as unknown
+    })())
   }
 
   try {
-    return await verificationKeyCache
+    return await verificationKeyCache.get(cacheKey)!
   } catch (error) {
-    verificationKeyCache = null
+    verificationKeyCache.delete(cacheKey)
     throw error
   }
 }
@@ -56,13 +63,20 @@ export async function verifyBridgeProof(input: {
   proofHex: string
   publicSignals: [string, string, string]
   verificationKeyUrl: string
+  verificationKeySha256: string
 }): Promise<void> {
   if (!input.verificationKeyUrl) {
     throw new Error('JSS_LOCKBOX_BRIDGE_V3_VK_URL is required for Factory V3 proof verification.')
   }
+  if (!/^[0-9a-f]{64}$/.test(input.verificationKeySha256)) {
+    throw new Error('JSS_LOCKBOX_BRIDGE_V3_VK_SHA256 is required for Factory V3 proof verification.')
+  }
 
   const proof = deserializeProof(input.proofHex)
-  const verificationKey = await getVerificationKey(input.verificationKeyUrl)
+  const verificationKey = await getVerificationKey(
+    input.verificationKeyUrl,
+    input.verificationKeySha256,
+  )
   const valid = await snarkjs.groth16.verify(verificationKey, input.publicSignals, proof)
   if (!valid) {
     throw new Error('Lockb0x Bridge V3 Groth16 proof verification failed.')
