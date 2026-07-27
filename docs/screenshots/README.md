@@ -16,6 +16,11 @@ relevant GitHub Actions release gate passes.
     `30220192118` (commit `d2324a2`); its V3 child
     `CALVPRGQC44DGZPPNFSNNS3E4LMPUXRRFGWKCJJG6VDYJ2QKZGSZRNQW` passed
     `pnpm qa:audit:lockbox`.
+    Repeat automation: `NZ_E2E_ITERATIONS=3 NZ_E2E_HEADLESS=true pnpm
+    qa:evidence:apex-staging-onboarding:repeat`. The latest two-iteration run is
+    summarized in `docs/screenshots/onboarding/repeat/ms2nj13g-repeat-summary.json`;
+    both iterations passed and their individual sanitized bundles are retained
+    alongside it.
 - Wallet creation and testnet funding: `docs/screenshots/wallet-creation-step1.png`
 - Feed view/post: `docs/screenshots/feed-view-post-step1.png`
 - Local messaging: `docs/screenshots/local-messaging-step1.png`

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "startedAtUtc": "2026-07-27T03:10:49.928Z",
+  "completedAtUtc": "2026-07-27T03:12:46.924Z",
+  "iterationsRequested": 2,
+  "iterationsCompleted": [
+    1,
+    2
+  ],
+  "assertions": {
+    "allIterationsPassed": true,
+    "sequentialExecution": true
+  }
+}
