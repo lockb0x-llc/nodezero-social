@@ -55,11 +55,15 @@ function bytesLikeToHex(value: unknown): string | null {
   if (typeof value === 'string') return value
 
   if (value instanceof ArrayBuffer) {
-    return Array.from(new Uint8Array(value)).map((byte) => byte.toString(16).padStart(2, '0')).join('')
+    return Array.from(new Uint8Array(value))
+      .map((byte) => byte.toString(16).padStart(2, '0'))
+      .join('')
   }
 
   if (value instanceof Uint8Array) {
-    return Array.from(value).map((byte) => byte.toString(16).padStart(2, '0')).join('')
+    return Array.from(value)
+      .map((byte) => byte.toString(16).padStart(2, '0'))
+      .join('')
   }
 
   if (Array.isArray(value) && value.every((item) => typeof item === 'number')) {
@@ -81,7 +85,11 @@ function bytesLikeToHex(value: unknown): string | null {
       // Fall through to known object shapes below.
     }
 
-    return bytesLikeToHex(bytesObject.data) ?? bytesLikeToHex(bytesObject.value) ?? bytesLikeToHex(bytesObject._value)
+    return (
+      bytesLikeToHex(bytesObject.data) ??
+      bytesLikeToHex(bytesObject.value) ??
+      bytesLikeToHex(bytesObject._value)
+    )
   }
 
   return null
@@ -90,9 +98,9 @@ function bytesLikeToHex(value: unknown): string | null {
 function isScVal(value: unknown): value is xdr.ScVal {
   return Boolean(
     value &&
-      typeof value === 'object' &&
-      typeof (value as { switch?: unknown }).switch === 'function' &&
-      typeof (value as { value?: unknown }).value === 'function'
+    typeof value === 'object' &&
+    typeof (value as { switch?: unknown }).switch === 'function' &&
+    typeof (value as { value?: unknown }).value === 'function'
   )
 }
 
@@ -156,7 +164,8 @@ export class WalletService {
     this.adapter = adapter
     this.server = new rpc.Server(rpcUrl)
     this.network = network
-    this.horizonUrl = network === Networks.PUBLIC ? HorizonEndpoint.MAINNET : HorizonEndpoint.TESTNET
+    this.horizonUrl =
+      network === Networks.PUBLIC ? HorizonEndpoint.MAINNET : HorizonEndpoint.TESTNET
   }
 
   async listIdentities(): Promise<WalletIdentity[]> {
@@ -319,9 +328,7 @@ export class WalletService {
       fee: BASE_FEE,
       networkPassphrase: this.network,
     })
-      .addOperation(
-        contract.call('register_webid', callerScVal, webIdScVal)
-      )
+      .addOperation(contract.call('register_webid', callerScVal, webIdScVal))
       .setTimeout(30)
       .build()
 
@@ -332,7 +339,9 @@ export class WalletService {
     const result = await this.server.sendTransaction(prepared)
 
     if (result.status === 'ERROR') {
-      throw new Error(`Transaction failed: ${result.errorResult?.toXDR('base64') ?? 'unknown error'}`)
+      throw new Error(
+        `Transaction failed: ${result.errorResult?.toXDR('base64') ?? 'unknown error'}`
+      )
     }
 
     if (result.status === 'TRY_AGAIN_LATER') {
@@ -382,7 +391,9 @@ export class WalletService {
     const result = await this.server.sendTransaction(prepared)
 
     if (result.status === 'ERROR') {
-      throw new Error(`Transaction failed: ${result.errorResult?.toXDR('base64') ?? 'unknown error'}`)
+      throw new Error(
+        `Transaction failed: ${result.errorResult?.toXDR('base64') ?? 'unknown error'}`
+      )
     }
 
     if (result.status === 'TRY_AGAIN_LATER') {
@@ -405,8 +416,10 @@ export class WalletService {
    * Returns the registered WebID string or `null` when unset/unreadable.
    */
   async getRegisteredWebId(contractId: string): Promise<string | null> {
-    const info = await this.getWalletInfo()
-    const value = await this.simulateContractCall(contractId, 'get_webid', [new Address(info.publicKey).toScVal()])
+    const publicKey = await this.getWalletPublicKey()
+    const value = await this.simulateContractCall(contractId, 'get_webid', [
+      new Address(publicKey).toScVal(),
+    ])
 
     if (typeof value === 'string') return value
     if (Array.isArray(value)) {
@@ -450,7 +463,10 @@ export class WalletService {
    * Reads `Lockb0xFactory.get_user_lockbox(user)` and returns the mapped lockbox
    * contract ID, or `null` when no mapping exists.
    */
-  async getFactoryUserLockbox(factoryContractId: string, userPublicKey: string): Promise<string | null> {
+  async getFactoryUserLockbox(
+    factoryContractId: string,
+    userPublicKey: string
+  ): Promise<string | null> {
     const value = await this.simulateContractCall(factoryContractId, 'get_user_lockbox', [
       new Address(userPublicKey).toScVal(),
     ])
@@ -464,11 +480,13 @@ export class WalletService {
     method: string,
     args: xdr.ScVal[]
   ): Promise<unknown> {
-    const active = await this.adapter.getActiveIdentityKeyId()
-    const secret = await this.adapter.loadOrCreate(active ?? undefined)
-    const keypair = Keypair.fromSecret(secret)
-
-    const account = await this.getSourceAccount(keypair.publicKey())
+    // A read-only simulation does not submit or sign a transaction. Requiring
+    // Horizon to index a newly Treasury-funded device here creates a false
+    // attestation failure during the Testnet propagation window. Soroban
+    // accepts a sequence-zero synthetic source for these no-auth getters.
+    // State-changing operations continue to use getSourceAccount(), which
+    // enforces a funded, Horizon-indexed account before signing/submission.
+    const account = new Account(await this.getWalletPublicKey(), '0')
 
     const contract = new Contract(contractId)
     const tx = new TransactionBuilder(account, {
@@ -505,7 +523,9 @@ export class WalletService {
   private async getSourceAccount(publicKey: string): Promise<Account> {
     const isFunded = await this.ensureAccountExists(publicKey)
     if (!isFunded && !this.fundedAccounts.has(publicKey)) {
-      throw new Error('Stellar account is not funded. Fund the embedded wallet before contract operations.')
+      throw new Error(
+        'Stellar account is not funded. Fund the embedded wallet before contract operations.'
+      )
     }
 
     return this.getAccountWithRetry(publicKey)
@@ -524,7 +544,9 @@ export class WalletService {
       }
     }
 
-    throw lastError instanceof Error ? lastError : new Error('Unable to load Stellar source account.')
+    throw lastError instanceof Error
+      ? lastError
+      : new Error('Unable to load Stellar source account.')
   }
 
   private async getHorizonAccount(publicKey: string): Promise<Account> {
@@ -532,7 +554,7 @@ export class WalletService {
     if (!response.ok) {
       throw new Error(`Horizon account lookup failed (${response.status}).`)
     }
-    const body = await response.json() as { sequence?: unknown }
+    const body = (await response.json()) as { sequence?: unknown }
     if (typeof body.sequence !== 'string' || !/^\d+$/.test(body.sequence)) {
       throw new Error('Horizon account response did not include a sequence number.')
     }
