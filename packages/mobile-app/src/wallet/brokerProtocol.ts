@@ -10,6 +10,7 @@ export type WalletBrokerOperation =
   | 'get-lockbox-commitment'
   | 'create-identity'
   | 'select-identity'
+  | 'activate-identity-for-public-key'
 
 export interface WalletBrokerRequest {
   protocol: typeof WALLET_BROKER_PROTOCOL

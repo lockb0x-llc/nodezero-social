@@ -29,6 +29,7 @@ export default function WalletBrokerScreen(): JSX.Element {
     deriveAccountCommitment,
     createIdentity,
     selectIdentity,
+    findIdentityKeyIdByPublicKey,
   } = useWallet()
 
   React.useEffect(() => {
@@ -97,6 +98,16 @@ export default function WalletBrokerScreen(): JSX.Element {
             reply(true)
             return
           }
+          if (request.operation === 'activate-identity-for-public-key') {
+            const keyId = await findIdentityKeyIdByPublicKey(request.payload.stellarPublicKey ?? '')
+            if (!keyId) {
+              reply(true, { selected: false })
+              return
+            }
+            await selectIdentity(keyId)
+            reply(true, { selected: true })
+            return
+          }
           throw new Error('Wallet broker operation is not supported.')
         } catch (error) {
           reply(
@@ -119,6 +130,7 @@ export default function WalletBrokerScreen(): JSX.Element {
     createIdentity,
     createSeamlessAttestation,
     deriveAccountCommitment,
+    findIdentityKeyIdByPublicKey,
     getLockboxAccountCommitment,
     selectIdentity,
     signAttestationChallenge,

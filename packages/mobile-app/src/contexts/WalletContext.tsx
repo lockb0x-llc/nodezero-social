@@ -118,6 +118,8 @@ interface WalletContextValue {
   selectIdentity: (keyId: string) => Promise<void>
   /** Creates a new local identity and sets it active. */
   createIdentity: (label?: string) => Promise<void>
+  /** Finds a local identity by public key without exposing its secret. */
+  findIdentityKeyIdByPublicKey: (stellarPublicKey: string) => Promise<string | null>
   /** Destroys local wallet + pairing state, optionally unlinking on-chain. */
   deleteNodeData: (options?: {
     unlinkIdentity?: boolean
@@ -193,7 +195,13 @@ function getHostedWalletBrokerUrl(): string | null {
  * Provisions and exposes the embedded Stellar wallet.
  */
 export function WalletProvider({ children }: { children: ReactNode }): JSX.Element {
-  const { status: sessionStatus, webId, lockbox, sessionCreatedAt } = useNodeZeroSession()
+  const {
+    status: sessionStatus,
+    webId,
+    stellarPublicKey: sessionStellarPublicKey,
+    lockbox,
+    sessionCreatedAt,
+  } = useNodeZeroSession()
   const [walletInfo, setWalletInfo] = useState<WalletInfo | null>(null)
   const [identities, setIdentities] = useState<WalletIdentity[]>([])
   const [activeIdentityKeyId, setActiveIdentityKeyId] = useState<string | null>(null)
@@ -467,6 +475,21 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
     [hostedWalletBrokerUrl, refreshIdentities, requestBroker]
   )
 
+  const findIdentityKeyIdByPublicKey = useCallback(
+    async (stellarPublicKey: string): Promise<string | null> => {
+      if (hostedWalletBrokerUrl) return null
+      const service = getWalletService()
+      const identities = await service.listIdentities()
+      for (const identity of identities) {
+        if ((await service.getWalletPublicKeyForIdentity(identity.keyId)) === stellarPublicKey) {
+          return identity.keyId
+        }
+      }
+      return null
+    },
+    [hostedWalletBrokerUrl]
+  )
+
   // Fail-closed post-login verification (single path): every account is
   // provisioned with an on-chain per-user lockb0x, and the session carries the
   // anchor metadata. Prove the device still controls the ZK identity anchored
@@ -497,7 +520,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
     }
 
     const lockboxId = lockbox?.userLockboxContractId ?? null
-    const checkKey = `session:${webId}|${lockboxId ?? 'none'}`
+    const checkKey = `session:${webId}|${lockboxId ?? 'none'}|${sessionStellarPublicKey ?? 'none'}`
     if (lastCheckedKeyRef.current === checkKey) return
     lastCheckedKeyRef.current = checkKey
 
@@ -549,6 +572,19 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
         ...overrides,
       })
       try {
+        if (hostedWalletBrokerUrl && sessionStellarPublicKey) {
+          await requestBroker<{ selected?: boolean }>('activate-identity-for-public-key', {
+            stellarPublicKey: sessionStellarPublicKey,
+          })
+          const activeIdentity = await requestBroker<{ stellarPublicKey?: string }>(
+            'get-public-key'
+          )
+          if (activeIdentity.stellarPublicKey !== sessionStellarPublicKey) {
+            throw new Error(
+              'This device does not have the Stellar identity that created this node. Restore or select that device identity before signing in.'
+            )
+          }
+        }
         // Fresh sessions (< 10 min) may hit Stellar RPC propagation lag where a
         // newly-created lockbox contract hasn't been indexed yet. Retry with
         // exponential backoff before treating a null result as 'unlinked'.
@@ -647,6 +683,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
     requestBroker,
     sessionCreatedAt,
     sessionStatus,
+    sessionStellarPublicKey,
     walletInfo?.keyId,
     webId,
   ])
@@ -844,6 +881,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
         deriveAccountCommitment,
         selectIdentity,
         createIdentity,
+        findIdentityKeyIdByPublicKey,
       }}
     >
       {children}

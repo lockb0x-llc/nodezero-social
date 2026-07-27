@@ -60,6 +60,7 @@ interface PersistedSession {
   expiresAt: string
   webId: string
   podUrl: string
+  stellarPublicKey: string | null
   lockbox: SessionLockboxInfo | null
   createdAt: string
 }
@@ -73,6 +74,8 @@ export interface NodeZeroSessionValue {
   podUrl: string | null
   /** On-chain lockb0x anchor metadata for the fail-closed pairing check. */
   lockbox: SessionLockboxInfo | null
+  /** Stellar device key bound into the provisioner-issued access token. */
+  stellarPublicKey: string | null
   /** ISO timestamp when the current session's account/session was created. */
   sessionCreatedAt: string | null
   /**
@@ -92,6 +95,21 @@ const REFRESH_SLACK_MS = 5 * 60_000
 
 const NodeZeroSessionContext = createContext<NodeZeroSessionValue | null>(null)
 
+function stellarPublicKeyFromAccessToken(accessToken: string): string | null {
+  const encodedPayload = accessToken.split('.')[1]
+  if (!encodedPayload || typeof globalThis.atob !== 'function') return null
+  try {
+    const base64 = encodedPayload.replace(/-/g, '+').replace(/_/g, '/')
+    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, '=')
+    const payload = JSON.parse(globalThis.atob(padded)) as { spk?: unknown }
+    return typeof payload.spk === 'string' && /^G[A-Z2-7]{55}$/.test(payload.spk)
+      ? payload.spk
+      : null
+  } catch {
+    return null
+  }
+}
+
 function getAppExtra(): Record<string, string> | undefined {
   return Constants.expoConfig?.extra as Record<string, string> | undefined
 }
@@ -103,7 +121,10 @@ export function getProvisionerUrl(): string {
   // Staging host fallback mirrors seamlessSignup's behaviour.
   if (typeof window !== 'undefined' && window.location?.hostname) {
     const host = window.location.hostname.toLowerCase()
-    if (host === 'staging.nodezero.social' || host === 'mango-glacier-0abee9e0f.7.azurestaticapps.net') {
+    if (
+      host === 'staging.nodezero.social' ||
+      host === 'mango-glacier-0abee9e0f.7.azurestaticapps.net'
+    ) {
       return 'https://nodezero-social-staging-testnet-provisioner.azurewebsites.net'
     }
   }
@@ -171,6 +192,11 @@ async function loadPersistedSession(): Promise<PersistedSession | null> {
       expiresAt: parsed.expiresAt,
       webId: parsed.webId,
       podUrl: parsed.podUrl,
+      stellarPublicKey:
+        typeof parsed.stellarPublicKey === 'string' &&
+        /^G[A-Z2-7]{55}$/.test(parsed.stellarPublicKey)
+          ? parsed.stellarPublicKey
+          : stellarPublicKeyFromAccessToken(parsed.accessToken),
       lockbox: parsed.lockbox ?? null,
       createdAt: typeof parsed.createdAt === 'string' ? parsed.createdAt : new Date().toISOString(),
     }
@@ -190,6 +216,7 @@ export function NodeZeroSessionProvider({ children }: { children: ReactNode }): 
   const [status, setStatus] = useState<SessionStatus>('restoring')
   const [webId, setWebId] = useState<string | null>(null)
   const [podUrl, setPodUrl] = useState<string | null>(null)
+  const [stellarPublicKey, setStellarPublicKey] = useState<string | null>(null)
   const [lockbox, setLockbox] = useState<SessionLockboxInfo | null>(null)
   const [sessionCreatedAt, setSessionCreatedAt] = useState<string | null>(null)
   const sessionRef = useRef<PersistedSession | null>(null)
@@ -200,6 +227,7 @@ export function NodeZeroSessionProvider({ children }: { children: ReactNode }): 
     await AsyncStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(record))
     setWebId(record.webId)
     setPodUrl(record.podUrl)
+    setStellarPublicKey(record.stellarPublicKey)
     setLockbox(record.lockbox)
     setSessionCreatedAt(record.createdAt)
     setStatus('authenticated')
@@ -210,6 +238,7 @@ export function NodeZeroSessionProvider({ children }: { children: ReactNode }): 
     await AsyncStorage.removeItem(SESSION_STORAGE_KEY).catch(() => undefined)
     setWebId(null)
     setPodUrl(null)
+    setStellarPublicKey(null)
     setLockbox(null)
     setSessionCreatedAt(null)
     setStatus('unauthenticated')
@@ -268,6 +297,7 @@ export function NodeZeroSessionProvider({ children }: { children: ReactNode }): 
           expiresAt: payload.session.expiresAt,
           webId: payload.webId,
           podUrl: payload.podUrl,
+          stellarPublicKey: stellarPublicKeyFromAccessToken(payload.session.accessToken),
           lockbox: payload.lockbox ?? current.lockbox,
           createdAt: current.createdAt,
         })
@@ -306,6 +336,7 @@ export function NodeZeroSessionProvider({ children }: { children: ReactNode }): 
         expiresAt: payload.session.expiresAt,
         webId: payload.webId,
         podUrl: payload.podUrl,
+        stellarPublicKey: stellarPublicKeyFromAccessToken(payload.session.accessToken),
         lockbox: payload.lockbox ?? null,
         createdAt: new Date().toISOString(),
       })
@@ -343,11 +374,12 @@ export function NodeZeroSessionProvider({ children }: { children: ReactNode }): 
         expiresAt: input.session.expiresAt,
         webId: input.webId,
         podUrl: input.podUrl,
+        stellarPublicKey: stellarPublicKeyFromAccessToken(input.session.accessToken),
         lockbox: input.lockbox ?? null,
         createdAt: input.createdAt ?? new Date().toISOString(),
       })
     },
-    [applySession],
+    [applySession]
   )
 
   const authFetch = useMemo<typeof globalThis.fetch>(() => {
@@ -377,12 +409,15 @@ export function NodeZeroSessionProvider({ children }: { children: ReactNode }): 
       const targetUrl = toProxyUrl(rawUrl, podOrigins, provisionerUrl)
 
       const headers = new Headers(
-        init?.headers ?? (typeof input === 'object' && 'headers' in input ? input.headers : undefined),
+        init?.headers ??
+          (typeof input === 'object' && 'headers' in input ? input.headers : undefined)
       )
       headers.set('authorization', `Bearer ${active.accessToken}`)
 
       const response = await fetch(targetUrl, {
-        ...(typeof input === 'object' && !(input instanceof URL) ? { method: input.method, body: init?.body } : {}),
+        ...(typeof input === 'object' && !(input instanceof URL)
+          ? { method: input.method, body: init?.body }
+          : {}),
         ...init,
         headers,
       })
@@ -407,13 +442,24 @@ export function NodeZeroSessionProvider({ children }: { children: ReactNode }): 
       status,
       webId,
       podUrl,
+      stellarPublicKey,
       lockbox,
       sessionCreatedAt,
       authFetch,
       adoptSession,
       signOut,
     }),
-    [status, webId, podUrl, lockbox, sessionCreatedAt, authFetch, adoptSession, signOut],
+    [
+      status,
+      webId,
+      podUrl,
+      stellarPublicKey,
+      lockbox,
+      sessionCreatedAt,
+      authFetch,
+      adoptSession,
+      signOut,
+    ]
   )
 
   return <NodeZeroSessionContext.Provider value={value}>{children}</NodeZeroSessionContext.Provider>
