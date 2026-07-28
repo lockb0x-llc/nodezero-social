@@ -24,8 +24,9 @@ import { Buffer } from 'buffer'
 import { aesthetic } from '../src/theme/aesthetic'
 import * as mashlibPaneProvider from '../src/solid/mashlibPaneProvider'
 
-if (typeof globalThis.Buffer === 'undefined') {
-  ;(globalThis as any).Buffer = Buffer as any
+const globalWithBuffer = globalThis as typeof globalThis & { Buffer?: typeof Buffer }
+if (typeof globalWithBuffer.Buffer === 'undefined') {
+  globalWithBuffer.Buffer = Buffer
 }
 
 const PUBLIC_ROUTES = new Set(['/', '/wallet-broker'])

@@ -165,7 +165,7 @@ export class WalletService {
     this.server = new rpc.Server(rpcUrl)
     this.network = network
     this.horizonUrl =
-      network === Networks.PUBLIC ? HorizonEndpoint.MAINNET : HorizonEndpoint.TESTNET
+      String(network) === String(Networks.PUBLIC) ? HorizonEndpoint.MAINNET : HorizonEndpoint.TESTNET
   }
 
   async listIdentities(): Promise<WalletIdentity[]> {
@@ -264,7 +264,7 @@ export class WalletService {
     const secret = await this.adapter.loadOrCreate(active ?? undefined)
     const keypair = Keypair.fromSecret(secret)
     const payloadBytes = new TextEncoder().encode(trimmedPayload)
-    const signatureBytes = keypair.sign(payloadBytes as any)
+    const signatureBytes = keypair.sign(Buffer.from(payloadBytes))
 
     return {
       stellarPublicKey: keypair.publicKey(),

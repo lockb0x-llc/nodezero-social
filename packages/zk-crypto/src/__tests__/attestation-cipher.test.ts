@@ -17,6 +17,9 @@ import {
 
 const SECRET = 'SBTESTSECRETKEYFORATTESTATIONCIPHERUNITTESTONLY0000000000'
 const OTHER_SECRET = 'SBDIFFERENTSECRETKEYSHOULDNOTDECRYPT0000000000000000000000'
+const V3_WASM = 'build/lockb0x_bridge_v3/pod_stellar_bridge_v3_js/pod_stellar_bridge_v3.wasm'
+const V3_ZKEY = 'build/lockb0x_bridge_v3/pod_stellar_bridge_v3_final.zkey'
+const V3_VK = 'build/lockb0x_bridge_v3/pod_stellar_bridge_v3_vk.json'
 
 const CLAIM: PodOwnershipClaim = {
   envProfile: 'staging-testnet',
@@ -25,10 +28,21 @@ const CLAIM: PodOwnershipClaim = {
   podUrl: 'https://solid.nodezero.social/alice/',
   stellarPublicKey: 'GAUMNOPBK5WYUGIV2VH7JXMHACFSB4QV4HCJM5LB7ERUYKUN6UEZGEYI',
   identityContractId: 'CCHFYOKLGVTXEYYHWEFPI22FR26VRGG2CBBUTP6XPW3ZSIWIKEVQQ44K',
-  lockboxFactoryContractId: 'CA5MASVC7CH646QUZM6HFC3JAYIG4TCRHJDSBDOBFP66IW7TXYYHFUVB',
+  lockboxFactoryContractId: 'CDFHCQA3YJCITWEMNLCSRGQVVFEXGTONWSQJTD5VIZO7YV4IOKZUPCGT',
+  circuitVersion: 3,
   challengeId: 'challenge-abc-123',
   nonce: 'nonce-xyz-789',
   expiresAt: '2026-07-01T12:00:00.000Z',
+  configFingerprint: 'f'.repeat(64),
+}
+
+function generateV3Proof() {
+  return generatePodOwnershipProof({
+    stellarSecretKey: SECRET,
+    claim: CLAIM,
+    wasmPath: V3_WASM,
+    zkeyPath: V3_ZKEY,
+  })
 }
 
 describe('attestation cipher (AES-256-GCM, Stellar-derived key)', () => {
@@ -61,7 +75,7 @@ describe('attestation cipher (AES-256-GCM, Stellar-derived key)', () => {
 
 describe('off-chain login attestation (pod_ownership proof)', () => {
   it('verifies a valid proof bound to the claim and on-chain anchor', async () => {
-    const generated = await generatePodOwnershipProof({ stellarSecretKey: SECRET, claim: CLAIM })
+    const generated = await generateV3Proof()
     const onchainHex = fieldToBytes32Hex(generated.accountCommitment.toString())
 
     const ok = await verifyLoginAttestation({
@@ -69,12 +83,13 @@ describe('off-chain login attestation (pod_ownership proof)', () => {
       publicSignals: generated.publicSignals,
       claim: CLAIM,
       onchainAccountCommitmentHex: onchainHex,
+      vkPath: V3_VK,
     })
     expect(ok.valid).toBe(true)
   }, 60_000)
 
   it('rejects when the on-chain anchor does not match the proof', async () => {
-    const generated = await generatePodOwnershipProof({ stellarSecretKey: SECRET, claim: CLAIM })
+    const generated = await generateV3Proof()
     const wrongHex = fieldToBytes32Hex((generated.accountCommitment + 1n).toString())
 
     const res = await verifyLoginAttestation({
@@ -82,13 +97,14 @@ describe('off-chain login attestation (pod_ownership proof)', () => {
       publicSignals: generated.publicSignals,
       claim: CLAIM,
       onchainAccountCommitmentHex: wrongHex,
+      vkPath: V3_VK,
     })
     expect(res.valid).toBe(false)
     expect(res.reason).toMatch(/anchor/i)
   }, 60_000)
 
   it('rejects when the claim is tampered (claimHash mismatch)', async () => {
-    const generated = await generatePodOwnershipProof({ stellarSecretKey: SECRET, claim: CLAIM })
+    const generated = await generateV3Proof()
     const onchainHex = fieldToBytes32Hex(generated.accountCommitment.toString())
 
     const res = await verifyLoginAttestation({
@@ -96,6 +112,7 @@ describe('off-chain login attestation (pod_ownership proof)', () => {
       publicSignals: generated.publicSignals,
       claim: { ...CLAIM, webId: 'https://solid.nodezero.social/mallory/profile/card#me' },
       onchainAccountCommitmentHex: onchainHex,
+      vkPath: V3_VK,
     })
     expect(res.valid).toBe(false)
     expect(res.reason).toMatch(/claim/i)

@@ -28,6 +28,7 @@
     "build:circuits": "node scripts/compile-circuits.mjs",
     "build:setup": "node scripts/trusted-setup.mjs",
     "build:all": "pnpm run build:circuits && pnpm run build:setup",
+    "prepare:test-artifacts": "node ../../scripts/zk/fetch-test-artifacts.mjs",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --forceExit",
     "clean": "rm -rf build/"
   },

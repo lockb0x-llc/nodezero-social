@@ -38,7 +38,7 @@ export default function WalletBrokerScreen(): JSX.Element {
   React.useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return
 
-    const onConnect = (event: MessageEvent<WalletBrokerRequest | WalletBrokerReadyRequest>) => {
+    const onConnect = (event: MessageEvent<WalletBrokerRequest | WalletBrokerReadyRequest>): void => {
       if (!ALLOWED_PARENT_ORIGINS.has(event.origin)) return
       if (event.source !== window.parent) return
       if (event.data?.protocol !== WALLET_BROKER_PROTOCOL) return
@@ -52,14 +52,14 @@ export default function WalletBrokerScreen(): JSX.Element {
       const port = event.ports[0]
       if (!port) return
 
-      const handleRequest = async (request: WalletBrokerRequest) => {
+      const handleRequest = async (request: WalletBrokerRequest): Promise<void> => {
         if (!request || request.protocol !== WALLET_BROKER_PROTOCOL) return
         const reply = (
           ok: boolean,
           result?: Record<string, unknown>,
           error?: string,
           errorCode?: string,
-        ) =>
+        ): void =>
           send(port, {
             protocol: WALLET_BROKER_PROTOCOL,
             requestId: request.requestId,
@@ -136,7 +136,7 @@ export default function WalletBrokerScreen(): JSX.Element {
           )
         }
       }
-      port.onmessage = (messageEvent: MessageEvent<WalletBrokerRequest>) => {
+      port.onmessage = (messageEvent: MessageEvent<WalletBrokerRequest>): void => {
         void handleRequest(messageEvent.data)
       }
       port.start()
@@ -144,7 +144,7 @@ export default function WalletBrokerScreen(): JSX.Element {
     }
 
     window.addEventListener('message', onConnect)
-    return () => window.removeEventListener('message', onConnect)
+    return (): void => window.removeEventListener('message', onConnect)
   }, [
     createIdentity,
     createSeamlessAttestation,

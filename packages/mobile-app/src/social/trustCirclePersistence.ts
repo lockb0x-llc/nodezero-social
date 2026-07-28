@@ -13,6 +13,13 @@ export interface TrustCircleLocalAdapter {
   writeLocal(ownerWebId: string, members: string[]): Promise<void>
 }
 
+export interface TrustCircleStore {
+  list(ownerWebId: string, options?: TrustCircleStoreOptions): Promise<string[]>
+  add(ownerWebId: string, targetWebId: string, options?: TrustCircleStoreOptions): Promise<string[]>
+  remove(ownerWebId: string, targetWebId: string, options?: TrustCircleStoreOptions): Promise<string[]>
+  has(ownerWebId: string, targetWebId: string, options?: TrustCircleStoreOptions): Promise<boolean>
+}
+
 interface PodTrustCircleState {
   members: string[]
   etag: string | null
@@ -64,7 +71,7 @@ export function parseTrustCircleDocument(raw: string): string[] {
   return []
 }
 
-export function createTrustCircleStore(local: TrustCircleLocalAdapter) {
+export function createTrustCircleStore(local: TrustCircleLocalAdapter): TrustCircleStore {
   async function readPodState(
     ownerWebId: string,
     fetcher: typeof globalThis.fetch

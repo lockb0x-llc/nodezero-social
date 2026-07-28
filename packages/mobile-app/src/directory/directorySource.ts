@@ -1,5 +1,4 @@
 import Constants from 'expo-constants'
-import { deriveNameFromWebId } from './webIdName'
 import {
   isLikelyWebId,
   parseDirectoryRecords,

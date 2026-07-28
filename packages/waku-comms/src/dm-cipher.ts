@@ -132,9 +132,9 @@ export async function decryptDmBody(privateKey: CryptoKey, sealed: DmCiphertext)
   const ephemeralKey = await importPublicKey(sealed.epk)
   const aesKey = await deriveAesKey(privateKey, ephemeralKey)
   const plaintext = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv: base64ToBytes(sealed.iv) },
+    { name: 'AES-GCM', iv: base64ToArrayBuffer(sealed.iv) },
     aesKey,
-    base64ToBytes(sealed.ct),
+    base64ToArrayBuffer(sealed.ct),
   )
   return new TextDecoder().decode(plaintext)
 }
@@ -160,17 +160,17 @@ function bytesToBase64(bytes: Uint8Array): string {
   return typeof btoa === 'function' ? btoa(binary) : Buffer.from(bytes).toString('base64')
 }
 
-function base64ToBytes(base64: string): Uint8Array<ArrayBuffer> {
+function base64ToArrayBuffer(base64: string): ArrayBuffer {
   if (typeof atob === 'function') {
     const binary = atob(base64)
     const bytes = new Uint8Array(binary.length)
     for (let i = 0; i < binary.length; i += 1) {
       bytes[i] = binary.charCodeAt(i)
     }
-    return bytes
+    return bytes.buffer
   }
   const buffer = Buffer.from(base64, 'base64')
   const bytes = new Uint8Array(buffer.length)
   bytes.set(buffer)
-  return bytes
+  return bytes.buffer
 }

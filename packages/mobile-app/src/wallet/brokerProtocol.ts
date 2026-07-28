@@ -70,7 +70,7 @@ export async function requestWalletBroker<T>(
       reject(new Error('Wallet broker request timed out.'))
     }, REQUEST_TIMEOUT_MS)
 
-    channel.port1.onmessage = (event: MessageEvent<WalletBrokerResponse>) => {
+    channel.port1.onmessage = (event: MessageEvent<WalletBrokerResponse>): void => {
       const response = event.data
       if (
         !response ||

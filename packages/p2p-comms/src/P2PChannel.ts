@@ -56,11 +56,11 @@ export class P2PChannel extends EventEmitter<P2PChannelEvents> {
       iceServers: options.iceServers ?? DEFAULT_ICE_SERVERS,
     })
 
-    this.pc.onicecandidate = ({ candidate }) => {
+    this.pc.onicecandidate = ({ candidate }): void => {
       if (candidate) this.emit('iceCandidate', candidate.toJSON())
     }
 
-    this.pc.ondatachannel = ({ channel }) => {
+    this.pc.ondatachannel = ({ channel }): void => {
       this.attachDataChannel(channel)
     }
   }
@@ -145,12 +145,17 @@ export class P2PChannel extends EventEmitter<P2PChannelEvents> {
   private attachDataChannel(channel: RTCDataChannel): void {
     this.dataChannel = channel
 
-    channel.onopen = () => this.emit('open')
-    channel.onclose = () => this.emit('close')
-    channel.onerror = (ev) => {
-      this.emit('error', ev.error ?? new Error('RTCDataChannel error'))
+    channel.onopen = (): void => {
+      this.emit('open')
     }
-    channel.onmessage = ({ data }) => {
+    channel.onclose = (): void => {
+      this.emit('close')
+    }
+    channel.onerror = (event): void => {
+      const candidate = (event as RTCErrorEvent).error as unknown
+      this.emit('error', candidate instanceof Error ? candidate : new Error('RTCDataChannel error'))
+    }
+    channel.onmessage = ({ data }): void => {
       try {
         const msg = JSON.parse(data as string) as P2PMessage
         this.emit('message', msg)

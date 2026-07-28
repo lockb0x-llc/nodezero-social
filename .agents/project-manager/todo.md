@@ -89,6 +89,7 @@
 - [DONE] P1: Centralize V3 canonical claim framing, bind claims/proofs to a fingerprinted onboarding descriptor, digest-verify proving/VK artifacts, and reject stale V3 configuration before CSS side effects.
 - [DONE] P2: Add embedded provisioner build provenance, synchronous deployment verification, exact auth-created child audit correlation, and strict V3 constructor-state validation.
 - [DONE] P3: Fail closed when an indexed wallet identity loses its secret; propagate a stable recovery-required broker error instead of silently replacing the key.
+- [DONE] P3.5: Restore trustworthy quality gates before the provisioning saga: use the public circomlibjs Poseidon API with fixed vectors, fetch/checksum active V3 proof artifacts for tests, separate production/test lint policy, align TypeScript with typescript-eslint, and restore full workspace lint/type-check/test PASS.
 - [TODO] P4: Implement durable provisioning reservations/saga with ETags, leases, response-loss reconciliation, and atomic credential/index publication. Owner: SOLID_DATA_AGENT.
 - [TODO] P5: Implement encrypted recovery bundle v2 plus v1 import and inactive key restoration. Owner: MOBILE_APP_AGENT.
 - [TODO] P6: Adopt the provisioner App Service into staged Bicep/slot deployment after no-op resource inventory and secret-continuity proof. Owner: AZURE_PLATFORM_AGENT.

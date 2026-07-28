@@ -13,7 +13,8 @@
     "build:android": "eas build --platform android",
     "build:ios": "eas build --platform ios",
     "test": "tsx --test src/**/*.test.ts",
-    "lint": "eslint app src --ext .ts,.tsx",
+    "lint": "eslint app src --ext .ts,.tsx --ignore-pattern 'src/**/*.test.ts' --max-warnings 0",
+    "lint:test": "eslint src --ext .test.ts,.test.tsx --no-error-on-unmatched-pattern --max-warnings 0",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {

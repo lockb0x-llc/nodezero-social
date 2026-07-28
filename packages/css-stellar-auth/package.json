@@ -11,7 +11,7 @@
   "scripts": {
     "build": "tsc --project tsconfig.json",
     "test": "echo '[css-stellar-auth] RETIRED: legacy CSS login plugin excluded from the workspace gate (internal-auth cutover).'",
-    "type-check": "tsc --noEmit",
+    "type-check": "echo '[css-stellar-auth] RETIRED: legacy CSS login plugin excluded from the workspace gate (internal-auth cutover).'",
     "clean": "npx rimraf dist"
   },
   "devDependencies": {

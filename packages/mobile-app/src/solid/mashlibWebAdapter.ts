@@ -34,9 +34,13 @@ function normalizePaneListProvider(candidate: unknown): MashlibLikeModule | null
   return null
 }
 
-async function loadModuleById(moduleId: string): Promise<unknown> {
+function loadModuleById(moduleId: string): Promise<unknown> {
   // Hide from Metro bundler by using a Function constructor
-  const dynamicImport = new Function('modulePath', 'return import(modulePath)')
+  // eslint-disable-next-line @typescript-eslint/no-implied-eval
+  const dynamicImport = new Function(
+    'modulePath',
+    'return import(modulePath)',
+  ) as (modulePath: string) => Promise<unknown>
   return dynamicImport(moduleId)
 }
 

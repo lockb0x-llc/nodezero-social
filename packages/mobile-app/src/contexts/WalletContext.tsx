@@ -249,12 +249,12 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
         'position:fixed;width:1px;height:1px;border:0;opacity:0;pointer-events:none;'
       const brokerOrigin = walletBrokerOrigin(hostedWalletBrokerUrl)
       let retryTimer: ReturnType<typeof setInterval> | null = null
-      const cleanup = () => {
+      const cleanup = (): void => {
         clearTimeout(timeout)
         if (retryTimer) clearInterval(retryTimer)
         window.removeEventListener('message', onReady)
       }
-      const requestReady = () => {
+      const requestReady = (): void => {
         frame.contentWindow?.postMessage(
           { protocol: WALLET_BROKER_PROTOCOL, type: WALLET_BROKER_READY_REQUEST },
           brokerOrigin
@@ -265,7 +265,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
         brokerFramePromiseRef.current = null
         reject(new Error('Wallet broker did not become ready.'))
       }, 30_000)
-      const onReady = (event: MessageEvent<WalletBrokerReady>) => {
+      const onReady = (event: MessageEvent<WalletBrokerReady>): void => {
         if (event.origin !== brokerOrigin || event.source !== frame.contentWindow) return
         if (
           event.data?.protocol !== WALLET_BROKER_PROTOCOL ||
@@ -277,11 +277,11 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
         resolve(frame)
       }
       window.addEventListener('message', onReady)
-      frame.onload = () => {
+      frame.onload = (): void => {
         requestReady()
         retryTimer = setInterval(requestReady, 250)
       }
-      frame.onerror = () => {
+      frame.onerror = (): void => {
         cleanup()
         brokerFramePromiseRef.current = null
         reject(new Error('Wallet broker could not be loaded.'))

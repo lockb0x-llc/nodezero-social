@@ -136,8 +136,6 @@ interface LandingAuthCardProps {
   isSigningIn: boolean
   isIdentityBusy: boolean
   seamlessEnabled: boolean
-  identities: Array<{ keyId: string; label: string }>
-  activeIdentityKeyId: string | null
   nodeHandle: string
   notificationEmail: string
   isCreating: boolean
@@ -146,7 +144,6 @@ interface LandingAuthCardProps {
   createSteps: ProgressStep[]
   onNodeHandleChange: (value: string) => void
   onNotificationEmailChange: (value: string) => void
-  onSelectIdentity: (keyId: string) => Promise<void>
   onCreateIdentity: () => Promise<void>
   onSignIn: () => Promise<void>
   onCreateNode: () => Promise<void>
@@ -159,8 +156,6 @@ function LandingAuthCard({
   isSigningIn,
   isIdentityBusy,
   seamlessEnabled,
-  identities,
-  activeIdentityKeyId,
   nodeHandle,
   notificationEmail,
   isCreating,
@@ -169,7 +164,6 @@ function LandingAuthCard({
   createSteps,
   onNodeHandleChange,
   onNotificationEmailChange,
-  onSelectIdentity,
   onCreateIdentity,
   onSignIn,
   onCreateNode,
@@ -422,11 +416,8 @@ export default function LandingScreen(): JSX.Element {
   const {
     attestationStatus,
     walletInfo,
-    identities,
-    activeIdentityKeyId,
     isIdentityBusy,
     initializationError,
-    selectIdentity,
     createIdentity,
     createSeamlessAttestation,
   } = useWallet()
@@ -696,15 +687,6 @@ export default function LandingScreen(): JSX.Element {
     }
   }
 
-  const handleSelectIdentity = async (keyId: string): Promise<void> => {
-    setError(null)
-    setErrorAction(null)
-    setCreateNotice(null)
-    setAccountChoices([])
-    setSelectedAccountWebId(null)
-    await selectIdentity(keyId)
-  }
-
   const handleCreateIdentity = async (): Promise<void> => {
     setError(null)
     setErrorAction(null)
@@ -794,8 +776,6 @@ export default function LandingScreen(): JSX.Element {
           isSigningIn={isSigningIn}
           isIdentityBusy={isIdentityBusy}
           seamlessEnabled={seamlessConfig.enabled}
-          identities={identities}
-          activeIdentityKeyId={activeIdentityKeyId}
           nodeHandle={nodeHandle}
           notificationEmail={notificationEmail}
           isCreating={isCreating}
@@ -804,7 +784,6 @@ export default function LandingScreen(): JSX.Element {
           createSteps={createSteps}
           onNodeHandleChange={setNodeHandle}
           onNotificationEmailChange={setNotificationEmail}
-          onSelectIdentity={handleSelectIdentity}
           onCreateIdentity={handleCreateIdentity}
           onSignIn={handleSignIn}
           onCreateNode={handleCreateNode}
@@ -868,8 +847,6 @@ export default function LandingScreen(): JSX.Element {
                 isSigningIn={isSigningIn}
                 isIdentityBusy={isIdentityBusy}
                 seamlessEnabled={seamlessConfig.enabled}
-                identities={identities}
-                activeIdentityKeyId={activeIdentityKeyId}
                 nodeHandle={nodeHandle}
                 notificationEmail={notificationEmail}
                 isCreating={isCreating}
@@ -878,7 +855,6 @@ export default function LandingScreen(): JSX.Element {
                 createSteps={createSteps}
                 onNodeHandleChange={setNodeHandle}
                 onNotificationEmailChange={setNotificationEmail}
-                onSelectIdentity={handleSelectIdentity}
                 onCreateIdentity={handleCreateIdentity}
                 onSignIn={handleSignIn}
                 onCreateNode={handleCreateNode}

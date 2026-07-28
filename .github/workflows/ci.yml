@@ -40,6 +40,9 @@ jobs:
       - name: Type-check
         run: pnpm type-check
 
+      - name: Fetch integrity-pinned ZK test artifacts
+        run: pnpm prepare:zk:test-artifacts
+
       - name: Unit tests
         run: pnpm test
 

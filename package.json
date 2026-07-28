@@ -40,6 +40,7 @@
     "pm:reintegrate": "pwsh -NoProfile -File ./scripts/agents/reintegrate-parallel.ps1",
     "pm:reintegrate:dry": "pwsh -NoProfile -File ./scripts/agents/reintegrate-parallel.ps1 -DryRun",
     "prepare:zk:testnet": "bash ./scripts/zk/prepare-testnet.sh",
+    "prepare:zk:test-artifacts": "node ./scripts/zk/fetch-test-artifacts.mjs",
     "prepare:checksums:testnet": "bash ./scripts/stellar/artifact-checksums.sh generate",
     "verify:checksums:testnet": "bash ./scripts/stellar/artifact-checksums.sh verify",
     "provisioner:dev": "pnpm --filter @nodezero/jss-provisioner dev",
@@ -54,12 +55,12 @@
     "deploy:azure:notifications": "bash ./scripts/azure/deploy-notification-infra.sh"
   },
   "devDependencies": {
-    "@stellar/stellar-sdk": "^16.0.0",
-    "typescript": "^5.4.5",
     "@playwright/test": "^1.45.0",
-    "@typescript-eslint/eslint-plugin": "^7.13.0",
-    "@typescript-eslint/parser": "^7.13.0",
+    "@stellar/stellar-sdk": "^16.0.0",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
     "eslint": "^8.57.0",
-    "prettier": "^3.3.2"
+    "prettier": "^3.3.2",
+    "typescript": "^5.5.4"
   }
 }
