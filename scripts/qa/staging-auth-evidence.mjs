@@ -18,8 +18,8 @@
  *  3. Negative: a destroyed/tampered session must land on the sign-in page.
  *
  * On-chain evidence: the per-user lockb0x contract returned at signup is
- * verified via stellar.expert (storage_entries >= 3 ⇒ deployed + initialized
- * + attested).
+ * verified directly through Soroban RPC. V3 requires the exact nine immutable
+ * constructor fields and the expected factory/circuit bindings.
  *
  * Usage:
  *   node scripts/qa/staging-auth-evidence.mjs
@@ -27,6 +27,7 @@
  */
 
 import { chromium } from '@playwright/test'
+import { Contract, rpc, scValToNative } from '@stellar/stellar-sdk'
 import { appendFile } from 'node:fs/promises'
 
 // Authentication starts at the public apex landing page. The authenticated
@@ -47,6 +48,7 @@ const provisionerUrl = (
 const expectCrossHostHandoff = /^(1|true|yes)$/i.test(
   process.env.NZ_EXPECT_INTERNAL_STAGING_HANDOFF ?? 'false'
 )
+const stellarRpcUrl = process.env.NZ_STELLAR_RPC_URL || 'https://soroban-testnet.stellar.org'
 
 const SESSION_STORAGE_KEY = 'nz.session.v2'
 
@@ -240,36 +242,69 @@ function assertNoFriendbotRequests(friendbotRequests) {
 
 async function verifyLockboxOnChain(contractId, factoryContractId) {
   const isBridgeV3 = factoryContractId === bridgeV3FactoryId
-  const minimumEntries = isBridgeV3 ? 9 : 3
-  const description = isBridgeV3
-    ? 'constructor-initialized V3 bridge state'
-    : 'deployed + initialized + attested'
-  const url = `https://api.stellar.expert/explorer/testnet/contract/${contractId}`
+  const server = new rpc.Server(stellarRpcUrl)
+  const expectedV3Keys = [
+    'AccountCommitment',
+    'Ciphertext',
+    'CiphertextHash',
+    'CircuitVersion',
+    'ClaimHash',
+    'Factory',
+    'Operator',
+    'PodBinding',
+    'ProofHash',
+  ]
   for (let attempt = 1; attempt <= 5; attempt += 1) {
     try {
-      const res = await fetch(url, { headers: { accept: 'application/json' } })
-      if (res.ok) {
-        const body = await res.json()
-        const entries = Number(body?.storage_entries ?? 0)
-        if (entries >= minimumEntries) {
-          log(`On-chain lockb0x ${contractId}: storage_entries=${entries} (${description})`)
-          return
+      const response = await server.getLedgerEntries(new Contract(contractId).getFootprint())
+      const entry = response.entries[0]
+      const storage = entry?.val?.contractData?.().val().instance().storage()
+      const decoded = new Map()
+      for (const storageEntry of Array.from(storage ?? [])) {
+        const key = scValToNative(storageEntry.key())
+        if (!Array.isArray(key) || key.length !== 1 || typeof key[0] !== 'string') {
+          throw new Error('lockb0x contains an invalid instance-storage key')
         }
-        log(`On-chain lockb0x ${contractId}: storage_entries=${entries}; waiting for indexer...`)
-      } else {
-        log(`stellar.expert responded ${res.status}; retrying...`)
+        decoded.set(key[0], scValToNative(storageEntry.val()))
       }
+      const keys = [...decoded.keys()].sort()
+      if (isBridgeV3) {
+        if (
+          keys.length !== expectedV3Keys.length ||
+          keys.some((key, index) => key !== expectedV3Keys[index])
+        ) {
+          throw new Error(`V3 storage keys are incomplete or unexpected: ${keys.join(',')}`)
+        }
+        if (decoded.get('Factory') !== factoryContractId) {
+          throw new Error(`V3 factory binding mismatch: ${String(decoded.get('Factory'))}`)
+        }
+        if (Number(decoded.get('CircuitVersion')) !== 3) {
+          throw new Error(`V3 circuit version mismatch: ${String(decoded.get('CircuitVersion'))}`)
+        }
+      } else if (keys.length < 3) {
+        throw new Error(`legacy lockb0x has only ${keys.length} instance-storage entries`)
+      }
+      log(`On-chain lockb0x ${contractId}: direct RPC verified ${keys.length} instance-storage entries`)
+      return
     } catch (error) {
-      log(`stellar.expert fetch failed (${String(error?.message || error)}); retrying...`)
+      log(`Soroban RPC verification attempt ${attempt}/5 failed (${String(error?.message || error)})`)
     }
-    await new Promise((resolve) => setTimeout(resolve, 15_000))
+    await new Promise((resolve) => setTimeout(resolve, 5_000))
   }
-  fail(
-    `On-chain lockb0x ${contractId} did not reach storage_entries>=${minimumEntries} via stellar.expert`
-  )
+  fail(`On-chain lockb0x ${contractId} did not expose complete instance state via Soroban RPC`)
 }
 
 async function main() {
+  const verifyOnlyContractId = (process.env.AUTH_E2E_VERIFY_LOCKBOX_ID || '').trim()
+  if (verifyOnlyContractId) {
+    await verifyLockboxOnChain(
+      verifyOnlyContractId,
+      (process.env.AUTH_E2E_VERIFY_FACTORY_ID || bridgeV3FactoryId).trim(),
+    )
+    log(`Direct lockb0x verification PASS: ${verifyOnlyContractId}`)
+    return
+  }
+
   const handle = `qa${nowStamp()}${randomSuffix()}`
   const email = `${handle}@qa.nodezero.social`
 
