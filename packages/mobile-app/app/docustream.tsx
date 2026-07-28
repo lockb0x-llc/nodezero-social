@@ -684,7 +684,7 @@ export default function DocustreamScreen(): JSX.Element {
               ) : null}
 
               {sources.map((source) => (
-                <View key={source.id} style={styles.sourceCard}>
+                <View key={source.id} style={styles.sourceCard} testID={`docustream-source-${source.id}`}>
                   <View style={styles.sourceHeader}>
                     <View style={styles.sourceHeaderTextWrap}>
                       <Text style={styles.sourceTitle}>{source.title ?? sourceLabelFromUrl(source.url)}</Text>
@@ -719,6 +719,7 @@ export default function DocustreamScreen(): JSX.Element {
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={styles.sourceActionButtonDanger}
+                      testID={`docustream-source-remove-${source.id}`}
                       onPress={() => void handleRemoveSource(source)}
                       disabled={sourceOperationId === source.id}
                     >
