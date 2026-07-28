@@ -313,6 +313,8 @@ jobs:
           fi
 
       - name: Deploy JSS provisioner to App Service
+        id: deploy-provisioner
+        continue-on-error: true
         run: |
           az webapp deploy \
             --resource-group "$AZURE_RESOURCE_GROUP" \
@@ -332,6 +334,9 @@ jobs:
           EXPECTED_PAYLOAD_SHA256: ${{ steps.package-provisioner.outputs.payload_sha256 }}
         run: |
           set -euo pipefail
+          if [ "${{ steps.deploy-provisioner.outcome }}" != "success" ]; then
+            echo "ZipDeploy transport reported '${{ steps.deploy-provisioner.outcome }}'; exact live provenance must prove whether deployment completed."
+          fi
           health_url="https://${JSS_PROVISIONER_APP_NAME}.azurewebsites.net/health"
           echo "Waiting for provisioner health: ${health_url}"
 
