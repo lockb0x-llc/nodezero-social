@@ -280,11 +280,17 @@ export async function createSeamlessNode(input: CreateNodeInput): Promise<Create
     body.circuitVersion = String(input.circuitVersion ?? 1)
   }
 
+  const serializedBody = JSON.stringify(body)
+  const idempotencyKey = `nz-onboarding-v1-${await sha256Text(serializedBody)}`
   const res = await fetch(`${config.provisionerUrl}/v1/solid-account`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', accept: 'application/json' },
+    headers: {
+      'content-type': 'application/json',
+      accept: 'application/json',
+      'idempotency-key': idempotencyKey,
+    },
     credentials: 'include',
-    body: JSON.stringify(body),
+    body: serializedBody,
   })
   const text = await res.text()
   if (!res.ok) {

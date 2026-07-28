@@ -49,7 +49,7 @@ const DEFAULT_RSS_PRESETS: Array<{ title: string; url: string }> = [
   },
 ]
 
-const DOCUSTREAM_LOCKED = true
+const DOCUSTREAM_LOCKED = false
 
 function getSourceIcon(source: StreamItem['source']): JSX.Element {
   switch (source) {
@@ -191,9 +191,17 @@ export default function DocustreamScreen(): JSX.Element {
       return
     }
 
-    const { docustreamSourceManager } = getSolidPodSyncManagers({ fetch: authFetch })
-    const nextSources = await docustreamSourceManager.listSources(podRoot)
-    setSources(nextSources)
+    try {
+      const { docustreamSourceManager } = getSolidPodSyncManagers({ fetch: authFetch })
+      const nextSources = await docustreamSourceManager.listSources(podRoot)
+      setSources(nextSources)
+      setSourceModalError(null)
+    } catch (error) {
+      setSources([])
+      setSourceModalError(
+        error instanceof Error ? error.message : 'Unable to load DocuStream sources from your Pod.',
+      )
+    }
   }, [authFetch, isLoggedIn, podRoot])
 
   const loadDocustreamItems = useCallback(async (): Promise<void> => {

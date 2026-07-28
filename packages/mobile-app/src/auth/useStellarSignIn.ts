@@ -73,15 +73,22 @@ async function fetchWithTimeout(url: string, init: RequestInit): Promise<Respons
  *
  * Fail-closed: every failure throws; there is no fallback auth path.
  */
-export function useStellarSignIn(): (options?: { webId?: string }) => Promise<AdoptSessionInput> {
+export interface StellarSignInOptions {
+  webId?: string
+  keyId?: string
+  stellarPublicKey?: string
+}
+
+export function useStellarSignIn(): (options?: StellarSignInOptions) => Promise<AdoptSessionInput> {
   const { signAttestationChallenge, walletInfo } = useWallet()
 
-  return useCallback(async (options?: { webId?: string }): Promise<AdoptSessionInput> => {
+  return useCallback(async (options?: StellarSignInOptions): Promise<AdoptSessionInput> => {
     const provisionerUrl = getProvisionerUrl()
     if (!provisionerUrl) {
       throw new Error('Provisioner URL is not configured — cannot sign in.')
     }
-    if (!walletInfo?.publicKey) {
+    const stellarPublicKey = options?.stellarPublicKey ?? walletInfo?.publicKey
+    if (!stellarPublicKey) {
       throw new Error('Stellar wallet is not ready — cannot sign in.')
     }
 
@@ -90,7 +97,7 @@ export function useStellarSignIn(): (options?: { webId?: string }) => Promise<Ad
       method: 'POST',
       headers: { 'content-type': 'application/json', accept: 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ stellarPublicKey: walletInfo.publicKey }),
+      body: JSON.stringify({ stellarPublicKey }),
     })
     if (!challengeResp.ok) {
       const errText = await challengeResp.text().catch(() => '')
@@ -104,7 +111,10 @@ export function useStellarSignIn(): (options?: { webId?: string }) => Promise<Ad
       stellarPublicKey: challenge.stellarPublicKey,
       audience: STELLAR_AUTH_AUDIENCE,
     })
-    const { signatureBase64 } = await signAttestationChallenge(signedPayload)
+    const signed = await signAttestationChallenge(signedPayload, options?.keyId)
+    if (signed.stellarPublicKey !== stellarPublicKey) {
+      throw new Error('The selected wallet identity did not sign the requested challenge.')
+    }
 
     // --- Step 3: exchange signature for a NodeZero session ---
     const loginResp = await fetchWithTimeout(`${provisionerUrl}/v1/auth/stellar-token`, {
@@ -113,8 +123,8 @@ export function useStellarSignIn(): (options?: { webId?: string }) => Promise<Ad
       credentials: 'include',
       body: JSON.stringify({
         challengeId: challenge.challengeId,
-        stellarPublicKey: walletInfo.publicKey,
-        signatureBase64,
+        stellarPublicKey,
+        signatureBase64: signed.signatureBase64,
         webId: options?.webId,
       }),
     })

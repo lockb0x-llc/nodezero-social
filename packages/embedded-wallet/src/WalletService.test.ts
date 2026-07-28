@@ -140,6 +140,27 @@ void test('supports creating and switching between identities', async () => {
 
   const secondPublicKey = await service.getWalletPublicKeyForIdentity(second.keyId)
   assert.equal(secondPublicKey, second.publicKey)
+  assert.equal(await service.getActiveIdentityKeyId(), first.keyId)
+})
+
+void test('signs with an explicit non-active identity without switching the active identity', async () => {
+  const service = new WalletService(new EnclaveAdapter(createMemoryStore()))
+  const first = await service.getWalletInfo()
+  const second = await service.createIdentity('Secondary')
+  await service.setActiveIdentity(first.keyId)
+  const payload = 'NZ_MULTI_IDENTITY_SIGN_IN|secondary'
+
+  const signed = await service.signAttestationChallengeForIdentity(second.keyId, payload)
+
+  assert.equal(signed.stellarPublicKey, second.publicKey)
+  assert.equal(
+    Keypair.fromPublicKey(second.publicKey).verify(
+      Buffer.from(payload, 'utf8'),
+      Buffer.from(signed.signatureBase64, 'base64'),
+    ),
+    true,
+  )
+  assert.equal(await service.getActiveIdentityKeyId(), first.keyId)
 })
 
 void test('fails closed when an indexed identity secret is missing', async () => {

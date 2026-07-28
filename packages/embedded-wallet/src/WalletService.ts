@@ -27,7 +27,7 @@ import {
   type Transaction,
 } from '@stellar/stellar-sdk'
 import { Buffer } from 'buffer'
-import type { EnclaveAdapter } from './EnclaveAdapter.js'
+import { MissingIdentitySecretError, type EnclaveAdapter } from './EnclaveAdapter.js'
 import type {
   WalletInfo,
   WalletIdentity,
@@ -228,7 +228,8 @@ export class WalletService {
   }
 
   async getWalletInfoForIdentity(keyId: string): Promise<WalletInfo> {
-    const secret = await this.adapter.loadOrCreate(keyId)
+    const secret = await this.adapter.load(keyId)
+    if (!secret) throw new MissingIdentitySecretError(keyId)
     const keypair = Keypair.fromSecret(secret)
     const publicKey = keypair.publicKey()
     const isFunded = await this.ensureAccountExists(publicKey)
@@ -246,22 +247,22 @@ export class WalletService {
   }
 
   async getWalletPublicKeyForIdentity(keyId: string): Promise<string> {
-    const secret = await this.adapter.loadOrCreate(keyId)
+    const secret = await this.adapter.load(keyId)
+    if (!secret) throw new MissingIdentitySecretError(keyId)
     return Keypair.fromSecret(secret).publicKey()
   }
 
-  /**
-   * Signs a canonical custody-attestation challenge payload with the embedded
-   * Stellar keypair and returns the base64-encoded signature.
-   */
-  async signAttestationChallenge(challengePayload: string): Promise<AttestationSignature> {
+  async signAttestationChallengeForIdentity(
+    keyId: string,
+    challengePayload: string
+  ): Promise<AttestationSignature> {
     const trimmedPayload = challengePayload.trim()
     if (!trimmedPayload) {
       throw new Error('Attestation challenge payload is required.')
     }
 
-    const active = await this.adapter.getActiveIdentityKeyId()
-    const secret = await this.adapter.loadOrCreate(active ?? undefined)
+    const secret = await this.adapter.load(keyId)
+    if (!secret) throw new MissingIdentitySecretError(keyId)
     const keypair = Keypair.fromSecret(secret)
     const payloadBytes = new TextEncoder().encode(trimmedPayload)
     const signatureBytes = keypair.sign(Buffer.from(payloadBytes))
@@ -271,6 +272,16 @@ export class WalletService {
       challengePayload: trimmedPayload,
       signatureBase64: Buffer.from(signatureBytes).toString('base64'),
     }
+  }
+
+  /**
+   * Signs a canonical custody-attestation challenge payload with the embedded
+   * Stellar keypair and returns the base64-encoded signature.
+   */
+  async signAttestationChallenge(challengePayload: string): Promise<AttestationSignature> {
+    const active = await this.adapter.getActiveIdentityKeyId()
+    if (!active) throw new Error('Embedded wallet identity is not available.')
+    return this.signAttestationChallengeForIdentity(active, challengePayload)
   }
 
   /**

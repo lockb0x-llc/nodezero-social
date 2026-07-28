@@ -39,6 +39,7 @@ import {
   NoAccountError,
   AccountSelectionRequiredError,
 } from '../src/auth/useStellarSignIn'
+import { usableIdentityCandidates } from '../src/auth/identitySignInCandidates'
 
 const PRESS_OPACITY = 0.82
 
@@ -420,6 +421,8 @@ export default function LandingScreen(): JSX.Element {
     initializationError,
     createIdentity,
     createSeamlessAttestation,
+    listIdentitySummaries,
+    selectIdentity,
   } = useWallet()
   const router = useRouter()
   const pathname = usePathname()
@@ -438,6 +441,10 @@ export default function LandingScreen(): JSX.Element {
   const [createSteps, setCreateSteps] = useState<ProgressStep[]>([])
   const [accountChoices, setAccountChoices] = useState<Array<{ webId: string; podUrl: string }>>([])
   const [selectedAccountWebId, setSelectedAccountWebId] = useState<string | null>(null)
+  const accountChoiceIdentityRef = React.useRef<{
+    keyId: string
+    stellarPublicKey: string
+  } | null>(null)
   const knownExistingEmailsRef = React.useRef<Set<string>>(new Set())
 
   React.useEffect(() => {
@@ -491,25 +498,64 @@ export default function LandingScreen(): JSX.Element {
 
   const stellarSignIn = useStellarSignIn()
 
+  const completeSignIn = async (
+    identity: { keyId: string; stellarPublicKey: string },
+    webId?: string,
+  ): Promise<void> => {
+    const result = await stellarSignIn({ ...identity, ...(webId ? { webId } : {}) })
+    await selectIdentity(identity.keyId)
+    setAccountChoices([])
+    setSelectedAccountWebId(null)
+    accountChoiceIdentityRef.current = null
+    if (shouldHandoffToInternalStaging()) {
+      handoffToInternalStaging()
+      return
+    }
+    await adoptSession(result)
+  }
+
   const handleSignIn = async (webId?: string): Promise<void> => {
     setError(null)
     setErrorAction(null)
     setIsSigningIn(true)
     try {
-      // One-tap sign-in: challenge → on-device Stellar signature → NodeZero
-      // session. The provisioner only issues the session after proving live
-      // Solid access (fail-closed) — no redirect, no password, no CSS UI.
-      const result = await stellarSignIn({ webId })
-      setAccountChoices([])
-      setSelectedAccountWebId(null)
-      if (shouldHandoffToInternalStaging()) {
-        handoffToInternalStaging()
+      if (webId && accountChoiceIdentityRef.current) {
+        await completeSignIn(accountChoiceIdentityRef.current, webId)
         return
       }
-      await adoptSession(result)
+
+      const summaries = await listIdentitySummaries()
+      const usable = usableIdentityCandidates(summaries)
+      if (usable.length === 0) {
+        const damaged = summaries.length > 0
+        throw new Error(
+          damaged
+            ? 'Stored wallet identities were found, but their secret keys are unavailable. Import a recovery bundle to continue.'
+            : 'No wallet identities are stored on this device.',
+        )
+      }
+
+      for (const identity of usable) {
+        try {
+          await completeSignIn(
+            { keyId: identity.keyId, stellarPublicKey: identity.stellarPublicKey },
+          )
+          return
+        } catch (identityError) {
+          if (identityError instanceof NoAccountError) continue
+          if (identityError instanceof AccountSelectionRequiredError) {
+            accountChoiceIdentityRef.current = {
+              keyId: identity.keyId,
+              stellarPublicKey: identity.stellarPublicKey,
+            }
+          }
+          throw identityError
+        }
+      }
+      throw new NoAccountError()
     } catch (err) {
       if (err instanceof NoAccountError) {
-        setError('No node exists for this device key yet. Create your node below to get started.')
+        setError('Wallet identities were found on this device, but none are linked to a NodeZero account. Restore the original identity if this node was created elsewhere.')
       } else if (err instanceof AccountSelectionRequiredError) {
         setAccountChoices(err.accounts)
         setSelectedAccountWebId(err.accounts[0]?.webId ?? null)

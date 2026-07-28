@@ -4,6 +4,7 @@ export const WALLET_BROKER_READY_REQUEST = 'ready-request'
 
 export type WalletBrokerOperation =
   | 'get-public-key'
+  | 'list-identities'
   | 'sign-challenge'
   | 'create-attestation'
   | 'get-account-commitment'

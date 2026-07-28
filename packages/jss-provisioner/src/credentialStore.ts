@@ -19,7 +19,7 @@
  * resolve for a WebID.
  */
 
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto'
+import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes } from 'node:crypto'
 import { readFile, writeFile, mkdir, rename } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
@@ -127,11 +127,30 @@ function browserSessionWebIdRowKey(webId: string): string {
 
 type BackendRow = Record<string, unknown>
 
+interface VersionedBackendRow {
+  value: BackendRow
+  etag: string
+}
+
+export class ConditionalWriteError extends Error {
+  readonly code: 'already_exists' | 'etag_mismatch'
+
+  constructor(code: 'already_exists' | 'etag_mismatch', message: string) {
+    super(message)
+    this.name = 'ConditionalWriteError'
+    this.code = code
+  }
+}
+
 interface CredentialBackend {
   readonly kind: 'table' | 'file' | 'memory'
   get(rowKey: string): Promise<BackendRow | null>
+  getVersioned(rowKey: string): Promise<VersionedBackendRow | null>
   put(rowKey: string, record: BackendRow): Promise<void>
+  create(rowKey: string, record: BackendRow): Promise<string>
+  replace(rowKey: string, record: BackendRow, ifMatch: string): Promise<string>
   delete(rowKey: string): Promise<boolean>
+  deleteVersioned(rowKey: string, ifMatch: string): Promise<boolean>
 }
 
 // ---------------------------------------------------------------------------
@@ -140,19 +159,72 @@ interface CredentialBackend {
 
 class MemoryBackend implements CredentialBackend {
   readonly kind = 'memory' as const
-  private records = new Map<string, BackendRow>()
+  private records = new Map<string, VersionedBackendRow>()
+  private queue: Promise<unknown> = Promise.resolve()
+
+  private serialize<T>(operation: () => T | Promise<T>): Promise<T> {
+    const next = this.queue.then(operation, operation)
+    this.queue = next.catch(() => undefined)
+    return Promise.resolve(next)
+  }
+
+  private nextEtag(): string {
+    return `"${randomBytes(16).toString('hex')}"`
+  }
 
   get(rowKey: string): Promise<BackendRow | null> {
-    return Promise.resolve(this.records.get(rowKey) ?? null)
+    return this.getVersioned(rowKey).then((record) => record?.value ?? null)
+  }
+
+  getVersioned(rowKey: string): Promise<VersionedBackendRow | null> {
+    return this.serialize(() => {
+      const record = this.records.get(rowKey)
+      return record ? { value: { ...record.value }, etag: record.etag } : null
+    })
   }
 
   put(rowKey: string, record: BackendRow): Promise<void> {
-    this.records.set(rowKey, record)
-    return Promise.resolve()
+    return this.serialize(() => {
+      this.records.set(rowKey, { value: { ...record }, etag: this.nextEtag() })
+    })
+  }
+
+  create(rowKey: string, record: BackendRow): Promise<string> {
+    return this.serialize(() => {
+      if (this.records.has(rowKey)) {
+        throw new ConditionalWriteError('already_exists', `Row ${rowKey} already exists.`)
+      }
+      const etag = this.nextEtag()
+      this.records.set(rowKey, { value: { ...record }, etag })
+      return etag
+    })
+  }
+
+  replace(rowKey: string, record: BackendRow, ifMatch: string): Promise<string> {
+    return this.serialize(() => {
+      const existing = this.records.get(rowKey)
+      if (!existing || existing.etag !== ifMatch) {
+        throw new ConditionalWriteError('etag_mismatch', `Row ${rowKey} changed before replacement.`)
+      }
+      const etag = this.nextEtag()
+      this.records.set(rowKey, { value: { ...record }, etag })
+      return etag
+    })
   }
 
   delete(rowKey: string): Promise<boolean> {
-    return Promise.resolve(this.records.delete(rowKey))
+    return this.serialize(() => this.records.delete(rowKey))
+  }
+
+  deleteVersioned(rowKey: string, ifMatch: string): Promise<boolean> {
+    return this.serialize(() => {
+      const existing = this.records.get(rowKey)
+      if (!existing) return false
+      if (existing.etag !== ifMatch) {
+        throw new ConditionalWriteError('etag_mismatch', `Row ${rowKey} changed before deletion.`)
+      }
+      return this.records.delete(rowKey)
+    })
   }
 }
 
@@ -162,7 +234,8 @@ class MemoryBackend implements CredentialBackend {
 
 class FileBackend implements CredentialBackend {
   readonly kind = 'file' as const
-  private queue: Promise<unknown> = Promise.resolve()
+  private static readonly queues = new Map<string, Promise<unknown>>()
+  private static readonly ETAG_FIELD = '__nzEtag'
 
   constructor(private readonly filePath: string) {}
 
@@ -183,23 +256,70 @@ class FileBackend implements CredentialBackend {
   }
 
   private serialize<T>(op: () => Promise<T>): Promise<T> {
-    const next = this.queue.then(op, op)
-    this.queue = next.catch(() => undefined)
+    const current = FileBackend.queues.get(this.filePath) ?? Promise.resolve()
+    const next = current.then(op, op)
+    const settled = next.catch(() => undefined)
+    FileBackend.queues.set(this.filePath, settled)
+    void settled.finally(() => {
+      if (FileBackend.queues.get(this.filePath) === settled) {
+        FileBackend.queues.delete(this.filePath)
+      }
+    })
     return next
   }
 
   get(rowKey: string): Promise<BackendRow | null> {
+    return this.getVersioned(rowKey).then((record) => record?.value ?? null)
+  }
+
+  getVersioned(rowKey: string): Promise<VersionedBackendRow | null> {
     return this.serialize(async () => {
       const data = await this.load()
-      return data[rowKey] ?? null
+      const stored = data[rowKey]
+      if (!stored) return null
+      const { [FileBackend.ETAG_FIELD]: rawEtag, ...value } = stored
+      return {
+        value,
+        etag: typeof rawEtag === 'string' ? rawEtag : '"legacy"',
+      }
     })
   }
 
   put(rowKey: string, record: BackendRow): Promise<void> {
     return this.serialize(async () => {
       const data = await this.load()
-      data[rowKey] = record
+      data[rowKey] = { ...record, [FileBackend.ETAG_FIELD]: this.nextEtag() }
       await this.save(data)
+    })
+  }
+
+  create(rowKey: string, record: BackendRow): Promise<string> {
+    return this.serialize(async () => {
+      const data = await this.load()
+      if (rowKey in data) {
+        throw new ConditionalWriteError('already_exists', `Row ${rowKey} already exists.`)
+      }
+      const etag = this.nextEtag()
+      data[rowKey] = { ...record, [FileBackend.ETAG_FIELD]: etag }
+      await this.save(data)
+      return etag
+    })
+  }
+
+  replace(rowKey: string, record: BackendRow, ifMatch: string): Promise<string> {
+    return this.serialize(async () => {
+      const data = await this.load()
+      const existing = data[rowKey]
+      const existingEtag = typeof existing?.[FileBackend.ETAG_FIELD] === 'string'
+        ? existing[FileBackend.ETAG_FIELD]
+        : '"legacy"'
+      if (!existing || existingEtag !== ifMatch) {
+        throw new ConditionalWriteError('etag_mismatch', `Row ${rowKey} changed before replacement.`)
+      }
+      const etag = this.nextEtag()
+      data[rowKey] = { ...record, [FileBackend.ETAG_FIELD]: etag }
+      await this.save(data)
+      return etag
     })
   }
 
@@ -211,6 +331,27 @@ class FileBackend implements CredentialBackend {
       await this.save(data)
       return true
     })
+  }
+
+  deleteVersioned(rowKey: string, ifMatch: string): Promise<boolean> {
+    return this.serialize(async () => {
+      const data = await this.load()
+      const existing = data[rowKey]
+      if (!existing) return false
+      const existingEtag = typeof existing[FileBackend.ETAG_FIELD] === 'string'
+        ? existing[FileBackend.ETAG_FIELD]
+        : '"legacy"'
+      if (existingEtag !== ifMatch) {
+        throw new ConditionalWriteError('etag_mismatch', `Row ${rowKey} changed before deletion.`)
+      }
+      delete data[rowKey]
+      await this.save(data)
+      return true
+    })
+  }
+
+  private nextEtag(): string {
+    return `"${randomBytes(16).toString('hex')}"`
   }
 }
 
@@ -242,7 +383,15 @@ class AzureTableBackend implements CredentialBackend {
     return `${this.tableUrl}(PartitionKey='${TABLE_PARTITION}',RowKey='${rowKey}')?${this.sasQuery}`
   }
 
+  private tableRequestUrl(): string {
+    return `${this.tableUrl}?${this.sasQuery}`
+  }
+
   async get(rowKey: string): Promise<BackendRow | null> {
+    return (await this.getVersioned(rowKey))?.value ?? null
+  }
+
+  async getVersioned(rowKey: string): Promise<VersionedBackendRow | null> {
     const res = await fetch(this.entityUrl(rowKey), {
       headers: { accept: 'application/json;odata=nometadata' },
     })
@@ -256,7 +405,9 @@ class AzureTableBackend implements CredentialBackend {
       if (key === 'PartitionKey' || key === 'RowKey' || key.startsWith('odata.')) continue
       row[key] = value === '' ? null : value
     }
-    return row
+    const etag = res.headers.get('etag') ?? (typeof entity['odata.etag'] === 'string' ? entity['odata.etag'] : null)
+    if (!etag) throw new Error('Credential store read did not return an ETag.')
+    return { value: row, etag }
   }
 
   async put(rowKey: string, record: BackendRow): Promise<void> {
@@ -281,6 +432,45 @@ class AzureTableBackend implements CredentialBackend {
     }
   }
 
+  async create(rowKey: string, record: BackendRow): Promise<string> {
+    const entity = this.toEntity(rowKey, record)
+    const res = await fetch(this.tableRequestUrl(), {
+      method: 'POST',
+      headers: {
+        accept: 'application/json;odata=nometadata',
+        'content-type': 'application/json',
+        prefer: 'return-no-content',
+      },
+      body: JSON.stringify(entity),
+    })
+    if (res.status === 409) {
+      throw new ConditionalWriteError('already_exists', `Row ${rowKey} already exists.`)
+    }
+    if (!res.ok && res.status !== 204) {
+      throw new Error(`Credential store create failed (${res.status}): ${await res.text()}`)
+    }
+    return res.headers.get('etag') ?? '"created"'
+  }
+
+  async replace(rowKey: string, record: BackendRow, ifMatch: string): Promise<string> {
+    const res = await fetch(this.entityUrl(rowKey), {
+      method: 'PUT',
+      headers: {
+        accept: 'application/json;odata=nometadata',
+        'content-type': 'application/json',
+        'if-match': ifMatch,
+      },
+      body: JSON.stringify(this.toEntity(rowKey, record)),
+    })
+    if (res.status === 404 || res.status === 412) {
+      throw new ConditionalWriteError('etag_mismatch', `Row ${rowKey} changed before replacement.`)
+    }
+    if (!res.ok && res.status !== 204) {
+      throw new Error(`Credential store replace failed (${res.status}): ${await res.text()}`)
+    }
+    return res.headers.get('etag') ?? '"replaced"'
+  }
+
   async delete(rowKey: string): Promise<boolean> {
     const res = await fetch(this.entityUrl(rowKey), {
       method: 'DELETE',
@@ -291,6 +481,30 @@ class AzureTableBackend implements CredentialBackend {
       throw new Error(`Credential store delete failed (${res.status}): ${await res.text()}`)
     }
     return true
+  }
+
+  async deleteVersioned(rowKey: string, ifMatch: string): Promise<boolean> {
+    const res = await fetch(this.entityUrl(rowKey), {
+      method: 'DELETE',
+      headers: { 'if-match': ifMatch },
+    })
+    if (res.status === 404) return false
+    if (res.status === 412) {
+      throw new ConditionalWriteError('etag_mismatch', `Row ${rowKey} changed before deletion.`)
+    }
+    if (!res.ok && res.status !== 204) {
+      throw new Error(`Credential store delete failed (${res.status}): ${await res.text()}`)
+    }
+    return true
+  }
+
+  private toEntity(rowKey: string, record: BackendRow): Record<string, unknown> {
+    const entity: Record<string, unknown> = {
+      PartitionKey: TABLE_PARTITION,
+      RowKey: rowKey,
+    }
+    for (const [key, value] of Object.entries(record)) entity[key] = value ?? ''
+    return entity
   }
 }
 
@@ -344,6 +558,40 @@ export class CredentialStore {
 
   get usesEphemeralKey(): boolean {
     return this.keyIsEphemeral
+  }
+
+  keyedHash(scope: string, value: string): string {
+    return createHmac('sha256', this.key)
+      .update(`${scope.trim()}\0${value.trim()}`, 'utf8')
+      .digest('hex')
+  }
+
+  encryptJson(value: unknown): string {
+    return encryptSecret(this.key, JSON.stringify(value))
+  }
+
+  decryptJson<T>(ciphertextB64: string): T {
+    return JSON.parse(decryptSecret(this.key, ciphertextB64)) as T
+  }
+
+  async readVersionedRow(rowKey: string): Promise<VersionedBackendRow | null> {
+    return this.backend.getVersioned(rowKey)
+  }
+
+  async createVersionedRow(rowKey: string, value: object): Promise<string> {
+    return this.backend.create(rowKey, { ...value })
+  }
+
+  async replaceVersionedRow(
+    rowKey: string,
+    value: object,
+    ifMatch: string,
+  ): Promise<string> {
+    return this.backend.replace(rowKey, { ...value }, ifMatch)
+  }
+
+  async deleteVersionedRow(rowKey: string, ifMatch: string): Promise<boolean> {
+    return this.backend.deleteVersioned(rowKey, ifMatch)
   }
 
   async save(record: Omit<StoredCredentialRecord, 'createdAt' | 'updatedAt'>): Promise<void> {

@@ -30,6 +30,8 @@ interface MockCssState {
   rejectTokenExchange: boolean
   /** Number of transient CSS Pod creation 400 responses to emit. */
   transientPodBadRequests: number
+  accountCreateRequests: number
+  loseNextAccountCreateResponse: boolean
   tokenExchanges: number
 }
 
@@ -39,6 +41,8 @@ const cssState: MockCssState = {
   pods: new Map(),
   rejectTokenExchange: false,
   transientPodBadRequests: 0,
+  accountCreateRequests: 0,
+  loseNextAccountCreateResponse: false,
   tokenExchanges: 0,
 }
 
@@ -83,8 +87,14 @@ async function handleMockCss(req: IncomingMessage, res: ServerResponse): Promise
     return
   }
   if (req.method === 'POST' && path === '/.account/create') {
+    cssState.accountCreateRequests += 1
     const token = randomUUID()
     cssState.accounts.set(token, { email: '', password: '' })
+    if (cssState.loseNextAccountCreateResponse) {
+      cssState.loseNextAccountCreateResponse = false
+      res.destroy()
+      return
+    }
     json(res, 200, { authorization: token })
     return
   }
@@ -260,6 +270,7 @@ after(() => {
 beforeEach(() => {
   cssState.rejectTokenExchange = false
   cssState.transientPodBadRequests = 0
+  cssState.loseNextAccountCreateResponse = false
 })
 
 async function postJson(
@@ -371,6 +382,57 @@ void test('solid-account: retries a transient CSS Pod creation 400', async () =>
   assert.ok(session.accessToken)
   assert.match(webId, /profile\/card#me$/)
   assert.equal(cssState.transientPodBadRequests, 0)
+})
+
+void test('solid-account: same idempotency key replays without another CSS account', async () => {
+  counter += 1
+  const request = {
+    name: `replay${counter}`,
+    email: `replay${counter}@example.com`,
+    stellarPublicKey: Keypair.random().publicKey(),
+  }
+  const headers = { 'idempotency-key': `replay-key-${counter}` }
+  const createsBefore = cssState.accountCreateRequests
+
+  const created = await postJson('/v1/solid-account', request, headers)
+  assert.equal(created.status, 200, JSON.stringify(created.json))
+  const replayed = await postJson('/v1/solid-account', request, headers)
+  assert.equal(replayed.status, 200, JSON.stringify(replayed.json))
+  assert.equal(replayed.json.webId, created.json.webId)
+  assert.equal(cssState.accountCreateRequests, createsBefore + 1)
+
+  const drifted = await postJson(
+    '/v1/solid-account',
+    { ...request, email: `drifted${counter}@example.com` },
+    headers,
+  )
+  assert.equal(drifted.status, 409)
+  assert.equal(drifted.json.code, 'idempotency_payload_conflict')
+  assert.equal(cssState.accountCreateRequests, createsBefore + 1)
+})
+
+void test('solid-account: lost CSS response enters manual review and retry does not call CSS', async () => {
+  counter += 1
+  const request = {
+    name: `response-loss${counter}`,
+    email: `response-loss${counter}@example.com`,
+    stellarPublicKey: Keypair.random().publicKey(),
+  }
+  const headers = { 'idempotency-key': `response-loss-key-${counter}` }
+  const createsBefore = cssState.accountCreateRequests
+  cssState.loseNextAccountCreateResponse = true
+
+  const uncertain = await postJson('/v1/solid-account', request, headers)
+  assert.equal(uncertain.status, 409)
+  assert.equal(uncertain.json.code, 'provisioning_manual_review')
+  assert.match(String(uncertain.json.operationId ?? ''), /^op_[0-9a-f]{64}$/)
+  assert.equal(cssState.accountCreateRequests, createsBefore + 1)
+
+  const retry = await postJson('/v1/solid-account', request, headers)
+  assert.equal(retry.status, 409)
+  assert.equal(retry.json.code, 'provisioning_manual_review')
+  assert.match(String(retry.json.operationId ?? ''), /^op_[0-9a-f]{64}$/)
+  assert.equal(cssState.accountCreateRequests, createsBefore + 1)
 })
 
 void test('browser session bootstraps a fresh staging-local session and logout revokes it', async () => {

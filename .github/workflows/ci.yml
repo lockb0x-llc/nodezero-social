@@ -34,6 +34,9 @@ jobs:
       - name: Validate environment isolation policy
         run: pnpm policy:validate-env
 
+      - name: Validate DocuStream remains enabled
+        run: pnpm policy:validate-docustream-enabled
+
       - name: Lint
         run: pnpm lint
 

@@ -49,6 +49,9 @@ jobs:
       - name: Validate attestation fail-closed policy
         run: pnpm policy:validate-attestation-fail-closed
 
+      - name: Validate DocuStream remains enabled
+        run: pnpm policy:validate-docustream-enabled
+
       - name: Setup Azure CLI
         uses: azure/CLI@v2
         with:

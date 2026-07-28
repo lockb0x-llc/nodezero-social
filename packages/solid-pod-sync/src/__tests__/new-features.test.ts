@@ -6,25 +6,40 @@ import { intersectInterests } from '../SocialGraph.js'
 const jestGlobal = import.meta.jest
 
 describe('DocustreamManager', () => {
-  it('appendActivity is locked during docustream freeze', async () => {
-    const fetch = jestGlobal.fn().mockResolvedValue({ ok: true })
-    const manager = new DocustreamManager({ fetch })
-
-    await expect(
-      manager.appendActivity('https://alice.example/', {
-        id: 'abc123',
-        source: 'rss',
-        author: 'Alice',
-        title: 'My first post',
-        content: 'Hello world',
-        timestamp: '2026-06-27T00:00:00.000Z',
+  it('appendActivity writes JSON-LD and verifies the persisted item', async () => {
+    let persistedBody = ''
+    const fetch = jestGlobal.fn().mockImplementation(async (_url: string, init?: RequestInit) => {
+      if (init?.method === 'PUT') {
+        persistedBody = String(init.body ?? '')
+        return new Response('', { status: 201 })
+      }
+      return new Response(persistedBody, {
+        status: 200,
+        headers: { 'content-type': 'application/ld+json' },
       })
-    ).rejects.toThrow('DocuStream writes are temporarily disabled during the storage refactor lock.')
+    })
+    const manager = new DocustreamManager({ fetch })
+    const item = {
+      id: 'abc123',
+      source: 'rss' as const,
+      author: 'Alice',
+      title: 'My first post',
+      content: 'Hello world',
+      timestamp: '2026-06-27T00:00:00.000Z',
+    }
 
-    expect(fetch).toHaveBeenCalledTimes(0)
+    await manager.appendActivity('https://alice.example/', item)
+
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
+      'https://alice.example/public/docustream/abc123.jsonld',
+      expect.objectContaining({ method: 'PUT' }),
+    )
+    expect(JSON.parse(persistedBody)).toMatchObject({ content: 'Hello world' })
   })
 
-  it('appendActivity rejects writes regardless of payload during lock', async () => {
+  it('appendActivity rejects invalid payloads before writing', async () => {
     const fetch = jestGlobal.fn().mockResolvedValue({ ok: true })
     const manager = new DocustreamManager({ fetch })
 
@@ -36,7 +51,7 @@ describe('DocustreamManager', () => {
         content: 'Hello world',
         timestamp: 'not-a-date',
       })
-    ).rejects.toThrow('DocuStream writes are temporarily disabled during the storage refactor lock.')
+    ).rejects.toThrow('DocuStream contract validation failed')
 
     expect(fetch).toHaveBeenCalledTimes(0)
   })
@@ -79,9 +94,16 @@ describe('DocustreamManager', () => {
     expect(items[0]?.id).toBe('good1')
   })
 
-  it('does not run pod bootstrap for blocked writes', async () => {
+  it('runs pod bootstrap before verified writes when enabled', async () => {
     const ensureDefaultLayoutAndPolicies = jestGlobal.fn().mockResolvedValue(undefined)
-    const fetch = jestGlobal.fn().mockResolvedValue({ ok: true })
+    let persistedBody = ''
+    const fetch = jestGlobal.fn().mockImplementation(async (_url: string, init?: RequestInit) => {
+      if (init?.method === 'PUT') {
+        persistedBody = String(init.body ?? '')
+        return new Response('', { status: 201 })
+      }
+      return new Response(persistedBody, { status: 200 })
+    })
     const manager = new DocustreamManager(
       { fetch },
       {
@@ -90,17 +112,15 @@ describe('DocustreamManager', () => {
       }
     )
 
-    await expect(
-      manager.appendActivity('https://alice.example/', {
-        id: 'abc123',
-        source: 'nodezero',
-        author: 'Alice',
-        content: 'Hello world',
-        timestamp: '2026-07-05T00:00:00.000Z',
-      })
-    ).rejects.toThrow('DocuStream writes are temporarily disabled during the storage refactor lock.')
+    await manager.appendActivity('https://alice.example/', {
+      id: 'abc123',
+      source: 'nodezero',
+      author: 'Alice',
+      content: 'Hello world',
+      timestamp: '2026-07-05T00:00:00.000Z',
+    })
 
-    expect(ensureDefaultLayoutAndPolicies).toHaveBeenCalledTimes(0)
+    expect(ensureDefaultLayoutAndPolicies).toHaveBeenCalledTimes(1)
   })
 })
 

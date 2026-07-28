@@ -8,7 +8,13 @@ import { randomBytes } from 'node:crypto'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { CredentialStore, encryptSecret, decryptSecret, webIdRowKey } from './credentialStore.js'
+import {
+  ConditionalWriteError,
+  CredentialStore,
+  encryptSecret,
+  decryptSecret,
+  webIdRowKey,
+} from './credentialStore.js'
 import { SessionTokenManager } from './sessionTokens.js'
 
 const KEY_B64 = randomBytes(32).toString('base64')
@@ -118,6 +124,57 @@ void test('file store: persists across instances with the same key', async () =>
     const found = await second.findByWebId('https://pods.example/bob/profile/card#me')
     assert.ok(found)
     assert.equal(found.clientCredentialsSecret, 'file-secret')
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+})
+
+void test('memory store: conditional rows reject duplicate creates and stale ETags', async () => {
+  const store = new CredentialStore({ encryptionKey: KEY_B64 })
+  const firstEtag = await store.createVersionedRow('operation-1', { state: 'reserved' })
+  await assert.rejects(
+    store.createVersionedRow('operation-1', { state: 'reserved' }),
+    (error: unknown) => error instanceof ConditionalWriteError && error.code === 'already_exists',
+  )
+
+  const secondEtag = await store.replaceVersionedRow(
+    'operation-1',
+    { state: 'proof_verified' },
+    firstEtag,
+  )
+  await assert.rejects(
+    store.replaceVersionedRow('operation-1', { state: 'completed' }, firstEtag),
+    (error: unknown) => error instanceof ConditionalWriteError && error.code === 'etag_mismatch',
+  )
+  await assert.rejects(
+    store.deleteVersionedRow('operation-1', firstEtag),
+    (error: unknown) => error instanceof ConditionalWriteError && error.code === 'etag_mismatch',
+  )
+  assert.equal(await store.deleteVersionedRow('operation-1', secondEtag), true)
+})
+
+void test('file store: ETags persist across instances and fence stale writers', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'nz-credstore-etag-'))
+  const filePath = join(dir, 'credentials.json')
+  try {
+    const first = new CredentialStore({ encryptionKey: KEY_B64, filePath })
+    const originalEtag = await first.createVersionedRow('operation-2', { state: 'reserved' })
+
+    const second = new CredentialStore({ encryptionKey: KEY_B64, filePath })
+    const loaded = await second.readVersionedRow('operation-2')
+    assert.equal(loaded?.etag, originalEtag)
+    assert.equal(loaded?.value.state, 'reserved')
+
+    const currentEtag = await second.replaceVersionedRow(
+      'operation-2',
+      { state: 'proof_verified' },
+      originalEtag,
+    )
+    await assert.rejects(
+      first.replaceVersionedRow('operation-2', { state: 'completed' }, originalEtag),
+      (error: unknown) => error instanceof ConditionalWriteError && error.code === 'etag_mismatch',
+    )
+    assert.equal(await second.deleteVersionedRow('operation-2', currentEtag), true)
   } finally {
     await rm(dir, { recursive: true, force: true })
   }

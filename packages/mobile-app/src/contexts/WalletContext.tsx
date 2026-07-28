@@ -65,6 +65,12 @@ interface DeleteNodeDataResult {
   warnings: string[]
 }
 
+export interface WalletIdentitySummary extends WalletIdentity {
+  stellarPublicKey: string | null
+  secretAvailable: boolean
+  active: boolean
+}
+
 /** Shape of the wallet context value. */
 interface WalletContextValue {
   /** Basic wallet info (public key, funded status), or `null` while loading. */
@@ -110,11 +116,13 @@ interface WalletContextValue {
    * Used by the Stellar sign-in flow to prove keypair ownership to the
    * provisioner without transmitting the private key.
    */
-  signAttestationChallenge: (challengePayload: string) => Promise<{
+  signAttestationChallenge: (challengePayload: string, keyId?: string) => Promise<{
     stellarPublicKey: string
     challengePayload: string
     signatureBase64: string
   }>
+  /** Lists public identity metadata without exposing private keys. */
+  listIdentitySummaries: () => Promise<WalletIdentitySummary[]>
   /** Reads the deployed lockb0x commitment using the active device wallet. */
   getLockboxAccountCommitment: (contractId: string) => Promise<string | null>
   /** Returns Poseidon(identitySecret) without exposing the device secret. */
@@ -305,30 +313,55 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
     [getBrokerFrame, hostedWalletBrokerUrl]
   )
 
-  const getBrokerPublicKey = useCallback(async (): Promise<string> => {
-    let lastError: unknown
-    for (let attempt = 0; attempt < 120; attempt += 1) {
-      try {
-        const result = await requestBroker<{ stellarPublicKey?: string }>('get-public-key')
-        if (result.stellarPublicKey) return result.stellarPublicKey
-        throw new Error('Wallet broker did not return a public key.')
-      } catch (error) {
-        lastError = error
-        if (!(error instanceof Error) || !error.message.includes('still initializing')) throw error
-        await new Promise<void>((resolve) => setTimeout(resolve, 250))
-      }
+  const listIdentitySummaries = useCallback(async (): Promise<WalletIdentitySummary[]> => {
+    if (hostedWalletBrokerUrl) {
+      const result = await requestBroker<{ identities?: WalletIdentitySummary[] }>('list-identities')
+      return Array.isArray(result.identities) ? result.identities : []
     }
-    throw lastError instanceof Error ? lastError : new Error('Wallet broker did not become ready.')
-  }, [requestBroker])
+
+    const service = getWalletService()
+    const [listed, active] = await Promise.all([
+      service.listIdentities(),
+      service.getActiveIdentityKeyId(),
+    ])
+    return Promise.all(
+      listed.map(async (identity) => {
+        try {
+          return {
+            ...identity,
+            stellarPublicKey: await service.getWalletPublicKeyForIdentity(identity.keyId),
+            secretAvailable: true,
+            active: identity.keyId === active,
+          }
+        } catch {
+          return {
+            ...identity,
+            stellarPublicKey: null,
+            secretAvailable: false,
+            active: identity.keyId === active,
+          }
+        }
+      })
+    )
+  }, [hostedWalletBrokerUrl, requestBroker])
 
   const refreshIdentities = useCallback(async (): Promise<void> => {
     if (hostedWalletBrokerUrl) {
-      const stellarPublicKey = await getBrokerPublicKey()
-      setIdentities([
-        { keyId: 'broker', label: 'Device identity', createdAt: '', lastUsedAt: null },
-      ])
-      setActiveIdentityKeyId('broker')
-      setWalletInfo({ keyId: 'broker', publicKey: stellarPublicKey, isFunded: false })
+      const summaries = await listIdentitySummaries()
+      const active =
+        summaries.find((identity) => identity.active && identity.secretAvailable) ??
+        summaries.find((identity) => identity.secretAvailable) ??
+        summaries.find((identity) => identity.active) ??
+        summaries[0]
+      setIdentities(summaries.map(({ stellarPublicKey: _publicKey, secretAvailable: _available, active: _active, ...identity }) => identity))
+      setActiveIdentityKeyId(active?.keyId ?? null)
+      setWalletInfo(
+        active?.stellarPublicKey
+          ? { keyId: active.keyId, publicKey: active.stellarPublicKey, isFunded: false }
+          : null
+      )
+      if (summaries.length === 0) throw new Error('No wallet identities are stored on this device.')
+      if (!active?.secretAvailable) throw new Error('The active wallet identity is missing its secret key.')
       setInitializationError(null)
       return
     }
@@ -340,7 +373,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
     setIdentities(listed)
     setActiveIdentityKeyId(active)
     setInitializationError(null)
-  }, [getBrokerPublicKey, hostedWalletBrokerUrl])
+  }, [hostedWalletBrokerUrl, listIdentitySummaries])
 
   const hydrateSelectedWallet = useCallback(
     async (keyId: string): Promise<void> => {
@@ -449,8 +482,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
       setIsIdentityBusy(true)
       try {
         if (hostedWalletBrokerUrl) {
-          if (keyId !== 'broker')
-            throw new Error('Hosted wallet broker exposes only the active device identity.')
+          await requestBroker('select-identity', { keyId })
           await refreshIdentities()
           return
         }
@@ -844,14 +876,15 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
   )
 
   const signAttestationChallenge = useCallback(
-    async (challengePayload: string) => {
+    async (challengePayload: string, keyId?: string) => {
       if (hostedWalletBrokerUrl) {
         return requestBroker<{
           stellarPublicKey: string
           challengePayload: string
           signatureBase64: string
-        }>('sign-challenge', { challengePayload })
+        }>('sign-challenge', { challengePayload, ...(keyId ? { keyId } : {}) })
       }
+      if (keyId) return getWalletService().signAttestationChallengeForIdentity(keyId, challengePayload)
       return getWalletService().signAttestationChallenge(challengePayload)
     },
     [hostedWalletBrokerUrl, requestBroker]
@@ -904,6 +937,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
         deleteNodeData,
         createSeamlessAttestation,
         signAttestationChallenge,
+        listIdentitySummaries,
         getLockboxAccountCommitment,
         deriveAccountCommitment,
         selectIdentity,

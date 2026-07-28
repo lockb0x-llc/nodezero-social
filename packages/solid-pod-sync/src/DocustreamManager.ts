@@ -15,9 +15,6 @@ import {
 } from './contracts/DocustreamContract.js'
 import { type PodLayoutManager, type PodPolicyMatrix } from './PodLayoutManager.js'
 
-const DOCUSTREAM_WRITE_LOCK_ERROR =
-  'DocuStream writes are temporarily disabled during the storage refactor lock.'
-
 /** The origin source of a stream item. */
 export type { StreamItem } from './contracts/DocustreamContract.js'
 
@@ -28,6 +25,10 @@ export interface DocustreamManagerOptions {
     ensureDefaultLayoutAndPolicies: PodLayoutManager['ensureDefaultLayoutAndPolicies']
     ensureDocustreamLayoutAndPolicy?: PodLayoutManager['ensureDocustreamLayoutAndPolicy']
   }
+}
+
+interface AuthenticatedSession {
+  fetch: typeof globalThis.fetch
 }
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
@@ -53,6 +54,29 @@ function fromJsonLd(text: string): StreamItem | null {
   } catch {
     return null
   }
+}
+
+function toJsonLd(item: StreamItem): string {
+  return JSON.stringify({
+    '@context': {
+      '@vocab': 'https://schema.org/',
+      nodezero: 'https://vocab.nodezero.social/ns#',
+      source: 'nodezero:source',
+      author: 'author',
+      title: 'name',
+      content: 'text',
+      timestamp: 'datePublished',
+      url: 'url',
+    },
+    '@id': `nodezero:docustream/${item.id}`,
+    '@type': 'SocialMediaPosting',
+    source: item.source,
+    author: item.author,
+    ...(item.title !== undefined ? { title: item.title } : {}),
+    content: item.content,
+    timestamp: item.timestamp,
+    ...(item.url !== undefined ? { url: item.url } : {}),
+  }, null, 2)
 }
 
 function extractJsonLdUrls(payload: unknown): string[] {
@@ -104,13 +128,10 @@ function extractJsonLdUrls(payload: unknown): string[] {
  * ```
  */
 export class DocustreamManager {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   constructor(
-    private readonly session: any,
-    _options: DocustreamManagerOptions = {}
-  ) {
-    void _options
-  }
+    private readonly session: AuthenticatedSession,
+    private readonly options: DocustreamManagerOptions = {}
+  ) {}
 
   /**
    * Writes a `StreamItem` as a JSON-LD document to `/public/docustream/<id>.jsonld`
@@ -120,10 +141,37 @@ export class DocustreamManager {
    * @param item - The activity item to persist.
    */
   async appendActivity(podRoot: string, item: StreamItem): Promise<void> {
-    void podRoot
-    void item
-    await Promise.resolve()
-    throw new Error(DOCUSTREAM_WRITE_LOCK_ERROR)
+    assertValidStreamItem(item)
+    await this.ensurePodLayoutIfEnabled(podRoot)
+    const resourceUrl = `${podRoot.replace(/\/$/, '')}/public/docustream/${encodeURIComponent(item.id)}.jsonld`
+    const response = await this.session.fetch(resourceUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/ld+json' },
+      body: toJsonLd(item),
+    })
+    if (!response.ok) {
+      throw new Error(`Failed to write DocuStream item ${item.id}: HTTP ${response.status}`)
+    }
+    const readBack = await this.session.fetch(resourceUrl, {
+      headers: { Accept: 'application/ld+json, application/json' },
+    })
+    if (!readBack.ok) {
+      throw new Error(`Failed to verify DocuStream item ${item.id}: HTTP ${readBack.status}`)
+    }
+    const persisted = fromJsonLd(await readBack.text())
+    if (!persisted || JSON.stringify(persisted) !== JSON.stringify(item)) {
+      throw new Error(`DocuStream item ${item.id} read-back did not match the requested item.`)
+    }
+  }
+
+  private async ensurePodLayoutIfEnabled(podRoot: string): Promise<void> {
+    if (!this.options.enablePodBootstrap) return
+    const manager = this.options.podLayoutManager
+    if (manager?.ensureDocustreamLayoutAndPolicy) {
+      await manager.ensureDocustreamLayoutAndPolicy(podRoot, this.options.policyMatrix?.docustream ?? 'public-read')
+      return
+    }
+    if (manager) await manager.ensureDefaultLayoutAndPolicies(podRoot, this.options.policyMatrix)
   }
 
   /**

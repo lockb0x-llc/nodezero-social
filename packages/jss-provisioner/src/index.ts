@@ -16,7 +16,14 @@ import {
   probePodAccess,
   writePodAccountDocument,
 } from './solidAccount.js'
-import { CredentialStore } from './credentialStore.js'
+import { ConditionalWriteError, CredentialStore } from './credentialStore.js'
+import {
+  computeProvisioningRequestDigest,
+  ProvisioningConflictError,
+  ProvisioningStore,
+  type ProvisioningLease,
+  type VersionedProvisioningOperation,
+} from './provisioningStore.js'
 import { SessionTokenManager } from './sessionTokens.js'
 import { handlePodProxyRequest, POD_PROXY_PREFIX, evictPodTokenCache } from './podProxy.js'
 import { treasuryCreateAccount } from './treasuryCreateAccount.js'
@@ -61,7 +68,9 @@ import type {
   ProvisionResult,
   StellarChallengeRequest,
   StellarTokenRequest,
+  LockboxProvisioning,
 } from './types.js'
+import type { CreateSolidAccountResult } from './solidAccount.js'
 
 const PORT = Number(process.env.PORT ?? process.env.JSS_PROVISIONER_PORT ?? 8181)
 const ISSUER = process.env.JSS_ISSUER_URL ?? 'https://staging.nodezero.social'
@@ -130,6 +139,7 @@ const communityDirectory = new CommunityDirectoryStore({
   persistenceFilePath: COMMUNITY_DIRECTORY_STORE_PATH,
 })
 const credentialStore = new CredentialStore()
+const provisioningStore = new ProvisioningStore(credentialStore)
 const sessions = new SessionTokenManager({ issuer: ISSUER })
 const knownSolidAccountEmails = new Set<string>()
 const notificationPublisher = createNotificationEventPublisherFromEnv()
@@ -143,6 +153,19 @@ const DOCUSTREAM_ALLOWED_CONTENT_TYPES = [
   'application/atom+xml',
 ]
 const STELLAR_AUTH_AUDIENCE = 'nz-css-stellar-login-v1'
+const PROVISIONING_LEASE_TTL_MS = Number(process.env.JSS_PROVISIONING_LEASE_TTL_MS ?? 5 * 60_000)
+
+interface SolidAccountResumeMaterial {
+  password?: string
+  account?: CreateSolidAccountResult | {
+    webId: string
+    podUrl: string
+  }
+  lockbox?: LockboxProvisioning
+  attestation?: { accountCommitmentHex: string; ciphertextSha256Hex: string } | null
+  accountDocumentUrl?: string | null
+  treasuryFunded?: boolean
+}
 
 class DocustreamRssFetchError extends Error {
   constructor(
@@ -216,7 +239,7 @@ function corsHeaders(req: IncomingMessage): Record<string, string> {
     ...(isAllowedOrigin ? { 'access-control-allow-credentials': 'true' } : {}),
     'access-control-allow-methods': 'GET,HEAD,POST,PUT,PATCH,DELETE,OPTIONS',
     'access-control-allow-headers':
-      'content-type,authorization,x-nz-internal-key,accept,if-match,if-none-match,slug,link',
+      'content-type,authorization,idempotency-key,x-nz-internal-key,accept,if-match,if-none-match,slug,link',
     'access-control-expose-headers': 'etag,location,link,wac-allow,accept-patch,allow',
     vary: 'origin',
   }
@@ -813,8 +836,8 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
     }
 
     sendJson(req, res, 200, {
-      exists: knownSolidAccountEmails.has(email),
-      source: 'provisioner-memory',
+      exists: knownSolidAccountEmails.has(email) || await provisioningStore.isEmailReserved(email),
+      source: 'provisioner-reservations',
       checkedAt: new Date().toISOString(),
     })
     return
@@ -947,19 +970,13 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
       return
     }
 
+    let sagaOperation: VersionedProvisioningOperation | null = null
+    let sagaLease: ProvisioningLease | null = null
     try {
       const email = normalizeEmail(body.email)
-      // The CSS account password is internal machinery only: generated here,
-      // used once against the account API, then discarded. All ongoing Solid
-      // access flows through stored client credentials via the Pod proxy.
-      const password = generateEphemeralCssPassword()
       let treasuryFunded = false
       if (!isValidEmail(email)) {
         sendJson(req, res, 400, { error: 'email must be a valid email address.' })
-        return
-      }
-      if (knownSolidAccountEmails.has(email)) {
-        sendJson(req, res, 409, { error: 'There already is a login for this e-mail address.' })
         return
       }
 
@@ -971,23 +988,194 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
       const bridgeProof = LOCKBOX_FACTORY_VERSION === 'v3'
         ? parseBridgeProof(body, accountCommitmentHex, ciphertextHex)
         : undefined
-      if (bridgeProof) {
-        const expectedPodUrl = `${SOLID_CSS_BASE_URL}/${normalizedName}/`
-        await verifyCanonicalBridgeClaim({
-          bridgeProof,
-          webId: `${expectedPodUrl}profile/card#me`,
-          podUrl: expectedPodUrl,
-          stellarPublicKey,
-          factoryContractId: LOCKBOX_FACTORY_CONTRACT_ID,
-          configFingerprint: activeConfig.configFingerprint,
-        })
+      const expectedPodUrl = `${SOLID_CSS_BASE_URL}/${normalizedName}/`
+      const expectedWebId = `${expectedPodUrl}profile/card#me`
+      const requestDigest = computeProvisioningRequestDigest({
+        normalizedName,
+        email,
+        stellarPublicKey,
+        accountCommitmentHex,
+        ciphertextHex,
+        proofHex: bridgeProof?.proofHex ?? '',
+        proofHashHex: bridgeProof?.proofHashHex ?? '',
+        claimHashHex: bridgeProof?.claimHashHex ?? '',
+        podBindingHex: bridgeProof?.podBindingHex ?? '',
+        circuitVersion: bridgeProof?.circuitVersion ?? '',
+        configFingerprint: activeConfig.configFingerprint,
+      })
+      const headerIdempotencyKey = Array.isArray(req.headers['idempotency-key'])
+        ? req.headers['idempotency-key'][0]
+        : req.headers['idempotency-key']
+      const idempotencyKey = headerIdempotencyKey?.trim() || `legacy:${requestDigest}`
+      if (idempotencyKey.length > 256) {
+        sendJson(req, res, 400, { error: 'Idempotency-Key must not exceed 256 characters.' })
+        return
       }
 
-      const account = await createSolidAccount(SOLID_CSS_BASE_URL, {
-        name: normalizedName,
-        email,
-        password,
+      sagaOperation = await provisioningStore.reserveOrLoad({
+        idempotencyKey,
+        requestDigest,
+        normalizedHandle: normalizedName,
+        normalizedEmail: email,
+        expectedWebId,
+        expectedPodUrl,
+        stellarPublicKey,
+        configFingerprint: activeConfig.configFingerprint,
+        descriptorSnapshot: activeConfig,
+        resumeMaterial: {
+          password: generateEphemeralCssPassword(),
+        } satisfies SolidAccountResumeMaterial,
       })
+      if (sagaOperation.operation.state === 'manual_review') {
+        sendJson(req, res, 409, {
+          error: 'Provisioning requires operator review before it can continue.',
+          code: 'provisioning_manual_review',
+          operationId: sagaOperation.operation.operationId,
+        })
+        return
+      }
+      if (sagaOperation.operation.state === 'failed_terminal') {
+        sendJson(req, res, 409, {
+          error: 'Provisioning cannot continue because the original request failed validation.',
+          code: 'provisioning_failed_terminal',
+          operationId: sagaOperation.operation.operationId,
+        })
+        return
+      }
+      const acquired = await provisioningStore.acquireLease(
+        sagaOperation,
+        `http-${process.pid}-${randomBytes(8).toString('hex')}`,
+        PROVISIONING_LEASE_TTL_MS,
+      )
+      sagaOperation = acquired.operation
+      sagaLease = acquired.lease
+      const replayingCompletedOperation = sagaOperation.operation.state === 'completed'
+
+      if (sagaOperation.operation.state === 'reserved') {
+        try {
+          if (bridgeProof) {
+            await verifyCanonicalBridgeClaim({
+              bridgeProof,
+              webId: expectedWebId,
+              podUrl: expectedPodUrl,
+              stellarPublicKey,
+              factoryContractId: LOCKBOX_FACTORY_CONTRACT_ID,
+              configFingerprint: activeConfig.configFingerprint,
+            })
+          }
+          sagaOperation = await provisioningStore.transition(
+            sagaOperation,
+            sagaLease,
+            'proof_verified',
+          )
+        } catch (proofError) {
+          const terminalOperation = await provisioningStore.transition(
+            sagaOperation,
+            sagaLease,
+            'failed_terminal',
+            { errorCode: 'proof_verification_failed' },
+          ).catch(() => null)
+          if (terminalOperation) {
+            sagaOperation = terminalOperation
+            const releasedOperation = await provisioningStore.releaseLease(
+              terminalOperation,
+              sagaLease,
+            ).catch(() => null)
+            if (releasedOperation) sagaOperation = releasedOperation
+          }
+          throw proofError
+        }
+      }
+
+      let resumeMaterial = provisioningStore.decryptResumeMaterial<SolidAccountResumeMaterial>(
+        sagaOperation.operation,
+      )
+      if (sagaOperation.operation.state === 'proof_verified') {
+        sagaOperation = await provisioningStore.transition(
+          sagaOperation,
+          sagaLease,
+          'css_account_pending',
+        )
+      }
+
+      if (sagaOperation.operation.state === 'css_account_pending') {
+        try {
+          const renewed = await provisioningStore.renewLease(
+            sagaOperation,
+            sagaLease,
+            PROVISIONING_LEASE_TTL_MS,
+          )
+          sagaOperation = renewed.operation
+          sagaLease = renewed.lease
+          if (!resumeMaterial.password) {
+            throw new Error('Provisioning checkpoint is missing the temporary CSS password.')
+          }
+          const createdAccount = await createSolidAccount(SOLID_CSS_BASE_URL, {
+            name: normalizedName,
+            email,
+            password: resumeMaterial.password,
+          })
+          resumeMaterial = { ...resumeMaterial, account: createdAccount }
+          sagaOperation = await provisioningStore.transition(
+            sagaOperation,
+            sagaLease,
+            'css_account_created',
+            { resumeMaterial },
+          )
+        } catch (cssError) {
+          sagaOperation = await provisioningStore.markManualReview(
+            sagaOperation,
+            'css_account_result_unknown',
+          ).catch(() => sagaOperation)
+          throw cssError
+        }
+      }
+      for (const nextState of ['css_login_created', 'pod_created', 'client_credentials_created'] as const) {
+        const currentState = sagaOperation.operation.state
+        const eligible =
+          (nextState === 'css_login_created' && currentState === 'css_account_created') ||
+          (nextState === 'pod_created' && currentState === 'css_login_created') ||
+          (nextState === 'client_credentials_created' && currentState === 'pod_created')
+        if (eligible) {
+          sagaOperation = await provisioningStore.transition(sagaOperation, sagaLease, nextState)
+        }
+      }
+      resumeMaterial = provisioningStore.decryptResumeMaterial<SolidAccountResumeMaterial>(
+        sagaOperation.operation,
+      )
+      if (!resumeMaterial.account) {
+        throw new Error('Provisioning checkpoint is missing the CSS account result.')
+      }
+      let account = resumeMaterial.account
+      if (
+        !('clientCredentialsId' in account) ||
+        !('clientCredentialsSecret' in account)
+      ) {
+        const storedCredentials = await credentialStore.findByWebId(expectedWebId)
+        if (!storedCredentials) {
+          throw new Error('Completed provisioning credentials are unavailable.')
+        }
+        account = {
+          webId: storedCredentials.webId,
+          podUrl: storedCredentials.podUrl,
+          clientCredentialsId: storedCredentials.clientCredentialsId,
+          clientCredentialsSecret: storedCredentials.clientCredentialsSecret,
+          clientCredentialsResource: '',
+        }
+      }
+      if (account.webId !== expectedWebId || account.podUrl !== expectedPodUrl) {
+        sagaOperation = await provisioningStore.markManualReview(
+          sagaOperation,
+          'css_account_identity_mismatch',
+        )
+        sendJson(req, res, 409, {
+          error: 'The CSS account result did not match the reserved identity.',
+          code: 'provisioning_manual_review',
+          operationId: sagaOperation.operation.operationId,
+        })
+        return
+      }
+
       communityDirectory.seedRecord({
         webId: account.webId,
         podUrl: account.podUrl,
@@ -999,12 +1187,19 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
       // must be Treasury-funded before they can author on-chain operations
       // (e.g. register_webid). Idempotent + fail-closed: a funding failure aborts
       // onboarding so we never hand back an account the member cannot use.
-      if (TREASURY_FUND_MEMBERS) {
+      if (TREASURY_FUND_MEMBERS && !resumeMaterial.treasuryFunded) {
         try {
           await treasuryCreateAccount(stellarPublicKey)
           treasuryFunded = true
+          resumeMaterial = { ...resumeMaterial, treasuryFunded: true }
+          sagaOperation = await provisioningStore.checkpointResumeMaterial(
+            sagaOperation,
+            sagaLease,
+            resumeMaterial,
+          )
         } catch (fundErr) {
           const message = fundErr instanceof Error ? fundErr.message : 'Treasury member funding failed.'
+          sagaOperation = await provisioningStore.releaseLease(sagaOperation, sagaLease)
           sendJson(req, res, 502, { error: message, webId: account.webId, podUrl: account.podUrl })
           emitLifecycleEvent('account.treasury-funding.failed', {
             webId: account.webId,
@@ -1020,53 +1215,62 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
 
       // Optionally anchor the WebID<->Stellar pairing in a per-user lockb0x.
       // Requested by supplying stellarPublicKey; fail-closed when requested.
-      let lockbox: Awaited<ReturnType<typeof store.provisionLockbox>> | undefined
-      if (stellarPublicKey) {
-        const podBindingHash = createHash('sha256')
-          .update(`${account.webId}|${stellarPublicKey}`)
-          .digest('hex')
-        const proofRootHex = createHash('sha256')
-          .update(`NZ_POD_PAIR_V1|${account.webId}|${stellarPublicKey}|${account.podUrl}`)
-          .digest('hex')
-        lockbox = await store.provisionLockbox({
-          webId: account.webId,
-          stellarPublicKey,
-          podBindingHash,
-          proofRootHex,
-          ...(bridgeProof ? { bridgeProof } : {}),
-        })
-        if (lockbox.status !== 'ready' || !lockbox.userLockboxContractId) {
-          sendJson(req, res, 502, {
-            error: lockbox.error ?? 'Per-user lockb0x anchoring failed.',
-            webId: account.webId,
-            podUrl: account.podUrl,
-          })
-          return
-        }
-      }
-
-      // Phase E: anchor the REAL ZK attestation — the identity commitment
-      // (Poseidon(identitySecret)) plus the Stellar-encrypted claim ciphertext —
-      // into the lockb0x via `set_attestation` (Deployer = operator). The client
-      // produces these on-device from a verified `pod_ownership` proof. This
-      // replaces the earlier sha256 pairing root as the authoritative anchor.
-      // Fail-closed when supplied: onboarding must not complete half-anchored.
-      let attestation: { accountCommitmentHex: string; ciphertextSha256Hex: string } | null = null
-      if (lockbox?.userLockboxContractId && accountCommitmentHex && ciphertextHex) {
+      let lockbox = resumeMaterial.lockbox
+      let attestation = resumeMaterial.attestation ?? null
+      if (sagaOperation.operation.state === 'client_credentials_created') {
         try {
-          if (LOCKBOX_FACTORY_VERSION !== 'v3') {
-            await anchorAttestation(lockbox.userLockboxContractId, accountCommitmentHex, ciphertextHex)
+          const renewed = await provisioningStore.renewLease(
+            sagaOperation,
+            sagaLease,
+            PROVISIONING_LEASE_TTL_MS,
+          )
+          sagaOperation = renewed.operation
+          sagaLease = renewed.lease
+          const podBindingHash = createHash('sha256')
+            .update(`${account.webId}|${stellarPublicKey}`)
+            .digest('hex')
+          const proofRootHex = createHash('sha256')
+            .update(`NZ_POD_PAIR_V1|${account.webId}|${stellarPublicKey}|${account.podUrl}`)
+            .digest('hex')
+          lockbox = await store.provisionLockbox({
+            webId: account.webId,
+            stellarPublicKey,
+            podBindingHash,
+            proofRootHex,
+            ...(bridgeProof ? { bridgeProof } : {}),
+          })
+          if (lockbox.status !== 'ready' || !lockbox.userLockboxContractId) {
+            throw new Error(lockbox.error ?? 'Per-user lockb0x anchoring failed.')
           }
-          attestation = {
-            accountCommitmentHex: accountCommitmentHex.toLowerCase().replace(/^0x/, ''),
-            ciphertextSha256Hex: createHash('sha256')
-              .update(Buffer.from(ciphertextHex.replace(/^0x/, ''), 'hex'))
-              .digest('hex'),
+
+          // Phase E: anchor the REAL ZK attestation — the identity commitment
+          // (Poseidon(identitySecret)) plus the Stellar-encrypted claim ciphertext —
+          // into the lockb0x via `set_attestation` (Deployer = operator). The client
+          // produces these on-device from a verified `pod_ownership` proof.
+          if (accountCommitmentHex && ciphertextHex) {
+            if (LOCKBOX_FACTORY_VERSION !== 'v3') {
+              await anchorAttestation(lockbox.userLockboxContractId, accountCommitmentHex, ciphertextHex)
+            }
+            attestation = {
+              accountCommitmentHex: accountCommitmentHex.toLowerCase().replace(/^0x/, ''),
+              ciphertextSha256Hex: createHash('sha256')
+                .update(Buffer.from(ciphertextHex.replace(/^0x/, ''), 'hex'))
+                .digest('hex'),
+            }
           }
-        } catch (anchorErr) {
-          const message = anchorErr instanceof Error ? anchorErr.message : 'Attestation anchoring failed.'
-          sendJson(req, res, 502, { error: message, webId: account.webId, podUrl: account.podUrl })
-          return
+          resumeMaterial = { ...resumeMaterial, lockbox, attestation }
+          sagaOperation = await provisioningStore.transition(
+            sagaOperation,
+            sagaLease,
+            'lockbox_ready',
+            { resumeMaterial },
+          )
+        } catch (lockboxError) {
+          sagaOperation = await provisioningStore.markManualReview(
+            sagaOperation,
+            'lockbox_result_unknown',
+          ).catch(() => sagaOperation)
+          throw lockboxError
         }
       }
 
@@ -1075,16 +1279,34 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
       // material; deleting this record is the server-side revocation path for
       // every session of this user, and the lockbox fields let returning-user
       // login return the anchor for the client-side fail-closed check.
-      await credentialStore.save({
-        webId: account.webId,
-        podUrl: account.podUrl,
-        stellarPublicKey,
-        clientCredentialsId: account.clientCredentialsId,
-        clientCredentialsSecret: account.clientCredentialsSecret,
-        userLockboxContractId: lockbox?.userLockboxContractId ?? null,
-        lockboxFactoryContractId: lockbox?.factoryContractId ?? null,
-        proofRootHex: lockbox?.proofRootHex ?? null,
-      })
+      if (sagaOperation.operation.state === 'lockbox_ready') {
+        await credentialStore.save({
+          webId: account.webId,
+          podUrl: account.podUrl,
+          stellarPublicKey,
+          clientCredentialsId: account.clientCredentialsId,
+          clientCredentialsSecret: account.clientCredentialsSecret,
+          userLockboxContractId: lockbox?.userLockboxContractId ?? null,
+          lockboxFactoryContractId: lockbox?.factoryContractId ?? null,
+          proofRootHex: lockbox?.proofRootHex ?? null,
+        })
+        sagaOperation = await provisioningStore.transition(
+          sagaOperation,
+          sagaLease,
+          'credential_committed',
+          {
+            resumeMaterial: {
+              account: { webId: account.webId, podUrl: account.podUrl },
+              ...(lockbox ? { lockbox } : {}),
+              attestation,
+              treasuryFunded: resumeMaterial.treasuryFunded ?? treasuryFunded,
+            } satisfies SolidAccountResumeMaterial,
+          },
+        )
+        resumeMaterial = provisioningStore.decryptResumeMaterial<SolidAccountResumeMaterial>(
+          sagaOperation.operation,
+        )
+      }
 
       // Persist the account profile (WebID <-> Stellar pairing + on-chain
       // lockb0x references) into the user's own Pod, so the data lives with the
@@ -1108,24 +1330,32 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
         attestation,
         createdAt: new Date().toISOString(),
       }
-      let accountDocumentUrl: string | null = null
-      try {
-        accountDocumentUrl = await writePodAccountDocument(
-          SOLID_CSS_BASE_URL,
-          { id: account.clientCredentialsId, secret: account.clientCredentialsSecret },
-          account.podUrl,
-          accountRecord,
+      let accountDocumentUrl = resumeMaterial.accountDocumentUrl ?? null
+      if (!replayingCompletedOperation) {
+        try {
+          accountDocumentUrl = await writePodAccountDocument(
+            SOLID_CSS_BASE_URL,
+            { id: account.clientCredentialsId, secret: account.clientCredentialsSecret },
+            account.podUrl,
+            accountRecord,
+          )
+        } catch (writeErr) {
+          // Surface in logs but do not fail onboarding; the lockb0x is authoritative.
+          console.warn('[solid-account] Pod account document write failed:', writeErr)
+        }
+        resumeMaterial = { ...resumeMaterial, accountDocumentUrl }
+        sagaOperation = await provisioningStore.checkpointResumeMaterial(
+          sagaOperation,
+          sagaLease,
+          resumeMaterial,
         )
-      } catch (writeErr) {
-        // Surface in logs but do not fail onboarding; the lockb0x is authoritative.
-        console.warn('[solid-account] Pod account document write failed:', writeErr)
       }
 
       // Allocate + fill the WebID profile-card anchor slot with the on-chain
       // bindings (lockb0x, Stellar account, ZK identity commitment) so the
       // attestation is discoverable from the WebID. Best-effort: the on-chain
       // lockb0x remains authoritative, so a PATCH failure does not fail onboarding.
-      if (attestation && lockbox?.userLockboxContractId) {
+      if (!replayingCompletedOperation && attestation && lockbox?.userLockboxContractId) {
         try {
           await patchPodProfileAnchor(
             SOLID_CSS_BASE_URL,
@@ -1148,6 +1378,13 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
       // there is no separate login leg and no browser↔CSS interaction.
       let session: ReturnType<SessionTokenManager['issue']>
       try {
+        const renewed = await provisioningStore.renewLease(
+          sagaOperation,
+          sagaLease,
+          PROVISIONING_LEASE_TTL_MS,
+        )
+        sagaOperation = renewed.operation
+        sagaLease = renewed.lease
         session = await issueVerifiedSession({
           webId: account.webId,
           podUrl: account.podUrl,
@@ -1156,12 +1393,20 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
         })
       } catch (sessionErr) {
         const message = sessionErr instanceof Error ? sessionErr.message : 'Session issuance failed.'
+        sagaOperation = await provisioningStore.releaseLease(sagaOperation, sagaLease)
         sendJson(req, res, 502, {
           error: `Account was created but Solid access could not be verified: ${message}`,
           webId: account.webId,
           podUrl: account.podUrl,
         })
         return
+      }
+      if (sagaOperation.operation.state === 'credential_committed') {
+        sagaOperation = await provisioningStore.transition(
+          sagaOperation,
+          sagaLease,
+          'session_verified',
+        )
       }
 
       const lockboxResponse = {
@@ -1175,6 +1420,15 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
         stellarPublicKey: stellarPublicKey || null,
         lockbox: lockboxResponse,
       })
+      if (sagaOperation.operation.state === 'session_verified') {
+        await provisioningStore.commitReservations(sagaOperation, sagaLease)
+        sagaOperation = await provisioningStore.transition(
+          sagaOperation,
+          sagaLease,
+          'completed',
+        )
+      }
+      sagaOperation = await provisioningStore.releaseLease(sagaOperation, sagaLease)
       sendJson(req, res, 200, {
         status: 'ready',
         webId: account.webId,
@@ -1186,21 +1440,47 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
         attestation,
       }, browserSessionHeaders)
 
-      emitLifecycleEvent('account.created', {
-        webId: account.webId,
-        podUrl: account.podUrl,
-        stellarPublicKey,
-        ...(lockbox?.userLockboxContractId
-          ? { lockboxContractId: lockbox.userLockboxContractId }
-          : {}),
-        metadata: {
-          accountDocumentWritten: Boolean(accountDocumentUrl),
-          treasuryFunded,
-          attestationAnchored: Boolean(attestation),
-        },
-      })
+      if (!replayingCompletedOperation) {
+        emitLifecycleEvent('account.created', {
+          webId: account.webId,
+          podUrl: account.podUrl,
+          stellarPublicKey,
+          ...(lockbox?.userLockboxContractId
+            ? { lockboxContractId: lockbox.userLockboxContractId }
+            : {}),
+          metadata: {
+            accountDocumentWritten: Boolean(accountDocumentUrl),
+            treasuryFunded,
+            attestationAnchored: Boolean(attestation),
+          },
+        })
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Solid account provisioning failed.'
+      if (err instanceof ProvisioningConflictError) {
+        sendJson(req, res, 409, {
+          error: message,
+          code: err.code,
+          ...(sagaOperation ? { operationId: sagaOperation.operation.operationId } : {}),
+        })
+        return
+      }
+      if (err instanceof ConditionalWriteError) {
+        sendJson(req, res, 409, {
+          error: 'Provisioning changed concurrently. Retry the request.',
+          code: 'provisioning_in_progress',
+          ...(sagaOperation ? { operationId: sagaOperation.operation.operationId } : {}),
+        })
+        return
+      }
+      if (sagaOperation?.operation.state === 'manual_review') {
+        sendJson(req, res, 409, {
+          error: message,
+          code: 'provisioning_manual_review',
+          operationId: sagaOperation.operation.operationId,
+        })
+        return
+      }
       if (isDuplicateEmailProvisioningMessage(message) && isNonEmpty(body.email)) {
         rememberKnownSolidEmail(body.email)
         sendJson(req, res, 409, { error: 'There already is a login for this e-mail address.' })

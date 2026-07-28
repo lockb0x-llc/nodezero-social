@@ -33,6 +33,7 @@ export default function WalletBrokerScreen(): JSX.Element {
     createIdentity,
     selectIdentity,
     findIdentityKeyIdByPublicKey,
+    listIdentitySummaries,
   } = useWallet()
 
   React.useEffect(() => {
@@ -70,6 +71,23 @@ export default function WalletBrokerScreen(): JSX.Element {
           })
 
         try {
+          if (request.operation === 'list-identities') {
+            reply(true, { identities: await listIdentitySummaries() })
+            return
+          }
+          if (request.operation === 'select-identity') {
+            await selectIdentity(request.payload.keyId ?? '')
+            reply(true)
+            return
+          }
+          if (request.operation === 'sign-challenge' && request.payload.keyId) {
+            const signed = await signAttestationChallenge(
+              request.payload.challengePayload ?? '',
+              request.payload.keyId,
+            )
+            reply(true, signed)
+            return
+          }
           if (initializationError) throw new Error(initializationError)
           if (!walletInfo?.publicKey) throw new Error('Wallet is still initializing.')
           if (request.operation === 'get-public-key') {
@@ -78,7 +96,10 @@ export default function WalletBrokerScreen(): JSX.Element {
           }
           if (request.operation === 'sign-challenge') {
             const challengePayload = request.payload.challengePayload ?? ''
-            const signed = await signAttestationChallenge(challengePayload)
+            const signed = await signAttestationChallenge(
+              challengePayload,
+              request.payload.keyId || undefined,
+            )
             reply(true, signed)
             return
           }
@@ -108,11 +129,6 @@ export default function WalletBrokerScreen(): JSX.Element {
           }
           if (request.operation === 'create-identity') {
             await createIdentity(request.payload.label)
-            reply(true)
-            return
-          }
-          if (request.operation === 'select-identity') {
-            await selectIdentity(request.payload.keyId ?? '')
             reply(true)
             return
           }
@@ -152,6 +168,7 @@ export default function WalletBrokerScreen(): JSX.Element {
     findIdentityKeyIdByPublicKey,
     getLockboxAccountCommitment,
     initializationError,
+    listIdentitySummaries,
     selectIdentity,
     signAttestationChallenge,
     walletInfo?.publicKey,
