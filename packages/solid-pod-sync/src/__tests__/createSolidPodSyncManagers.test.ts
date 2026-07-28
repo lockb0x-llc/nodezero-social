@@ -48,12 +48,20 @@ describe('createSolidPodSyncManagers', () => {
         if (method === 'GET') {
           return new Response(profile, {
             status: 200,
-            headers: { 'content-type': 'text/turtle' },
+            headers: { 'content-type': 'text/turtle', etag: '"profile-1"' },
           })
         }
+        if (method === 'HEAD') {
+          return new Response(null, { status: 200, headers: { etag: '"profile-1"' } })
+        }
         const patch = String(init?.body ?? '')
+        profile = profile
+          .split('\n')
+          .filter((line) => !line.includes('https://nodezero.social/ns#docustream'))
+          .join('\n')
+        const insertBlock = patch.slice(patch.lastIndexOf('INSERT DATA'))
         profile += Array.from(
-          patch.matchAll(
+          insertBlock.matchAll(
             /<https:\/\/alice\.example\/profile\/card#me> <(https:\/\/nodezero\.social\/ns#docustream[^>]+)> <([^>]+)> \./g,
           ),
         ).map((match) => `\n<https://alice.example/profile/card#me> <${match[1]}> <${match[2]}> .`).join('')

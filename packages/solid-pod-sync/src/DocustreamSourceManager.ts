@@ -267,6 +267,22 @@ export class DocustreamSourceManager {
     const webId = profileWebId(podRoot)
     const datasetUrl = webId.split('#')[0]
     const predicates = [NZ_DOCUSTREAM_REGISTRY, NZ_DOCUSTREAM_CONTAINER, NZ_DOCUSTREAM_SOURCE]
+    const currentDataset = await getSolidDataset(datasetUrl, { fetch: this.session.fetch })
+    const currentProfile = getThing(currentDataset, webId)
+    if (!currentProfile) throw new Error('The WebID profile does not contain its profile Thing.')
+    const profileHead = await this.session.fetch(datasetUrl, { method: 'HEAD' })
+    if (!profileHead.ok) {
+      throw new Error(`Failed to read WebID profile metadata: HTTP ${profileHead.status}`)
+    }
+    const profileEtag = profileHead.headers.get('etag')
+    if (!profileEtag) {
+      throw new Error('The WebID profile is missing an ETag; refusing an unsafe link update.')
+    }
+    const existing = predicates.flatMap((predicate) =>
+      getUrlAll(currentProfile, predicate).map(
+        (value) => `${sparqlIri(webId)} ${sparqlIri(predicate)} ${sparqlIri(value)} .`,
+      ),
+    )
     const inserts = [
       `${sparqlIri(webId)} ${sparqlIri(NZ_DOCUSTREAM_REGISTRY)} ${sparqlIri(sourceRegistryUrl(podRoot))} .`,
       `${sparqlIri(webId)} ${sparqlIri(NZ_DOCUSTREAM_CONTAINER)} ${sparqlIri(docustreamContainerUrl(podRoot))} .`,
@@ -275,20 +291,19 @@ export class DocustreamSourceManager {
       ),
     ]
     const patch = [
-      'DELETE {',
-      `  ${sparqlIri(webId)} ?predicate ?value .`,
-      '}',
-      'INSERT {',
+      ...(existing.length > 0
+        ? ['DELETE DATA {', ...existing.map((entry) => `  ${entry}`), '};']
+        : []),
+      'INSERT DATA {',
       ...inserts.map((entry) => `  ${entry}`),
-      '}',
-      'WHERE {',
-      `  VALUES ?predicate { ${predicates.map(sparqlIri).join(' ')} }`,
-      `  OPTIONAL { ${sparqlIri(webId)} ?predicate ?value . }`,
       '}',
     ].join('\n')
     const patchResponse = await this.session.fetch(datasetUrl, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/sparql-update' },
+      headers: {
+        'Content-Type': 'application/sparql-update',
+        'If-Match': profileEtag,
+      },
       body: patch,
     })
     if (!patchResponse.ok) {
