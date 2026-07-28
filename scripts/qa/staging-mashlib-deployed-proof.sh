@@ -5,7 +5,8 @@
 # Verifies the published staging bundle includes:
 # 1) explicit module-id sentinel path
 # 2) first-party pane provider payload markers
-# 3) docustream lockdown rendering marker
+# 3) multi-identity returning-auth broker operation
+# 4) enabled DocuStream Pod/profile persistence markers with no lock strings
 
 set -euo pipefail
 
@@ -73,10 +74,21 @@ grep -q 'nodezero:mashlib-pane-provider' <<<"$BUNDLE" || fail "Bundle missing mo
 grep -q 'Activity Stream' <<<"$BUNDLE" || fail "Bundle missing pane label marker 'Activity Stream'."
 grep -q 'Timeline View' <<<"$BUNDLE" || fail "Bundle missing pane label marker 'Timeline View'."
 
-# Docustream UI marker proving lockdown state is present in deployed bundle.
-grep -q 'DocuStream is currently read-only while we complete a storage refactor.' <<<"$BUNDLE" || fail "Bundle missing docustream lockdown marker 'DocuStream is currently read-only while we complete a storage refactor.'."
+# Returning authentication must enumerate every wallet identity, not only the active key.
+grep -q 'list-identities' <<<"$BUNDLE" || fail "Bundle missing multi-identity wallet enumeration marker."
 
-pass "bundle contains module-id runtime path and pane payload markers."
+# DocuStream source registry and WebID profile links must be deployed and remain unlocked.
+grep -q 'docustreamSourceRegistry' <<<"$BUNDLE" || fail "Bundle missing DocuStream profile registry link marker."
+grep -q 'docustreamContainer' <<<"$BUNDLE" || fail "Bundle missing DocuStream profile container link marker."
+grep -q 'source registry is missing an ETag' <<<"$BUNDLE" || fail "Bundle missing DocuStream ETag fencing marker."
+if grep -q 'DocuStream is currently read-only while we complete a storage refactor.' <<<"$BUNDLE"; then
+  fail "Bundle still contains the obsolete DocuStream read-only message."
+fi
+if grep -q 'temporarily disabled during the storage refactor lock' <<<"$BUNDLE"; then
+  fail "Bundle still contains a DocuStream storage-refactor lock."
+fi
+
+pass "bundle contains pane, multi-identity auth, and enabled DocuStream persistence markers."
 
 if [[ -n "$BUNDLE_FILE" ]]; then
   echo "[mashlib-deployed-proof] Local bundle proof checks passed for $BUNDLE_FILE."
