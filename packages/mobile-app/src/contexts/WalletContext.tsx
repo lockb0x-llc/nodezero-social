@@ -49,6 +49,7 @@ import {
   LEGACY_MIGRATION_PROTOCOL,
   type LegacyMigrationCompleteMessage,
 } from '../wallet/legacyMigrationProtocol'
+import { isWalletReadyForAttestation } from '../wallet/attestationReadiness'
 
 type AttestationStatus = 'idle' | 'verifying' | 'verified' | 'unlinked' | 'error'
 
@@ -745,6 +746,12 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
       return
     }
 
+    // Session restoration and broker initialization are independent. Do not
+    // claim this session check until the wallet can service broker requests;
+    // otherwise a transient "still initializing" response permanently blocks
+    // the same session from retrying when walletInfo arrives.
+    if (!isWalletReadyForAttestation(isLoading, walletInfo?.publicKey)) return
+
     const lockboxId = lockbox?.userLockboxContractId ?? null
     const checkKey = `session:${webId}|${lockboxId ?? 'none'}|${sessionStellarPublicKey ?? 'none'}`
     if (lastCheckedKeyRef.current === checkKey) return
@@ -905,12 +912,13 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
     advanceVerificationStep,
     hostedWalletBrokerUrl,
     initVerificationSteps,
+    isLoading,
     lockbox,
     requestBroker,
     sessionCreatedAt,
     sessionStatus,
     sessionStellarPublicKey,
-    walletInfo?.keyId,
+    walletInfo?.publicKey,
     webId,
   ])
 
