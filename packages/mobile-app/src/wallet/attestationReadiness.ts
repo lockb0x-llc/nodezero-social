@@ -1,6 +1,7 @@
 export function isWalletReadyForAttestation(
+  usesHostedWalletBroker: boolean,
   isLoading: boolean,
   walletPublicKey: string | null | undefined,
 ): boolean {
-  return !isLoading && Boolean(walletPublicKey)
+  return usesHostedWalletBroker || (!isLoading && Boolean(walletPublicKey))
 }

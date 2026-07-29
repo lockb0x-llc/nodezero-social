@@ -746,11 +746,16 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
       return
     }
 
-    // Session restoration and broker initialization are independent. Do not
-    // claim this session check until the wallet can service broker requests;
-    // otherwise a transient "still initializing" response permanently blocks
-    // the same session from retrying when walletInfo arrives.
-    if (!isWalletReadyForAttestation(isLoading, walletInfo?.publicKey)) return
+    // Session restoration and wallet initialization are independent. Local
+    // wallets wait for their public key; hosted sessions synchronize the
+    // session-bound identity directly with the broker below.
+    if (
+      !isWalletReadyForAttestation(
+        Boolean(hostedWalletBrokerUrl),
+        isLoading,
+        walletInfo?.publicKey,
+      )
+    ) return
 
     const lockboxId = lockbox?.userLockboxContractId ?? null
     const checkKey = `session:${webId}|${lockboxId ?? 'none'}|${sessionStellarPublicKey ?? 'none'}`
@@ -806,13 +811,28 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
       })
       try {
         if (hostedWalletBrokerUrl && sessionStellarPublicKey) {
-          await requestBroker<{ selected?: boolean }>('activate-identity-for-public-key', {
-            stellarPublicKey: sessionStellarPublicKey,
-          })
-          const activeIdentity = await requestBroker<{ stellarPublicKey?: string }>(
-            'get-public-key'
-          )
-          if (activeIdentity.stellarPublicKey !== sessionStellarPublicKey) {
+          let brokerIdentityReady = false
+          for (let attempt = 0; attempt < 20; attempt += 1) {
+            try {
+              const activation = await requestBroker<{ selected?: boolean }>(
+                'activate-identity-for-public-key',
+                { stellarPublicKey: sessionStellarPublicKey },
+              )
+              if (activation.selected) {
+                const activeIdentity = await requestBroker<{ stellarPublicKey?: string }>(
+                  'get-public-key'
+                )
+                brokerIdentityReady = activeIdentity.stellarPublicKey === sessionStellarPublicKey
+              }
+            } catch (error) {
+              if (!(error instanceof Error) || !error.message.includes('still initializing')) {
+                throw error
+              }
+            }
+            if (brokerIdentityReady) break
+            await new Promise<void>((resolve) => setTimeout(resolve, 250))
+          }
+          if (!brokerIdentityReady) {
             throw new Error(
               'This device does not have the Stellar identity that created this node. Restore or select that device identity before signing in.'
             )

@@ -98,6 +98,16 @@ export default function WalletBrokerScreen(): JSX.Element {
             reply(true)
             return
           }
+          if (request.operation === 'activate-identity-for-public-key') {
+            const keyId = await findIdentityKeyIdByPublicKey(request.payload.stellarPublicKey ?? '')
+            if (!keyId) {
+              reply(true, { selected: false })
+              return
+            }
+            await selectIdentity(keyId)
+            reply(true, { selected: true })
+            return
+          }
           if (request.operation === 'sign-challenge' && request.payload.keyId) {
             const signed = await signAttestationChallenge(
               request.payload.challengePayload ?? '',
@@ -143,16 +153,6 @@ export default function WalletBrokerScreen(): JSX.Element {
           if (request.operation === 'get-lockbox-commitment') {
             const contractId = request.payload.contractId ?? ''
             reply(true, { accountCommitmentHex: await getLockboxAccountCommitment(contractId) })
-            return
-          }
-          if (request.operation === 'activate-identity-for-public-key') {
-            const keyId = await findIdentityKeyIdByPublicKey(request.payload.stellarPublicKey ?? '')
-            if (!keyId) {
-              reply(true, { selected: false })
-              return
-            }
-            await selectIdentity(keyId)
-            reply(true, { selected: true })
             return
           }
           throw new Error('Wallet broker operation is not supported.')
