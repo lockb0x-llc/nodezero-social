@@ -5,6 +5,8 @@ import { readFile } from 'node:fs/promises'
 const requiredChecks = [
   ['packages/mobile-app/app.config.js', ['NZ_APP_ORIGIN', "output: 'single'", 'pwaCachePrefix']],
   ['packages/mobile-app/src/pwa/registerPwa.ts', ['window.location.origin !== appOrigin', '/service-worker.js', '/manifest.json']],
+  ['packages/mobile-app/src/contexts/NodeZeroSessionContext.tsx', ["Platform.OS === 'web'", "Platform.OS !== 'web'", 'AsyncStorage.removeItem(SESSION_STORAGE_KEY)']],
+  ['packages/jss-provisioner/src/index.ts', ["'__Host-nz_browser_session'", "cookieScope: BROWSER_SESSION_ENABLED ? 'host-only'", "Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax"]],
   ['scripts/pwa/build-pwa.mjs', ['manifest.json', 'service-worker.js', "request.mode === 'navigate'", "url.origin !== self.location.origin"]],
   ['packages/mobile-app/staticwebapp.config.json', ['/_expo/static/*', 'max-age=31536000, immutable', '/service-worker.js', 'Service-Worker-Allowed', "frame-ancestors 'none'", "worker-src 'self' blob:"]],
   ['.github/workflows/staging-deploy.yml', ['concurrency:', 'cancel-in-progress: false', 'NZ_APP_ORIGIN: https://staging.nodezero.social']],
@@ -45,6 +47,9 @@ for (const forbidden of ['NZ_WALLET_BROKER_URL', 'JSS_WALLET_BROKER_URL']) {
   if (stagingWorkflow.includes(forbidden)) {
     throw new Error(`Staging workflow still configures retired wallet broker marker: ${forbidden}`)
   }
+}
+if (stagingWorkflow.includes('JSS_BROWSER_SESSION_COOKIE_DOMAIN')) {
+  throw new Error('Staging must use a host-only __Host browser-session cookie.')
 }
 
 const workerSource = await readFile('scripts/pwa/build-pwa.mjs', 'utf8')

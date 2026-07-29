@@ -27,6 +27,7 @@ import React, {
 } from 'react'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import Constants from 'expo-constants'
+import { Platform } from 'react-native'
 
 export type SessionStatus = 'restoring' | 'unauthenticated' | 'authenticated'
 
@@ -170,6 +171,10 @@ function toProxyUrl(rawUrl: string, podOrigins: Set<string>, provisionerUrl: str
 }
 
 async function loadPersistedSession(): Promise<PersistedSession | null> {
+  if (Platform.OS === 'web') {
+    await AsyncStorage.removeItem(SESSION_STORAGE_KEY).catch(() => undefined)
+    return null
+  }
   try {
     const raw = await AsyncStorage.getItem(SESSION_STORAGE_KEY)
     if (!raw) return null
@@ -223,7 +228,9 @@ export function NodeZeroSessionProvider({ children }: { children: ReactNode }): 
 
   const applySession = useCallback(async (record: PersistedSession): Promise<void> => {
     sessionRef.current = record
-    await AsyncStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(record))
+    if (Platform.OS !== 'web') {
+      await AsyncStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(record))
+    }
     setWebId(record.webId)
     setPodUrl(record.podUrl)
     setStellarPublicKey(record.stellarPublicKey)

@@ -232,7 +232,6 @@ before(async () => {
   process.env.JSS_INTERNAL_API_KEY = INTERNAL_KEY
   process.env.JSS_SESSION_SIGNING_KEY = 'unit-test-session-signing-key-32b!'
   process.env.JSS_BROWSER_SESSION_ENABLED = 'true'
-  process.env.JSS_BROWSER_SESSION_COOKIE_DOMAIN = '.nodezero.social'
   process.env.NZ_ENV_PROFILE = 'local'
   process.env.JSS_BUILD_COMMIT = 'test-build-commit'
   process.env.JSS_BUILD_ARTIFACT_SHA256 = 'a'.repeat(64)
@@ -460,9 +459,11 @@ void test('browser session bootstraps a fresh staging-local session and logout r
   )
   assert.equal(created.status, 200)
   const setCookie = created.headers.get('set-cookie')
-  assert.ok(setCookie?.includes('nz_browser_session='), 'expected opaque browser-session cookie')
+  assert.ok(setCookie?.includes('__Host-nz_browser_session='), 'expected host-only opaque browser-session cookie')
   assert.ok(setCookie?.includes('HttpOnly'))
-  assert.ok(setCookie?.includes('Domain=.nodezero.social'))
+  assert.ok(!setCookie?.match(/__Host-nz_browser_session=[^,]*Domain=/))
+  assert.ok(setCookie?.includes('Path=/'))
+  assert.ok(setCookie?.includes('nz_browser_session=; Path=/; Domain=.nodezero.social; Max-Age=0'))
   assert.ok(!setCookie?.includes((created.json.session as SessionShape).accessToken))
 
   const cookie = setCookie?.split(';', 1)[0] ?? ''

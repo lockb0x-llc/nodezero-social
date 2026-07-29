@@ -23,17 +23,14 @@
  *
  * Usage:
  *   node scripts/qa/staging-auth-evidence.mjs
- *   STAGING_BASE_URL=https://nodezero.social node scripts/qa/staging-auth-evidence.mjs
+ *   STAGING_BASE_URL=https://staging.nodezero.social node scripts/qa/staging-auth-evidence.mjs
  */
 
 import { chromium } from '@playwright/test'
 import { Contract, rpc, scValToNative } from '@stellar/stellar-sdk'
 import { appendFile } from 'node:fs/promises'
 
-// Authentication starts at the public apex landing page. The authenticated
-// application itself is exercised through its internal staging routes after
-// the inline session is issued.
-const baseUrl = (process.env.STAGING_BASE_URL || 'https://nodezero.social').replace(/\/$/, '')
+const baseUrl = (process.env.STAGING_BASE_URL || 'https://staging.nodezero.social').replace(/\/$/, '')
 const solidHost = (process.env.SOLID_HOST || 'solid.nodezero.social').toLowerCase()
 const createTimeoutMs = Number(process.env.AUTH_E2E_CREATE_TIMEOUT_MS || 8 * 60 * 1000)
 const sessionTimeoutMs = Number(process.env.AUTH_E2E_SESSION_TIMEOUT_MS || 4 * 60 * 1000)
@@ -119,43 +116,57 @@ function trackFriendbotRequests(page, sink) {
   })
 }
 
-async function readStoredSession(page) {
-  const raw = await page.evaluate((key) => window.localStorage.getItem(key), SESSION_STORAGE_KEY)
-  if (!raw) return null
-  try {
-    return JSON.parse(raw)
-  } catch {
-    return null
-  }
+function trackNodeZeroSessions(page, state) {
+  const sessionPaths = new Set([
+    '/v1/solid-account',
+    '/v1/auth/stellar-token',
+    '/v1/auth/browser-session',
+    '/v1/auth/refresh',
+  ])
+  page.on('response', async (response) => {
+    try {
+      const url = new URL(response.url())
+      if (url.origin !== provisionerUrl || !sessionPaths.has(url.pathname) || !response.ok()) return
+      const payload = await response.json()
+      if (
+        payload?.session?.accessToken &&
+        payload?.session?.refreshToken &&
+        payload?.webId &&
+        payload?.podUrl
+      ) {
+        state.current = {
+          ...payload.session,
+          webId: payload.webId,
+          podUrl: payload.podUrl,
+          lockbox: payload.lockbox ?? null,
+        }
+      }
+    } catch {
+      // Non-JSON and unrelated responses are not session evidence.
+    }
+  })
 }
 
-async function waitForStoredSession(page, timeoutMs) {
-  await page.waitForFunction(
-    (key) => {
-      const raw = window.localStorage.getItem(key)
-      if (!raw) return false
-      try {
-        const session = JSON.parse(raw)
-        return Boolean(
-          session?.accessToken && session?.refreshToken && session?.webId && session?.podUrl
-        )
-      } catch {
-        return false
-      }
-    },
-    SESSION_STORAGE_KEY,
-    { timeout: timeoutMs }
-  )
+async function waitForCapturedSession(page, state, timeoutMs) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (state.current?.accessToken && state.current?.refreshToken) return state.current
+    await page.waitForTimeout(100)
+  }
+  throw new Error('No in-memory NodeZero session was captured from the API response.')
+}
+
+async function assertNoPersistedBrowserSession(page, stage) {
+  const persisted = await page.evaluate((key) => window.localStorage.getItem(key), SESSION_STORAGE_KEY)
+  if (persisted !== null) fail(`${stage} persisted NodeZero bearer credentials in localStorage.`)
 }
 
 async function waitForAuthenticatedSurface(page, timeoutMs) {
   await page.waitForURL((url) => /\/(feed|onboarding|local)([/?#]|$)/.test(url.pathname), {
     timeout: timeoutMs,
   })
-  await waitForStoredSession(page, timeoutMs)
-  // Staging can briefly land on /feed before the asynchronous browser-session
-  // bootstrap persists local state. The RouteGuard then uses /onboarding while
-  // the V3 attestation is checked and returns to /feed once it is verified.
+  // Staging can briefly land on /feed before browser-session bootstrap and the
+  // V3 attestation check complete.
   await page.waitForFunction(
     () =>
       window.location.pathname === '/feed' &&
@@ -184,7 +195,6 @@ async function revokeBrowserSession(page, session) {
   )
   if (status !== 200)
     fail(`Could not revoke browser session before returning sign-in: HTTP ${status}.`)
-  await page.evaluate((key) => window.localStorage.removeItem(key), SESSION_STORAGE_KEY)
 }
 
 function assertExpectedHandoff(page, stage) {
@@ -379,6 +389,7 @@ async function main() {
   const browser = await chromium.launch()
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } })
   const page = await context.newPage()
+  const capturedSession = { current: null }
 
   const cssRequests = []
   const navigations = []
@@ -386,6 +397,7 @@ async function main() {
   trackCssRequests(page, cssRequests)
   trackNavigations(page, navigations)
   trackFriendbotRequests(page, friendbotRequests)
+  trackNodeZeroSessions(page, capturedSession)
 
   // ── Journey 1: new-user onboarding with inline session ────────────────────
   log('Journey 1: create node → inline session → authenticated feed')
@@ -418,12 +430,12 @@ async function main() {
   })
   assertExpectedHandoff(page, 'New-user onboarding')
 
-  const session = await readStoredSession(page)
+  const session = await waitForCapturedSession(page, capturedSession, sessionTimeoutMs)
   if (!session?.accessToken || !session?.refreshToken) {
-    fail('No NodeZero session found in storage after signup.')
+    fail('No NodeZero session was captured after signup.')
   }
   if (!String(session.webId || '').includes(handle)) {
-    fail(`Stored session webId does not match handle: ${session.webId}`)
+    fail(`Captured session webId does not match handle: ${session.webId}`)
   }
   const lockboxContractId = session?.lockbox?.userLockboxContractId
   if (!lockboxContractId) {
@@ -431,6 +443,7 @@ async function main() {
   }
   assertNoLegacyLegs(navigations, cssRequests)
   assertNoFriendbotRequests(friendbotRequests)
+  await assertNoPersistedBrowserSession(page, 'New-user onboarding')
 
   const inruptKeys = await page.evaluate(() =>
     Object.keys(window.localStorage).filter((key) => key.toLowerCase().includes('solidclientauthn'))
@@ -448,6 +461,7 @@ async function main() {
   // ── Journey 2: returning-user one-tap sign-in ──────────────────────────────
   log('Journey 2: retained same-origin wallet → one-tap Stellar sign-in')
   await revokeBrowserSession(page, session)
+  capturedSession.current = null
   await page.goto(`${baseUrl}/`, { waitUntil: 'domcontentloaded', timeout: 60_000 })
 
   await page.waitForFunction(
@@ -468,18 +482,20 @@ async function main() {
   })
   assertExpectedHandoff(page, 'Returning user sign-in')
 
-  const returningSession = await readStoredSession(page)
+  const returningSession = await waitForCapturedSession(page, capturedSession, sessionTimeoutMs)
   if (!returningSession?.accessToken) {
-    fail('No NodeZero session found in storage after returning sign-in.')
+    fail('No NodeZero session was captured after returning sign-in.')
   }
   if (returningSession.webId !== session.webId) {
     fail(`Returning session webId mismatch: ${returningSession.webId} != ${session.webId}`)
   }
   assertNoLegacyLegs(navigations, cssRequests)
   assertNoFriendbotRequests(friendbotRequests)
+  await assertNoPersistedBrowserSession(page, 'Returning sign-in')
   log('Journey 2 PASS: returning sign-in restored the same identity with no CSS contact')
 
   log('Journey 2b: retained authenticated reload waits for wallet readiness')
+  capturedSession.current = null
   await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 })
   await waitForAuthenticatedSurface(page, sessionTimeoutMs).catch(async (error) => {
     fail(
@@ -490,10 +506,11 @@ async function main() {
   if (retainedPageText.includes('Wallet is still initializing')) {
     fail('Retained-session reload raced attestation ahead of wallet initialization.')
   }
-  const retainedSession = await readStoredSession(page)
+  const retainedSession = await waitForCapturedSession(page, capturedSession, sessionTimeoutMs)
   if (retainedSession?.webId !== session.webId) {
     fail(`Retained session webId mismatch: ${retainedSession?.webId} != ${session.webId}`)
   }
+  await assertNoPersistedBrowserSession(page, 'Browser-session bootstrap')
   log('Journey 2b PASS: retained session verified after wallet initialization')
 
   await verifyDocustreamPersistence(page, retainedSession)
@@ -526,7 +543,7 @@ async function main() {
       )
     })
 
-  const tamperedRemnant = await readStoredSession(page)
+  const tamperedRemnant = await page.evaluate((key) => window.localStorage.getItem(key), SESSION_STORAGE_KEY)
   if (tamperedRemnant) {
     fail('Tampered session record survived the fail-closed rejection.')
   }

@@ -296,7 +296,6 @@ jobs:
               JSS_SOLID_CSS_POD_LOCK_RETRY_BASE_DELAY_MS="1000" \
               JSS_ALLOWED_ORIGINS="https://staging.nodezero.social,https://nodezero.social,https://www.nodezero.social,https://solid.nodezero.social,http://localhost:19006,http://localhost:8081" \
               JSS_BROWSER_SESSION_ENABLED="true" \
-              JSS_BROWSER_SESSION_COOKIE_DOMAIN=".nodezero.social" \
               JSS_LOCKBOX_FACTORY_MODE="soroban" \
               JSS_LOCKBOX_FACTORY_VERSION="v3" \
               JSS_LOCKBOX_FACTORY_CONTRACT_ID="CDFHCQA3YJCITWEMNLCSRGQVVFEXGTONWSQJTD5VIZO7YV4IOKZUPCGT" \

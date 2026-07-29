@@ -114,8 +114,7 @@ const EMBEDDED_BUILD = readEmbeddedBuildInfo()
 const CONFIGURED_ARTIFACT_SHA256 = (process.env.JSS_BUILD_ARTIFACT_SHA256 ?? 'unknown').trim().toLowerCase()
 const BN254_SCALAR_FIELD_SIZE = 21888242871839275222246405745257275088548364400416034343698204186575808495617n
 const BROWSER_SESSION_ENABLED = /^(1|true|yes)$/i.test((process.env.JSS_BROWSER_SESSION_ENABLED ?? '').trim())
-const BROWSER_SESSION_COOKIE_NAME = (process.env.JSS_BROWSER_SESSION_COOKIE_NAME ?? 'nz_browser_session').trim()
-const BROWSER_SESSION_COOKIE_DOMAIN = (process.env.JSS_BROWSER_SESSION_COOKIE_DOMAIN ?? '.nodezero.social').trim()
+const BROWSER_SESSION_COOKIE_NAME = (process.env.JSS_BROWSER_SESSION_COOKIE_NAME ?? '__Host-nz_browser_session').trim()
 const BROWSER_SESSION_TTL_MS = Number(process.env.JSS_BROWSER_SESSION_TTL_MS ?? 30 * 24 * 60 * 60_000)
 // P3: Treasury-sponsored member account creation is a privileged, funds-moving
 // operation. It is disabled unless an internal API key is configured, and every
@@ -255,7 +254,7 @@ function sendJson(
   res: ServerResponse,
   statusCode: number,
   payload: unknown,
-  extraHeaders: Record<string, string> = {},
+  extraHeaders: Record<string, string | string[]> = {},
 ): void {
   res.writeHead(statusCode, {
     ...corsHeaders(req),
@@ -363,9 +362,15 @@ function readCookie(req: IncomingMessage, name: string): string | null {
   return null
 }
 
-function clearBrowserSessionCookie(): Record<string, string> {
+const LEGACY_BROWSER_SESSION_COOKIE_CLEAR =
+  'nz_browser_session=; Path=/; Domain=.nodezero.social; Max-Age=0; HttpOnly; Secure; SameSite=Lax'
+
+function clearBrowserSessionCookie(): Record<string, string[]> {
   return {
-    'set-cookie': `${BROWSER_SESSION_COOKIE_NAME}=; Path=/; Domain=${BROWSER_SESSION_COOKIE_DOMAIN}; Max-Age=0; HttpOnly; Secure; SameSite=Lax`,
+    'set-cookie': [
+      `${BROWSER_SESSION_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax`,
+      LEGACY_BROWSER_SESSION_COOKIE_CLEAR,
+    ],
   }
 }
 
@@ -374,10 +379,10 @@ async function issueBrowserSessionCookie(input: {
   podUrl: string
   stellarPublicKey: string | null
   lockbox: { userLockboxContractId: string | null; factoryContractId: string | null; proofRootHex: string | null }
-}): Promise<Record<string, string>> {
+}): Promise<Record<string, string | string[]>> {
   if (!BROWSER_SESSION_ENABLED) return {}
-  if (!BROWSER_SESSION_COOKIE_NAME || !BROWSER_SESSION_COOKIE_DOMAIN.startsWith('.')) {
-    throw new Error('Browser session cookie name/domain configuration is invalid.')
+  if (!BROWSER_SESSION_COOKIE_NAME.startsWith('__Host-')) {
+    throw new Error('Browser session cookie name must use the __Host- prefix.')
   }
   if (!Number.isFinite(BROWSER_SESSION_TTL_MS) || BROWSER_SESSION_TTL_MS <= 0) {
     throw new Error('JSS_BROWSER_SESSION_TTL_MS must be positive.')
@@ -395,7 +400,10 @@ async function issueBrowserSessionCookie(input: {
   })
   const maxAgeSeconds = Math.floor(BROWSER_SESSION_TTL_MS / 1000)
   return {
-    'set-cookie': `${BROWSER_SESSION_COOKIE_NAME}=${token}; Path=/; Domain=${BROWSER_SESSION_COOKIE_DOMAIN}; Max-Age=${maxAgeSeconds}; HttpOnly; Secure; SameSite=Lax`,
+    'set-cookie': [
+      `${BROWSER_SESSION_COOKIE_NAME}=${token}; Path=/; Max-Age=${maxAgeSeconds}; HttpOnly; Secure; SameSite=Lax`,
+      LEGACY_BROWSER_SESSION_COOKIE_CLEAR,
+    ],
   }
 }
 
@@ -785,7 +793,7 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
       },
       browserSession: {
         enabled: BROWSER_SESSION_ENABLED,
-        cookieDomain: BROWSER_SESSION_ENABLED ? BROWSER_SESSION_COOKIE_DOMAIN : null,
+        cookieScope: BROWSER_SESSION_ENABLED ? 'host-only' : null,
       },
       treasuryCreateAccount: {
         onboardingEnabled: TREASURY_FUND_MEMBERS,
