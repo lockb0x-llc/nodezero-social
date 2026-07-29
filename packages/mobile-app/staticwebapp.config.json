@@ -47,7 +47,7 @@
   ],
   "globalHeaders": {
     "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-    "Content-Security-Policy": "frame-ancestors 'self' https://nodezero.social https://www.nodezero.social https://staging.nodezero.social; manifest-src 'self'; worker-src 'self'",
+    "Content-Security-Policy": "frame-ancestors 'self' https://nodezero.social https://www.nodezero.social https://staging.nodezero.social; manifest-src 'self'; worker-src 'self' blob:",
     "Referrer-Policy": "strict-origin-when-cross-origin",
     "X-Content-Type-Options": "nosniff"
   },

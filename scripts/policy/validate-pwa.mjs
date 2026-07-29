@@ -6,7 +6,7 @@ const requiredChecks = [
   ['packages/mobile-app/app.config.js', ['NZ_APP_ORIGIN', "output: 'single'", 'pwaCachePrefix']],
   ['packages/mobile-app/src/pwa/registerPwa.ts', ['window.location.origin !== appOrigin', '/service-worker.js', '/manifest.json']],
   ['scripts/pwa/build-pwa.mjs', ['manifest.json', 'service-worker.js', "request.mode === 'navigate'", "url.origin !== self.location.origin"]],
-  ['packages/mobile-app/staticwebapp.config.json', ['/_expo/static/*', 'max-age=31536000, immutable', '/service-worker.js', 'Service-Worker-Allowed']],
+  ['packages/mobile-app/staticwebapp.config.json', ['/_expo/static/*', 'max-age=31536000, immutable', '/service-worker.js', 'Service-Worker-Allowed', "worker-src 'self' blob:"]],
   ['.github/workflows/staging-deploy.yml', ['concurrency:', 'cancel-in-progress: false', 'NZ_APP_ORIGIN: https://staging.nodezero.social']],
 ]
 
