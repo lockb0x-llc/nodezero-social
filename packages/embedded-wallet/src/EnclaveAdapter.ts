@@ -115,6 +115,11 @@ function nowIso(): string {
   return new Date().toISOString()
 }
 
+function randomIdentitySuffix(): string {
+  return Math.floor(Math.random() * 0xffffffff).toString(16).padStart(8, '0') +
+    Math.floor(Math.random() * 0xffffffff).toString(16).padStart(8, '0')
+}
+
 /**
  * Manages secure storage and retrieval of the Stellar Ed25519 secret key.
  *
@@ -207,8 +212,7 @@ export class EnclaveAdapter {
     const legacySecret = await this.store.getItemAsync(LEGACY_STELLAR_SECRET_KEY)
     if (!legacySecret) return index
 
-    const hex = Math.floor(Math.random() * 0xffffffff).toString(16).padStart(8, '0') + Math.floor(Math.random() * 0xffffffff).toString(16).padStart(8, '0')
-    const keyId = `id-${hex}`
+    const keyId = `id-${randomIdentitySuffix()}`
     const createdAt = nowIso()
     await this.store.setItemAsync(toSecretKey(keyId), legacySecret)
     await this.saveIdentityMeta({
@@ -277,8 +281,7 @@ export class EnclaveAdapter {
 
   async createIdentity(label?: string): Promise<EnclaveIdentityRecord> {
     const index = await this.ensureKeyring()
-    const hex = Math.floor(Math.random() * 0xffffffff).toString(16).padStart(8, '0') + Math.floor(Math.random() * 0xffffffff).toString(16).padStart(8, '0')
-    const keyId = `id-${hex}`
+    const keyId = `id-${randomIdentitySuffix()}`
     const createdAt = nowIso()
     const identityLabel = label?.trim() ? label.trim() : `Identity ${index.keyIds.length + 1}`
 
@@ -308,6 +311,51 @@ export class EnclaveAdapter {
       createdAt,
       lastUsedAt: null,
     }
+  }
+
+  async importIdentity(
+    secret: string,
+    options: { label?: string; expectedPublicKey?: string } = {},
+  ): Promise<EnclaveIdentityRecord> {
+    const { Keypair } = await import('@stellar/stellar-sdk')
+    let publicKey: string
+    try {
+      publicKey = Keypair.fromSecret(secret.trim()).publicKey()
+    } catch {
+      throw new Error('Recovery identity contains an invalid Stellar secret key.')
+    }
+    if (options.expectedPublicKey && publicKey !== options.expectedPublicKey.trim()) {
+      throw new Error('Recovery identity public key does not match the expected device identity.')
+    }
+
+    const index = await this.ensureKeyring()
+    for (const keyId of index.keyIds) {
+      const existing = await this.store.getItemAsync(toSecretKey(keyId))
+      if (!existing) continue
+      try {
+        if (Keypair.fromSecret(existing).publicKey() === publicKey) {
+          await this.store.setItemAsync(ACTIVE_KEY_ID_KEY, keyId)
+          const meta = await this.loadIdentityMeta(keyId)
+          if (meta) return meta
+        }
+      } catch {
+        // Ignore malformed unrelated entries; normal load paths fail closed.
+      }
+    }
+
+    const keyId = `id-${randomIdentitySuffix()}`
+    const createdAt = nowIso()
+    const meta: StoredIdentityMeta = {
+      keyId,
+      label: options.label?.trim() || `Recovered identity ${index.keyIds.length + 1}`,
+      createdAt,
+      lastUsedAt: null,
+    }
+    await this.store.setItemAsync(toSecretKey(keyId), secret.trim())
+    await this.saveIdentityMeta(meta)
+    await this.saveKeyringIndex({ version: 1, keyIds: [...index.keyIds, keyId] })
+    await this.store.setItemAsync(ACTIVE_KEY_ID_KEY, keyId)
+    return meta
   }
 
   async renameIdentity(keyId: string, label: string): Promise<void> {

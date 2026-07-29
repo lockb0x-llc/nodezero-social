@@ -163,6 +163,30 @@ void test('signs with an explicit non-active identity without switching the acti
   assert.equal(await service.getActiveIdentityKeyId(), first.keyId)
 })
 
+void test('imports a legacy identity with expected-public-key validation and deduplication', async () => {
+  const service = new WalletService(new EnclaveAdapter(createMemoryStore()))
+  const legacy = Keypair.random()
+
+  await assert.rejects(
+    service.importIdentity(legacy.secret(), {
+      expectedPublicKey: Keypair.random().publicKey(),
+    }),
+    /does not match/,
+  )
+
+  const imported = await service.importIdentity(legacy.secret(), {
+    expectedPublicKey: legacy.publicKey(),
+    label: 'Legacy NodeZero identity',
+  })
+  const duplicate = await service.importIdentity(legacy.secret(), {
+    expectedPublicKey: legacy.publicKey(),
+  })
+
+  assert.equal(imported.publicKey, legacy.publicKey())
+  assert.equal(duplicate.keyId, imported.keyId)
+  assert.equal((await service.listIdentities()).length, 1)
+})
+
 void test('fails closed when an indexed identity secret is missing', async () => {
   const store = createInspectableMemoryStore()
   const adapter = new EnclaveAdapter(store.secureStore)

@@ -7,9 +7,11 @@ const files = {
   screen: resolve(root, 'packages/mobile-app/app/docustream.tsx'),
   activities: resolve(root, 'packages/solid-pod-sync/src/DocustreamManager.ts'),
   sources: resolve(root, 'packages/solid-pod-sync/src/DocustreamSourceManager.ts'),
+  broker: resolve(root, 'packages/mobile-app/app/wallet-broker.tsx'),
+  migration: resolve(root, 'packages/mobile-app/app/wallet-migration.tsx'),
 }
 
-const [screen, activities, sources] = await Promise.all(
+const [screen, activities, sources, broker, migration] = await Promise.all(
   Object.values(files).map((path) => readFile(path, 'utf8')),
 )
 
@@ -31,6 +33,12 @@ for (const required of ['If-Match', 'If-None-Match', 'syncProfileLinks']) {
 }
 if (!activities.includes('read-back did not match')) {
   failures.push('DocuStream activity read-back verification is missing.')
+}
+if (!broker.includes('import-legacy-identity')) {
+  failures.push('Wallet broker legacy identity import operation is missing.')
+}
+if (!migration.includes('migrateLegacyIdentities')) {
+  failures.push('First-party legacy wallet migration route is missing.')
 }
 
 if (failures.length > 0) {

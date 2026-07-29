@@ -39,6 +39,16 @@ import {
   type WalletBrokerOperation,
   type WalletBrokerReady,
 } from '../wallet/brokerProtocol'
+import {
+  legacyIdentitiesMissingFromBroker,
+  readLegacyIdentityCandidates,
+  removeMigratedLegacyIdentity,
+} from '../wallet/legacyIdentityMigration'
+import {
+  LEGACY_MIGRATION_COMPLETE,
+  LEGACY_MIGRATION_PROTOCOL,
+  type LegacyMigrationCompleteMessage,
+} from '../wallet/legacyMigrationProtocol'
 
 type AttestationStatus = 'idle' | 'verifying' | 'verified' | 'unlinked' | 'error'
 
@@ -131,6 +141,14 @@ interface WalletContextValue {
   selectIdentity: (keyId: string) => Promise<void>
   /** Creates a new local identity and sets it active. */
   createIdentity: (label?: string) => Promise<void>
+  /** Imports a legacy first-party identity on the wallet origin only. */
+  importLegacyIdentity: (input: {
+    secret: string
+    expectedPublicKey: string
+    label?: string
+  }) => Promise<WalletInfo>
+  /** Runs the current first-party origin's legacy migration once. */
+  migrateLegacyIdentities: () => Promise<number>
   /** Finds a local identity by public key without exposing its secret. */
   findIdentityKeyIdByPublicKey: (stellarPublicKey: string) => Promise<string | null>
   /** Destroys local wallet + pairing state, optionally unlinking on-chain. */
@@ -239,6 +257,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
   const lastCheckedKeyRef = useRef<string | null>(null)
   const brokerFrameRef = useRef<HTMLIFrameElement | null>(null)
   const brokerFramePromiseRef = useRef<Promise<HTMLIFrameElement> | null>(null)
+  const legacyMigrationPromiseRef = useRef<Promise<number> | null>(null)
   const hostedWalletBrokerUrl = getHostedWalletBrokerUrl()
 
   const getBrokerFrame = useCallback(async (): Promise<HTMLIFrameElement> => {
@@ -345,6 +364,83 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
     )
   }, [hostedWalletBrokerUrl, requestBroker])
 
+  const migrateLegacyIdentitiesToBroker = useCallback(async (): Promise<number> => {
+    if (
+      !hostedWalletBrokerUrl ||
+      Platform.OS !== 'web' ||
+      typeof window === 'undefined'
+    ) {
+      return 0
+    }
+    if (legacyMigrationPromiseRef.current) return legacyMigrationPromiseRef.current
+    const run = (async (): Promise<number> => {
+      const existing = await listIdentitySummaries()
+      const candidates = legacyIdentitiesMissingFromBroker(
+        readLegacyIdentityCandidates(window.localStorage),
+        existing,
+      )
+      let migrated = 0
+      for (const candidate of candidates) {
+        const imported = await requestBroker<{
+          keyId?: string
+          stellarPublicKey?: string
+        }>('import-legacy-identity', {
+          secret: candidate.secret,
+          expectedPublicKey: candidate.stellarPublicKey,
+          label: candidate.label,
+        })
+        if (!imported.keyId || imported.stellarPublicKey !== candidate.stellarPublicKey) {
+          throw new Error('Wallet broker could not verify the migrated device identity.')
+        }
+        removeMigratedLegacyIdentity(window.localStorage, candidate)
+        migrated += 1
+      }
+      return migrated
+    })()
+    legacyMigrationPromiseRef.current = run
+    return run
+  }, [hostedWalletBrokerUrl, listIdentitySummaries, requestBroker])
+
+  const migrateStagingOriginIdentities = useCallback(async (): Promise<void> => {
+    if (
+      !hostedWalletBrokerUrl ||
+      Platform.OS !== 'web' ||
+      typeof window === 'undefined' ||
+      !['nodezero.social', 'www.nodezero.social'].includes(window.location.hostname.toLowerCase())
+    ) {
+      return
+    }
+    await new Promise<void>((resolve, reject) => {
+      const frame = document.createElement('iframe')
+      frame.src = `https://staging.nodezero.social/wallet-migration?cb=${Date.now()}`
+      frame.title = 'NodeZero legacy wallet migration'
+      frame.setAttribute('aria-hidden', 'true')
+      frame.style.cssText = 'position:fixed;width:1px;height:1px;border:0;opacity:0;pointer-events:none;'
+      const cleanup = (): void => {
+        clearTimeout(timeout)
+        window.removeEventListener('message', onMessage)
+        frame.remove()
+      }
+      const timeout = setTimeout(() => {
+        cleanup()
+        reject(new Error('Legacy staging wallet migration timed out.'))
+      }, 30_000)
+      const onMessage = (event: MessageEvent<LegacyMigrationCompleteMessage>): void => {
+        if (event.origin !== 'https://staging.nodezero.social' || event.source !== frame.contentWindow) return
+        if (
+          event.data?.protocol !== LEGACY_MIGRATION_PROTOCOL ||
+          event.data?.type !== LEGACY_MIGRATION_COMPLETE
+        ) return
+        const result = event.data
+        cleanup()
+        if (result.ok) resolve()
+        else reject(new Error(result.error ?? 'Legacy staging wallet migration failed.'))
+      }
+      window.addEventListener('message', onMessage)
+      document.body.appendChild(frame)
+    })
+  }, [hostedWalletBrokerUrl])
+
   const refreshIdentities = useCallback(async (): Promise<void> => {
     if (hostedWalletBrokerUrl) {
       const summaries = await listIdentitySummaries()
@@ -441,6 +537,8 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
     void (async (): Promise<void> => {
       if (hostedWalletBrokerUrl) {
         try {
+          await migrateStagingOriginIdentities()
+          await migrateLegacyIdentitiesToBroker()
           await refreshIdentities()
         } catch (err) {
           console.warn('[WalletContext] Failed to load wallet broker:', err)
@@ -475,7 +573,13 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
         setIsLoading(false)
       }
     })()
-  }, [hostedWalletBrokerUrl, hydrateSelectedWallet, refreshIdentities])
+  }, [
+    hostedWalletBrokerUrl,
+    hydrateSelectedWallet,
+    migrateLegacyIdentitiesToBroker,
+    migrateStagingOriginIdentities,
+    refreshIdentities,
+  ])
 
   const selectIdentity = useCallback(
     async (keyId: string): Promise<void> => {
@@ -523,6 +627,42 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
       }
     },
     [hostedWalletBrokerUrl, refreshIdentities, requestBroker]
+  )
+
+  const importLegacyIdentity = useCallback(
+    async (input: {
+      secret: string
+      expectedPublicKey: string
+      label?: string
+    }): Promise<WalletInfo> => {
+      if (hostedWalletBrokerUrl) {
+        const imported = await requestBroker<{ keyId?: string; stellarPublicKey?: string }>(
+          'import-legacy-identity',
+          {
+            secret: input.secret,
+            expectedPublicKey: input.expectedPublicKey,
+            ...(input.label ? { label: input.label } : {}),
+          },
+        )
+        if (!imported.keyId || !imported.stellarPublicKey) {
+          throw new Error('Wallet broker did not return the imported identity.')
+        }
+        await refreshIdentities()
+        return {
+          keyId: imported.keyId,
+          publicKey: imported.stellarPublicKey,
+          isFunded: false,
+        }
+      }
+      const imported = await getWalletService().importIdentity(input.secret, {
+        expectedPublicKey: input.expectedPublicKey,
+        ...(input.label ? { label: input.label } : {}),
+      })
+      await refreshIdentities()
+      await hydrateSelectedWallet(imported.keyId)
+      return imported
+    },
+    [hostedWalletBrokerUrl, hydrateSelectedWallet, refreshIdentities, requestBroker],
   )
 
   const findIdentityKeyIdByPublicKey = useCallback(
@@ -942,6 +1082,8 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
         deriveAccountCommitment,
         selectIdentity,
         createIdentity,
+        importLegacyIdentity,
+        migrateLegacyIdentities: migrateLegacyIdentitiesToBroker,
         findIdentityKeyIdByPublicKey,
       }}
     >

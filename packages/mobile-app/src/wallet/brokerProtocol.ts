@@ -10,6 +10,7 @@ export type WalletBrokerOperation =
   | 'get-account-commitment'
   | 'get-lockbox-commitment'
   | 'create-identity'
+  | 'import-legacy-identity'
   | 'select-identity'
   | 'activate-identity-for-public-key'
 

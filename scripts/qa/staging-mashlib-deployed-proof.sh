@@ -76,6 +76,8 @@ grep -q 'Timeline View' <<<"$BUNDLE" || fail "Bundle missing pane label marker '
 
 # Returning authentication must enumerate every wallet identity, not only the active key.
 grep -q 'list-identities' <<<"$BUNDLE" || fail "Bundle missing multi-identity wallet enumeration marker."
+grep -q 'import-legacy-identity' <<<"$BUNDLE" || fail "Bundle missing legacy wallet import marker."
+grep -q 'nz-legacy-wallet-migration-v1' <<<"$BUNDLE" || fail "Bundle missing cross-origin legacy migration protocol marker."
 
 # DocuStream source registry and WebID profile links must be deployed and remain unlocked.
 grep -q 'docustreamSourceRegistry' <<<"$BUNDLE" || fail "Bundle missing DocuStream profile registry link marker."

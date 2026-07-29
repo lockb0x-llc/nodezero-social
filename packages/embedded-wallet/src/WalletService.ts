@@ -191,6 +191,15 @@ export class WalletService {
     }
   }
 
+  async importIdentity(
+    secret: string,
+    options: { label?: string; expectedPublicKey?: string } = {},
+  ): Promise<WalletInfo> {
+    const identity = await this.adapter.importIdentity(secret, options)
+    const publicKey = await this.getWalletPublicKeyForIdentity(identity.keyId)
+    return { keyId: identity.keyId, publicKey, isFunded: false }
+  }
+
   async renameIdentity(keyId: string, label: string): Promise<void> {
     await this.adapter.renameIdentity(keyId, label)
   }

@@ -31,6 +31,7 @@ export default function WalletBrokerScreen(): JSX.Element {
     getLockboxAccountCommitment,
     deriveAccountCommitment,
     createIdentity,
+    importLegacyIdentity,
     selectIdentity,
     findIdentityKeyIdByPublicKey,
     listIdentitySummaries,
@@ -78,6 +79,18 @@ export default function WalletBrokerScreen(): JSX.Element {
           if (request.operation === 'select-identity') {
             await selectIdentity(request.payload.keyId ?? '')
             reply(true)
+            return
+          }
+          if (request.operation === 'import-legacy-identity') {
+            const imported = await importLegacyIdentity({
+              secret: request.payload.secret ?? '',
+              expectedPublicKey: request.payload.expectedPublicKey ?? '',
+              ...(request.payload.label ? { label: request.payload.label } : {}),
+            })
+            reply(true, {
+              keyId: imported.keyId,
+              stellarPublicKey: imported.publicKey,
+            })
             return
           }
           if (request.operation === 'sign-challenge' && request.payload.keyId) {
@@ -168,6 +181,7 @@ export default function WalletBrokerScreen(): JSX.Element {
     findIdentityKeyIdByPublicKey,
     getLockboxAccountCommitment,
     initializationError,
+    importLegacyIdentity,
     listIdentitySummaries,
     selectIdentity,
     signAttestationChallenge,
