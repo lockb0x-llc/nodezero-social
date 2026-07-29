@@ -15,6 +15,7 @@
 
 import Constants from 'expo-constants'
 import type { SessionLockboxInfo, SessionTokens } from '../contexts/NodeZeroSessionContext'
+import { retryNetworkOperation } from './networkRetry'
 
 export interface SeamlessSignupConfig {
   enabled: boolean
@@ -92,6 +93,7 @@ interface CheckEmailResult {
 }
 
 const CHECK_EMAIL_TIMEOUT_MS = 8000
+const ONBOARDING_NETWORK_RETRY_DELAYS_MS = [1_000, 2_000]
 
 async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
   if (typeof AbortController === 'undefined') {
@@ -108,6 +110,13 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: numbe
   } finally {
     clearTimeout(timeoutId)
   }
+}
+
+async function fetchOnboardingWithRetry(url: string, init: RequestInit): Promise<Response> {
+  return retryNetworkOperation(
+    () => fetch(url, init),
+    ONBOARDING_NETWORK_RETRY_DELAYS_MS,
+  )
 }
 
 function isStagingOnboardingHost(): boolean {
@@ -282,7 +291,7 @@ export async function createSeamlessNode(input: CreateNodeInput): Promise<Create
 
   const serializedBody = JSON.stringify(body)
   const idempotencyKey = `nz-onboarding-v1-${await sha256Text(serializedBody)}`
-  const res = await fetch(`${config.provisionerUrl}/v1/solid-account`, {
+  const res = await fetchOnboardingWithRetry(`${config.provisionerUrl}/v1/solid-account`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
