@@ -292,6 +292,8 @@ jobs:
               JSS_PUBLIC_PROVISIONER_BASE_URL="https://api.nodezero.social" \
               JSS_APP_ORIGIN="https://staging.nodezero.social" \
               JSS_SOLID_CSS_BASE_URL="https://solid.nodezero.social" \
+              JSS_SOLID_CSS_POD_LOCK_RETRY_ATTEMPTS="8" \
+              JSS_SOLID_CSS_POD_LOCK_RETRY_BASE_DELAY_MS="1000" \
               JSS_ALLOWED_ORIGINS="https://staging.nodezero.social,https://nodezero.social,https://www.nodezero.social,https://solid.nodezero.social,http://localhost:19006,http://localhost:8081" \
               JSS_BROWSER_SESSION_ENABLED="true" \
               JSS_BROWSER_SESSION_COOKIE_DOMAIN=".nodezero.social" \
@@ -359,6 +361,7 @@ jobs:
           fi
           health_url="https://${JSS_PROVISIONER_APP_NAME}.azurewebsites.net/health"
           echo "Waiting for provisioner health: ${health_url}"
+          consecutive_healthy=0
 
           for attempt in {1..30}; do
             status_code="$(curl -sS -o /tmp/provisioner-health.json -w "%{http_code}" --max-time 10 "$health_url" || true)"
@@ -370,11 +373,18 @@ jobs:
               if [ "$deployed_commit" = "$EXPECTED_COMMIT" ] && \
                   [ "$payload_sha" = "$EXPECTED_PAYLOAD_SHA256" ] && \
                  [ "$configured_artifact_sha" = "$expected_artifact_sha" ]; then
-                echo "Provisioner health and provenance passed on attempt ${attempt}."
-                cat /tmp/provisioner-health.json
-                exit 0
+                consecutive_healthy=$((consecutive_healthy + 1))
+                echo "Provisioner health and provenance passed on attempt ${attempt} (${consecutive_healthy}/3 consecutive)."
+                if [ "$consecutive_healthy" -eq 3 ]; then
+                  cat /tmp/provisioner-health.json
+                  exit 0
+                fi
+              else
+                consecutive_healthy=0
+                echo "Attempt ${attempt}/30: provenance mismatch (commit='${deployed_commit}', payload='${payload_sha}', artifact='${configured_artifact_sha}')."
               fi
-              echo "Attempt ${attempt}/30: provenance mismatch (commit='${deployed_commit}', payload='${payload_sha}', artifact='${configured_artifact_sha}')."
+            else
+              consecutive_healthy=0
             fi
 
             echo "Attempt ${attempt}/30: health returned HTTP ${status_code}. Retrying in 10s..."

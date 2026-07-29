@@ -238,6 +238,8 @@ before(async () => {
   process.env.JSS_BUILD_ARTIFACT_SHA256 = 'a'.repeat(64)
   process.env.JSS_PUBLIC_PROVISIONER_BASE_URL = 'https://api.nodezero.social'
   process.env.JSS_APP_ORIGIN = 'https://staging.nodezero.social'
+  process.env.JSS_SOLID_CSS_POD_LOCK_RETRY_ATTEMPTS = '5'
+  process.env.JSS_SOLID_CSS_POD_LOCK_RETRY_BASE_DELAY_MS = '1'
   process.env.JSS_IDENTITY_CONTRACT_ID = 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM'
   process.env.JSS_LOCKBOX_FACTORY_VERSION = 'v2'
   process.env.JSS_LOCKBOX_FACTORY_CONTRACT_ID = 'CBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAG4'
@@ -377,6 +379,15 @@ void test('solid-account: returns a session that immediately proxies Pod writes'
 
 void test('solid-account: retries a transient CSS Pod creation 400', async () => {
   cssState.transientPodBadRequests = 1
+  const { session, webId } = await provisionUser()
+
+  assert.ok(session.accessToken)
+  assert.match(webId, /profile\/card#me$/)
+  assert.equal(cssState.transientPodBadRequests, 0)
+})
+
+void test('solid-account: recovers from repeated transient CSS Pod conflicts', async () => {
+  cssState.transientPodBadRequests = 4
   const { session, webId } = await provisionUser()
 
   assert.ok(session.accessToken)
