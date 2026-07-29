@@ -76,11 +76,7 @@ interface ProvisioningReservation {
   expiresAt: string | null
 }
 
-interface ReservationRegistry {
-  schemaVersion: 1
-  reservationsJson: string
-  updatedAt: string
-}
+type ReservationRegistryRow = Record<string, unknown>
 
 export interface ProvisioningLease {
   operationId: string
@@ -107,6 +103,8 @@ export class ProvisioningConflictError extends Error {
 
 const OPERATION_ROW_PREFIX = 'provisioning-operation-'
 const REGISTRY_ROW_KEY = 'provisioning-reservations-v1'
+const RESERVATION_CHUNK_PREFIX = 'reservationsJson'
+export const RESERVATION_CHUNK_MAX_CHARS = 24_000
 const DEFAULT_RESERVATION_TTL_MS = 30 * 60_000
 const LEGAL_TRANSITIONS: Record<ProvisioningState, readonly ProvisioningState[]> = {
   reserved: ['proof_verified', 'failed_terminal'],
@@ -135,6 +133,67 @@ function parseJsonRecord<T>(raw: unknown, fallback: T): T {
     return JSON.parse(raw) as T
   } catch {
     return fallback
+  }
+}
+
+export function decodeReservationRegistry(
+  row: ReservationRegistryRow | null,
+): Record<string, ProvisioningReservation> {
+  if (!row) return {}
+  let json: string
+  if (Number(row.schemaVersion) === 2) {
+    const chunkCount = Number(row.reservationsChunkCount)
+    if (!Number.isSafeInteger(chunkCount) || chunkCount < 1) {
+      throw new Error('Provisioning reservation registry chunk metadata is invalid.')
+    }
+    const chunks = Array.from({ length: chunkCount }, (_, index) => {
+      const key = `${RESERVATION_CHUNK_PREFIX}${String(index).padStart(3, '0')}`
+      const chunk = row[key]
+      if (typeof chunk !== 'string') {
+        throw new Error(`Provisioning reservation registry chunk is missing: ${key}.`)
+      }
+      return chunk
+    })
+    json = chunks.join('')
+  } else if (typeof row.reservationsJson === 'string') {
+    json = row.reservationsJson
+  } else {
+    throw new Error('Provisioning reservation registry payload is missing.')
+  }
+
+  try {
+    const parsed = JSON.parse(json) as unknown
+    if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
+      throw new Error('registry payload is not an object')
+    }
+    return parsed as Record<string, ProvisioningReservation>
+  } catch (error) {
+    throw new Error(`Provisioning reservation registry is corrupt: ${String(error)}`)
+  }
+}
+
+export function encodeReservationRegistry(
+  reservations: Record<string, ProvisioningReservation>,
+  updatedAt = new Date().toISOString(),
+): ReservationRegistryRow {
+  const json = JSON.stringify(reservations)
+  const chunks = Array.from(
+    { length: Math.max(1, Math.ceil(json.length / RESERVATION_CHUNK_MAX_CHARS)) },
+    (_, index) => json.slice(
+      index * RESERVATION_CHUNK_MAX_CHARS,
+      (index + 1) * RESERVATION_CHUNK_MAX_CHARS,
+    ),
+  )
+  return {
+    schemaVersion: 2,
+    reservationsChunkCount: chunks.length,
+    ...Object.fromEntries(
+      chunks.map((chunk, index) => [
+        `${RESERVATION_CHUNK_PREFIX}${String(index).padStart(3, '0')}`,
+        chunk,
+      ]),
+    ),
+    updatedAt,
   }
 }
 
@@ -220,10 +279,7 @@ export class ProvisioningStore {
   async isEmailReserved(normalizedEmail: string): Promise<boolean> {
     const registry = await this.credentials.readVersionedRow(REGISTRY_ROW_KEY)
     if (!registry) return false
-    const reservations = parseJsonRecord<Record<string, ProvisioningReservation>>(
-      String(registry.value.reservationsJson ?? '{}'),
-      {},
-    )
+    const reservations = decodeReservationRegistry(registry.value)
     const key = `email:${this.credentials.keyedHash('provisioning-email', normalizedEmail)}`
     const reservation = reservations[key]
     if (!reservation) return false
@@ -368,10 +424,7 @@ export class ProvisioningStore {
     for (let attempt = 0; attempt < 8; attempt += 1) {
       const registry = await this.credentials.readVersionedRow(REGISTRY_ROW_KEY)
       if (!registry) throw new Error('Provisioning reservation registry is missing.')
-      const reservations = parseJsonRecord<Record<string, ProvisioningReservation>>(
-        String(registry.value.reservationsJson ?? '{}'),
-        {},
-      )
+      const reservations = decodeReservationRegistry(registry.value)
       let matched = 0
       for (const reservation of Object.values(reservations)) {
         if (reservation.operationId !== operation.operation.operationId) continue
@@ -385,11 +438,7 @@ export class ProvisioningStore {
           'The provisioning identity no longer owns all required reservations.',
         )
       }
-      const next: ReservationRegistry = {
-        schemaVersion: 1,
-        reservationsJson: JSON.stringify(reservations),
-        updatedAt: new Date().toISOString(),
-      }
+      const next = encodeReservationRegistry(reservations)
       try {
         await this.credentials.replaceVersionedRow(REGISTRY_ROW_KEY, next, registry.etag)
         return
@@ -453,17 +502,7 @@ export class ProvisioningStore {
   private async claimReservations(operation: ProvisioningOperation): Promise<void> {
     for (let attempt = 0; attempt < 8; attempt += 1) {
       const registry = await this.credentials.readVersionedRow(REGISTRY_ROW_KEY)
-      const current: ReservationRegistry = registry
-        ? {
-            schemaVersion: 1,
-            reservationsJson: String(registry.value.reservationsJson ?? '{}'),
-            updatedAt: String(registry.value.updatedAt ?? ''),
-          }
-        : { schemaVersion: 1, reservationsJson: '{}', updatedAt: new Date().toISOString() }
-      const reservations = parseJsonRecord<Record<string, ProvisioningReservation>>(
-        current.reservationsJson,
-        {},
-      )
+      const reservations = decodeReservationRegistry(registry?.value ?? null)
       const now = Date.now()
       for (const [key, reservation] of Object.entries(reservations)) {
         if (
@@ -515,11 +554,7 @@ export class ProvisioningStore {
         }
       }
 
-      const next: ReservationRegistry = {
-        schemaVersion: 1,
-        reservationsJson: JSON.stringify(reservations),
-        updatedAt: new Date().toISOString(),
-      }
+      const next = encodeReservationRegistry(reservations)
       try {
         if (registry) {
           await this.credentials.replaceVersionedRow(REGISTRY_ROW_KEY, next, registry.etag)

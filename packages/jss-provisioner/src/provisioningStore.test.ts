@@ -7,8 +7,11 @@ import { test } from 'node:test'
 import { ConditionalWriteError, CredentialStore } from './credentialStore.js'
 import {
   computeProvisioningRequestDigest,
+  decodeReservationRegistry,
+  encodeReservationRegistry,
   ProvisioningConflictError,
   ProvisioningStore,
+  RESERVATION_CHUNK_MAX_CHARS,
   type ProvisioningReservationInput,
 } from './provisioningStore.js'
 
@@ -41,6 +44,75 @@ void test('request digest is stable across recursively reordered object keys', (
   })
   assert.equal(first, second)
   assert.notEqual(first, computeProvisioningRequestDigest({ handle: 'bob' }))
+})
+
+void test('reservation registry chunks round-trip below Azure property limits', () => {
+  const reservations = Object.fromEntries(
+    Array.from({ length: 120 }, (_, index) => [
+      `handle:${String(index).padStart(64, '0')}`,
+      {
+        operationId: `op_${String(index).padStart(64, '0')}`,
+        requestDigest: String(index).padStart(64, 'a'),
+        disposition: 'committed',
+        expiresAt: null,
+      },
+    ]),
+  )
+  const encoded = encodeReservationRegistry(reservations)
+  assert.equal(encoded.schemaVersion, 2)
+  assert.ok(Number(encoded.reservationsChunkCount) > 1)
+  for (const [key, value] of Object.entries(encoded)) {
+    if (!key.startsWith('reservationsJson')) continue
+    assert.equal(typeof value, 'string')
+    assert.ok(String(value).length <= RESERVATION_CHUNK_MAX_CHARS)
+  }
+  assert.deepEqual(decodeReservationRegistry(encoded), reservations)
+})
+
+void test('legacy near-limit reservation registry migrates on the next claim', async () => {
+  const credentials = new CredentialStore({ encryptionKey: KEY_B64 })
+  const legacyReservations = Object.fromEntries(
+    Array.from({ length: 112 }, (_, index) => [
+      `handle:${String(index).padStart(64, '0')}`,
+      {
+        operationId: `op_${String(index).padStart(64, '0')}`,
+        requestDigest: String(index).padStart(64, 'b'),
+        disposition: 'committed',
+        expiresAt: null,
+      },
+    ]),
+  )
+  await credentials.createVersionedRow('provisioning-reservations-v1', {
+    schemaVersion: 1,
+    reservationsJson: JSON.stringify(legacyReservations),
+    updatedAt: new Date().toISOString(),
+  })
+
+  const store = new ProvisioningStore(credentials)
+  await store.reserveOrLoad(reservationInput({
+    idempotencyKey: 'chunk-migration',
+    requestDigest: '9'.repeat(64),
+    normalizedHandle: 'chunk-migration',
+    normalizedEmail: 'chunk-migration@example.com',
+    expectedWebId: 'https://solid.nodezero.social/chunk-migration/profile/card#me',
+    expectedPodUrl: 'https://solid.nodezero.social/chunk-migration/',
+  }))
+
+  const migrated = await credentials.readVersionedRow('provisioning-reservations-v1')
+  assert.equal(migrated?.value.schemaVersion, 2)
+  assert.equal('reservationsJson' in (migrated?.value ?? {}), false)
+  assert.ok(Number(migrated?.value.reservationsChunkCount) > 1)
+})
+
+void test('chunked registry fails closed when a chunk is missing', () => {
+  assert.throws(
+    () => decodeReservationRegistry({
+      schemaVersion: 2,
+      reservationsChunkCount: 2,
+      reservationsJson000: '{}',
+    }),
+    /chunk is missing/i,
+  )
 })
 
 void test('reserveOrLoad replays the same request and rejects idempotency payload drift', async () => {
