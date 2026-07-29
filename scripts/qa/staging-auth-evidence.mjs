@@ -211,76 +211,6 @@ async function maybeSelectAccountForReturningSignIn(page, expectedWebId) {
   return true
 }
 
-async function simulateLegacyWalletCutover(context, page) {
-  const walletFrame = page.frames().find((frame) => frame.url().startsWith('https://wallet.nodezero.social/'))
-  if (!walletFrame) fail('Wallet broker frame is unavailable for legacy migration evidence.')
-  const legacy = await walletFrame.evaluate(() => {
-    const prefix = 'nodezero.embedded-wallet.'
-    const indexKey = `${prefix}nodezero.stellar.keyring.index.v1`
-    const activeKey = `${prefix}nodezero.stellar.active-key-id.v1`
-    const index = JSON.parse(localStorage.getItem(indexKey) || '{}')
-    const keyId = localStorage.getItem(activeKey) || index.keyIds?.[0]
-    const secretKey = `${prefix}nodezero.stellar.secret.${keyId}`
-    const metaKey = `${prefix}nodezero.stellar.identity.meta.${keyId}`
-    const secret = localStorage.getItem(secretKey)
-    const meta = localStorage.getItem(metaKey)
-    if (!keyId || !secret) throw new Error('Active broker identity is unavailable.')
-    for (const key of Object.keys(localStorage)) {
-      if (key.startsWith(prefix)) localStorage.removeItem(key)
-    }
-    return { keyId, secret, meta }
-  })
-
-  const stagingSeed = await context.newPage()
-  await stagingSeed.goto(`${internalAppUrl}/deploy-marker.json`, { waitUntil: 'domcontentloaded' })
-  await stagingSeed.evaluate(({ keyId, secret, meta }) => {
-    const prefix = 'nodezero.embedded-wallet.'
-    localStorage.setItem(
-      `${prefix}nodezero.stellar.keyring.index.v1`,
-      JSON.stringify({ version: 1, keyIds: [keyId] }),
-    )
-    localStorage.setItem(`${prefix}nodezero.stellar.active-key-id.v1`, keyId)
-    localStorage.setItem(`${prefix}nodezero.stellar.secret.${keyId}`, secret)
-    localStorage.setItem(
-      `${prefix}nodezero.stellar.identity.meta.${keyId}`,
-      meta || JSON.stringify({ keyId, label: 'Legacy identity', createdAt: new Date().toISOString(), lastUsedAt: null }),
-    )
-  }, legacy)
-  await stagingSeed.close()
-  return legacy.keyId
-}
-
-async function assertLegacyWalletMigrated(context, page, legacyKeyId) {
-  const brokerLocator = page.locator('iframe[title="NodeZero wallet broker"]')
-  await brokerLocator.waitFor({
-    state: 'attached',
-    timeout: 120_000,
-  })
-  const brokerElement = await brokerLocator.elementHandle()
-  const walletFrame = await brokerElement?.contentFrame()
-  if (!walletFrame) fail('Wallet broker frame is unavailable after legacy migration.')
-  await walletFrame.waitForURL((url) => url.origin === 'https://wallet.nodezero.social', {
-    timeout: 30_000,
-  })
-  const brokerState = await walletFrame.evaluate(() => {
-    const prefix = 'nodezero.embedded-wallet.'
-    const raw = localStorage.getItem(`${prefix}nodezero.stellar.keyring.index.v1`)
-    const index = raw ? JSON.parse(raw) : null
-    return { count: Array.isArray(index?.keyIds) ? index.keyIds.length : 0 }
-  })
-  if (brokerState.count !== 1) fail(`Legacy migration restored ${brokerState.count} broker identities; expected 1.`)
-
-  const stagingCheck = await context.newPage()
-  await stagingCheck.goto(`${internalAppUrl}/deploy-marker.json`, { waitUntil: 'domcontentloaded' })
-  const legacySecretPresent = await stagingCheck.evaluate((keyId) =>
-    localStorage.getItem(`nodezero.embedded-wallet.nodezero.stellar.secret.${keyId}`) !== null,
-    legacyKeyId,
-  )
-  await stagingCheck.close()
-  if (legacySecretPresent) fail('Legacy staging identity secret remained after verified broker migration.')
-  log('Legacy wallet migration PASS: staging-origin key restored to broker and plaintext source removed')
-}
-
 function assertNoLegacyLegs(navigations, cssRequests) {
   for (const url of navigations) {
     if (/nz_oidc_bridge|nz_bridge_return|nz_stellar_token|[?&]code=|[?&]state=/.test(url)) {
@@ -516,11 +446,9 @@ async function main() {
   await verifyLockboxOnChain(lockboxContractId, session?.lockbox?.factoryContractId)
 
   // ── Journey 2: returning-user one-tap sign-in ──────────────────────────────
-  log('Journey 2: migrate legacy staging wallet → one-tap Stellar sign-in')
-  const legacyKeyId = await simulateLegacyWalletCutover(context, page)
+  log('Journey 2: retained same-origin wallet → one-tap Stellar sign-in')
   await revokeBrowserSession(page, session)
   await page.goto(`${baseUrl}/`, { waitUntil: 'domcontentloaded', timeout: 60_000 })
-  await assertLegacyWalletMigrated(context, page, legacyKeyId)
 
   await page.waitForFunction(
     () => {
