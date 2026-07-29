@@ -11,12 +11,11 @@ identity and content. It combines three open protocols into one coherent identit
 - **Groth16 zero-knowledge proofs** — browser-generated `pod_ownership` proof binding a
   WebID/Pod to a Stellar account, encrypted and anchored on-chain.
 
-The public Testnet sign-in entry is **[https://nodezero.social](https://nodezero.social)**.
-After authentication, the internal Testnet app runs at
-**[https://staging.nodezero.social](https://staging.nodezero.social)**. The
-first-party provisioner and wallet-broker hosts are `api.nodezero.social` and
-`wallet.nodezero.social` respectively. All four hosts remain Testnet-only;
-no real assets are at risk.
+The canonical Testnet PWA runs at
+**[https://staging.nodezero.social](https://staging.nodezero.social)**. Its
+first-party provisioner API is `api.nodezero.social`; the Pod host is
+`solid.nodezero.social`. The apex `nodezero.social` is reserved for a separate
+future Mainnet PWA. Testnet and Mainnet origins never share wallet state.
 
 During active development, **`testnet` is the release branch** for staging/TestNet readiness.
 The repository default branch remains **`main`** for governance and stable entrypoint workflows.
@@ -26,9 +25,9 @@ The repository default branch remains **`main`** for governance and stable entry
 ## Architecture
 
 ```
-   User Browser (Expo web)
+   User Browser (installable Expo PWA)
    ┌─────────────────────────────────────────────────────┐
-   │  Wallet broker (Stellar keypair, wallet.nodezero.social) │
+   │  Encrypted IndexedDB wallet (profile-scoped)        │
    │  pod_ownership Groth16 Proof (snarkjs/WASM)         │
    │  AES-256-GCM claim encryption (Web Crypto)          │
    └─────────────┬────────────┬────────────┬─────────────┘

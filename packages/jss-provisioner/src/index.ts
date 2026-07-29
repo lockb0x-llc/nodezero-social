@@ -274,7 +274,7 @@ interface OnboardingConfigDescriptor {
   issuer: string
   solidPodOrigin: string
   provisionerOrigin: string
-  walletOrigin: string
+  appOrigin: string
   identityContractId: string
   lockboxFactoryContractId: string
   lockboxFactoryVersion: string
@@ -299,7 +299,7 @@ function buildOnboardingConfigDescriptor(): OnboardingConfigDescriptor {
     process.env.JSS_IDENTITY_CONTRACT_ID ?? process.env.NZ_IDENTITY_CONTRACT_ID ?? ''
   ).trim()
   const provisionerOrigin = (process.env.JSS_PUBLIC_PROVISIONER_BASE_URL ?? '').trim().replace(/\/+$/, '')
-  const walletOrigin = (process.env.JSS_WALLET_BROKER_URL ?? '').trim().replace(/\/+$/, '')
+  const appOrigin = (process.env.JSS_APP_ORIGIN ?? '').trim().replace(/\/+$/, '')
   const fingerprintInput = {
     schemaVersion: 1,
     claimDomain: 'NZ_POD_STELLAR_BRIDGE_V3',
@@ -309,7 +309,7 @@ function buildOnboardingConfigDescriptor(): OnboardingConfigDescriptor {
     issuer: ISSUER.replace(/\/+$/, ''),
     solidPodOrigin: SOLID_CSS_BASE_URL,
     provisionerOrigin,
-    walletOrigin,
+    appOrigin,
     identityContractId,
     lockboxFactoryContractId: LOCKBOX_FACTORY_CONTRACT_ID.trim(),
     lockboxFactoryVersion: LOCKBOX_FACTORY_VERSION,
@@ -326,7 +326,7 @@ function buildOnboardingConfigDescriptor(): OnboardingConfigDescriptor {
     fingerprintInput.issuer,
     SOLID_CSS_BASE_URL,
     provisionerOrigin,
-    walletOrigin,
+    appOrigin,
     identityContractId,
     fingerprintInput.lockboxFactoryContractId,
     LOCKBOX_BRIDGE_V3_MANIFEST_URL,

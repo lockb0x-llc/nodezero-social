@@ -18,7 +18,7 @@ code.
    sign-in entry point (identity only —
    application-feature proofs run separately and never block this gate):
    ```sh
-   STAGING_BASE_URL=https://nodezero.social pnpm qa:smoke:auth
+   STAGING_BASE_URL=https://staging.nodezero.social pnpm qa:smoke:auth
    ```
    PASS requires all three journeys green: new-user create (Pod + WebID +
    on-chain lockb0x + inline NodeZero session, zero browser↔CSS requests),
@@ -32,9 +32,8 @@ code.
 - [ ] ZK artifacts and manifest URLs published and reachable.
 - [x] Relay service deployed with a reachable `/health` endpoint.
 - [x] Static Web App custom domain `staging.nodezero.social` resolves with valid TLS.
-- [ ] `nodezero.social`, `staging.nodezero.social`, `api.nodezero.social`, and
-   `wallet.nodezero.social` resolve with valid TLS and the release marker
-   identifies the same successful GitHub Actions commit.
+- [ ] `staging.nodezero.social` and `api.nodezero.social` resolve with valid TLS,
+   and their provenance identifies the same successful GitHub Actions commit.
 
 ## Automated smoke (gate)
 
@@ -57,9 +56,9 @@ code.
 | AU4 | Sign out via Profile → Settings | Session destroyed (`nz.session.v2` cleared), returns to landing; every deep link redirects to `/` | RE-RUN REQUIRED (cutover) | Navigate `/profile` → ⚙ → `/settings` → **Sign Out**. |
 | AU5 | New-user seamless onboarding: handle + email → Create Your Node | ZK proof → Pod + WebID created → lockb0x anchored on-chain → **inline NodeZero session** → authenticated feed with no redirect leg and no password anywhere | RE-RUN REQUIRED (cutover) | Automated by `scripts/qa/staging-auth-evidence.mjs` (Journey 1); on-chain lockb0x asserted via stellar.expert. |
 | AU6 | Returning sign-in restores the same identity | Same WebID as onboarding; session carries lockb0x anchor metadata; client-side attestation check verifies | RE-RUN REQUIRED (cutover) | Automated (Journey 2); WebID equality asserted. |
-| AU7 | Fail-closed enforcement: tamper/clear the stored session, deep-link `/feed` | App lands on the sign-in page; forged record destroyed; no zombie state | RE-RUN REQUIRED (cutover) | Automated (Journey 3) + Playwright `auth-invariant.spec.ts` (I2). |
-| AU8 | New user begins on `nodezero.social`, creates a Node, and is handed to `staging.nodezero.social/feed` | Browser follows a first-party cookie handoff with no URL token, no browser↔CSS request, and a staging-local session only after direct V3 lockb0x commitment verification | RE-RUN REQUIRED | Headed `pnpm qa:evidence:apex-staging-onboarding`; retain sanitized screenshots, trace, Treasury funding transaction, and V3 child evidence. |
-| AU9 | Returning user begins on `nodezero.social` and taps **Sign In** | Wallet broker signs the challenge; the API rotates a first-party opaque session; the same WebID and lockb0x appear at `staging.nodezero.social/feed` without a second prompt | RE-RUN REQUIRED | Headed evidence script asserts same WebID, same lockb0x, no CSS requests, and no Friendbot requests. |
+| AU7 | Fail-closed enforcement: tamper/clear the stored session, deep-link `/feed` | App lands on the sign-in page; forged record destroyed; no zombie state | RE-RUN REQUIRED (cutover) | Automated (Journey 4) + Playwright `auth-invariant.spec.ts` (I2). |
+| AU8 | New user begins on `staging.nodezero.social` and creates a Node | The canonical PWA generates a device identity only after explicit user action, persists it in encrypted profile-scoped IndexedDB, creates the V3 lockb0x, and reaches `/feed` without cross-origin handoff | RE-RUN REQUIRED | Automated by `pnpm qa:smoke:auth` Journey 1 and the release-created V3 audit. |
+| AU9 | Returning user reloads `staging.nodezero.social` and taps **Sign In** | The retained same-origin wallet signs the challenge; the same WebID and lockb0x are restored without a second identity or CSS request | RE-RUN REQUIRED | Automated by `pnpm qa:smoke:auth` Journeys 2 and 2b. |
 | AU10 | Attempt cookie bootstrap from an unapproved origin or with a revoked cookie | Provisioner returns `403` for unapproved origin and `401 session_invalid` for revoked/expired session; no app route is opened | RE-RUN REQUIRED | Covered by `index.session.test.ts`; add browser negative proof in release evidence. |
 
 ### Navigation UX (nav overflow fix + Settings-via-Profile)

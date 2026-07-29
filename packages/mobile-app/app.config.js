@@ -86,7 +86,6 @@ const jssProvisionerUrl =
   process.env.NZ_JSS_PROVISIONER_URL ??
   (envProfile === 'staging-testnet' ? 'https://nodezero-social-staging-testnet-provisioner.azurewebsites.net' : '')
 const browserSessionEnabled = process.env.NZ_BROWSER_SESSION_ENABLED ?? 'false'
-const walletBrokerUrl = process.env.NZ_WALLET_BROKER_URL ?? ''
 const appOrigin =
   process.env.NZ_APP_ORIGIN ??
   (envProfile === 'staging-testnet' ? 'https://staging.nodezero.social' : '')
@@ -153,9 +152,6 @@ if (profile.enforceStrictVariables) {
   }
   if (browserSessionEnabled === 'true' && jssProvisionerUrl !== 'https://api.nodezero.social') {
     throw new Error(`NZ_JSS_PROVISIONER_URL must be https://api.nodezero.social when browser sessions are enabled.`)
-  }
-  if (browserSessionEnabled === 'true' && walletBrokerUrl !== 'https://wallet.nodezero.social') {
-    throw new Error(`NZ_WALLET_BROKER_URL must be https://wallet.nodezero.social when browser sessions are enabled.`)
   }
 }
 
@@ -259,7 +255,6 @@ module.exports = {
     appOrigin,
     pwaCachePrefix,
     browserSessionEnabled,
-    walletBrokerUrl,
     qaLocalOverridesEnabled,
     seamlessOnboardingEnabled,
     solidBootstrapEnabled,

@@ -30,7 +30,7 @@ if (typeof globalWithBuffer.Buffer === 'undefined') {
   globalWithBuffer.Buffer = Buffer
 }
 
-const PUBLIC_ROUTES = new Set(['/', '/wallet-broker', '/wallet-migration'])
+const PUBLIC_ROUTES = new Set(['/'])
 const TRANSITION_ROUTES = new Set(['/onboarding'])
 
 function getCanonicalRedirectUrl(): string | null {
@@ -275,8 +275,6 @@ export default function RootLayout(): JSX.Element {
                 <Stack.Screen name="backpack" />
                 <Stack.Screen name="compose" />
                 <Stack.Screen name="docustream" />
-                <Stack.Screen name="wallet-broker" options={{ headerShown: false }} />
-                <Stack.Screen name="wallet-migration" options={{ headerShown: false }} />
               </Stack>
               <WebNavBar />
             </PresenceProvider>

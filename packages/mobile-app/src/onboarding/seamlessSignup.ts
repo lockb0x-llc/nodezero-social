@@ -55,7 +55,7 @@ export interface OnboardingConfigDescriptor {
   issuer: string
   solidPodOrigin: string
   provisionerOrigin: string
-  walletOrigin: string
+  appOrigin: string
   identityContractId: string
   lockboxFactoryContractId: string
   lockboxFactoryVersion: string
@@ -178,7 +178,7 @@ export async function getCompatibleOnboardingConfig(): Promise<OnboardingConfigD
     issuer: (extra?.nodeZeroIssuerUrl ?? '').replace(/\/+$/, ''),
     solidPodOrigin: (extra?.nodeZeroIssuerUrl ?? '').replace(/\/+$/, ''),
     provisionerOrigin: config.provisionerUrl,
-    walletOrigin: (extra?.walletBrokerUrl ?? '').replace(/\/+$/, ''),
+    appOrigin: (extra?.appOrigin ?? '').replace(/\/+$/, ''),
     identityContractId: extra?.identityContractId ?? '',
     lockboxFactoryContractId: extra?.lockboxFactoryContractId ?? '',
     lockboxFactoryVersion: `v${extra?.lockboxFactoryVersion ?? ''}`,
@@ -205,7 +205,7 @@ export async function getCompatibleOnboardingConfig(): Promise<OnboardingConfigD
     issuer: descriptor.issuer,
     solidPodOrigin: descriptor.solidPodOrigin,
     provisionerOrigin: descriptor.provisionerOrigin,
-    walletOrigin: descriptor.walletOrigin,
+    appOrigin: descriptor.appOrigin,
     identityContractId: descriptor.identityContractId,
     lockboxFactoryContractId: descriptor.lockboxFactoryContractId,
     lockboxFactoryVersion: descriptor.lockboxFactoryVersion,

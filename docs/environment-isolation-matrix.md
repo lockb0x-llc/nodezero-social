@@ -15,8 +15,8 @@ This matrix is the source of truth for environment separation. Any cross-environ
 | Profile | Stellar RPC | Stellar Passphrase | Allowed Hosts |
 |---|---|---|---|
 | local | https://soroban-testnet.stellar.org | Test SDF Network ; September 2015 | localhost / local Expo hosts |
-| staging-testnet | https://soroban-testnet.stellar.org | Test SDF Network ; September 2015 | `nodezero.social` public sign-in, `staging.nodezero.social` internal app, `api.nodezero.social` provisioner API, `wallet.nodezero.social` wallet broker |
-| production-mainnet | https://soroban.stellar.org | Public Global Stellar Network ; September 2015 | Production-specific app/API/wallet hosts only; never inherit Testnet bindings |
+| staging-testnet | https://soroban-testnet.stellar.org | Test SDF Network ; September 2015 | `staging.nodezero.social` canonical PWA, `api.nodezero.social` provisioner API, `solid.nodezero.social` Pod host |
+| production-mainnet | https://soroban.stellar.org | Public Global Stellar Network ; September 2015 | `nodezero.social` future Mainnet PWA with production-specific API/Pod hosts; never inherit Testnet bindings or wallet state |
 
 ## Required application variables
 
@@ -32,11 +32,11 @@ All non-local builds must define these variables explicitly:
 - NZ_ZK_MANIFEST_URL
 - NZ_NODEZERO_ISSUER_URL
 - NZ_JSS_PROVISIONER_URL
+- NZ_APP_ORIGIN
 
 When `NZ_BROWSER_SESSION_ENABLED=true`, strict builds additionally require:
 
 - NZ_JSS_PROVISIONER_URL=https://api.nodezero.social
-- NZ_WALLET_BROKER_URL=https://wallet.nodezero.social
 
 Optional until the Waku messaging cutover (validated when set):
 

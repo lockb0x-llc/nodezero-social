@@ -75,6 +75,32 @@ jobs:
           AZURE_ENVIRONMENT_NAME: staging-testnet
         run: pnpm deploy:azure
 
+      - name: Remove retired wallet broker domain
+        run: |
+          set -euo pipefail
+          wallet_host="wallet.nodezero.social"
+          if az staticwebapp hostname list \
+            --name "$STATIC_WEB_APP_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --query "[?domainName=='${wallet_host}'] | length(@)" -o tsv | grep -qx '1'; then
+            az staticwebapp hostname delete \
+              --name "$STATIC_WEB_APP_NAME" \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --hostname "$wallet_host" \
+              --yes
+          fi
+          if az network dns record-set cname show \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --zone-name nodezero.social \
+            --name wallet \
+            --output none 2>/dev/null; then
+            az network dns record-set cname delete \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --zone-name nodezero.social \
+              --name wallet \
+              --yes
+          fi
+
       - name: Bind first-party provisioner API domain
         run: |
           set -euo pipefail
@@ -137,40 +163,19 @@ jobs:
             --certificate-thumbprint "$thumbprint" \
             --ssl-type SNI
 
-      - name: Bind first-party wallet broker domain
+      - name: Verify first-party API TLS
         run: |
           set -euo pipefail
-          wallet_host="wallet.nodezero.social"
+          url="https://api.nodezero.social/health"
           for attempt in {1..20}; do
-            if az staticwebapp hostname set \
-              --name "$STATIC_WEB_APP_NAME" \
-              --resource-group "$AZURE_RESOURCE_GROUP" \
-              --hostname "$wallet_host" \
-              --validation-method cname-delegation; then
-              echo "${wallet_host} bound successfully."
+            if curl --fail --silent --show-error --max-time 20 "$url" >/dev/null; then
               break
             fi
             if [ "$attempt" -eq 20 ]; then
-              echo "Unable to bind ${wallet_host} after DNS propagation retries."
+              echo "First-party API did not become reachable: $url"
               exit 1
             fi
             sleep 15
-          done
-
-      - name: Verify first-party host TLS
-        run: |
-          set -euo pipefail
-          for url in https://api.nodezero.social/health https://wallet.nodezero.social/; do
-            for attempt in {1..20}; do
-              if curl --fail --silent --show-error --max-time 20 "$url" >/dev/null; then
-                break
-              fi
-              if [ "$attempt" -eq 20 ]; then
-                echo "First-party host did not become reachable: $url"
-                exit 1
-              fi
-              sleep 15
-            done
           done
 
       # Non-blocking: this workflow does not deploy the solid-server stack
@@ -274,9 +279,9 @@ jobs:
               JSS_BUILD_ARTIFACT_SHA256="${provisioner_artifact_sha256}" \
               JSS_ISSUER_URL="https://solid.nodezero.social" \
               JSS_PUBLIC_PROVISIONER_BASE_URL="https://api.nodezero.social" \
-              JSS_WALLET_BROKER_URL="https://wallet.nodezero.social" \
+              JSS_APP_ORIGIN="https://staging.nodezero.social" \
               JSS_SOLID_CSS_BASE_URL="https://solid.nodezero.social" \
-              JSS_ALLOWED_ORIGINS="https://staging.nodezero.social,https://nodezero.social,https://www.nodezero.social,https://wallet.nodezero.social,https://solid.nodezero.social,http://localhost:19006,http://localhost:8081" \
+              JSS_ALLOWED_ORIGINS="https://staging.nodezero.social,https://nodezero.social,https://www.nodezero.social,https://solid.nodezero.social,http://localhost:19006,http://localhost:8081" \
               JSS_BROWSER_SESSION_ENABLED="true" \
               JSS_BROWSER_SESSION_COOKIE_DOMAIN=".nodezero.social" \
               JSS_LOCKBOX_FACTORY_MODE="soroban" \
@@ -416,7 +421,6 @@ jobs:
           NZ_SEAMLESS_ONBOARDING_ENABLED: 'true'
           NZ_JSS_PROVISIONER_URL: https://api.nodezero.social
           NZ_BROWSER_SESSION_ENABLED: 'true'
-          NZ_WALLET_BROKER_URL: https://wallet.nodezero.social
           NZ_SOLID_BOOTSTRAP_ENABLED: 'true'
           NZ_MASHLIB_EXPLORER_ENABLED: 'true'
           NZ_MASHLIB_MODULE_ID: nodezero:mashlib-pane-provider
@@ -584,7 +588,6 @@ jobs:
           NZ_NODEZERO_ISSUER_URL: https://solid.nodezero.social/
           NZ_JSS_PROVISIONER_URL: https://api.nodezero.social
           NZ_BROWSER_SESSION_ENABLED: 'true'
-          NZ_WALLET_BROKER_URL: https://wallet.nodezero.social
           NZ_SOLID_BOOTSTRAP_ENABLED: 'true'
           NZ_MASHLIB_EXPLORER_ENABLED: 'true'
           NZ_MASHLIB_MODULE_ID: nodezero:mashlib-pane-provider

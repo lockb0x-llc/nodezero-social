@@ -1,8 +1,9 @@
 # G3 Visual Evidence Index
 
-Artifacts cover the public `https://nodezero.social` entry journey and the
-internal `https://staging.nodezero.social` application journey after the
-relevant GitHub Actions release gate passes.
+Current artifacts cover the canonical `https://staging.nodezero.social` PWA
+after the relevant GitHub Actions release gate passes. Apex-to-staging
+artifacts below are retained as historical evidence from the retired
+cross-origin architecture and are not current release proof.
 
 ## Journey to screenshot mapping
 
@@ -16,11 +17,11 @@ relevant GitHub Actions release gate passes.
     `30220192118` (commit `d2324a2`); its V3 child
     `CALVPRGQC44DGZPPNFSNNS3E4LMPUXRRFGWKCJJG6VDYJ2QKZGSZRNQW` passed
     `pnpm qa:audit:lockbox`.
-    Repeat automation: `NZ_E2E_ITERATIONS=3 NZ_E2E_HEADLESS=true pnpm
-    qa:evidence:apex-staging-onboarding:repeat`. The latest two-iteration run is
-    summarized in `docs/screenshots/onboarding/repeat/ms2nj13g-repeat-summary.json`;
-    both iterations passed and their individual sanitized bundles are retained
-    alongside it.
+    The retired repeat run is summarized in
+    `docs/screenshots/onboarding/repeat/ms2nj13g-repeat-summary.json`; both
+    iterations passed and their individual sanitized bundles remain archived.
+    Current authentication evidence is produced by `pnpm qa:smoke:auth` against
+    the canonical staging origin.
 - Wallet creation and testnet funding: `docs/screenshots/wallet-creation-step1.png`
 - Feed view/post: `docs/screenshots/feed-view-post-step1.png`
 - Local messaging: `docs/screenshots/local-messaging-step1.png`

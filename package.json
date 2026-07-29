@@ -25,8 +25,6 @@
     "qa:smoke:gate": "bash ./scripts/qa/staging-smoke.sh && bash ./scripts/qa/staging-solid-bootstrap-policy-smoke.sh",
     "qa:smoke:auth": "node ./scripts/qa/staging-auth-evidence.mjs",
     "qa:audit:lockbox": "node ./scripts/qa/lockbox-auditor.mjs",
-    "qa:evidence:apex-staging-onboarding": "node ./scripts/qa/apex-staging-onboarding-evidence.mjs",
-    "qa:evidence:apex-staging-onboarding:repeat": "node ./scripts/qa/apex-staging-onboarding-repeat.mjs",
     "qa:smoke:community-directory": "node ./scripts/qa/staging-community-directory-evidence.mjs",
     "qa:smoke:mashlib-runtime": "bash ./scripts/qa/staging-mashlib-runtime-proof.sh",
     "qa:smoke:mashlib-deployed": "bash ./scripts/qa/staging-mashlib-deployed-proof.sh",

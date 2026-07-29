@@ -74,10 +74,12 @@ grep -q 'nodezero:mashlib-pane-provider' <<<"$BUNDLE" || fail "Bundle missing mo
 grep -q 'Activity Stream' <<<"$BUNDLE" || fail "Bundle missing pane label marker 'Activity Stream'."
 grep -q 'Timeline View' <<<"$BUNDLE" || fail "Bundle missing pane label marker 'Timeline View'."
 
-# Returning authentication must enumerate every wallet identity, not only the active key.
-grep -q 'list-identities' <<<"$BUNDLE" || fail "Bundle missing multi-identity wallet enumeration marker."
-grep -q 'import-legacy-identity' <<<"$BUNDLE" || fail "Bundle missing legacy wallet import marker."
-grep -q 'nz-legacy-wallet-migration-v1' <<<"$BUNDLE" || fail "Bundle missing cross-origin legacy migration protocol marker."
+# Returning authentication must use the profile-scoped encrypted local wallet.
+grep -q 'nodezero-wallet-' <<<"$BUNDLE" || fail "Bundle missing profile-scoped IndexedDB wallet marker."
+grep -q 'AES-GCM' <<<"$BUNDLE" || fail "Bundle missing encrypted wallet algorithm marker."
+if grep -q 'nz-wallet-broker-v1\|nz-legacy-wallet-migration-v1' <<<"$BUNDLE"; then
+  fail "Bundle still contains an obsolete cross-origin wallet protocol marker."
+fi
 
 # DocuStream source registry and WebID profile links must be deployed and remain unlocked.
 grep -q 'docustreamSourceRegistry' <<<"$BUNDLE" || fail "Bundle missing DocuStream profile registry link marker."
