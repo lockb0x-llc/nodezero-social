@@ -93,6 +93,11 @@ export default function WalletBrokerScreen(): JSX.Element {
             })
             return
           }
+          if (request.operation === 'create-identity') {
+            await createIdentity(request.payload.label)
+            reply(true)
+            return
+          }
           if (request.operation === 'sign-challenge' && request.payload.keyId) {
             const signed = await signAttestationChallenge(
               request.payload.challengePayload ?? '',
@@ -138,11 +143,6 @@ export default function WalletBrokerScreen(): JSX.Element {
           if (request.operation === 'get-lockbox-commitment') {
             const contractId = request.payload.contractId ?? ''
             reply(true, { accountCommitmentHex: await getLockboxAccountCommitment(contractId) })
-            return
-          }
-          if (request.operation === 'create-identity') {
-            await createIdentity(request.payload.label)
-            reply(true)
             return
           }
           if (request.operation === 'activate-identity-for-public-key') {

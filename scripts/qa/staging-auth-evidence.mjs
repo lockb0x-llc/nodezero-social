@@ -232,7 +232,7 @@ async function simulateLegacyWalletCutover(context, page) {
   })
 
   const stagingSeed = await context.newPage()
-  await stagingSeed.goto(`${internalAppUrl}/`, { waitUntil: 'domcontentloaded' })
+  await stagingSeed.goto(`${internalAppUrl}/deploy-marker.json`, { waitUntil: 'domcontentloaded' })
   await stagingSeed.evaluate(({ keyId, secret, meta }) => {
     const prefix = 'nodezero.embedded-wallet.'
     localStorage.setItem(
@@ -251,6 +251,17 @@ async function simulateLegacyWalletCutover(context, page) {
 }
 
 async function assertLegacyWalletMigrated(context, page, legacyKeyId) {
+  await page.locator('iframe[title="NodeZero wallet broker"]').waitFor({
+    state: 'attached',
+    timeout: 120_000,
+  })
+  await page.waitForFunction(
+    () => Array.from(document.querySelectorAll('iframe')).some(
+      (frame) => frame.title === 'NodeZero wallet broker' && frame.src.startsWith('https://wallet.nodezero.social/'),
+    ),
+    undefined,
+    { timeout: 30_000 },
+  )
   const walletFrame = page.frames().find((frame) => frame.url().startsWith('https://wallet.nodezero.social/'))
   if (!walletFrame) fail('Wallet broker frame is unavailable after legacy migration.')
   const brokerState = await walletFrame.evaluate(() => {
@@ -262,7 +273,7 @@ async function assertLegacyWalletMigrated(context, page, legacyKeyId) {
   if (brokerState.count !== 1) fail(`Legacy migration restored ${brokerState.count} broker identities; expected 1.`)
 
   const stagingCheck = await context.newPage()
-  await stagingCheck.goto(`${internalAppUrl}/`, { waitUntil: 'domcontentloaded' })
+  await stagingCheck.goto(`${internalAppUrl}/deploy-marker.json`, { waitUntil: 'domcontentloaded' })
   const legacySecretPresent = await stagingCheck.evaluate((keyId) =>
     localStorage.getItem(`nodezero.embedded-wallet.nodezero.stellar.secret.${keyId}`) !== null,
     legacyKeyId,

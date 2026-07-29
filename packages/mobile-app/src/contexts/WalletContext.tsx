@@ -222,6 +222,23 @@ function getHostedWalletBrokerUrl(): string | null {
   return (extra?.walletBrokerUrl ?? '').trim() || null
 }
 
+function isHostedWalletBrokerFrame(): boolean {
+  return (
+    Platform.OS === 'web' &&
+    typeof window !== 'undefined' &&
+    window.location.hostname.toLowerCase() === 'wallet.nodezero.social' &&
+    window.location.pathname.replace(/\/$/, '') === '/wallet-broker'
+  )
+}
+
+function isLegacyWalletMigrationFrame(): boolean {
+  return (
+    Platform.OS === 'web' &&
+    typeof window !== 'undefined' &&
+    window.location.pathname.replace(/\/$/, '') === '/wallet-migration'
+  )
+}
+
 /**
  * Provisions and exposes the embedded Stellar wallet.
  */
@@ -542,6 +559,9 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
         try {
           await migrateStagingOriginIdentities()
           await migrateLegacyIdentitiesToBroker()
+          if (!isLegacyWalletMigrationFrame() && (await listIdentitySummaries()).length === 0) {
+            await requestBroker('create-identity')
+          }
           await refreshIdentities()
         } catch (err) {
           console.warn('[WalletContext] Failed to load wallet broker:', err)
@@ -561,8 +581,19 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
       try {
         // Make onboarding actionable as soon as a key exists without blocking
         // on funding checks.
-        const active =
-          (await service.getActiveIdentityKeyId()) ?? (await service.getWalletInfo()).keyId
+        const listed = await service.listIdentities()
+        if (isHostedWalletBrokerFrame() && listed.length === 0) {
+          setIdentities([])
+          setActiveIdentityKeyId(null)
+          setWalletInfo(null)
+          setInitializationError(null)
+          return
+        }
+        const active = (await service.getActiveIdentityKeyId()) ?? listed[0]?.keyId ??
+          (await service.getWalletInfo()).keyId
+        if (listed.length > 0 && !(await service.getActiveIdentityKeyId())) {
+          await service.setActiveIdentity(active)
+        }
         await refreshIdentities()
         if (active) {
           await hydrateSelectedWallet(active)
@@ -582,6 +613,8 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
     migrateLegacyIdentitiesToBroker,
     migrateStagingOriginIdentities,
     refreshIdentities,
+    listIdentitySummaries,
+    requestBroker,
   ])
 
   const selectIdentity = useCallback(
