@@ -25,6 +25,7 @@ import {
   type StreamItem,
 } from '@nodezero/solid-pod-sync'
 import { getSolidPodSyncManagers } from '../src/solid/podSyncManagers'
+import { autoIngestSignature } from '../src/docustream/autoIngestSignature'
 import { getMashlibWebAdapter } from '../src/solid/mashlibWebAdapter'
 import { loadSyncCheckpoint, saveSyncCheckpoint } from '../src/solid/syncCheckpointStore'
 import { getProvisionerBaseUrl } from '../src/onboarding/seamlessSignup'
@@ -174,6 +175,8 @@ export default function DocustreamScreen(): JSX.Element {
   const [sourceOperationId, setSourceOperationId] = useState<string | null>(null)
 
   const syncStateRef = useRef(createSyncState())
+  const ingestionInFlightRef = useRef(false)
+  const lastAutoIngestSignatureRef = useRef<string | null>(null)
 
   const effectiveWebId = webId
 
@@ -283,7 +286,7 @@ export default function DocustreamScreen(): JSX.Element {
     }
   }, [authFetch, isLoggedIn, podRoot])
 
-  const ingestEnabledSources = useCallback(async (sourceList: DocustreamSource[] = sources): Promise<void> => {
+  const ingestEnabledSources = useCallback(async (sourceList: DocustreamSource[]): Promise<void> => {
     if (DOCUSTREAM_LOCKED) {
       Alert.alert('DocuStream locked', 'DocuStream ingest is temporarily disabled.')
       return
@@ -292,7 +295,9 @@ export default function DocustreamScreen(): JSX.Element {
 
     const enabled = sourceList.filter((source) => source.enabled)
     if (enabled.length === 0) return
+    if (ingestionInFlightRef.current) return
 
+    ingestionInFlightRef.current = true
     setIsIngesting(true)
     try {
       for (const source of enabled) {
@@ -301,13 +306,15 @@ export default function DocustreamScreen(): JSX.Element {
       await loadSources()
       await loadDocustreamItems()
     } finally {
+      ingestionInFlightRef.current = false
       setIsIngesting(false)
     }
-  }, [ingestOneSource, isLoggedIn, loadDocustreamItems, loadSources, podRoot, sources])
+  }, [ingestOneSource, isLoggedIn, loadDocustreamItems, loadSources, podRoot])
 
   useEffect((): (() => void) => {
     let active = true
     syncStateRef.current = createSyncState()
+    lastAutoIngestSignatureRef.current = null
     setIsSyncCheckpointReady(false)
 
     if (!webId) {
@@ -352,8 +359,15 @@ export default function DocustreamScreen(): JSX.Element {
   useEffect((): void => {
     if (!isSyncCheckpointReady) return
     if (!isLoggedIn) return
-    void ingestEnabledSources()
-  }, [ingestEnabledSources, isLoggedIn, isSyncCheckpointReady])
+    const signature = autoIngestSignature(sources)
+    if (!signature) {
+      lastAutoIngestSignatureRef.current = null
+      return
+    }
+    if (lastAutoIngestSignatureRef.current === signature) return
+    lastAutoIngestSignatureRef.current = signature
+    void ingestEnabledSources(sources)
+  }, [ingestEnabledSources, isLoggedIn, isSyncCheckpointReady, sources])
 
   useEffect((): void => {
     if (!isLoggedIn || !effectiveWebId || Platform.OS !== 'web') return
@@ -432,7 +446,6 @@ export default function DocustreamScreen(): JSX.Element {
       setSourceUrlInput('')
       setPendingSourceTitle(null)
       Alert.alert('Source added', 'RSS source saved to your Pod. Ingestion will continue in the background.')
-      void ingestEnabledSources([savedSource])
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to add source.'
       setSourceModalError(message)
@@ -440,7 +453,7 @@ export default function DocustreamScreen(): JSX.Element {
     } finally {
       setSourceOperationId(null)
     }
-  }, [authFetch, ingestEnabledSources, isLoggedIn, podRoot])
+  }, [authFetch, isLoggedIn, podRoot])
 
   const handleSourceInputChange = useCallback((nextValue: string): void => {
     setSourceUrlInput(nextValue)
@@ -467,15 +480,12 @@ export default function DocustreamScreen(): JSX.Element {
       const { docustreamSourceManager } = getSolidPodSyncManagers({ fetch: authFetch })
       await docustreamSourceManager.setSourceEnabled(podRoot, source.id, nextEnabled)
       await loadSources()
-      if (nextEnabled) {
-        await ingestEnabledSources()
-      }
     } catch {
       Alert.alert('Update failed', 'Could not update source state.')
     } finally {
       setSourceOperationId(null)
     }
-  }, [authFetch, ingestEnabledSources, isLoggedIn, loadSources, podRoot])
+  }, [authFetch, isLoggedIn, loadSources, podRoot])
 
   const handleRemoveSource = useCallback(async (source: DocustreamSource): Promise<void> => {
     if (DOCUSTREAM_LOCKED) {
@@ -529,7 +539,7 @@ export default function DocustreamScreen(): JSX.Element {
         </View>
         <View style={styles.headerActions}>
           <TouchableOpacity
-            onPress={() => void ingestEnabledSources()}
+            onPress={() => void ingestEnabledSources(sources)}
             style={styles.addButton}
             disabled={isIngesting || !isLoggedIn}
           >
