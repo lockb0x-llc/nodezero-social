@@ -304,70 +304,6 @@ async function verifyLockboxOnChain(contractId, factoryContractId) {
   fail(`On-chain lockb0x ${contractId} did not expose complete instance state via Soroban RPC`)
 }
 
-async function readPodResourceThroughProxy(page, session, resourceUrl) {
-  return page.evaluate(async ({ accessToken, url, apiBase }) => {
-    const parsed = new URL(url)
-    const proxyUrl = `${apiBase}/v1/pod-proxy${parsed.pathname}${parsed.search}`
-    const response = await fetch(proxyUrl, {
-      headers: {
-        accept: 'application/ld+json, application/json, text/turtle',
-        authorization: `Bearer ${accessToken}`,
-      },
-    })
-    return {
-      status: response.status,
-      body: await response.text(),
-    }
-  }, { accessToken: session.accessToken, url: resourceUrl, apiBase: provisionerUrl })
-}
-
-async function verifyDocustreamPersistence(page, session) {
-  const sourceUrl = 'https://hnrss.org/frontpage'
-  const podRoot = String(session.podUrl || '').replace(/\/$/, '')
-  const registryUrl = `${podRoot}/public/docustream-sources.jsonld`
-  const profileUrl = String(session.webId || '').split('#')[0]
-
-  log('Journey 3: DocuStream source → Pod registry + WebID profile links')
-  await page.goto(`${internalAppUrl}/docustream`, { waitUntil: 'domcontentloaded', timeout: 60_000 })
-  await page.getByTestId('docustream-sources-open').waitFor({ state: 'visible', timeout: 120_000 })
-  await page.getByTestId('docustream-sources-open').click()
-  await page.getByTestId('docustream-source-url-input').fill(sourceUrl)
-  await page.getByTestId('docustream-source-add').click()
-
-  const sourceRow = page.locator('[data-testid^="docustream-source-rss_"]').first()
-  await sourceRow.waitFor({ state: 'visible', timeout: 120_000 })
-
-  const registry = await readPodResourceThroughProxy(page, session, registryUrl)
-  if (registry.status !== 200 || !registry.body.includes(sourceUrl)) {
-    fail(`DocuStream registry did not persist source. HTTP ${registry.status}: ${registry.body.slice(0, 300)}`)
-  }
-  const profile = await readPodResourceThroughProxy(page, session, profileUrl)
-  for (const marker of ['docustreamSourceRegistry', 'docustreamContainer', 'docustreamSource', sourceUrl]) {
-    if (profile.status !== 200 || !profile.body.includes(marker)) {
-      fail(`WebID profile is missing DocuStream marker '${marker}'. HTTP ${profile.status}`)
-    }
-  }
-
-  await page.reload({ waitUntil: 'domcontentloaded' })
-  await page.getByTestId('docustream-sources-open').waitFor({ state: 'visible', timeout: 120_000 })
-  await page.getByTestId('docustream-sources-open').click()
-  await page.getByText(sourceUrl, { exact: true }).waitFor({ state: 'visible', timeout: 60_000 })
-
-  const remove = page.locator('[data-testid^="docustream-source-remove-rss_"]').first()
-  await remove.click()
-  await page.getByText(sourceUrl, { exact: true }).waitFor({ state: 'detached', timeout: 60_000 })
-
-  const registryAfter = await readPodResourceThroughProxy(page, session, registryUrl)
-  if (registryAfter.status !== 200 || registryAfter.body.includes(sourceUrl)) {
-    fail(`DocuStream registry removal did not persist. HTTP ${registryAfter.status}`)
-  }
-  const profileAfter = await readPodResourceThroughProxy(page, session, profileUrl)
-  if (profileAfter.status !== 200 || profileAfter.body.includes(sourceUrl)) {
-    fail(`WebID profile retained removed DocuStream source. HTTP ${profileAfter.status}`)
-  }
-  log('Journey 3 PASS: source persisted to Pod + profile, survived reload, and removed cleanly')
-}
-
 async function main() {
   const verifyOnlyContractId = (process.env.AUTH_E2E_VERIFY_LOCKBOX_ID || '').trim()
   if (verifyOnlyContractId) {
@@ -513,10 +449,8 @@ async function main() {
   await assertNoPersistedBrowserSession(page, 'Browser-session bootstrap')
   log('Journey 2b PASS: retained session verified after wallet initialization')
 
-  await verifyDocustreamPersistence(page, retainedSession)
-
-  // ── Journey 4: negative — destroyed session must fail closed ──────────────
-  log('Journey 4: tampered session lands on sign-in (fail-closed)')
+  // ── Journey 3: negative — destroyed session must fail closed ──────────────
+  log('Journey 3: tampered session lands on sign-in (fail-closed)')
   await revokeBrowserSession(page, retainedSession)
   await page.evaluate((key) => {
     window.localStorage.setItem(
@@ -547,10 +481,10 @@ async function main() {
   if (tamperedRemnant) {
     fail('Tampered session record survived the fail-closed rejection.')
   }
-  log('Journey 4 PASS: invariant enforced — no session, no app')
+  log('Journey 3 PASS: invariant enforced — no session, no app')
 
   await browser.close()
-  log('ALL PASS: onboarding, returning sign-in, DocuStream persistence, and fail-closed enforcement verified')
+  log('ALL PASS: onboarding, returning sign-in, memory-only browser sessions, and fail-closed enforcement verified')
 }
 
 main().catch((error) => {

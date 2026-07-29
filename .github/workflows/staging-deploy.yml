@@ -594,7 +594,15 @@ jobs:
 
       # Application-feature proofs (DocuStream/mashlib). NOT part of the auth
       # release gate — failures surface for triage without blocking identity.
+      - name: Run DocuStream pane proof (non-blocking)
+        if: ${{ always() }}
+        continue-on-error: true
+        env:
+          STAGING_BASE_URL: https://${{ steps.hostname.outputs.hostname }}
+        run: pnpm qa:smoke:docustream-pane
+
       - name: Run focused mashlib runtime proof (non-blocking)
+        if: ${{ always() }}
         continue-on-error: true
         env:
           NZ_ENV_PROFILE: staging-testnet
@@ -614,6 +622,7 @@ jobs:
         run: pnpm qa:smoke:mashlib-runtime
 
       - name: Run deployed mashlib bundle proof (non-blocking)
+        if: ${{ always() }}
         continue-on-error: true
         env:
           STAGING_BASE_URL: https://${{ steps.hostname.outputs.hostname }}
