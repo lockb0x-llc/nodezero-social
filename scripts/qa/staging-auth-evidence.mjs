@@ -251,19 +251,17 @@ async function simulateLegacyWalletCutover(context, page) {
 }
 
 async function assertLegacyWalletMigrated(context, page, legacyKeyId) {
-  await page.locator('iframe[title="NodeZero wallet broker"]').waitFor({
+  const brokerLocator = page.locator('iframe[title="NodeZero wallet broker"]')
+  await brokerLocator.waitFor({
     state: 'attached',
     timeout: 120_000,
   })
-  await page.waitForFunction(
-    () => Array.from(document.querySelectorAll('iframe')).some(
-      (frame) => frame.title === 'NodeZero wallet broker' && frame.src.startsWith('https://wallet.nodezero.social/'),
-    ),
-    undefined,
-    { timeout: 30_000 },
-  )
-  const walletFrame = page.frames().find((frame) => frame.url().startsWith('https://wallet.nodezero.social/'))
+  const brokerElement = await brokerLocator.elementHandle()
+  const walletFrame = await brokerElement?.contentFrame()
   if (!walletFrame) fail('Wallet broker frame is unavailable after legacy migration.')
+  await walletFrame.waitForURL((url) => url.origin === 'https://wallet.nodezero.social', {
+    timeout: 30_000,
+  })
   const brokerState = await walletFrame.evaluate(() => {
     const prefix = 'nodezero.embedded-wallet.'
     const raw = localStorage.getItem(`${prefix}nodezero.stellar.keyring.index.v1`)
