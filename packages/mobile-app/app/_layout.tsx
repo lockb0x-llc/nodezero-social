@@ -22,6 +22,7 @@ import Constants from 'expo-constants'
 import React from 'react'
 import { Buffer } from 'buffer'
 import { aesthetic } from '../src/theme/aesthetic'
+import { registerPwa } from '../src/pwa/registerPwa'
 import * as mashlibPaneProvider from '../src/solid/mashlibPaneProvider'
 
 const globalWithBuffer = globalThis as typeof globalThis & { Buffer?: typeof Buffer }
@@ -209,6 +210,8 @@ const styles = StyleSheet.create({
 })
 
 export default function RootLayout(): JSX.Element {
+  React.useEffect(() => registerPwa(), [])
+
   React.useEffect(() => {
     if (Platform.OS !== 'web') return
 

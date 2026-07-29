@@ -87,6 +87,10 @@ const jssProvisionerUrl =
   (envProfile === 'staging-testnet' ? 'https://nodezero-social-staging-testnet-provisioner.azurewebsites.net' : '')
 const browserSessionEnabled = process.env.NZ_BROWSER_SESSION_ENABLED ?? 'false'
 const walletBrokerUrl = process.env.NZ_WALLET_BROKER_URL ?? ''
+const appOrigin =
+  process.env.NZ_APP_ORIGIN ??
+  (envProfile === 'staging-testnet' ? 'https://staging.nodezero.social' : '')
+const pwaCachePrefix = `nodezero-pwa-${envProfile}`
 const qaLocalOverridesEnabled = process.env.NZ_QA_LOCAL_OVERRIDES_ENABLED ?? 'false'
 const seamlessOnboardingEnabled =
   process.env.NZ_SEAMLESS_ONBOARDING_ENABLED ?? (envProfile === 'staging-testnet' ? 'true' : 'false')
@@ -134,6 +138,18 @@ if (profile.enforceStrictVariables) {
   // without it there is no authentication path at all (fail-closed).
   if (!jssProvisionerUrl) {
     throw new Error(`NZ_JSS_PROVISIONER_URL is required for ${envProfile}.`)
+  }
+  if (!appOrigin) {
+    throw new Error(`NZ_APP_ORIGIN is required for ${envProfile}.`)
+  }
+  let parsedAppOrigin
+  try {
+    parsedAppOrigin = new URL(appOrigin)
+  } catch {
+    throw new Error(`NZ_APP_ORIGIN must be an absolute URL for ${envProfile}.`)
+  }
+  if (parsedAppOrigin.protocol !== 'https:' || parsedAppOrigin.origin !== appOrigin) {
+    throw new Error(`NZ_APP_ORIGIN must be an HTTPS origin without a path for ${envProfile}.`)
   }
   if (browserSessionEnabled === 'true' && jssProvisionerUrl !== 'https://api.nodezero.social') {
     throw new Error(`NZ_JSS_PROVISIONER_URL must be https://api.nodezero.social when browser sessions are enabled.`)
@@ -226,6 +242,7 @@ module.exports = {
 
   web: {
     favicon: './assets/favicon.png',
+    output: 'single',
   },
 
   plugins: ['expo-router', 'expo-secure-store', 'expo-location'],
@@ -239,6 +256,8 @@ module.exports = {
     nodeZeroIssuerUrl,
     nodeZeroDirectoryUrl,
     jssProvisionerUrl,
+    appOrigin,
+    pwaCachePrefix,
     browserSessionEnabled,
     walletBrokerUrl,
     qaLocalOverridesEnabled,

@@ -1,7 +1,49 @@
 {
+  "routes": [
+    {
+      "route": "/_expo/static/*",
+      "headers": {
+        "Cache-Control": "public, max-age=31536000, immutable"
+      }
+    },
+    {
+      "route": "/assets/*",
+      "headers": {
+        "Cache-Control": "public, max-age=31536000, immutable"
+      }
+    },
+    {
+      "route": "/manifest.webmanifest",
+      "headers": {
+        "Cache-Control": "no-cache, must-revalidate",
+        "Content-Type": "application/manifest+json"
+      }
+    },
+    {
+      "route": "/service-worker.js",
+      "headers": {
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Service-Worker-Allowed": "/"
+      }
+    },
+    {
+      "route": "/pwa-bootstrap.js",
+      "headers": {
+        "Cache-Control": "no-cache, must-revalidate"
+      }
+    },
+    {
+      "route": "/deploy-marker.json",
+      "headers": {
+        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"
+      }
+    }
+  ],
   "globalHeaders": {
     "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-    "Content-Security-Policy": "frame-ancestors 'self' https://nodezero.social https://www.nodezero.social https://staging.nodezero.social"
+    "Content-Security-Policy": "frame-ancestors 'self' https://nodezero.social https://www.nodezero.social https://staging.nodezero.social; manifest-src 'self'; worker-src 'self'",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff"
   },
   "navigationFallback": {
     "rewrite": "/index.html",

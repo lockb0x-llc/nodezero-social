@@ -18,6 +18,8 @@
     "policy:validate-env": "bash ./scripts/policy/validate-env-isolation.sh",
     "policy:validate-attestation-fail-closed": "node ./scripts/policy/validate-attestation-fail-closed.mjs",
     "policy:validate-docustream-enabled": "node ./scripts/policy/validate-docustream-enabled.mjs",
+    "policy:validate-pwa": "node ./scripts/policy/validate-pwa.mjs",
+    "pwa:validate:artifact": "node ./scripts/pwa/validate-pwa-artifact.mjs",
     "qa:smoke": "bash ./scripts/qa/staging-smoke.sh",
     "qa:smoke:solid-bootstrap": "bash ./scripts/qa/staging-solid-bootstrap-policy-smoke.sh",
     "qa:smoke:gate": "bash ./scripts/qa/staging-smoke.sh && bash ./scripts/qa/staging-solid-bootstrap-policy-smoke.sh",

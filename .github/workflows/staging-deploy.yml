@@ -10,6 +10,10 @@ permissions:
   contents: read
   id-token: write
 
+concurrency:
+  group: staging-testnet-deploy
+  cancel-in-progress: false
+
 jobs:
   deploy-staging:
     name: Deploy staging-testnet
@@ -408,6 +412,7 @@ jobs:
           NZ_ZK_MANIFEST_URL: https://stki7yquyjmnskg.blob.core.windows.net/zk-artifacts/lockb0x-bridge-v3/zk-testnet-lockbox-bridge-v3-artifacts.json
           NZ_NODEZERO_ISSUER_URL: https://solid.nodezero.social/
           NZ_NODEZERO_DIRECTORY_URL: https://solid.nodezero.social/public/nodezero-pod-holders.json
+          NZ_APP_ORIGIN: https://staging.nodezero.social
           NZ_SEAMLESS_ONBOARDING_ENABLED: 'true'
           NZ_JSS_PROVISIONER_URL: https://api.nodezero.social
           NZ_BROWSER_SESSION_ENABLED: 'true'
@@ -416,6 +421,12 @@ jobs:
           NZ_MASHLIB_EXPLORER_ENABLED: 'true'
           NZ_MASHLIB_MODULE_ID: nodezero:mashlib-pane-provider
         run: pnpm --filter @nodezero/mobile-app build:web
+
+      - name: Validate PWA web artifact
+        env:
+          NZ_ENV_PROFILE: staging-testnet
+          NZ_APP_ORIGIN: https://staging.nodezero.social
+        run: pnpm pwa:validate:artifact
 
       - name: Write staging deploy marker
         run: |
