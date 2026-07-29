@@ -1,0 +1,112 @@
+name: PWA Physical Device Regression
+
+on:
+  schedule:
+    - cron: '30 8 * * 2,5'
+  workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: Full deployed staging commit SHA; blank uses the live marker
+        required: false
+        type: string
+      certify_release:
+        description: Require iOS and Android installed-PWA evidence
+        required: true
+        default: false
+        type: boolean
+      installed_evidence_json:
+        description: Sanitized installed-PWA evidence JSON; required for certification
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pwa-physical-device-staging
+  cancel-in-progress: false
+
+jobs:
+  physical-device-regression:
+    name: Exact-SHA physical device evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout release tooling
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Resolve exact deployed candidate
+        id: candidate
+        env:
+          REQUESTED_SHA: ${{ inputs.candidate_sha }}
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error https://staging.nodezero.social/deploy-marker.json > /tmp/deploy-marker.json
+          live_sha="$(jq -r '.commit // empty' /tmp/deploy-marker.json)"
+          candidate_sha="${REQUESTED_SHA:-$live_sha}"
+          if ! [[ "$candidate_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Candidate SHA must be a full lowercase commit SHA."
+            exit 1
+          fi
+          if [ "$candidate_sha" != "$live_sha" ]; then
+            echo "Candidate ${candidate_sha} is not the live staging marker ${live_sha}."
+            exit 1
+          fi
+          echo "sha=${candidate_sha}" >> "$GITHUB_OUTPUT"
+
+      - name: Require device-cloud configuration
+        env:
+          DEVICE_ENDPOINT: ${{ secrets.NZ_DEVICE_CLOUD_ENDPOINT }}
+          DEVICE_TOKEN: ${{ secrets.NZ_DEVICE_CLOUD_TOKEN }}
+        run: |
+          if [ -z "$DEVICE_ENDPOINT" ] || [ -z "$DEVICE_TOKEN" ]; then
+            echo "Physical-device runner credentials are not configured."
+            exit 1
+          fi
+
+      - name: Run iOS Safari and Android Chrome tab lanes
+        env:
+          NZ_DEVICE_CLOUD_ENDPOINT: ${{ secrets.NZ_DEVICE_CLOUD_ENDPOINT }}
+          NZ_DEVICE_CLOUD_TOKEN: ${{ secrets.NZ_DEVICE_CLOUD_TOKEN }}
+          NZ_DEVICE_EXPECTED_SHA: ${{ steps.candidate.outputs.sha }}
+          NZ_DEVICE_EXPECTED_URL: https://staging.nodezero.social
+          NZ_DEVICE_CLOUD_OUTPUT: device-evidence/browser-tab.json
+        run: |
+          mkdir -p device-evidence
+          node scripts/qa/run-device-cloud.mjs
+
+      - name: Validate physical browser-tab evidence
+        env:
+          NZ_DEVICE_EXPECTED_SHA: ${{ steps.candidate.outputs.sha }}
+          NZ_DEVICE_EXPECTED_URL: https://staging.nodezero.social
+          NZ_DEVICE_REQUIRED_MODES: browser-tab
+        run: node scripts/qa/validate-device-evidence.mjs device-evidence/browser-tab.json
+
+      - name: Require owned-device installed-PWA evidence for certification
+        if: ${{ inputs.certify_release == true }}
+        env:
+          INSTALLED_EVIDENCE_JSON: ${{ inputs.installed_evidence_json }}
+          NZ_DEVICE_EXPECTED_SHA: ${{ steps.candidate.outputs.sha }}
+          NZ_DEVICE_EXPECTED_URL: https://staging.nodezero.social
+          NZ_DEVICE_REQUIRED_MODES: installed-pwa
+        run: |
+          if [ -z "$INSTALLED_EVIDENCE_JSON" ]; then
+            echo "Release certification requires sanitized installed-PWA evidence."
+            exit 1
+          fi
+          printf '%s\n' "$INSTALLED_EVIDENCE_JSON" > device-evidence/installed-pwa.json
+          node scripts/qa/validate-device-evidence.mjs device-evidence/installed-pwa.json
+
+      - name: Upload sanitized device summaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: pwa-device-evidence-${{ steps.candidate.outputs.sha }}
+          path: device-evidence/*.json
+          retention-days: 7
+          if-no-files-found: error

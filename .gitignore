@@ -23,6 +23,8 @@ docs/dev-only/
 .playwright-mcp/
 playwright-report/
 playwright-results/
+device-evidence/
+docs/qa/private-device-evidence/
 
 # Generated ARM JSON output (local build artifact)
 infrastructure/azure/main.json
