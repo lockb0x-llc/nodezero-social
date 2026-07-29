@@ -224,17 +224,9 @@ function getHostedWalletBrokerUrl(): string | null {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return null
   const extra = Constants.expoConfig?.extra as Record<string, string> | undefined
   if ((extra?.browserSessionEnabled ?? '').trim().toLowerCase() !== 'true') return null
+  if ((extra?.appOrigin ?? '').trim() === window.location.origin) return null
   if (window.location.hostname.toLowerCase() === 'wallet.nodezero.social') return null
   return (extra?.walletBrokerUrl ?? '').trim() || null
-}
-
-function isHostedWalletBrokerFrame(): boolean {
-  return (
-    Platform.OS === 'web' &&
-    typeof window !== 'undefined' &&
-    window.location.hostname.toLowerCase() === 'wallet.nodezero.social' &&
-    window.location.pathname.replace(/\/$/, '') === '/wallet-broker'
-  )
 }
 
 function isLegacyWalletMigrationFrame(): boolean {
@@ -585,18 +577,16 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
       }
       const service = getWalletService()
       try {
-        // Make onboarding actionable as soon as a key exists without blocking
-        // on funding checks.
         const listed = await service.listIdentities()
-        if (isHostedWalletBrokerFrame() && listed.length === 0) {
+        if (listed.length === 0) {
           setIdentities([])
           setActiveIdentityKeyId(null)
           setWalletInfo(null)
           setInitializationError(null)
           return
         }
-        const active = (await service.getActiveIdentityKeyId()) ?? listed[0]?.keyId ??
-          (await service.getWalletInfo()).keyId
+        const active = (await service.getActiveIdentityKeyId()) ?? listed[0]?.keyId ?? null
+        if (!active) throw new Error('Stored wallet identities are unavailable.')
         if (listed.length > 0 && !(await service.getActiveIdentityKeyId())) {
           await service.setActiveIdentity(active)
         }

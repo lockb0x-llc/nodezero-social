@@ -553,9 +553,9 @@ jobs:
       - name: Run onboarding/authentication E2E gate
         id: auth-e2e
         env:
-          STAGING_BASE_URL: https://nodezero.social
+          STAGING_BASE_URL: https://staging.nodezero.social
           NZ_INTERNAL_APP_URL: https://staging.nodezero.social
-          NZ_EXPECT_INTERNAL_STAGING_HANDOFF: 'true'
+          NZ_EXPECT_INTERNAL_STAGING_HANDOFF: 'false'
           AUTH_E2E_SESSION_TIMEOUT_MS: '360000'
         run: pnpm qa:smoke:auth
 

@@ -118,18 +118,6 @@ function getLandingMode(): LandingMode {
   return 'onboarding'
 }
 
-function shouldHandoffToInternalStaging(): boolean {
-  if (Platform.OS !== 'web' || typeof window === 'undefined') return false
-  const extra = (Constants.expoConfig?.extra ?? {}) as Record<string, string>
-  const browserSessionsEnabled = (extra.browserSessionEnabled ?? '').trim().toLowerCase() === 'true'
-  const host = window.location.hostname.toLowerCase()
-  return browserSessionsEnabled && (host === 'nodezero.social' || host === 'www.nodezero.social')
-}
-
-function handoffToInternalStaging(): void {
-  window.location.assign('https://staging.nodezero.social/feed')
-}
-
 interface LandingAuthCardProps {
   source: AuthCardSource
   error: string | null
@@ -507,10 +495,6 @@ export default function LandingScreen(): JSX.Element {
     setAccountChoices([])
     setSelectedAccountWebId(null)
     accountChoiceIdentityRef.current = null
-    if (shouldHandoffToInternalStaging()) {
-      handoffToInternalStaging()
-      return
-    }
     await adoptSession(result)
   }
 
@@ -706,10 +690,6 @@ export default function LandingScreen(): JSX.Element {
           proofRootHex: result.lockbox.proofRootHex ?? null,
         },
         createdAt: new Date().toISOString(),
-      }
-      if (shouldHandoffToInternalStaging()) {
-        handoffToInternalStaging()
-        return
       }
       await adoptSession(sessionInput)
     } catch (err) {

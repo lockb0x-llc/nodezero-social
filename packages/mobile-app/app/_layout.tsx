@@ -33,6 +33,15 @@ if (typeof globalWithBuffer.Buffer === 'undefined') {
 const PUBLIC_ROUTES = new Set(['/', '/wallet-broker', '/wallet-migration'])
 const TRANSITION_ROUTES = new Set(['/onboarding'])
 
+function getCanonicalRedirectUrl(): string | null {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return null
+  const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
+  const appOrigin = (appExtra?.appOrigin ?? '').trim()
+  if (!appOrigin || window.location.origin === appOrigin) return null
+
+  return `${appOrigin}${window.location.pathname}${window.location.search}${window.location.hash}`
+}
+
 function normalizeRoute(pathname: string): string {
   if (!pathname) return '/'
   return pathname.split('?')[0] ?? pathname
@@ -210,6 +219,12 @@ const styles = StyleSheet.create({
 })
 
 export default function RootLayout(): JSX.Element {
+  const canonicalRedirectUrl = getCanonicalRedirectUrl()
+
+  React.useEffect(() => {
+    if (canonicalRedirectUrl) window.location.replace(canonicalRedirectUrl)
+  }, [canonicalRedirectUrl])
+
   React.useEffect(() => registerPwa(), [])
 
   React.useEffect(() => {
@@ -232,6 +247,8 @@ export default function RootLayout(): JSX.Element {
       }
     }
   }, [])
+
+  if (canonicalRedirectUrl) return <View />
 
   return (
     <NodeZeroSessionProvider>

@@ -462,6 +462,11 @@ async function main() {
   await page.goto(`${baseUrl}/`, { waitUntil: 'domcontentloaded', timeout: 60_000 })
 
   await page.getByLabel('Node handle').first().waitFor({ state: 'visible', timeout: 180_000 })
+  const createIdentity = page.getByText('Create a new identity', { exact: true }).first()
+  if (await createIdentity.isVisible().catch(() => false)) {
+    log('Clean browser has no wallet identity; creating one through the explicit user action.')
+    await createIdentity.click()
+  }
   await page.getByLabel('Node handle').first().fill(handle)
   await page.getByLabel('Notification email').first().fill(email)
 

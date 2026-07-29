@@ -17,6 +17,18 @@ for (const [filePath, markers] of requiredChecks) {
   }
 }
 
+const stagingWorkflow = await readFile('.github/workflows/staging-deploy.yml', 'utf8')
+const authGate = stagingWorkflow.slice(stagingWorkflow.indexOf('- name: Run onboarding/authentication E2E gate'))
+if (!authGate.includes('STAGING_BASE_URL: https://staging.nodezero.social')) {
+  throw new Error('Blocking auth gate must target the canonical staging PWA origin.')
+}
+if (!authGate.includes("NZ_EXPECT_INTERNAL_STAGING_HANDOFF: 'false'")) {
+  throw new Error('Blocking auth gate must reject the retired apex-to-staging handoff.')
+}
+if (authGate.includes('STAGING_BASE_URL: https://nodezero.social')) {
+  throw new Error('Blocking auth gate must not start Testnet onboarding on the apex origin.')
+}
+
 const workerSource = await readFile('scripts/pwa/build-pwa.mjs', 'utf8')
 for (const forbidden of ['/v1/', 'pod-proxy', 'solid.nodezero.social', 'api.nodezero.social']) {
   if (workerSource.includes(`PRECACHE_URLS.includes(${JSON.stringify(forbidden)}`)) {
