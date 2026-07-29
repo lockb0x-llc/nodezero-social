@@ -355,7 +355,7 @@ function thingToProfile(thing: Thing): UserProfile {
   }
 }
 
-function resolveProfileThing(dataset: SolidDataset, webId: string): Thing | null {
+export function resolveProfileThing(dataset: SolidDataset, webId: string): Thing | null {
   const datasetUrl = webId.split('#')[0]
   const direct = getThing(dataset, webId)
   if (direct) return direct

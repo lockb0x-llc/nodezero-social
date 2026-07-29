@@ -4,9 +4,9 @@ import {
   type DocustreamSourceType,
 } from './contracts/DocustreamSourceContract.js'
 import { type PodLayoutManager, type PodPolicyMatrix } from './PodLayoutManager.js'
+import { resolveProfileThing } from './ProfileManager.js'
 import {
   getSolidDataset,
-  getThing,
   getUrlAll,
 } from '@inrupt/solid-client'
 
@@ -268,7 +268,7 @@ export class DocustreamSourceManager {
     const datasetUrl = webId.split('#')[0]
     const predicates = [NZ_DOCUSTREAM_REGISTRY, NZ_DOCUSTREAM_CONTAINER, NZ_DOCUSTREAM_SOURCE]
     const currentDataset = await getSolidDataset(datasetUrl, { fetch: this.session.fetch })
-    const currentProfile = getThing(currentDataset, webId)
+    const currentProfile = resolveProfileThing(currentDataset, webId)
     if (!currentProfile) throw new Error('The WebID profile does not contain its profile Thing.')
     const profileHead = await this.session.fetch(datasetUrl, { method: 'HEAD' })
     if (!profileHead.ok) {
@@ -311,7 +311,7 @@ export class DocustreamSourceManager {
     }
 
     const verifiedDataset = await getSolidDataset(datasetUrl, { fetch: this.session.fetch })
-    const verifiedProfile = getThing(verifiedDataset, webId)
+    const verifiedProfile = resolveProfileThing(verifiedDataset, webId)
     if (!verifiedProfile) throw new Error('The WebID profile link update could not be verified.')
     const expectedSources = sources.map((source) => source.url).sort()
     const persistedSources = getUrlAll(verifiedProfile, NZ_DOCUSTREAM_SOURCE).sort()
