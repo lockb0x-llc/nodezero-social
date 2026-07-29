@@ -412,7 +412,10 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
     }
     await new Promise<void>((resolve, reject) => {
       const frame = document.createElement('iframe')
-      frame.src = `https://staging.nodezero.social/wallet-migration?cb=${Date.now()}`
+      const migrationUrl = new URL('https://staging.nodezero.social/wallet-migration')
+      migrationUrl.searchParams.set('parentOrigin', window.location.origin)
+      migrationUrl.searchParams.set('cb', String(Date.now()))
+      frame.src = migrationUrl.toString()
       frame.title = 'NodeZero legacy wallet migration'
       frame.setAttribute('aria-hidden', 'true')
       frame.style.cssText = 'position:fixed;width:1px;height:1px;border:0;opacity:0;pointer-events:none;'

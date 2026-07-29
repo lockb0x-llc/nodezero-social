@@ -16,7 +16,7 @@ export default function WalletMigrationScreen(): JSX.Element {
 
   React.useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return
-    const parentOrigin = document.referrer ? new URL(document.referrer).origin : ''
+    const parentOrigin = new URLSearchParams(window.location.search).get('parentOrigin') ?? ''
     if (!ALLOWED_PARENT_ORIGINS.has(parentOrigin) || window.parent === window) return
 
     void (async (): Promise<void> => {
