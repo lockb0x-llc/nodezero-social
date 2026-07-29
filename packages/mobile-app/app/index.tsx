@@ -40,6 +40,7 @@ import {
   AccountSelectionRequiredError,
 } from '../src/auth/useStellarSignIn'
 import { usableIdentityCandidates } from '../src/auth/identitySignInCandidates'
+import { parseRecoveryBundle } from '../src/wallet/recoveryBundle'
 
 const PRESS_OPACITY = 0.82
 
@@ -134,6 +135,7 @@ interface LandingAuthCardProps {
   onNodeHandleChange: (value: string) => void
   onNotificationEmailChange: (value: string) => void
   onCreateIdentity: () => Promise<void>
+  onRestoreIdentity: () => Promise<void>
   onSignIn: () => Promise<void>
   onCreateNode: () => Promise<void>
 }
@@ -154,6 +156,7 @@ function LandingAuthCard({
   onNodeHandleChange,
   onNotificationEmailChange,
   onCreateIdentity,
+  onRestoreIdentity,
   onSignIn,
   onCreateNode,
 }: LandingAuthCardProps): JSX.Element {
@@ -197,6 +200,18 @@ function LandingAuthCard({
             {isIdentityBusy ? 'Preparing identity…' : 'Create a new identity'}
           </Text>
         </TouchableOpacity>
+        {Platform.OS === 'web' ? (
+          <TouchableOpacity
+            style={styles.restoreIdentityLink}
+            onPress={() => void onRestoreIdentity()}
+            activeOpacity={PRESS_OPACITY}
+            disabled={isIdentityBusy}
+            accessibilityRole="button"
+            accessibilityLabel="Restore identity from recovery bundle"
+          >
+            <Text style={styles.restoreIdentityText}>Restore from recovery bundle</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
       <TouchableOpacity
         style={[styles.btnPrimary, (isSigningIn || isIdentityBusy || !walletReady) && styles.btnDisabled]}
@@ -408,6 +423,7 @@ export default function LandingScreen(): JSX.Element {
     isIdentityBusy,
     initializationError,
     createIdentity,
+    importRecoveryIdentity,
     createSeamlessAttestation,
     listIdentitySummaries,
     selectIdentity,
@@ -726,6 +742,40 @@ export default function LandingScreen(): JSX.Element {
     }
   }
 
+  const handleRestoreIdentity = async (): Promise<void> => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') {
+      setError('Recovery bundle import is available in the NodeZero PWA.')
+      return
+    }
+
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'application/json,.json'
+    input.onchange = (): void => {
+      const file = input.files?.[0]
+      if (!file) return
+      setError(null)
+      setErrorAction(null)
+      setCreateNotice('Validating recovery bundle…')
+      void file.text()
+        .then((json) => {
+          const extra = Constants.expoConfig?.extra as Record<string, string> | undefined
+          return parseRecoveryBundle(
+            json,
+            extra?.envProfile ?? 'local',
+            extra?.stellarNetworkPassphrase ?? '',
+          )
+        })
+        .then((identity) => importRecoveryIdentity(identity))
+        .then(() => setCreateNotice('Identity restored securely. Tap Sign In to continue.'))
+        .catch((err: unknown) => {
+          setCreateNotice(null)
+          setError(err instanceof Error ? err.message : 'Recovery bundle could not be restored.')
+        })
+    }
+    input.click()
+  }
+
   const handleCancelAccountSelection = (): void => {
     setAccountChoices([])
     setSelectedAccountWebId(null)
@@ -811,6 +861,7 @@ export default function LandingScreen(): JSX.Element {
           onNodeHandleChange={setNodeHandle}
           onNotificationEmailChange={setNotificationEmail}
           onCreateIdentity={handleCreateIdentity}
+          onRestoreIdentity={handleRestoreIdentity}
           onSignIn={handleSignIn}
           onCreateNode={handleCreateNode}
         />
@@ -882,6 +933,7 @@ export default function LandingScreen(): JSX.Element {
                 onNodeHandleChange={setNodeHandle}
                 onNotificationEmailChange={setNotificationEmail}
                 onCreateIdentity={handleCreateIdentity}
+                onRestoreIdentity={handleRestoreIdentity}
                 onSignIn={handleSignIn}
                 onCreateNode={handleCreateNode}
               />
@@ -1130,6 +1182,8 @@ const styles = StyleSheet.create({
   dropdownCheck: { color: PURPLE, fontSize: 15, fontWeight: '700', marginLeft: 12 },
   createPodLink: { marginTop: 8, alignItems: 'center' },
   createPodText: { color: PURPLE, fontSize: 13 },
+  restoreIdentityLink: { marginTop: 12, alignItems: 'center' },
+  restoreIdentityText: { color: MUTED, fontSize: 13, textDecorationLine: 'underline' },
   createNodeBlock: { marginTop: 16, borderTopWidth: 1, borderTopColor: BORDER, paddingTop: 16 },
   createNodeTitle: { color: MUTED, fontSize: 13, fontWeight: '600', marginBottom: 12 },
   createHintText: { color: MUTED, fontSize: 12, lineHeight: 18, marginBottom: 12 },

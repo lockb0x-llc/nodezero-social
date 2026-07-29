@@ -6,6 +6,8 @@ const requiredChecks = [
   ['packages/mobile-app/app.config.js', ['NZ_APP_ORIGIN', "output: 'single'", 'pwaCachePrefix']],
   ['packages/mobile-app/src/pwa/registerPwa.ts', ['window.location.origin !== appOrigin', '/service-worker.js', '/manifest.json']],
   ['packages/mobile-app/src/contexts/NodeZeroSessionContext.tsx', ["Platform.OS === 'web'", "Platform.OS !== 'web'", 'AsyncStorage.removeItem(SESSION_STORAGE_KEY)']],
+  ['packages/mobile-app/src/wallet/recoveryBundle.ts', ['bundleVersion !== 1', 'envProfile', 'stellarNetworkPassphrase']],
+  ['packages/mobile-app/app/index.tsx', ['Restore from recovery bundle', 'parseRecoveryBundle', 'importRecoveryIdentity']],
   ['packages/jss-provisioner/src/index.ts', ["'__Host-nz_browser_session'", "cookieScope: BROWSER_SESSION_ENABLED ? 'host-only'", "Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax"]],
   ['scripts/pwa/build-pwa.mjs', ['manifest.json', 'service-worker.js', "request.mode === 'navigate'", "url.origin !== self.location.origin"]],
   ['packages/mobile-app/staticwebapp.config.json', ['/_expo/static/*', 'max-age=31536000, immutable', '/service-worker.js', 'Service-Worker-Allowed', "frame-ancestors 'none'", "worker-src 'self' blob:"]],

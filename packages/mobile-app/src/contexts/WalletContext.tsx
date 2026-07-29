@@ -121,7 +121,7 @@ interface WalletContextValue {
   /** Creates a new local identity and sets it active. */
   createIdentity: (label?: string) => Promise<void>
   /** Imports a recovery identity into the local encrypted wallet. */
-  importLegacyIdentity: (input: {
+  importRecoveryIdentity: (input: {
     secret: string
     expectedPublicKey: string
     label?: string
@@ -398,7 +398,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
     [refreshIdentities]
   )
 
-  const importLegacyIdentity = useCallback(
+  const importRecoveryIdentity = useCallback(
     async (input: {
       secret: string
       expectedPublicKey: string
@@ -767,7 +767,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
         deriveAccountCommitment,
         selectIdentity,
         createIdentity,
-        importLegacyIdentity,
+        importRecoveryIdentity,
         findIdentityKeyIdByPublicKey,
       }}
     >

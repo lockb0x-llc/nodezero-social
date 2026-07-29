@@ -27,7 +27,7 @@
  */
 
 import { chromium } from '@playwright/test'
-import { Contract, rpc, scValToNative } from '@stellar/stellar-sdk'
+import { Contract, Keypair, rpc, scValToNative } from '@stellar/stellar-sdk'
 import { appendFile } from 'node:fs/promises'
 
 const baseUrl = (process.env.STAGING_BASE_URL || 'https://staging.nodezero.social').replace(/\/$/, '')
@@ -159,6 +159,68 @@ async function waitForCapturedSession(page, state, timeoutMs) {
 async function assertNoPersistedBrowserSession(page, stage) {
   const persisted = await page.evaluate((key) => window.localStorage.getItem(key), SESSION_STORAGE_KEY)
   if (persisted !== null) fail(`${stage} persisted NodeZero bearer credentials in localStorage.`)
+}
+
+async function verifySignedOutRecoveryImport(browser) {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } })
+  const page = await context.newPage()
+  const keypair = Keypair.random()
+  const bundle = JSON.stringify({
+    bundleVersion: 1,
+    exportedAt: new Date().toISOString(),
+    envProfile: 'staging-testnet',
+    stellarNetworkPassphrase: 'Test SDF Network ; September 2015',
+    webId: 'https://solid.nodezero.social/recovery-evidence/profile/card#me',
+    wallet: { publicKey: keypair.publicKey(), secretKey: keypair.secret() },
+  })
+
+  try {
+    log('Journey 0: signed-out recovery bundle → encrypted local identity')
+    await page.goto(`${baseUrl}/`, { waitUntil: 'domcontentloaded', timeout: 60_000 })
+    const chooserPromise = page.waitForEvent('filechooser')
+    await page.getByRole('button', { name: 'Restore identity from recovery bundle' }).click()
+    const chooser = await chooserPromise
+    await chooser.setFiles({
+      name: 'nodezero-recovery-evidence.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(bundle, 'utf8'),
+    })
+    await page.getByText('Identity restored securely. Tap Sign In to continue.', { exact: true })
+      .waitFor({ state: 'visible', timeout: 30_000 })
+
+    const evidence = await page.evaluate(async ({ databaseName, secret }) => {
+      const database = await new Promise((resolve, reject) => {
+        const request = indexedDB.open(databaseName)
+        request.onsuccess = () => resolve(request.result)
+        request.onerror = () => reject(request.error)
+      })
+      const readAll = (storeName) => new Promise((resolve, reject) => {
+        const request = database.transaction(storeName, 'readonly').objectStore(storeName).getAll()
+        request.onsuccess = () => resolve(request.result)
+        request.onerror = () => reject(request.error)
+      })
+      const records = await readAll('records')
+      const keys = await readAll('keys')
+      database.close()
+      return {
+        recordCount: records.length,
+        wrappingKeyExtractable: keys[0]?.key?.extractable,
+        rawRecordsContainSecret: JSON.stringify(records).includes(secret),
+        localStorageContainsSecret: Object.values(localStorage).some((value) => value.includes(secret)),
+        persistedSession: localStorage.getItem('nz.session.v2'),
+      }
+    }, { databaseName: 'nodezero-wallet-staging-testnet-v1', secret: keypair.secret() })
+
+    if (evidence.recordCount !== 4) fail(`Recovery import stored ${evidence.recordCount} wallet records; expected 4.`)
+    if (evidence.wrappingKeyExtractable !== false) fail('Recovery wallet wrapping key is extractable.')
+    if (evidence.rawRecordsContainSecret || evidence.localStorageContainsSecret) {
+      fail('Recovery import exposed the Stellar secret outside encrypted wallet records.')
+    }
+    if (evidence.persistedSession !== null) fail('Signed-out recovery import persisted a browser session.')
+    log('Journey 0 PASS: recovery identity encrypted in IndexedDB with no localStorage secret or session')
+  } finally {
+    await context.close()
+  }
 }
 
 async function waitForAuthenticatedSurface(page, timeoutMs) {
@@ -323,6 +385,7 @@ async function main() {
   log(`New-user handle: ${handle}`)
 
   const browser = await chromium.launch()
+  await verifySignedOutRecoveryImport(browser)
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } })
   const page = await context.newPage()
   const capturedSession = { current: null }
