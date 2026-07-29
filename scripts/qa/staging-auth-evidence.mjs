@@ -546,11 +546,28 @@ async function main() {
   assertNoFriendbotRequests(friendbotRequests)
   log('Journey 2 PASS: returning sign-in restored the same identity with no CSS contact')
 
-  await verifyDocustreamPersistence(page, returningSession)
+  log('Journey 2b: retained authenticated reload waits for wallet readiness')
+  await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 })
+  await waitForAuthenticatedSurface(page, sessionTimeoutMs).catch(async (error) => {
+    fail(
+      `Retained-session reload did not reach the app: ${String(error?.message || error)}\nPage: ${await pageTextSnippet(page)}`
+    )
+  })
+  const retainedPageText = await page.locator('body').innerText()
+  if (retainedPageText.includes('Wallet is still initializing')) {
+    fail('Retained-session reload raced attestation ahead of wallet initialization.')
+  }
+  const retainedSession = await readStoredSession(page)
+  if (retainedSession?.webId !== session.webId) {
+    fail(`Retained session webId mismatch: ${retainedSession?.webId} != ${session.webId}`)
+  }
+  log('Journey 2b PASS: retained session verified after wallet initialization')
+
+  await verifyDocustreamPersistence(page, retainedSession)
 
   // ── Journey 4: negative — destroyed session must fail closed ──────────────
   log('Journey 4: tampered session lands on sign-in (fail-closed)')
-  await revokeBrowserSession(page, returningSession)
+  await revokeBrowserSession(page, retainedSession)
   await page.evaluate((key) => {
     window.localStorage.setItem(
       key,
