@@ -83,11 +83,22 @@ jobs:
             --name "$STATIC_WEB_APP_NAME" \
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --query "[?domainName=='${wallet_host}'] | length(@)" -o tsv | grep -qx '1'; then
+            set +e
             az staticwebapp hostname delete \
               --name "$STATIC_WEB_APP_NAME" \
               --resource-group "$AZURE_RESOURCE_GROUP" \
               --hostname "$wallet_host" \
               --yes
+            delete_status=$?
+            set -e
+            remaining_hostnames="$(az staticwebapp hostname list \
+              --name "$STATIC_WEB_APP_NAME" \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --query "[?domainName=='${wallet_host}'] | length(@)" -o tsv)"
+            if [ "$remaining_hostnames" != '0' ]; then
+              echo "Retired wallet hostname remains after delete attempt (exit ${delete_status})."
+              exit 1
+            fi
           fi
           if az network dns record-set cname show \
             --resource-group "$AZURE_RESOURCE_GROUP" \
