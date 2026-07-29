@@ -20,6 +20,12 @@ binds all evidence to the exact live `deploy-marker.json` commit. It fails when
 device-cloud credentials are absent. A certification dispatch also fails when
 either installed-PWA lane is absent.
 
+Because GitHub registers brand-new workflow files only after they exist on the
+default branch, the already-registered `Staging Deploy` workflow exposes the
+same gate on `testnet`: dispatch it with `certify_physical_devices=true` and the
+sanitized `installed_evidence_json`. Normal push deployments skip this paid,
+physical-device job.
+
 ## Required cases
 
 Every physical lane reports these case IDs as `pass`:

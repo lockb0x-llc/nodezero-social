@@ -13,7 +13,7 @@ const requiredChecks = [
   ['.github/workflows/pwa-device-regression.yml', ['NZ_DEVICE_CLOUD_ENDPOINT', 'certify_release', 'installed-pwa.json', 'cancel-in-progress: false']],
   ['scripts/pwa/build-pwa.mjs', ['manifest.json', 'service-worker.js', "request.mode === 'navigate'", "url.origin !== self.location.origin"]],
   ['packages/mobile-app/staticwebapp.config.json', ['/_expo/static/*', 'max-age=31536000, immutable', '/service-worker.js', 'Service-Worker-Allowed', "frame-ancestors 'none'", "worker-src 'self' blob:"]],
-  ['.github/workflows/staging-deploy.yml', ['concurrency:', 'cancel-in-progress: false', 'NZ_APP_ORIGIN: https://staging.nodezero.social']],
+  ['.github/workflows/staging-deploy.yml', ['concurrency:', 'cancel-in-progress: false', 'NZ_APP_ORIGIN: https://staging.nodezero.social', 'certify_physical_devices:', 'Exact-SHA physical-device certification']],
 ]
 
 for (const [filePath, markers] of requiredChecks) {

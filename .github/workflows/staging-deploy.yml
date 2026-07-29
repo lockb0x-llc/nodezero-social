@@ -2,6 +2,16 @@ name: Staging Deploy
 
 on:
   workflow_dispatch:
+    inputs:
+      certify_physical_devices:
+        description: Run exact-SHA physical-device certification after deployment
+        required: true
+        default: false
+        type: boolean
+      installed_evidence_json:
+        description: Sanitized iOS/Android installed-PWA evidence JSON
+        required: false
+        type: string
   push:
     branches:
       - testnet
@@ -630,3 +640,80 @@ jobs:
 
       - name: Staging deployment summary
         run: echo "Staging infrastructure deployment, Expo web publish, smoke suite, and auth E2E gate completed."
+
+  certify-physical-devices:
+    name: Exact-SHA physical-device certification
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.certify_physical_devices == true }}
+    needs: deploy-staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout release tooling
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Verify exact live candidate
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error https://staging.nodezero.social/deploy-marker.json > /tmp/deploy-marker.json
+          live_sha="$(jq -r '.commit // empty' /tmp/deploy-marker.json)"
+          if [ "$live_sha" != "$GITHUB_SHA" ]; then
+            echo "Live marker ${live_sha} does not match candidate ${GITHUB_SHA}."
+            exit 1
+          fi
+
+      - name: Require physical-device runner and installed evidence
+        env:
+          DEVICE_ENDPOINT: ${{ secrets.NZ_DEVICE_CLOUD_ENDPOINT }}
+          DEVICE_TOKEN: ${{ secrets.NZ_DEVICE_CLOUD_TOKEN }}
+          INSTALLED_EVIDENCE_JSON: ${{ inputs.installed_evidence_json }}
+        run: |
+          if [ -z "$DEVICE_ENDPOINT" ] || [ -z "$DEVICE_TOKEN" ]; then
+            echo "Physical-device runner credentials are not configured."
+            exit 1
+          fi
+          if [ -z "$INSTALLED_EVIDENCE_JSON" ]; then
+            echo "Certification requires sanitized iOS and Android installed-PWA evidence."
+            exit 1
+          fi
+
+      - name: Run physical browser-tab lanes
+        env:
+          NZ_DEVICE_CLOUD_ENDPOINT: ${{ secrets.NZ_DEVICE_CLOUD_ENDPOINT }}
+          NZ_DEVICE_CLOUD_TOKEN: ${{ secrets.NZ_DEVICE_CLOUD_TOKEN }}
+          NZ_DEVICE_EXPECTED_SHA: ${{ github.sha }}
+          NZ_DEVICE_EXPECTED_URL: https://staging.nodezero.social
+          NZ_DEVICE_CLOUD_OUTPUT: device-evidence/browser-tab.json
+        run: |
+          mkdir -p device-evidence
+          node scripts/qa/run-device-cloud.mjs
+
+      - name: Validate browser-tab evidence
+        env:
+          NZ_DEVICE_EXPECTED_SHA: ${{ github.sha }}
+          NZ_DEVICE_EXPECTED_URL: https://staging.nodezero.social
+          NZ_DEVICE_REQUIRED_MODES: browser-tab
+        run: node scripts/qa/validate-device-evidence.mjs device-evidence/browser-tab.json
+
+      - name: Validate installed-PWA evidence
+        env:
+          INSTALLED_EVIDENCE_JSON: ${{ inputs.installed_evidence_json }}
+          NZ_DEVICE_EXPECTED_SHA: ${{ github.sha }}
+          NZ_DEVICE_EXPECTED_URL: https://staging.nodezero.social
+          NZ_DEVICE_REQUIRED_MODES: installed-pwa
+        run: |
+          printf '%s\n' "$INSTALLED_EVIDENCE_JSON" > device-evidence/installed-pwa.json
+          node scripts/qa/validate-device-evidence.mjs device-evidence/installed-pwa.json
+
+      - name: Upload sanitized physical-device summaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: pwa-device-evidence-${{ github.sha }}
+          path: device-evidence/*.json
+          retention-days: 7
+          if-no-files-found: error
