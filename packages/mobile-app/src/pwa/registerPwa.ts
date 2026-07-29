@@ -19,7 +19,7 @@ export function registerPwa(): (() => void) | undefined {
   const appOrigin = (extra?.appOrigin ?? '').trim()
   if (!appOrigin || window.location.origin !== appOrigin) return undefined
 
-  ensureLink('manifest', '/manifest.webmanifest')
+  ensureLink('manifest', '/manifest.json')
   ensureLink('apple-touch-icon', '/pwa/icon-180.png', { sizes: '180x180' })
 
   if ((window as typeof window & { __NZ_PWA_BOOTSTRAPPED__?: boolean }).__NZ_PWA_BOOTSTRAPPED__) {

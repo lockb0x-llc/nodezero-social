@@ -13,10 +13,16 @@
       }
     },
     {
-      "route": "/manifest.webmanifest",
+      "route": "/manifest.json",
       "headers": {
         "Cache-Control": "no-cache, must-revalidate",
-        "Content-Type": "application/manifest+json"
+        "Content-Type": "application/json"
+      }
+    },
+    {
+      "route": "/pwa/*",
+      "headers": {
+        "Cache-Control": "public, max-age=86400, must-revalidate"
       }
     },
     {

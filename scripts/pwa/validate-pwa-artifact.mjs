@@ -13,12 +13,12 @@ function assert(condition, message) {
 }
 
 const html = await readFile(path.join(distRoot, 'index.html'), 'utf8')
-const manifest = JSON.parse(await readFile(path.join(distRoot, 'manifest.webmanifest'), 'utf8'))
+const manifest = JSON.parse(await readFile(path.join(distRoot, 'manifest.json'), 'utf8'))
 const worker = await readFile(path.join(distRoot, 'service-worker.js'), 'utf8')
 const bootstrap = await readFile(path.join(distRoot, 'pwa-bootstrap.js'), 'utf8')
 const swaConfig = JSON.parse(await readFile(path.join(distRoot, 'staticwebapp.config.json'), 'utf8'))
 
-assert(html.includes('rel="manifest" href="/manifest.webmanifest"'), 'index.html is missing the manifest link.')
+assert(html.includes('rel="manifest" href="/manifest.json"'), 'index.html is missing the manifest link.')
 assert(html.includes('rel="apple-touch-icon"'), 'index.html is missing the Apple touch icon.')
 assert(html.includes('/pwa-bootstrap.js'), 'index.html is missing the PWA bootstrap script.')
 if (expectedOrigin) {
@@ -32,7 +32,7 @@ assert(Array.isArray(manifest.icons) && manifest.icons.some((icon) => icon.purpo
 assert(worker.includes(`nodezero-pwa-${expectedProfile}-`), 'Service-worker cache prefix does not match the environment profile.')
 assert(worker.includes("request.mode === 'navigate'"), 'Service worker is missing the offline navigation fallback.')
 assert(worker.includes('"/pwa-bootstrap.js"'), 'Service worker must precache the bootstrap required by the offline shell.')
-assert(worker.includes('"/manifest.webmanifest"'), 'Service worker must precache the install manifest.')
+assert(worker.includes('"/manifest.json"'), 'Service worker must precache the install manifest.')
 for (const forbidden of ['/v1/', 'pod-proxy', 'api.nodezero.social', 'solid.nodezero.social']) {
   assert(!worker.includes(forbidden), `Service worker contains forbidden sensitive route marker: ${forbidden}`)
 }

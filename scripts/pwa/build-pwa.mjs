@@ -108,7 +108,7 @@ const manifest = {
     { src: '/pwa/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
   ],
 }
-await writeFile(path.join(distRoot, 'manifest.webmanifest'), `${JSON.stringify(manifest, null, 2)}\n`)
+await writeFile(path.join(distRoot, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`)
 
 async function collectFiles(directory, relativeRoot = '') {
   const entries = await readdir(directory)
@@ -127,7 +127,7 @@ const precacheFiles = allFiles
   .filter((file) =>
     file === 'index.html' ||
     file === 'favicon.ico' ||
-    file === 'manifest.webmanifest' ||
+    file === 'manifest.json' ||
     file.startsWith('_expo/static/js/') ||
     file.startsWith('pwa/')
   )
@@ -146,7 +146,7 @@ const bootstrap = `(() => {
     for (const [name, value] of Object.entries(attributes)) link.setAttribute(name, value);
     document.head.appendChild(link);
   };
-  addLink('manifest', '/manifest.webmanifest');
+  addLink('manifest', '/manifest.json');
   addLink('apple-touch-icon', '/pwa/icon-180.png', { sizes: '180x180' });
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => navigator.serviceWorker.register('/service-worker.js', { scope: '/' }).catch(() => undefined), { once: true });
@@ -158,7 +158,7 @@ await writeFile(path.join(distRoot, 'pwa-bootstrap.js'), bootstrap)
 const indexPath = path.join(distRoot, 'index.html')
 let html = await readFile(indexPath, 'utf8')
 const headElements = [
-  ['/manifest.webmanifest', '  <link rel="manifest" href="/manifest.webmanifest" />'],
+  ['/manifest.json', '  <link rel="manifest" href="/manifest.json" />'],
   ['/pwa/icon-180.png', '  <link rel="apple-touch-icon" href="/pwa/icon-180.png" sizes="180x180" />'],
   ['name="theme-color"', '  <meta name="theme-color" content="#080f1c" />'],
   ['name="apple-mobile-web-app-capable"', '  <meta name="apple-mobile-web-app-capable" content="yes" />'],
