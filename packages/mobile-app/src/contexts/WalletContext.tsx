@@ -20,6 +20,7 @@ import { Platform } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import {
   EnclaveAdapter,
+  IndexedDbSecureStore,
   WalletService,
   type WalletInfo,
   type WalletIdentity,
@@ -200,7 +201,11 @@ function getWalletService(): WalletService {
     // expo-secure-store relies on native bridge methods (getValueWithKeyAsync)
     // that are unavailable in web/browser contexts. Fall back to EnclaveAdapter's
     // built-in in-memory store on web so the wallet can still provision.
-    const store = Platform.OS === 'web' ? undefined : SecureStore
+    const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
+    const envProfile = appExtra?.envProfile ?? 'local'
+    const store = Platform.OS === 'web'
+      ? new IndexedDbSecureStore({ profile: envProfile })
+      : SecureStore
     _adapter = new EnclaveAdapter(store)
   }
   if (!_walletService) {

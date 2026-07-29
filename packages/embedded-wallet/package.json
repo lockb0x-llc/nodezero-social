@@ -32,6 +32,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
+    "fake-indexeddb": "^6.2.5",
     "tsx": "^4.19.2",
     "typescript": "^5.4.5"
   }

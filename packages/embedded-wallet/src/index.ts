@@ -13,6 +13,7 @@
  */
 
 export { EnclaveAdapter, MissingIdentitySecretError } from './EnclaveAdapter.js'
+export { IndexedDbSecureStore, IndexedDbStorageError } from './IndexedDbSecureStore.js'
 export { WalletService } from './WalletService.js'
 export type {
 	WalletInfo,
