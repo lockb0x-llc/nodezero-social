@@ -353,12 +353,6 @@ jobs:
             --src-path packages/jss-provisioner/deploy.zip \
             --type zip
 
-      - name: Restart JSS provisioner
-        run: |
-          az webapp restart \
-            --resource-group "$AZURE_RESOURCE_GROUP" \
-            --name "$JSS_PROVISIONER_APP_NAME"
-
       - name: Verify JSS provisioner health
         env:
           EXPECTED_COMMIT: ${{ github.sha }}
@@ -385,6 +379,13 @@ jobs:
                 consecutive_healthy=$((consecutive_healthy + 1))
                 echo "Provisioner health and provenance passed on attempt ${attempt} (${consecutive_healthy}/3 consecutive)."
                 if [ "$consecutive_healthy" -eq 3 ]; then
+                  echo "Holding exact provenance for 30 seconds before mutating staging checks."
+                  sleep 30
+                  stable_commit="$(curl --fail --silent --show-error --max-time 10 "$health_url" | jq -r '.build.commit // empty')"
+                  if [ "$stable_commit" != "$EXPECTED_COMMIT" ]; then
+                    echo "Provisioner provenance changed during stabilization (${stable_commit})."
+                    exit 1
+                  fi
                   cat /tmp/provisioner-health.json
                   exit 0
                 fi
