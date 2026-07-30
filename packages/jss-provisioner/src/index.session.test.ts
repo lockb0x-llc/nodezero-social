@@ -30,6 +30,9 @@ interface MockCssState {
   rejectTokenExchange: boolean
   /** Number of transient CSS Pod creation 400 responses to emit. */
   transientPodBadRequests: number
+  loseNextPodCreateResponse: boolean
+  podCreateRequests: number
+  clientCredentialRequests: number
   accountCreateRequests: number
   loseNextAccountCreateResponse: boolean
   tokenExchanges: number
@@ -41,6 +44,9 @@ const cssState: MockCssState = {
   pods: new Map(),
   rejectTokenExchange: false,
   transientPodBadRequests: 0,
+  loseNextPodCreateResponse: false,
+  podCreateRequests: 0,
+  clientCredentialRequests: 0,
   accountCreateRequests: 0,
   loseNextAccountCreateResponse: false,
   tokenExchanges: 0,
@@ -109,6 +115,7 @@ async function handleMockCss(req: IncomingMessage, res: ServerResponse): Promise
     return
   }
   if (req.method === 'POST' && path === '/.account/pod') {
+    cssState.podCreateRequests += 1
     if (cssState.transientPodBadRequests > 0) {
       cssState.transientPodBadRequests -= 1
       json(res, 400, { name: 'BadRequestHttpError', message: 'temporary Pod state conflict' })
@@ -117,7 +124,22 @@ async function handleMockCss(req: IncomingMessage, res: ServerResponse): Promise
     const body = JSON.parse(await readBody(req)) as { name: string }
     const podUrl = `${cssBaseUrl}/${body.name}/`
     const webId = `${podUrl}profile/card#me`
+    if (cssState.pods.has(body.name)) {
+      json(res, 400, {
+        name: 'BadRequestHttpError',
+        message: `${webId} is already registered to this account.`,
+      })
+      return
+    }
     cssState.pods.set(body.name, new Map())
+    if (cssState.loseNextPodCreateResponse) {
+      cssState.loseNextPodCreateResponse = false
+      json(res, 500, {
+        name: 'LockError',
+        message: `Lock expired after 6000ms on ${podUrl}account/mock/`,
+      })
+      return
+    }
     json(res, 200, { pod: podUrl, webId })
     return
   }
@@ -126,6 +148,7 @@ async function handleMockCss(req: IncomingMessage, res: ServerResponse): Promise
     return
   }
   if (req.method === 'POST' && path === '/.account/client-credentials') {
+    cssState.clientCredentialRequests += 1
     const body = JSON.parse(await readBody(req)) as { name: string; webId: string }
     const id = `cc-${randomUUID()}`
     const secret = `secret-${randomUUID()}`
@@ -271,6 +294,7 @@ after(() => {
 beforeEach(() => {
   cssState.rejectTokenExchange = false
   cssState.transientPodBadRequests = 0
+  cssState.loseNextPodCreateResponse = false
   cssState.loseNextAccountCreateResponse = false
 })
 
@@ -392,6 +416,19 @@ void test('solid-account: recovers from repeated transient CSS Pod conflicts', a
   assert.ok(session.accessToken)
   assert.match(webId, /profile\/card#me$/)
   assert.equal(cssState.transientPodBadRequests, 0)
+})
+
+void test('solid-account: recovers when Pod commit succeeds before a lock-expired response', async () => {
+  const podRequestsBefore = cssState.podCreateRequests
+  const credentialRequestsBefore = cssState.clientCredentialRequests
+  cssState.loseNextPodCreateResponse = true
+
+  const { session, webId } = await provisionUser()
+
+  assert.ok(session.accessToken)
+  assert.match(webId, /profile\/card#me$/)
+  assert.equal(cssState.podCreateRequests, podRequestsBefore + 2)
+  assert.equal(cssState.clientCredentialRequests, credentialRequestsBefore + 1)
 })
 
 void test('solid-account: same idempotency key replays without another CSS account', async () => {

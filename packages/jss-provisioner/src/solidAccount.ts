@@ -39,6 +39,18 @@ interface CssControls {
   password: { create: string; login: string }
 }
 
+class CssPostError extends Error {
+  constructor(
+    readonly url: string,
+    readonly status: number,
+    readonly responseName: string | null,
+    readonly responseMessage: string,
+  ) {
+    super(`CSS POST ${url} failed (${status}): ${responseName ?? 'Error'}: ${responseMessage}`)
+    this.name = 'CssPostError'
+  }
+}
+
 const CSS_POD_LOCK_RETRY_ATTEMPTS = Number(process.env.JSS_SOLID_CSS_POD_LOCK_RETRY_ATTEMPTS ?? 3)
 const CSS_POD_LOCK_RETRY_BASE_DELAY_MS = Number(
   process.env.JSS_SOLID_CSS_POD_LOCK_RETRY_BASE_DELAY_MS ?? 350
@@ -57,11 +69,22 @@ function isTransientCssPodCreationError(error: unknown): boolean {
   // immediately after account setup. Restrict retries to its exact Pod endpoint
   // envelope so invalid account/password requests continue to fail closed.
   return (
-    lower.includes('css post') &&
-    lower.includes('/pod') &&
-    lower.includes('failed (400)') &&
-    lower.includes('badrequesthttperror')
+    error instanceof CssPostError &&
+    error.url.includes('/pod') &&
+    error.status === 400 &&
+    error.responseName?.toLowerCase() === 'badrequesthttperror' &&
+    !error.responseMessage.toLowerCase().includes('is already registered to this account')
   )
+}
+
+function isAmbiguousCssPodLockError(error: unknown): boolean {
+  return error instanceof Error && error.message.toLowerCase().includes('lock expired after')
+}
+
+function isExactAlreadyLinkedWebId(error: unknown, expectedWebId: string): boolean {
+  if (!(error instanceof CssPostError) || error.status !== 400) return false
+  if (error.responseName?.toLowerCase() !== 'badrequesthttperror') return false
+  return error.responseMessage.trim() === `${expectedWebId} is already registered to this account.`
 }
 
 async function getControls(baseUrl: string, authorization?: string): Promise<CssControls> {
@@ -88,7 +111,16 @@ async function postJson<T>(
   const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload ?? {}) })
   const text = await res.text()
   if (!res.ok) {
-    throw new Error(`CSS POST ${url} failed (${res.status}): ${text}`)
+    let responseName: string | null = null
+    let responseMessage = text
+    try {
+      const parsed = JSON.parse(text) as { name?: unknown; message?: unknown }
+      responseName = typeof parsed.name === 'string' ? parsed.name : null
+      responseMessage = typeof parsed.message === 'string' ? parsed.message : text
+    } catch {
+      // Preserve the unstructured response body for diagnostics.
+    }
+    throw new CssPostError(url, res.status, responseName, responseMessage)
   }
   return (text ? JSON.parse(text) : {}) as T
 }
@@ -96,13 +128,20 @@ async function postJson<T>(
 async function createPodWithRetry(
   podEndpoint: string,
   token: string,
-  name: string
+  name: string,
+  expectedPodUrl: string,
+  expectedWebId: string,
 ): Promise<{ pod?: string; webId?: string }> {
   const attempts = Math.max(1, CSS_POD_LOCK_RETRY_ATTEMPTS)
+  let ambiguousLockObserved = false
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
       return await postJson<{ pod?: string; webId?: string }>(podEndpoint, token, { name })
     } catch (error) {
+      if (ambiguousLockObserved && isExactAlreadyLinkedWebId(error, expectedWebId)) {
+        return { pod: expectedPodUrl, webId: expectedWebId }
+      }
+      if (isAmbiguousCssPodLockError(error)) ambiguousLockObserved = true
       const isLastAttempt = attempt === attempts
       if (!isTransientCssPodCreationError(error) || isLastAttempt) {
         if (isTransientCssPodCreationError(error) && isLastAttempt) {
@@ -142,7 +181,15 @@ export async function createSolidAccount(
     email: input.email,
     password: input.password,
   })
-  const pod = await createPodWithRetry(authedControls.account.pod, token, input.name)
+  const expectedPodUrl = `${normalizedBase}/${input.name}/`
+  const expectedWebId = `${expectedPodUrl}profile/card#me`
+  const pod = await createPodWithRetry(
+    authedControls.account.pod,
+    token,
+    input.name,
+    expectedPodUrl,
+    expectedWebId,
+  )
 
   const refreshed = await getControls(normalizedBase, token)
   const webIdRes = await fetch(refreshed.account.webId, {
