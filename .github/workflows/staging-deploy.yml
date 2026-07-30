@@ -608,9 +608,12 @@ jobs:
       - name: Run DocuStream pane proof (non-blocking)
         if: ${{ always() }}
         continue-on-error: true
-        env:
-          STAGING_BASE_URL: https://${{ steps.hostname.outputs.hostname }}
-        run: pnpm qa:smoke:docustream-pane
+        run: |
+          if [ "${{ steps.auth-e2e.outputs.docustream_pane_passed }}" != "true" ]; then
+            echo "Authenticated DocuStream pane probe did not pass."
+            exit 1
+          fi
+          echo "Authenticated DocuStream pane probe passed in the identity browser context."
 
       - name: Run focused mashlib runtime proof (non-blocking)
         if: ${{ always() }}

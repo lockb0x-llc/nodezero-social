@@ -31,6 +31,9 @@ if (!authGate.includes('STAGING_BASE_URL: https://staging.nodezero.social')) {
 if (!authGate.includes("NZ_EXPECT_INTERNAL_STAGING_HANDOFF: 'false'")) {
   throw new Error('Blocking auth gate must reject the retired apex-to-staging handoff.')
 }
+if (!authGate.includes('steps.auth-e2e.outputs.docustream_pane_passed')) {
+  throw new Error('DocuStream feature evidence must be reported separately from the identity gate result.')
+}
 if (authGate.includes('STAGING_BASE_URL: https://nodezero.social')) {
   throw new Error('Blocking auth gate must not start Testnet onboarding on the apex origin.')
 }

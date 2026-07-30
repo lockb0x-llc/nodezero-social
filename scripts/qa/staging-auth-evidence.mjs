@@ -161,6 +161,22 @@ async function assertNoPersistedBrowserSession(page, stage) {
   if (persisted !== null) fail(`${stage} persisted NodeZero bearer credentials in localStorage.`)
 }
 
+async function probeDocustreamPane(page) {
+  try {
+    await page.goto(`${baseUrl}/docustream`, { waitUntil: 'domcontentloaded', timeout: 60_000 })
+    await page.getByText('Downstream', { exact: true }).waitFor({ state: 'visible', timeout: 120_000 })
+    await page.getByText('Web explorer panes:', { exact: false }).waitFor({ state: 'visible', timeout: 60_000 })
+    await page.getByTestId('docustream-sources-open').waitFor({ state: 'visible', timeout: 60_000 })
+    log('Feature probe PASS: authenticated DocuStream pane and source launcher are visible')
+    return true
+  } catch (error) {
+    log(`Feature probe FAIL: ${String(error?.message || error)}; page=${await pageTextSnippet(page)}`)
+    return false
+  } finally {
+    await page.goto(`${baseUrl}/feed`, { waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => undefined)
+  }
+}
+
 async function verifySignedOutRecoveryImport(browser) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } })
   const page = await context.newPage()
@@ -512,6 +528,8 @@ async function main() {
   await assertNoPersistedBrowserSession(page, 'Browser-session bootstrap')
   log('Journey 2b PASS: retained session verified after wallet initialization')
 
+  await publishOutput('docustream_pane_passed', String(await probeDocustreamPane(page)))
+
   // ── Journey 3: negative — destroyed session must fail closed ──────────────
   log('Journey 3: tampered session lands on sign-in (fail-closed)')
   await revokeBrowserSession(page, retainedSession)
@@ -531,7 +549,11 @@ async function main() {
     )
   }, SESSION_STORAGE_KEY)
 
-  await page.goto(`${baseUrl}/feed`, { waitUntil: 'domcontentloaded', timeout: 60_000 })
+  await page.goto(`${baseUrl}/feed?session-negative=${Date.now()}`, {
+    waitUntil: 'domcontentloaded',
+    timeout: 60_000,
+  })
+  await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 })
   await page
     .waitForURL((url) => url.pathname === '/' || url.pathname === '', { timeout: 60_000 })
     .catch(async () => {
