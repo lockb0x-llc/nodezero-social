@@ -8,11 +8,11 @@ responsibilities, trust boundaries, and threat model.
 ## System diagram
 
 ```
-   User Browser (Expo web)
+   User Browser (installable Expo PWA)
    ┌────────────────────────────────────────────────────────┐
    │  Embedded Wallet                                       │
-   │    Stellar keypair stored in localStorage (web) or     │
-   │    expo-secure-store (native). Never leaves the device. │
+   │    Stellar keypair encrypted in profile-scoped         │
+   │    IndexedDB (web) or expo-secure-store (native).      │
    │                                                        │
    │  pod_ownership Groth16 Proof (snarkjs / WASM)          │
    │    Private: identitySecret = SHA256(stellarSecret) mod F│
@@ -26,8 +26,8 @@ responsibilities, trust boundaries, and threat model.
    │    Wire format: ver(1) || nonce(12) || ciphertext+tag  │
    └───────┬────────────┬────────────┬───────────────────────┘
            │            │            │
-Solid OIDC │  /v1/solid │  Soroban   │  wss relay
-sign-in    │  -account  │  RPC       │  (geo-local)
+Internal   │  /v1/solid │  Soroban   │  wss relay
+session    │  -account  │  RPC       │  (geo-local)
            ▼            ▼            ▼
 Node Zero Community Server (self-hosted CSS)  Provisioner (Azure App Service)
 solid.nodezero.social   ┌───────────────────────────────────┐
@@ -144,13 +144,16 @@ authenticated session; they never participate in establishing one.
 ### Session lifecycle
 
 - Access tokens are HMAC-signed JWTs (1h TTL); refresh tokens are opaque,
-  single-use, and rotated on refresh. Refresh re-proves the invariant.
+  single-use, and rotated on refresh. Web access material stays in memory;
+  reload restoration uses an HttpOnly, Secure, host-only `__Host-` cookie on
+  `api.nodezero.social` and re-proves the invariant.
 - Logout invalidates refresh tokens; operator revocation
   (`POST /v1/auth/revoke`, internal-key protected) deletes the stored
   credentials — every live and future session for that WebID then fails
   closed at the proxy, at refresh, and at login.
-- Recovery = Stellar keypair recovery (export bundle / destroy +
-  re-provision). There is no password reset because there are no passwords.
+- Recovery = signed-out recovery-bundle import into the encrypted local wallet.
+   Bundles are profile/network checked before import. There is no password reset
+   because there are no user-facing passwords.
 
 ### Release gating
 
@@ -160,8 +163,9 @@ which exercises new-user onboarding, returning one-tap sign-in, and the
 negative fail-closed path end-to-end, including on-chain evidence and a
 zero-CSS-contact request embargo. It runs without retries: session issuance
 is a single server round-trip with no redirect-timing window.
-Application-feature proofs (docustream/mashlib) run separately and never
-block identity releases.
+Application-feature results (DocuStream/mashlib) are reported separately from
+the identity result; the authenticated DocuStream pane probe runs in the same
+browser context because non-extractable WebCrypto keys cannot be serialized.
 
 ---
 
@@ -214,9 +218,10 @@ the on-chain lockb0x is per-user and can be re-anchored.
 **What an attacker can do:** re-derive `identitySecret`, decrypt the on-chain
 `attestationCiphertext`, impersonate the user's lockb0x identity.
 
-**Mitigation:** The keypair is stored in `localStorage` / `expo-secure-store`,
-not transmitted. Recovery relies on the Pod-side encrypted backup. Key rotation
-(destroy local key → provision new keypair → re-anchor) is a planned future flow.
+**Mitigation:** The keypair is stored in encrypted IndexedDB with a
+non-extractable AES-GCM wrapping key on web, or `expo-secure-store` on native,
+and is never transmitted. Recovery uses an explicitly exported recovery bundle.
+Key rotation remains a planned future flow.
 
 ### Stolen encrypted attestation ciphertext
 

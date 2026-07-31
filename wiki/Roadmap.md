@@ -1,21 +1,21 @@
 # Roadmap
 
-## Current status (2026-07-10)
+## Current status (`v0.2.0-testnet`, 2026-07-30)
 
-- Staging/TestNet is live and operational.
-- Staging/testnet milestone release documentation is aligned with deployed behavior.
-- Docustream staging stabilization is complete (source add/ingest/render +
-	session continuity hardening).
+- The canonical installable staging/Testnet PWA is released and operational.
+- Internal auth, encrypted wallet persistence/recovery, V3 lockb0x validation,
+  Profile persistence, and DocuStream continuity passed automated and retained
+  mobile-browser acceptance.
 - Community Directory is live as a dedicated tab between Feed and Backpack.
-- Blocking auth gate (`pnpm qa:smoke:auth`) passed in workflow run #46.
-- Remaining work is hardening and production-mainnet promotion separation.
+- Release workflow `30599014484` passed all automated gates.
+- Feature development can proceed from this Testnet baseline.
 
 ## Current priorities
 
-- Codify relay lifecycle and recovery in IaC/workflow.
-- Move provisioner `JSS_*` runtime settings into deterministic workflow steps.
-- Add gated drift-detection and config consistency checks.
-- Expand larger-data social graph/feed/docustream validation evidence.
+- Complete the remaining feed, broadcast, local-discovery, notification, and
+	larger-data social-graph experiences.
+- Expand installed-PWA and multi-device lifecycle evidence as devices become available.
+- Continue relay/Waku lifecycle and observability hardening.
 - Complete production-mainnet workflow guardrails and approval gates.
 
 ## Next feature readiness checklist

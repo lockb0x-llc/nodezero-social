@@ -1,6 +1,7 @@
 # NodeZero Social Wiki
 
 - [Home](Home)
+- [v0.2.0 Testnet Release](Release-0.2.0-Testnet)
 - [Architecture](Architecture)
 - [Getting Started](Getting-Started)
 - Features

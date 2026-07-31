@@ -1,6 +1,6 @@
 {
   "name": "@nodezero/mobile-app",
-  "version": "0.0.1",
+  "version": "0.2.0-testnet",
   "description": "NodeZero.social Expo / React Native mobile application",
   "license": "MIT",
   "main": "./index.js",

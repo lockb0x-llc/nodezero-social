@@ -402,7 +402,7 @@ export default function SettingsScreen(): JSX.Element {
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.version}>NodeZero.social v0.0.1</Text>
+      <Text style={styles.version}>NodeZero.social v0.2.0-testnet</Text>
     </ScrollView>
   )
 }

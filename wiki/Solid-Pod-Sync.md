@@ -88,7 +88,9 @@ Regression anchors:
 ## Credits
 
 - Solid protocol standards make Pod portability and user-owned data flows possible.
-- Inrupt Solid client/auth libraries provide the core Solid OIDC + Pod data APIs used by this package.
+- Solid client libraries provide the core RDF and Pod data APIs used by this
+  package. Browser authentication is internal to NodeZero; Pod requests are
+  routed through the provisioner Pod Access Proxy.
 - Community Solid Server powers the NodeZero-hosted Solid server environment in staging.
 - NodeZero contributors implemented package-specific managers, contracts, and integration boundaries in-repo.
 - Upstream references:
@@ -96,13 +98,14 @@ Regression anchors:
   - https://github.com/inrupt/solid-client-js
   - https://github.com/CommunitySolidServer/CommunitySolidServer
 
-## Gaps (as of 2026-06-25)
+## Current baseline (`v0.2.0-testnet`)
 
 | Gap | Description | Status |
 |---|---|---|
-| B1 | Real Solid-based feed aggregation not implemented | IN_PROGRESS |
-| Profile data | No custom profile data written to pod yet | Pending browser sign-in |
-| Social graph | `/social/connections` not yet created in pod | Pending B1/B2 |
+| Feed aggregation | Pod-backed profile/social reads feed the chronological surface | RELEASE BASELINE |
+| Profile data | Profile metadata writes and reload after returning sign-in | PASS |
+| DocuStream | RSS source registry and listings reload after returning sign-in | PASS |
+| Larger-data social graph | Scale and richer graph behaviors | NEXT FEATURES |
 
 - `packages/solid-pod-sync/src/ProfileManager.ts`
 - `packages/solid-pod-sync/src/SocialGraph.ts`

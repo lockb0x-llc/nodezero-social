@@ -209,7 +209,7 @@ if (!/^\d+$/.test(wakuClusterId)) {
 module.exports = {
   name: process.env.NZ_APP_NAME ?? 'NodeZero',
   slug: 'nodezero-social',
-  version: '0.0.1',
+  version: '0.2.0-testnet',
   orientation: 'portrait',
   scheme: 'nodezero',
 

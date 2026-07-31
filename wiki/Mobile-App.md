@@ -33,33 +33,32 @@ Settings is intentionally excluded from tabs and accessed from Profile via the g
 ## Landing page (`/`)
 
 The landing page renders without authentication and includes:
-- **Hero**: decentralized social onboarding and value proposition
-- **Feature cards**: ownership, local discovery, no feed manipulation, privacy-first identity
-- **Solid sign-in form**: identity-provider picker (Node Zero Community Server default) + "Sign In" action
-- **Create Your Node form**: handle + notification email + password + confirm password (password min 12 chars, user-chosen — used for manual login fallback and returning sign-in)
+- **Canonical PWA entry** on `staging.nodezero.social`
+- **Explicit wallet actions**: Create a new identity or Restore from recovery bundle
+- **One-tap Sign In** using a device Stellar challenge signature
+- **Create Your Node form**: handle + notification email; no user-facing password
 - **Redirect logic**:
 	1. Signed-in + verified pairing attestation goes to `/feed` (or `/local` for seamless node sessions).
 	2. Signed-in + unverified attestation goes to `/onboarding`.
 
 ### New-user create flow (web)
 
-1. Wallet + ZK proof are prepared on-device; provisioner creates Pod, WebID, and on-chain lockb0x anchor.
-2. App hands off to the IdP login page with the one-time OIDC bridge ticket (`nz_oidc_bridge`, `nz_oidc_bridge_consume`) and a validated `nz_return` as top-level URL params.
-3. Login template consumes the ticket and signs in via the CSS account API, then returns to the app with `nz_bridge_return=1`.
-4. App automatically resumes the OIDC flow — IdP session exists, so it proceeds to consent and establishes the authenticated session.
-5. Any bridge failure leaves the login form usable for manual credentials (the user knows their password).
+1. User explicitly creates or restores the encrypted local device identity.
+2. Wallet generates the ZK proof and encrypted claim on-device.
+3. Provisioner creates the Pod/WebID, deploys and anchors the V3 lockb0x, and
+	proves live Pod access before returning an inline NodeZero session.
+4. Client derives the local commitment and compares it to the on-chain value;
+	only a verified match enters Feed.
 
 Session continuity note:
-- During transient OIDC restore windows, node-session WebID continuity keeps
-	authenticated routes usable while full Solid session readiness settles.
+- Web bearer credentials remain memory-only. Browser restart restores through
+  the host-only provisioner cookie, then repeats wallet and lockb0x checks.
 
 ### Auth validation behavior (current implementation)
-- Empty IdP URL: "Enter your Identity Provider URL."
-- Non-HTTPS IdP URL: "URL must start with https://"
-- Valid HTTPS IdP: continues to Solid OIDC sign-in flow
-- Login failure fallback: "Sign-in failed. Check the URL and try again."
-- Password shorter than 12 chars: "Password must be at least 12 characters."
-- Mismatched passwords: "Passwords do not match."
+- Empty wallet: explicit Create/Restore choices; Sign In/Create Node remain disabled.
+- Unknown Stellar identity: `no_account` guidance without fallback auth.
+- Missing/corrupt encrypted wallet material: fail-closed recovery guidance.
+- Lockb0x commitment mismatch: session is refused client-side.
 
 ## UI navigation tabs and feature catalog
 
@@ -148,7 +147,7 @@ Settings is partially accessible without authentication:
 | Embedded Wallet | Stellar public key + network status | Provisioning on load |
 | Data Management | "Export & Erase Local Cache" button | Always visible |
 | Account | "Sign Out" button | Always visible |
-| Version | "NodeZero.social v0.0.2" | Always visible |
+| Version | "NodeZero.social v0.2.0-testnet" | Always visible |
 
 ## Notes on data ownership model
 
@@ -162,7 +161,7 @@ Settings is partially accessible without authentication:
 ## Contexts
 
 - `WalletContext`: wallet lifecycle and registration.
-- `SolidContext`: SOLID identity/session handling.
+- `NodeZeroSessionContext`: internal session lifecycle and Pod Access Proxy fetches.
 - `DiscoveryContext`: location/discovery state.
 
 ## Confirmed functionality

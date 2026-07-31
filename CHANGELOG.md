@@ -12,6 +12,65 @@ No entries yet.
 
 ---
 
+## [0.2.0-testnet] — 2026-07-30
+
+Release milestone for the canonical single-origin NodeZero PWA on Stellar
+Testnet. Authentication, encrypted wallet persistence, recovery, Pod-backed
+profile/DocuStream continuity, and exact V3 lockb0x verification are release
+gated and validated on a retained physical mobile browser.
+
+### Added
+
+- Installable PWA shell with manifest, service worker, offline shell, strict
+  cache policy, canonical-origin routing, and deployment provenance marker.
+- Encrypted profile-scoped IndexedDB wallet using a non-extractable AES-256-GCM
+  wrapping key; wallet secrets never enter localStorage.
+- Signed-out recovery-bundle import with environment/network validation.
+- Exact-SHA physical-device evidence contract and fail-closed certification
+  workflow for future device-cloud and installed-PWA lanes.
+
+### Changed
+
+- Testnet now uses `https://staging.nodezero.social` as its canonical PWA
+  origin; `https://nodezero.social` redirects there for the Testnet release.
+- Browser access/refresh tokens are memory-only. Session restoration uses an
+  HttpOnly, Secure, host-only `__Host-` cookie on the provisioner API.
+- Empty wallets now display explicit **Create a new identity** and **Restore
+  from recovery bundle** actions instead of an indefinite loading label.
+- DocuStream and profile data remain Pod-backed and are restored after browser
+  close, returning one-tap sign-in, and lockb0x verification.
+
+### Fixed
+
+- Removed the cross-origin wallet broker and all wallet migration routes,
+  protocols, DNS records, and deployment bindings.
+- Hardened durable onboarding with chunked Azure Table reservation records,
+  CSS Pod commit-before-timeout recovery, bounded Treasury transport retries,
+  and deployment stabilization without a second App Service rollover.
+- Corrected release evidence so identity, V3, DocuStream, and mashlib results
+  are reported independently without sharing plaintext credentials.
+
+### Security
+
+- Browser wallet records are authenticated and encrypted at rest.
+- Browser bearer credentials are not persisted in web storage.
+- Browser-to-CSS requests remain embargoed; all Pod operations use the
+  provisioner Pod Access Proxy.
+- Returning sign-in remains fail-closed on the device-derived commitment versus
+  the exact on-chain V3 lockb0x commitment.
+
+### Evidence
+
+- Automated staging release: GitHub Actions run `30599014484`, commit
+  `77c95112157a8f2cb36710a99e1932eb6ebe5938`, conclusion `success`.
+- Accepted retained-mobile journey: create node, save profile, add DocuStream
+  RSS source, sign out, close/reopen browser, sign in, verify Feed, DocuStream,
+  and Profile persistence.
+- Physical device-cloud certification remains optional infrastructure and was
+  not used to block this Testnet milestone.
+
+---
+
 ## [0.0.3-testnet] — 2026-07-10
 
 Milestone release for staging/testnet implementation alignment, with Community

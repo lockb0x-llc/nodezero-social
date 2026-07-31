@@ -49,13 +49,13 @@ code.
 
 | # | Step | Expected | Result | Notes |
 |---|------|----------|--------|-------|
-| AU1 | Returning user taps **Sign In** (device with existing wallet) | One-tap Stellar signature login → authenticated feed. No IdP page, no password, no redirect leg, zero requests to `solid.nodezero.social` | RE-RUN REQUIRED (cutover) | Automated by `scripts/qa/staging-auth-evidence.mjs` (Journey 2). |
+| AU1 | Returning user taps **Sign In** (device with existing wallet) | One-tap Stellar signature login → authenticated feed. No IdP page, no password, no redirect leg, zero requests to `solid.nodezero.social` | **PASS (2026-07-30 retained mobile browser)** | Automated Journey 2 plus maintainer close/reopen/sign-in acceptance. |
 | AU2 | Sign In on a device with no NodeZero account | Actionable error: no node exists for this device key; user is pointed to Create Your Node | RE-RUN REQUIRED (cutover) | Provisioner returns `401 no_account`; no fallback auth path exists. |
 | AU3 | Landing page audit | No password inputs, no external identity-provider picker, no `solidcommunity.net` mention anywhere | RE-RUN REQUIRED (cutover) | Playwright `auth-invariant.spec.ts` (I5). |
 | AU3b | Returning sign-in when multiple NodeZero accounts share one local Stellar identity | Internal account chooser modal appears; selecting a listed WebID signs into that exact account with no external IdP redirect | RE-RUN REQUIRED (cutover) | Provisioner returns `409 account_selection_required`; UI sends selected `webId` on retry. |
-| AU4 | Sign out via Profile → Settings | Session destroyed (`nz.session.v2` cleared), returns to landing; every deep link redirects to `/` | RE-RUN REQUIRED (cutover) | Navigate `/profile` → ⚙ → `/settings` → **Sign Out**. |
-| AU5 | New-user seamless onboarding: handle + email → Create Your Node | ZK proof → Pod + WebID created → lockb0x anchored on-chain → **inline NodeZero session** → authenticated feed with no redirect leg and no password anywhere | RE-RUN REQUIRED (cutover) | Automated by `scripts/qa/staging-auth-evidence.mjs` (Journey 1); on-chain lockb0x asserted via stellar.expert. |
-| AU6 | Returning sign-in restores the same identity | Same WebID as onboarding; session carries lockb0x anchor metadata; client-side attestation check verifies | RE-RUN REQUIRED (cutover) | Automated (Journey 2); WebID equality asserted. |
+| AU4 | Sign out via Profile → Settings | Memory session and host-only browser session are revoked, returning to landing; protected deep links redirect to `/` | **PASS (2026-07-30 retained mobile browser)** | Sign-out followed by browser close/reopen and one-tap returning sign-in passed. |
+| AU5 | New-user seamless onboarding: handle + email → Create Your Node | ZK proof → Pod + WebID created → lockb0x anchored on-chain → **inline NodeZero session** → authenticated feed with no redirect leg and no password anywhere | **PASS (2026-07-30 retained mobile browser)** | Automated Journey 1 + exact V3 audit and maintainer acceptance. |
+| AU6 | Returning sign-in restores the same identity | Same WebID as onboarding; session carries lockb0x anchor metadata; client-side attestation check verifies | **PASS (2026-07-30 retained mobile browser)** | Feed entry and lockb0x validation passed after browser close/reopen. |
 | AU7 | Fail-closed enforcement: tamper/clear the stored session, deep-link `/feed` | App lands on the sign-in page; forged record destroyed; no zombie state | RE-RUN REQUIRED (cutover) | Automated (Journey 4) + Playwright `auth-invariant.spec.ts` (I2). |
 | AU8 | New user begins on `staging.nodezero.social` and creates a Node | The canonical PWA generates a device identity only after explicit user action, persists it in encrypted profile-scoped IndexedDB, creates the V3 lockb0x, and reaches `/feed` without cross-origin handoff | RE-RUN REQUIRED | Automated by `pnpm qa:smoke:auth` Journey 1 and the release-created V3 audit. |
 | AU9 | Returning user reloads `staging.nodezero.social` and taps **Sign In** | The retained same-origin wallet signs the challenge; the same WebID and lockb0x are restored without a second identity or CSS request | RE-RUN REQUIRED | Automated by `pnpm qa:smoke:auth` Journeys 2 and 2b. |
@@ -141,8 +141,8 @@ Validate the nav bar overflow fix and the Settings access path change introduced
 |---|---|---|---|
 | X1 | favicon.ico returns 404 | Fixed | `packages/mobile-app/app.config.js` now sets `web.favicon` to `./assets/favicon.png`. |
 | X2 | Settings page accessible without auth | By design | Shows WebID=Not signed in, NSFW toggle, wallet section. Correct behavior. |
-| X3 | WalletContext expo-secure-store error | FIXED | Fixed by web localStorage fallback in EnclaveAdapter; no longer fires on web. |
-| X4 | App version shown as `v0.0.1` | Info | Correct pre-release version. |
+| X3 | WalletContext expo-secure-store incompatibility | FIXED | Web now injects encrypted `IndexedDbSecureStore`; native keeps `expo-secure-store`. |
+| X4 | App version shown as `v0.2.0-testnet` | Release | Milestone I Testnet version. |
 
 ## Summary matrix
 
@@ -152,23 +152,24 @@ Validate the nav bar overflow fix and the Settings access path change introduced
 | TLS enforcement | ✅ PASS |
 | Landing page rendering | ✅ PASS |
 | Auth guards on protected routes | ✅ PASS |
-| Solid IdP redirect initiation | ✅ PASS |
-| Post-auth authenticated flow | ✅ PASS (2026-06-28 headed validation) |
-| Blocking auth gate (`qa:smoke:auth`) | ✅ PASS (2026-07-10, staging run #46 step #28 success) |
-| Empty IdP error specificity | ✅ PASS (2026-06-28 headed validation) |
-| HTTP IdP client-side rejection | ✅ PASS (2026-06-28 headed validation) |
-| Wallet provisioning on web | ✅ PASS (web localStorage fallback) |
-| Wallet on-chain registration | ✅ PASS (AT1 evidence) |
+| Internal one-tap Stellar sign-in | ✅ PASS (2026-07-30 retained mobile browser) |
+| Post-auth authenticated flow | ✅ PASS (Feed, Profile, DocuStream restored) |
+| Blocking auth gate (`qa:smoke:auth`) | ✅ PASS (run `30599014484`) |
+| Zero browser-to-CSS authentication requests | ✅ PASS |
+| Memory-only browser access/refresh tokens | ✅ PASS |
+| Encrypted IndexedDB wallet + recovery import | ✅ PASS |
+| Wallet on-chain V3 registration | ✅ PASS |
 | Attestation proof verification (returning sign-in) | ✅ PASS |
 | Nav bar overflow fix (7 tabs incl. Directory, horizontal scroll) | — |
 | Settings accessible via Profile ⚙ gear | ✅ PASS (2026-06-28 N2) |
 
 ## Sign-off
 
-- Release decision: **GO** for staging/testnet milestone release
-- Rationale: Blocking onboarding/authentication E2E gate now passes in CI (run #46), Directory-tab implementation is deployed, and core smoke gates remain green.
-- Reviewer: QA_RELEASE_AGENT + PM evidence bundle (automation + workflow run evidence)
-- Date: 2026-07-10
+- Release decision: **GO** for `v0.2.0-testnet`
+- Rationale: automated release run `30599014484` passed and the retained mobile
+   create/profile/DocuStream/sign-out/close/reopen/sign-in journey passed.
+- Reviewer: maintainer acceptance + automated workflow evidence
+- Date: 2026-07-30
 
 ## ACL Hardening Validation Addendum
 

@@ -87,7 +87,7 @@ wallet and compares it to the on-chain `accountCommitment` — fail-closed if th
 |---|---|
 | `NodeZeroIdentity` | `CCHFYOKLGVTXEYYHWEFPI22FR26VRGG2CBBUTP6XPW3ZSIWIKEVQQ44K` |
 | `Lockb0x` (demo-init) | `CB36LY5WZLJNMY4DHRXQER6LU3L4E5MGFYT2XSJG7ZJZV5SIIOKODT2H` |
-| `LockboxFactory` v2 | `CA5MASVC7CH646QUZM6HFC3JAYIG4TCRHJDSBDOBFP66IW7TXYYHFUVB` |
+| `LockboxFactory` v3 | `CDFHCQA3YJCITWEMNLCSRGQVVFEXGTONWSQJTD5VIZO7YV4IOKZUPCGT` |
 
 Lockb0x wasm hash (includes `set_attestation`):
 `55bcb3a4c05ff935a421f10d1a72bdeb6e4573de8954e4fbd263f7ac88a8fbd9`
@@ -158,7 +158,7 @@ enforces that staging and production values never mix. See
 
 | Area | Status |
 |---|---|
-| Solid OIDC sign-in | ✅ Live — `staging.nodezero.social` and `solid.nodezero.social` Community Server |
+| Internal Stellar sign-in | ✅ Live — one-tap device signature, host-only API session cookie, no browser-to-CSS auth |
 | Seamless "Create Your Node" | ✅ Live — Node Zero Community Server Pod + Lockb0x deployed per user |
 | ZK pod_ownership proof (browser) | ✅ Live — Groth16/snarkjs, on-device |
 | On-chain attestation (`set_attestation`) | ✅ Live — `accountCommitment` + `attestationCiphertext` on TestNet |
@@ -168,7 +168,7 @@ enforces that staging and production values never mix. See
 | Community Directory tab (`/directory`) | ✅ Live — dedicated tab between Feed and Backpack with connect + Trust Circle actions |
 | Broadcast recipient guardrails | ✅ Live — audience recipients resolved centrally; directory-only trust-circle entries are not implicit recipients |
 | Local peer messaging (P2P relay) | ✅ Live — staging relay healthy |
-| Feed / social graph (FOAF) | 🔶 Shell renders; real Pod-connected graph is post-MVP |
+| Feed / social graph (FOAF) | ✅ Live baseline — Pod-backed profile/social data and chronological feed surface |
 | Proof-of-Humanity (poh.circom + PoHVerifier) | ⚪ Contract deployed; not wired into onboarding yet |
 | Production-mainnet deployment | ⚪ Planned; Stellar MainNet and nodezero.social domain |
 
@@ -182,12 +182,14 @@ enforces that staging and production values never mix. See
 - Two-account funding model (Treasury + Deployer): `packages/jss-provisioner/src/deployerTopup.ts`
 - Runtime implementation roadmap: `docs/staging-runtime-implementation-roadmap.md`
 - UAT checklist: `docs/staging-uat-checklist.md`
+- `v0.2.0-testnet` evidence: `docs/milestone-i-release-evidence-summary.md`
+- Release notes: `CHANGELOG.md`
 - Feature progress + upstream attribution: `docs/feature-implementation-attribution.md`
 
 Identity release gate note:
 - Staging deploy (`.github/workflows/staging-deploy.yml`) runs
    `pnpm qa:smoke:auth` as a blocking onboarding/authentication gate with a
-   single retry for transient IdP/OIDC timing failures.
+   zero-CSS-contact embargo and exact V3 lockb0x verification.
 - Treat staging as deployed only when the latest `Staging Deploy` GitHub
    Actions run succeeds and its `deploy-marker.json` provenance matches the
    intended commit. Direct Azure changes do not replace this release evidence.

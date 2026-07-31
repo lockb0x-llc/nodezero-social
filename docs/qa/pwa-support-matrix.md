@@ -62,7 +62,9 @@ retention. They must be secret-scanned and are ignored by git.
 
 ## Current status
 
-Automated staging gates cover installability, offline shell, encrypted wallet,
-recovery, auth, V3 state, and application proofs. Physical-device certification
-is **NO-GO until** `NZ_DEVICE_CLOUD_ENDPOINT`/`NZ_DEVICE_CLOUD_TOKEN` are
-configured and a certification dispatch validates both installed-PWA summaries.
+The `v0.2.0-testnet` release has retained physical mobile-browser acceptance for
+onboarding, profile/DocuStream persistence, browser close/reopen, returning
+sign-in, and V3 lockb0x verification. The full recurring six-lane device-cloud
+and installed-PWA matrix remains optional release-hardening infrastructure; it
+is required before production-mainnet certification, not for this Testnet
+feature baseline.

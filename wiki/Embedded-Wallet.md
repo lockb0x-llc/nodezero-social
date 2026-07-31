@@ -15,11 +15,18 @@ WalletContext (mobile-app)
   └── WalletService (embedded-wallet)
         └── EnclaveAdapter (embedded-wallet)
               ├── expo-secure-store  ← native (iOS/Android)
-              └── MemorySecureStore  ← web fallback
+              └── IndexedDbSecureStore ← encrypted PWA storage
 ```
 
 ### EnclaveAdapter
-Wraps the platform secure store behind the `ISecureStore` interface (`getItemAsync`, `setItemAsync`, `deleteItemAsync`). On native platforms, passes `expo-secure-store`. On web, passes `undefined` to trigger the built-in in-memory fallback.
+Wraps the platform secure store behind the `ISecureStore` interface
+(`getItemAsync`, `setItemAsync`, `deleteItemAsync`). Native platforms use
+`expo-secure-store`; the PWA injects `IndexedDbSecureStore`.
+
+### IndexedDbSecureStore
+Each logical wallet record is AES-256-GCM encrypted with a random 12-byte IV.
+The profile/schema/key name is authenticated as additional data. The wrapping
+key is non-extractable and stored by the browser's IndexedDB implementation.
 
 ### WalletService
 High-level Stellar operations: derive keypair from enclave, submit Soroban contract invocations, check funding status. Defaults to Stellar TestNet (`soroban-testnet.stellar.org`).
@@ -30,9 +37,7 @@ High-level Stellar operations: derive keypair from enclave, submit Soroban contr
 |---|---|---|
 | iOS | expo-secure-store → iOS Secure Enclave | Hardware key isolation |
 | Android | expo-secure-store → Android Keystore | Hardware key isolation |
-| Web (browser) | MemorySecureStore (in-memory) | Session-scoped only — key lost on page reload |
-
-> **Note**: The web in-memory fallback means wallet keys are not persisted across browser sessions. This is an acceptable limitation for staging UAT but requires a proper web key storage solution (e.g. IndexedDB + PBKDF2) before production.
+| Web/PWA | Encrypted profile-scoped IndexedDB | Persists across reload/browser close; no plaintext localStorage key |
 
 ## Responsibilities
 
@@ -40,15 +45,12 @@ High-level Stellar operations: derive keypair from enclave, submit Soroban contr
 - Transaction signing bridge.
 - Registration hooks for app onboarding and settings flows.
 
-## Solid Pod configuration (verified 2026-06-25)
+## Recovery
 
-The test Solid Pod for staging is:
-- **Pod URL**: `https://nodezero.solidcommunity.net/`
-- **WebID**: `https://nodezero.solidcommunity.net/profile/card#me`
-- **OIDC Issuer / IdP**: `https://solidcommunity.net/` (external-Pod test fixture; the app default IdP is the Node Zero Community Server at `https://solid.nodezero.social/`)
-- **Pod structure**: `inbox/`, `public/`, `profile/`, `settings/`, `README`, `robots.txt`
-- **Profile state**: Fresh pod — no custom `foaf:name`, no social graph (`/social/` not yet created)
-- **Auth method**: CSS client credentials token exchange works (200 OK); DPoP required for write operations
+Settings exports a versioned recovery bundle containing the Stellar secret.
+The signed-out landing screen can restore it after validating the environment
+profile, Stellar network passphrase, and public/secret key formats. The imported
+identity is immediately encrypted into IndexedDB; the user then taps Sign In.
 
 Wallet registration (WR2) will write the Stellar public key to the `NodeZeroIdentity` Soroban contract using the WebID as the identifier.
 
@@ -56,5 +58,5 @@ Wallet registration (WR2) will write the Stellar public key to the `NodeZeroIden
 
 | ID | Issue | Status | Fix |
 |---|---|---|---|
-| WR1 | Wallet provisioning silently fails on web — `expo-secure-store` calls `getValueWithKeyAsync` (native-only bridge method); Settings shows "Provisioning…" forever | **FIXED** in testnet commit 778c37f | `Platform.OS === 'web'` guard in `WalletContext.tsx` skips `SecureStore` on web, using in-memory fallback |
-| WR2 | On-chain WebID registration via `NodeZeroIdentity` contract | **Pass evidence exists; full authenticated QA rerun pending** | Covered by AT1 evidence in `docs/staging-uat-checklist.md`; include in J4 rerun matrix |
+| WR1 | Empty browser wallet looked permanently stuck at “Preparing wallet…” | **FIXED** in `v0.2.0-testnet` | Explicit Create/Restore actions and accurate disabled-button labels. |
+| WR2 | Retained web wallet and returning lockb0x validation | **PASS** | Automated release gate plus retained mobile close/reopen acceptance. |
