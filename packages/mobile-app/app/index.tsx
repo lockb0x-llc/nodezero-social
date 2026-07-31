@@ -125,6 +125,7 @@ interface LandingAuthCardProps {
   errorAction: { label: string; url: string } | null
   isSigningIn: boolean
   isIdentityBusy: boolean
+  isWalletLoading: boolean
   seamlessEnabled: boolean
   nodeHandle: string
   notificationEmail: string
@@ -146,6 +147,7 @@ function LandingAuthCard({
   errorAction,
   isSigningIn,
   isIdentityBusy,
+  isWalletLoading,
   seamlessEnabled,
   nodeHandle,
   notificationEmail,
@@ -162,6 +164,8 @@ function LandingAuthCard({
 }: LandingAuthCardProps): JSX.Element {
 
   void source
+  const needsIdentity = !isWalletLoading && !walletReady
+  const unavailableLabel = isWalletLoading ? 'Loading secure wallet…' : 'Create or restore an identity first'
   return (
     <View style={styles.signInPanel}>
       <View style={styles.signInBrand}>
@@ -187,29 +191,37 @@ function LandingAuthCard({
           ) : null}
         </View>
       ) : null}
+      {needsIdentity ? (
+        <View style={styles.walletEmptyState}>
+          <Text style={styles.walletEmptyTitle}>No identity on this browser</Text>
+          <Text style={styles.walletEmptyBody}>
+            Create a new device identity, or restore your existing one from its recovery bundle.
+          </Text>
+        </View>
+      ) : null}
       <View style={styles.dropdownWrap}>
         <TouchableOpacity
-          style={styles.createPodLink}
+          style={[styles.identityAction, styles.identityActionPrimary]}
           onPress={() => void onCreateIdentity()}
           activeOpacity={PRESS_OPACITY}
-          disabled={isIdentityBusy}
+          disabled={isIdentityBusy || isWalletLoading}
           accessibilityRole="button"
           accessibilityLabel="Create new identity"
         >
-          <Text style={styles.createPodText}>
+          <Text style={styles.identityActionPrimaryText}>
             {isIdentityBusy ? 'Preparing identity…' : 'Create a new identity'}
           </Text>
         </TouchableOpacity>
         {Platform.OS === 'web' ? (
           <TouchableOpacity
-            style={styles.restoreIdentityLink}
+            style={[styles.identityAction, styles.identityActionSecondary]}
             onPress={() => void onRestoreIdentity()}
             activeOpacity={PRESS_OPACITY}
-            disabled={isIdentityBusy}
+            disabled={isIdentityBusy || isWalletLoading}
             accessibilityRole="button"
             accessibilityLabel="Restore identity from recovery bundle"
           >
-            <Text style={styles.restoreIdentityText}>Restore from recovery bundle</Text>
+            <Text style={styles.identityActionSecondaryText}>Restore from recovery bundle</Text>
           </TouchableOpacity>
         ) : null}
       </View>
@@ -224,7 +236,7 @@ function LandingAuthCard({
         {isSigningIn ? (
             <ActivityIndicator color="#FFF" />
         ) : (
-          <Text style={styles.btnPrimaryText}>{walletReady ? 'Sign In' : 'Preparing wallet…'}</Text>
+          <Text style={styles.btnPrimaryText}>{walletReady ? 'Sign In' : unavailableLabel}</Text>
         )}
       </TouchableOpacity>
       {seamlessEnabled ? (
@@ -267,7 +279,7 @@ function LandingAuthCard({
               <ActivityIndicator color="#FFF" />
             ) : (
               <Text style={styles.btnPrimaryText}>
-                {walletReady ? 'Create Your Node' : 'Preparing wallet…'}
+                {walletReady ? 'Create Your Node' : unavailableLabel}
               </Text>
             )}
           </TouchableOpacity>
@@ -420,6 +432,7 @@ export default function LandingScreen(): JSX.Element {
   const {
     attestationStatus,
     walletInfo,
+    isLoading: isWalletLoading,
     isIdentityBusy,
     initializationError,
     createIdentity,
@@ -851,6 +864,7 @@ export default function LandingScreen(): JSX.Element {
           errorAction={errorAction}
           isSigningIn={isSigningIn}
           isIdentityBusy={isIdentityBusy}
+          isWalletLoading={isWalletLoading}
           seamlessEnabled={seamlessConfig.enabled}
           nodeHandle={nodeHandle}
           notificationEmail={notificationEmail}
@@ -923,6 +937,7 @@ export default function LandingScreen(): JSX.Element {
                 errorAction={errorAction}
                 isSigningIn={isSigningIn}
                 isIdentityBusy={isIdentityBusy}
+                isWalletLoading={isWalletLoading}
                 seamlessEnabled={seamlessConfig.enabled}
                 nodeHandle={nodeHandle}
                 notificationEmail={notificationEmail}
@@ -1180,10 +1195,28 @@ const styles = StyleSheet.create({
   dropdownOptionDivider: { borderBottomWidth: 1, borderBottomColor: BORDER },
   dropdownOptionActive: { backgroundColor: CHIP },
   dropdownCheck: { color: PURPLE, fontSize: 15, fontWeight: '700', marginLeft: 12 },
-  createPodLink: { marginTop: 8, alignItems: 'center' },
-  createPodText: { color: PURPLE, fontSize: 13 },
-  restoreIdentityLink: { marginTop: 12, alignItems: 'center' },
-  restoreIdentityText: { color: MUTED, fontSize: 13, textDecorationLine: 'underline' },
+  walletEmptyState: {
+    backgroundColor: INPUT_BG,
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 8,
+    padding: 14,
+    marginBottom: 12,
+  },
+  walletEmptyTitle: { color: TEXT, fontSize: 14, fontWeight: '700', marginBottom: 4 },
+  walletEmptyBody: { color: MUTED, fontSize: 12, lineHeight: 18 },
+  identityAction: {
+    minHeight: 46,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  identityActionPrimary: { backgroundColor: PURPLE, marginBottom: 8 },
+  identityActionPrimaryText: { color: '#FFF', fontSize: 14, fontWeight: '700' },
+  identityActionSecondary: { borderWidth: 1, borderColor: BORDER, backgroundColor: INPUT_BG },
+  identityActionSecondaryText: { color: TEXT, fontSize: 14, fontWeight: '600' },
   createNodeBlock: { marginTop: 16, borderTopWidth: 1, borderTopColor: BORDER, paddingTop: 16 },
   createNodeTitle: { color: MUTED, fontSize: 13, fontWeight: '600', marginBottom: 12 },
   createHintText: { color: MUTED, fontSize: 12, lineHeight: 18, marginBottom: 12 },

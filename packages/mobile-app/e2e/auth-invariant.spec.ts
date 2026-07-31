@@ -114,12 +114,18 @@ test('I5: sign-in surface exposes no password input and no identity-provider pic
   await expect(page.getByText('Sign in to your node').first()).toBeVisible()
 })
 
-// ─── I6: first-party wallet broker becomes ready before onboarding ──────────
-test('I6: wallet broker makes Node creation available', async ({ page }) => {
+// ─── I6: empty encrypted wallet presents explicit recovery choices ─────────
+test('I6: empty wallet resolves without an indefinite loading state', async ({ page }) => {
   await page.goto('/')
 
-  await expect(page.locator('iframe[title="NodeZero wallet broker"]')).toHaveCount(1)
-  await expect(page.getByText('Create Your Node', { exact: true }).first()).toBeVisible({
+  await expect(page.getByText('No identity on this browser', { exact: true }).first()).toBeVisible({
     timeout: 30_000,
   })
+  await expect(page.getByRole('button', { name: 'Create new identity' }).first()).toBeEnabled()
+  await expect(
+    page.getByRole('button', { name: 'Restore identity from recovery bundle' }).first(),
+  ).toBeEnabled()
+  await expect(page.getByText('Preparing wallet…', { exact: true })).toHaveCount(0)
+  await expect(page.locator('iframe[title="NodeZero wallet broker"]')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Sign In' }).first()).toBeDisabled()
 })
