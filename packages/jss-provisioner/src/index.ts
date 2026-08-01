@@ -36,6 +36,14 @@ import { CommunityDirectoryStore } from './communityDirectory.js'
 import type { BridgeProofPayload } from './lockboxFactory.js'
 import { verifyBridgeProof } from './bridgeProofVerifier.js'
 import { buildPodOwnershipClaim } from '@nodezero/zk-crypto/pod-claim'
+import {
+  RelationshipDeliveryError,
+  deliverRelationshipActivity,
+} from './relationshipDelivery.js'
+import {
+  readRelationshipDeliveryAssertion,
+  RelationshipDeliveryAssertionManager,
+} from './relationshipDeliveryAssertions.js'
 // Stellar StrKey base32 decode + Ed25519 verify using Web Crypto API
 const _B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
 function _b32Decode(s: string): Uint8Array {
@@ -140,6 +148,10 @@ const communityDirectory = new CommunityDirectoryStore({
 const credentialStore = new CredentialStore()
 const provisioningStore = new ProvisioningStore(credentialStore)
 const sessions = new SessionTokenManager({ issuer: ISSUER })
+const relationshipDeliveryAssertions = new RelationshipDeliveryAssertionManager({ issuer: ISSUER })
+const RELATIONSHIP_ASSERTIONS_READY =
+  (process.env.NZ_ENV_PROFILE ?? 'local') === 'local' ||
+  !relationshipDeliveryAssertions.usesEphemeralKey
 const knownSolidAccountEmails = new Set<string>()
 const notificationPublisher = createNotificationEventPublisherFromEnv()
 const DOCUSTREAM_RSS_FETCH_TIMEOUT_MS = Number(process.env.JSS_DOCUSTREAM_RSS_FETCH_TIMEOUT_MS ?? 12000)
@@ -417,6 +429,28 @@ async function readJsonBody<T>(req: IncomingMessage): Promise<T> {
     throw new Error('Request body is required.')
   }
   return JSON.parse(raw) as T
+}
+
+async function readBoundedJsonBody<T>(req: IncomingMessage, maxBytes: number): Promise<T> {
+  const declaredLength = Number(req.headers['content-length'] ?? '0')
+  if (declaredLength > maxBytes) throw new Error('Request body exceeds maximum size.')
+  const chunks: Buffer[] = []
+  let size = 0
+  for await (const chunk of req as AsyncIterable<Buffer | string>) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+    size += buffer.length
+    if (size > maxBytes) throw new Error('Request body exceeds maximum size.')
+    chunks.push(buffer)
+  }
+  const raw = Buffer.concat(chunks).toString('utf8')
+  if (!raw) throw new Error('Request body is required.')
+  return JSON.parse(raw) as T
+}
+
+function verifyBearerSession(req: IncomingMessage): ReturnType<SessionTokenManager['verify']> {
+  const authorization = req.headers.authorization ?? ''
+  const match = /^Bearer\s+(.+)$/i.exec(authorization.trim())
+  return match?.[1] ? sessions.verify(match[1]) : null
 }
 
 function isNonEmpty(value: unknown): value is string {
@@ -791,6 +825,10 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
         credentialBackend: credentialStore.backendKind,
         credentialKeyConfigured: !credentialStore.usesEphemeralKey,
       },
+      relationshipDelivery: {
+        assertionKeyConfigured: !relationshipDeliveryAssertions.usesEphemeralKey,
+        ready: RELATIONSHIP_ASSERTIONS_READY,
+      },
       browserSession: {
         enabled: BROWSER_SESSION_ENABLED,
         cookieScope: BROWSER_SESSION_ENABLED ? 'host-only' : null,
@@ -853,6 +891,102 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
 
   if (req.method === 'GET' && url.pathname === '/v1/community-directory/index') {
     sendJson(req, res, 200, communityDirectory.buildPublicIndex())
+    return
+  }
+
+  if (req.method === 'POST' && url.pathname === '/v1/social/relationship-delivery') {
+    if (!RELATIONSHIP_ASSERTIONS_READY) {
+      sendJson(req, res, 503, {
+        error: 'Relationship delivery assertions are not configured.',
+        code: 'relationship_delivery_unavailable',
+      })
+      return
+    }
+    const claims = verifyBearerSession(req)
+    if (!claims) {
+      sendJson(req, res, 401, {
+        error: 'A valid NodeZero session is required.',
+        code: 'session_invalid',
+      })
+      return
+    }
+
+    try {
+      const body = await readBoundedJsonBody<{
+        recipientWebId?: string
+        activity?: unknown
+      }>(req, 64 * 1024)
+      if (!isNonEmpty(body.recipientWebId) || body.activity === undefined) {
+        sendJson(req, res, 400, {
+          error: 'recipientWebId and activity are required.',
+          code: 'invalid_request',
+        })
+        return
+      }
+      const result = await deliverRelationshipActivity(claims, {
+        recipientWebId: body.recipientWebId,
+        activity: body.activity,
+      }, { assertionManager: relationshipDeliveryAssertions })
+      sendJson(req, res, 200, result)
+    } catch (error) {
+      if (error instanceof RelationshipDeliveryError) {
+        sendJson(req, res, error.statusCode, { error: error.message, code: error.code })
+        return
+      }
+      if (error instanceof SyntaxError) {
+        sendJson(req, res, 400, { error: 'Request body must be valid JSON.', code: 'invalid_json' })
+        return
+      }
+      const message = error instanceof Error ? error.message : 'Relationship delivery failed.'
+      const statusCode = message.includes('maximum size') ? 413 : 400
+      sendJson(req, res, statusCode, { error: message, code: 'invalid_request' })
+    }
+    return
+  }
+
+  if (req.method === 'POST' && url.pathname === '/v1/social/relationship-delivery/verify') {
+    if (!RELATIONSHIP_ASSERTIONS_READY) {
+      sendJson(req, res, 503, {
+        error: 'Relationship delivery assertions are not configured.',
+        code: 'relationship_delivery_unavailable',
+      })
+      return
+    }
+    const claims = verifyBearerSession(req)
+    if (!claims) {
+      sendJson(req, res, 401, {
+        error: 'A valid NodeZero session is required.',
+        code: 'session_invalid',
+      })
+      return
+    }
+    try {
+      const body = await readBoundedJsonBody<{ activity?: unknown }>(req, 64 * 1024)
+      if (body.activity === undefined) {
+        sendJson(req, res, 400, { error: 'activity is required.', code: 'invalid_request' })
+        return
+      }
+      const assertion = readRelationshipDeliveryAssertion(body.activity)
+      const actorWebId = assertion
+        ? relationshipDeliveryAssertions.verify(assertion, body.activity, claims.sub)
+        : null
+      if (!actorWebId) {
+        sendJson(req, res, 422, {
+          error: 'Relationship delivery assertion is missing or invalid.',
+          code: 'sender_unverified',
+        })
+        return
+      }
+      sendJson(req, res, 200, { actorWebId })
+    } catch (error) {
+      if (error instanceof SyntaxError) {
+        sendJson(req, res, 400, { error: 'Request body must be valid JSON.', code: 'invalid_json' })
+        return
+      }
+      const message = error instanceof Error ? error.message : 'Assertion verification failed.'
+      const statusCode = message.includes('maximum size') ? 413 : 400
+      sendJson(req, res, statusCode, { error: message, code: 'invalid_request' })
+    }
     return
   }
 

@@ -33,10 +33,10 @@ retaining immediate disconnect, mute, block, and discovery-revocation controls.
 | ID | Owner | Depends on | Deliverable | Status |
 |---|---|---|---|---|
 | Q0 | Project Manager and Docs Agent | None | Canonical system description, ADR, architecture updates, agent instructions, PM board, and baseline evidence | Complete |
-| Q1A | Solid Data Agent | Q0 | Versioned contracts, Pod layout, discovery, relationship, moderation, Type Index, and compatibility managers | In progress: v1 pure contracts, exports, transition matrix, and focused tests landed |
-| Q1B | Solid Integration Specialist | Q0, shared Q1 contracts | LDN and WebID discovery adapters, credential-free remote fetch, Pod proxy constraints, and inbox delivery | Not started |
+| Q1A | Solid Data Agent | Q0 | Versioned contracts, Pod layout, discovery, relationship, moderation, Type Index, and compatibility managers | Complete: superseded package evidence is recorded under Q2 |
+| Q1B | Solid Integration Specialist | Q0, shared Q1 contracts | LDN and WebID discovery adapters, credential-free remote fetch, Pod proxy constraints, and inbox delivery | Complete: Solid 20 suites/114 tests and provisioner 88/88 tests pass |
 | Q1C | Audit Agent | Q0 | Threat model and security test vectors for ACL, SSRF, replay, privacy, migration, and block precedence | Not started |
-| Q2 | Solid Data Agent | Q1A, Q1B | Relationship lifecycle, replay ledger, legacy migration, moderation, and `foaf:knows` projection | Not started |
+| Q2 | Solid Data Agent | Q1A, Q1B | Relationship lifecycle, replay ledger, legacy migration, moderation, and `foaf:knows` projection | Complete: Solid 155, mobile 87, and provisioner 92 tests pass; strict staging PWA artifact passes |
 | Q3A | Azure Platform Agent | Q1 contracts, P6 | Durable derived index, feature flags, telemetry, slots/revisions, rollback assets, and staging deployment wiring | Not started |
 | Q3B | Mobile App Agent | Q2, Q3A API contract | Consent controls, public-interest selection, explainable recommendations, and unified Directory/Profile/Local actions | Not started |
 | Q3C | P2P Relay Agent | Q1 contracts | Presence, reveal, Waku, WebRTC, and relay consent/block enforcement plus abuse controls | Not started |
@@ -89,6 +89,50 @@ pass with no feature enabled for users.
 
 Exit gate: transition, migration, malformed activity, actor mismatch, block precedence,
 and recipient-policy suites pass.
+
+### Q2 implementation evidence (2026-08-01)
+
+Implemented:
+
+- Private relationship outbox, delivery-receipt, replay, moderation, relationship,
+   quarantine, and compatibility-projection stores.
+- Compact ActivityStreams `Follow`, `Accept`, `Reject`, and correlated `Undo`
+   persistence and authenticated provisioner delivery.
+- Pending, delivered, and failed receipt updates without giving the external delivery
+   boundary Pod credentials.
+- Replay suppression, stale/future rejection, actor/recipient correlation, block
+   precedence, and private quarantine for malformed or unverifiable activities.
+- Lazy `foaf:knows` import as `legacy-connected`; accepted-only compatibility
+   projection; disconnect removes only NodeZero-owned `foaf:knows` values and preserves
+   unrelated RDF.
+- Directed compose recipients now require accepted and unblocked relationship state;
+   Trust Circle membership only narrows that eligible set.
+- Existing Directory/Profile connection actions now create a durable relationship
+   request instead of unilaterally granting consent through `foaf:knows`.
+- Recipient-bound short-lived delivery assertions use a dedicated provisioner signing
+   key, payload digest, recipient, actor, activity ID, issuer, and expiry. The recipient
+   verifies them through an authenticated endpoint; no session or Pod credential is
+   written to the inbox.
+- Pod-authoritative inbound-request consent defaults off. When explicitly enabled,
+   bounded direct-child inbox reads verify assertions, apply replay-safe transitions,
+   quarantine rejected payloads, and remove handled inbox resources.
+- Profile exposes request consent, refresh, Accept, and Reject actions. Failed pending
+   requests retry the original immutable Follow rather than minting a second request.
+
+Validation:
+
+- `@nodezero/solid-pod-sync`: 31 suites, 155 tests pass; build/type-check pass; lint
+   has zero errors and one pre-existing warning in `NsfwDecision.test.ts`.
+- `@nodezero/mobile-app`: 87 tests pass; type-check and touched-file lint pass; strict
+   `staging-testnet` web export and `pwa:validate:artifact` pass.
+- `@nodezero/jss-provisioner`: 92 tests pass; type-check and touched-file lint pass.
+- `pnpm policy:validate-env` and `git diff --check` pass.
+- Full mobile source lint remains blocked by unrelated pre-existing diagnostics in
+   `app/index.tsx` and `src/contexts/WalletContext.tsx`.
+
+Q2 is complete locally. Q1C remains responsible for executable abuse, flood, and
+rate-limit vectors before external cohorts are enabled. No staging deployment or
+release certification was performed in Q2.
 
 ## Phase 3: Discovery And Recommendations
 

@@ -6,15 +6,16 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
-    "build": "tsc --project tsconfig.json",
+    "build": "pnpm --filter @nodezero/solid-pod-sync build && tsc --project tsconfig.json",
     "start": "node dist/index.js",
-    "dev": "tsx src/index.ts",
-    "test": "tsx --test src/**/*.test.ts",
+    "dev": "pnpm --filter @nodezero/solid-pod-sync build && tsx src/index.ts",
+    "test": "pnpm --filter @nodezero/solid-pod-sync build && tsx --test src/**/*.test.ts",
     "lint": "eslint src --ext .ts",
-    "type-check": "tsc --noEmit",
+    "type-check": "pnpm --filter @nodezero/solid-pod-sync build && tsc --noEmit",
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@nodezero/solid-pod-sync": "workspace:*",
     "@nodezero/zk-crypto": "workspace:*",
     "@stellar/stellar-sdk": "^16.0.0",
     "snarkjs": "0.7.5"

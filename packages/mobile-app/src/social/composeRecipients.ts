@@ -3,23 +3,26 @@ import type { AudienceType } from './composeAudience'
 /**
  * Resolves recipients for compose audiences.
  *
- * Current contract deliberately preserves existing broadcast behavior:
- * - Directory membership alone has no effect.
- * - Trust Circle mode targets trust-circle members.
+ * Directory, legacy FOAF, and Trust Circle membership are never communication
+ * authority. Every explicit recipient must be accepted and unblocked.
  */
 export function resolveAudienceRecipients(args: {
   audience: AudienceType
-  connections: string[]
+  acceptedRelationships: string[]
   trustCircleMembers: string[]
+  blockedWebIds: string[]
 }): string[] {
-  const { audience, connections, trustCircleMembers } = args
+  const accepted = new Set(args.acceptedRelationships)
+  const blocked = new Set(args.blockedWebIds)
+  const eligible = (webIds: string[]): string[] =>
+    Array.from(new Set(webIds)).filter((webId) => accepted.has(webId) && !blocked.has(webId))
 
-  if (audience === 'foaf' || audience === 'verified') {
-    return Array.from(new Set(connections))
+  if (args.audience === 'foaf' || args.audience === 'verified') {
+    return eligible(args.acceptedRelationships)
   }
 
-  if (audience === 'trust-circle') {
-    return Array.from(new Set(trustCircleMembers))
+  if (args.audience === 'trust-circle') {
+    return eligible(args.trustCircleMembers)
   }
 
   return []

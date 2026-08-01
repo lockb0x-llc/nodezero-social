@@ -17,6 +17,11 @@ import { once } from 'node:events'
 import { before, after, beforeEach, test } from 'node:test'
 import { randomUUID } from 'node:crypto'
 import { Keypair } from '@stellar/stellar-sdk'
+import {
+  RELATIONSHIP_DELIVERY_ASSERTION_PROPERTY,
+  RelationshipDeliveryAssertionManager,
+} from './relationshipDeliveryAssertions.js'
+import { SessionTokenManager } from './sessionTokens.js'
 
 // ---------------------------------------------------------------------------
 // Mock CSS
@@ -254,6 +259,7 @@ before(async () => {
   process.env.JSS_LOCKBOX_FACTORY_ALLOW_MOCK_READY = '1'
   process.env.JSS_INTERNAL_API_KEY = INTERNAL_KEY
   process.env.JSS_SESSION_SIGNING_KEY = 'unit-test-session-signing-key-32b!'
+  process.env.JSS_RELATIONSHIP_DELIVERY_SIGNING_KEY = 'unit-test-delivery-signing-key-32b!'
   process.env.JSS_BROWSER_SESSION_ENABLED = 'true'
   process.env.NZ_ENV_PROFILE = 'local'
   process.env.JSS_BUILD_COMMIT = 'test-build-commit'
@@ -686,6 +692,119 @@ void test('proxy: rejects missing/garbage/expired bearer tokens', async () => {
     },
   })
   assert.equal(forged.status, 401)
+})
+
+void test('relationship delivery route requires a valid session and binds actor to session subject', async () => {
+  const noSession = await postJson('/v1/social/relationship-delivery', {
+    recipientWebId: 'https://bob.example/profile/card#me',
+    activity: {},
+  })
+  assert.equal(noSession.status, 401)
+  assert.equal(noSession.json.code, 'session_invalid')
+
+  const { session } = await provisionUser()
+  const actorMismatch = await postJson(
+    '/v1/social/relationship-delivery',
+    {
+      recipientWebId: 'https://bob.example/profile/card#me',
+      activity: {
+        '@context': 'https://www.w3.org/ns/activitystreams',
+        id: 'https://mallory.example/social/outbox/follow-bob',
+        type: 'Follow',
+        actor: 'https://mallory.example/profile/card#me',
+        object: 'https://bob.example/profile/card#me',
+        published: '2026-08-01T12:00:00.000Z',
+      },
+    },
+    { authorization: `Bearer ${session.accessToken}` }
+  )
+  assert.equal(actorMismatch.status, 403)
+  assert.equal(actorMismatch.json.code, 'actor_mismatch')
+})
+
+void test('relationship assertion verification requires the recipient session and untampered payload', async () => {
+  const senderWebId = 'https://alice.example/profile/card#me'
+  const recipientWebId = 'https://bob.example/profile/card#me'
+  const testSessions = new SessionTokenManager({
+    signingKey: process.env.JSS_SESSION_SIGNING_KEY,
+    issuer: 'https://staging.nodezero.social',
+  })
+  const senderSession = testSessions.issue({
+    webId: senderWebId,
+    podUrl: 'https://alice.example/',
+  })
+  const recipientSession = testSessions.issue({
+    webId: recipientWebId,
+    podUrl: 'https://bob.example/',
+  })
+  const publishedAt = new Date().toISOString()
+  const activity = {
+    version: 1 as const,
+    id: 'https://alice.example/social/outbox/follow-recipient',
+    type: 'Follow' as const,
+    actor: senderWebId,
+    object: recipientWebId,
+    publishedAt,
+  }
+  const wireActivity = {
+    '@context': 'https://www.w3.org/ns/activitystreams',
+    id: activity.id,
+    type: activity.type,
+    actor: activity.actor,
+    object: activity.object,
+    published: publishedAt,
+    [RELATIONSHIP_DELIVERY_ASSERTION_PROPERTY]: new RelationshipDeliveryAssertionManager({
+      signingKey: process.env.JSS_RELATIONSHIP_DELIVERY_SIGNING_KEY,
+      issuer: 'https://staging.nodezero.social',
+    }).issue(activity, recipientWebId),
+  }
+
+  const noSession = await postJson('/v1/social/relationship-delivery/verify', {
+    activity: wireActivity,
+  })
+  assert.equal(noSession.status, 401)
+
+  const verified = await postJson(
+    '/v1/social/relationship-delivery/verify',
+    { activity: wireActivity },
+    { authorization: `Bearer ${recipientSession.accessToken}` }
+  )
+  assert.equal(verified.status, 200)
+  assert.equal(verified.json.actorWebId, senderWebId)
+
+  const wrongRecipient = await postJson(
+    '/v1/social/relationship-delivery/verify',
+    { activity: wireActivity },
+    { authorization: `Bearer ${senderSession.accessToken}` }
+  )
+  assert.equal(wrongRecipient.status, 422)
+  assert.equal(wrongRecipient.json.code, 'sender_unverified')
+
+  const tampered = await postJson(
+    '/v1/social/relationship-delivery/verify',
+    { activity: { ...wireActivity, object: senderWebId } },
+    { authorization: `Bearer ${recipientSession.accessToken}` }
+  )
+  assert.equal(tampered.status, 422)
+  assert.equal(tampered.json.code, 'sender_unverified')
+})
+
+void test('proxy: rejects sibling Pod paths before forwarding to CSS', async () => {
+  const first = await provisionUser()
+  const second = await provisionUser()
+  const secondPodPath = new URL(second.podUrl).pathname.replace(/^\//, '')
+
+  const denied = await fetch(`${baseUrl}/v1/pod-proxy/${secondPodPath}`, {
+    headers: { authorization: `Bearer ${first.session.accessToken}` },
+  })
+  assert.equal(denied.status, 403)
+  assert.equal(((await denied.json()) as { code?: string }).code, 'pod_scope_denied')
+
+  const traversal = await fetch(`${baseUrl}/v1/pod-proxy/${new URL(first.podUrl).pathname.replace(/^\//, '')}%2e%2e/${secondPodPath}`, {
+    headers: { authorization: `Bearer ${first.session.accessToken}` },
+  })
+  assert.equal(traversal.status, 403)
+  assert.equal(((await traversal.json()) as { code?: string }).code, 'pod_scope_denied')
 })
 
 void test('proxy: server-side revocation invalidates the session mid-flight', async () => {

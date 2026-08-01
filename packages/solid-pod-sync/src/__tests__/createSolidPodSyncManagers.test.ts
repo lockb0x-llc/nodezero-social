@@ -9,9 +9,35 @@ describe('createSolidPodSyncManagers', () => {
     const managers = createSolidPodSyncManagers({ fetch })
 
     expect(managers.notificationManager).toBeDefined()
+    expect(managers.discoveryManifestManager).toBeDefined()
+    expect(managers.relationshipManager).toBeDefined()
+    expect(managers.moderationManager).toBeDefined()
+    expect(managers.publicTypeIndexManager).toBeDefined()
+    expect(managers.processedActivityManager).toBeDefined()
+    expect(managers.relationshipInboxProcessor).toBeDefined()
+    expect(managers.relationshipFoafProjector).toBeDefined()
+    expect(managers.deliveryReceiptManager).toBeDefined()
+    expect(managers.legacyRelationshipMigrator).toBeDefined()
+    expect(managers.relationshipOutboxManager).toBeDefined()
+    expect(managers.relationshipQuarantineManager).toBeDefined()
+    expect(managers.discoveryConsentManager).toBeDefined()
+    expect(managers.relationshipInboxReader).toBeDefined()
     expect(managers.profilePreferencesManager).toBeDefined()
     expect(typeof managers.notificationManager.getPreferences).toBe('function')
     expect(typeof managers.profilePreferencesManager.readPreferences).toBe('function')
+    expect(typeof managers.discoveryManifestManager.readManifest).toBe('function')
+    expect(typeof managers.relationshipManager.listRelationships).toBe('function')
+    expect(typeof managers.moderationManager.isBlocked).toBe('function')
+    expect(typeof managers.publicTypeIndexManager.discoverPublicTypeIndex).toBe('function')
+    expect(typeof managers.processedActivityManager.hasProcessedActivity).toBe('function')
+    expect(typeof managers.relationshipInboxProcessor.process).toBe('function')
+    expect(typeof managers.relationshipFoafProjector.project).toBe('function')
+    expect(typeof managers.deliveryReceiptManager.recordDeliveryReceipt).toBe('function')
+    expect(typeof managers.legacyRelationshipMigrator.migrate).toBe('function')
+    expect(typeof managers.relationshipOutboxManager.writeActivity).toBe('function')
+    expect(typeof managers.relationshipQuarantineManager.quarantine).toBe('function')
+    expect(typeof managers.discoveryConsentManager.readConsent).toBe('function')
+    expect(typeof managers.relationshipInboxReader.listResourceUrls).toBe('function')
   })
 
   it('applies shared bootstrap hook to all write managers when enabled', async () => {
@@ -42,6 +68,12 @@ describe('createSolidPodSyncManagers', () => {
               })
         }
         registry = String(init?.body ?? '')
+        return new Response('', { status: 201 })
+      }
+      if (url.endsWith('/public/discovery/manifest')) {
+        if (method === 'GET') {
+          return new Response('', { status: 404 })
+        }
         return new Response('', { status: 201 })
       }
       if (url.endsWith('/profile/card')) {
@@ -76,6 +108,7 @@ describe('createSolidPodSyncManagers', () => {
       docustreamManager,
       docustreamSourceManager,
       socialGraph,
+      discoveryManifestManager,
     } = createSolidPodSyncManagers(
       { fetch },
       {
@@ -117,7 +150,14 @@ describe('createSolidPodSyncManagers', () => {
       isNsfw: false,
     })
 
-    expect(ensureDefaultLayoutAndPolicies).toHaveBeenCalledTimes(5)
+    await discoveryManifestManager.writeManifest('https://alice.example/', {
+      version: 1,
+      webId: 'https://alice.example/profile/card#me',
+      publishedAt: '2026-08-01T12:00:00.000Z',
+      expiresAt: '2026-08-08T12:00:00.000Z',
+    })
+
+    expect(ensureDefaultLayoutAndPolicies).toHaveBeenCalledTimes(6)
     expect(ensureDefaultLayoutAndPolicies).toHaveBeenNthCalledWith(
       1,
       'https://alice.example/',
@@ -140,6 +180,11 @@ describe('createSolidPodSyncManagers', () => {
     )
     expect(ensureDefaultLayoutAndPolicies).toHaveBeenNthCalledWith(
       5,
+      'https://alice.example/',
+      expect.any(Object)
+    )
+    expect(ensureDefaultLayoutAndPolicies).toHaveBeenNthCalledWith(
+      6,
       'https://alice.example/',
       expect.any(Object)
     )

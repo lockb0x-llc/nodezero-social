@@ -330,6 +330,9 @@ jobs:
           if [ -n "${{ secrets.JSS_SESSION_SIGNING_KEY }}" ]; then
             extra_settings+=(JSS_SESSION_SIGNING_KEY="${{ secrets.JSS_SESSION_SIGNING_KEY }}")
           fi
+          if [ -n "${{ secrets.JSS_RELATIONSHIP_DELIVERY_SIGNING_KEY }}" ]; then
+            extra_settings+=(JSS_RELATIONSHIP_DELIVERY_SIGNING_KEY="${{ secrets.JSS_RELATIONSHIP_DELIVERY_SIGNING_KEY }}")
+          fi
           if [ -n "${{ secrets.JSS_CREDENTIALS_ENC_KEY }}" ]; then
             extra_settings+=(JSS_CREDENTIALS_ENC_KEY="${{ secrets.JSS_CREDENTIALS_ENC_KEY }}")
           fi
@@ -341,6 +344,16 @@ jobs:
               --resource-group "$AZURE_RESOURCE_GROUP" \
               --name "$JSS_PROVISIONER_APP_NAME" \
               --settings "${extra_settings[@]}"
+          fi
+
+          relationship_key_count="$(az webapp config appsettings list \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$JSS_PROVISIONER_APP_NAME" \
+            --query "length([?name=='JSS_RELATIONSHIP_DELIVERY_SIGNING_KEY' && value!=''].value)" \
+            --output tsv)"
+          if [ "$relationship_key_count" != "1" ]; then
+            echo "JSS_RELATIONSHIP_DELIVERY_SIGNING_KEY must be configured as a GitHub secret or retained App Service setting."
+            exit 1
           fi
 
       - name: Deploy JSS provisioner to App Service

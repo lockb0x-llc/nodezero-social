@@ -415,5 +415,6 @@ factory re-initialisation (explicit, not automatic).
 | **Treasury keypair** | Azure Key Vault (`stellar-treasury-secret`) | Provisioner (top-up only) | `setup-treasury-deployer.sh` |
 | **CSS client credentials (per user)** | Azure Table Storage, AES-256-GCM encrypted (`JSS_CREDENTIALS_ENC_KEY`) | Pod Access Proxy + session issuance | `POST /v1/auth/revoke` + re-provision |
 | **NodeZero session signing key** | App Service setting (`JSS_SESSION_SIGNING_KEY`, Key Vault-sourced) | Provisioner session mint/verify | Rotate setting; all sessions re-issued on next sign-in |
+| **Relationship delivery signing key** | App Service setting (`JSS_RELATIONSHIP_DELIVERY_SIGNING_KEY`, Key Vault-sourced) | Short-lived recipient-bound delivery assertions; never a Pod/session credential | Rotate setting; pending assertions from the prior key quarantine and must be retried |
 | **CSS account password** | Nowhere — generated at provisioning, used once, discarded | Provisioner (account creation only) | Not applicable (no password auth surface exists) |
 | **Azure Managed Identity** | Azure (RBAC-granted to App Service) | Provisioner → Key Vault reads | Azure RBAC rotation |

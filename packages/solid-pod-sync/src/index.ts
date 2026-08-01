@@ -24,6 +24,59 @@ export {
 export { DocustreamManager } from './DocustreamManager.js'
 export { DocustreamSourceManager } from './DocustreamSourceManager.js'
 export { NotificationManager } from './NotificationManager.js'
+export {
+	DiscoveryManifestManager,
+	DISCOVERY_MANIFEST_DATASET_PATH,
+} from './DiscoveryManifestManager.js'
+export {
+	RelationshipManager,
+	RELATIONSHIPS_DATASET_PATH,
+} from './RelationshipManager.js'
+export {
+	ModerationManager,
+	MODERATION_DATASET_PATH,
+} from './ModerationManager.js'
+export {
+	PublicTypeIndexManager,
+	DISCOVERY_MANIFEST_CLASS,
+} from './PublicTypeIndexManager.js'
+export {
+	WebIdDiscoveryClient,
+	parseLinkHeader,
+} from './WebIdDiscoveryClient.js'
+export {
+	ProcessedActivityManager,
+	PROCESSED_ACTIVITIES_DATASET_PATH,
+} from './ProcessedActivityManager.js'
+export {
+	RelationshipInboxProcessor,
+	RelationshipInboxError,
+} from './RelationshipInboxProcessor.js'
+export { RelationshipFoafProjector } from './RelationshipFoafProjector.js'
+export {
+	DeliveryReceiptManager,
+	DELIVERY_RECEIPTS_DATASET_PATH,
+} from './DeliveryReceiptManager.js'
+export { LegacyRelationshipMigrator } from './LegacyRelationshipMigrator.js'
+export {
+	RelationshipOutboxManager,
+	RelationshipOutboxError,
+	RELATIONSHIP_OUTBOX_PATH,
+} from './RelationshipOutboxManager.js'
+export {
+	RelationshipQuarantineManager,
+	RELATIONSHIP_QUARANTINE_DATASET_PATH,
+} from './RelationshipQuarantineManager.js'
+export { RelationshipInboxIngestion } from './RelationshipInboxIngestion.js'
+export {
+	DiscoveryConsentManager,
+	DISCOVERY_CONSENT_DATASET_PATH,
+} from './DiscoveryConsentManager.js'
+export {
+	RelationshipInboxReader,
+	RelationshipInboxReaderError,
+	RELATIONSHIP_INBOX_PATH,
+} from './RelationshipInboxReader.js'
 export { createSolidPodSyncManagers } from './createSolidPodSyncManagers.js'
 export { mergeAndQueryActivities } from './DocustreamAggregation.js'
 export { buildQueryIndex, queryStreamItems } from './QueryApi.js'
@@ -45,6 +98,12 @@ export {
 	createMashlibWebAdapter,
 	inferMashlibResourceType,
 } from './adapters/MashlibWebAdapter.js'
+export {
+	ACTIVITYSTREAMS_CONTEXT,
+	ActivityStreamsRelationshipError,
+	serializeRelationshipActivity,
+	parseRelationshipActivity,
+} from './adapters/ActivityStreamsRelationshipAdapter.js'
 export {
 	DOCUSTREAM_ALLOWED_SOURCES,
 	assertValidStreamItem,
@@ -126,6 +185,47 @@ export type {
 	NotificationHistoryRecord,
 	NotificationPreferencesPatch,
 } from './NotificationManager.js'
+export type { DiscoveryManifestManagerOptions } from './DiscoveryManifestManager.js'
+export type {
+	RelationshipManagerOptions,
+	RelationshipTransitionInput,
+} from './RelationshipManager.js'
+export type {
+	ModerationManagerOptions,
+	SetModerationInput,
+} from './ModerationManager.js'
+export type { PublicTypeRegistration } from './PublicTypeIndexManager.js'
+export type {
+	WebIdDiscoveryResult,
+	WebIdDiscoveryClientOptions,
+} from './WebIdDiscoveryClient.js'
+export type { ProcessedActivityManagerOptions } from './ProcessedActivityManager.js'
+export type {
+	RelationshipInboxProcessorOptions,
+	ProcessRelationshipInboxInput,
+	RelationshipInboxResult,
+} from './RelationshipInboxProcessor.js'
+export type { RelationshipFoafProjectionResult } from './RelationshipFoafProjector.js'
+export type { DeliveryReceiptManagerOptions } from './DeliveryReceiptManager.js'
+export type { LegacyRelationshipMigrationResult } from './LegacyRelationshipMigrator.js'
+export type { RelationshipOutboxManagerOptions } from './RelationshipOutboxManager.js'
+export type {
+	RelationshipQuarantineManagerOptions,
+	QuarantinedRelationshipActivity,
+} from './RelationshipQuarantineManager.js'
+export type {
+	RelationshipSenderVerifier,
+	IngestRelationshipActivityInput,
+	RelationshipInboxIngestionResult,
+} from './RelationshipInboxIngestion.js'
+export type {
+	DiscoveryConsentManagerOptions,
+	DiscoveryConsentPatch,
+} from './DiscoveryConsentManager.js'
+export type {
+	RelationshipInboxReaderOptions,
+	RelationshipInboxResource,
+} from './RelationshipInboxReader.js'
 export type { ProfileManagerOptions } from './ProfileManager.js'
 export type { SocialGraphOptions } from './SocialGraph.js'
 export type { ContractValidationIssue, StreamSource } from './contracts/DocustreamContract.js'
@@ -193,3 +293,4 @@ export type {
 	MashlibWebAdapter,
 	MashlibWebAdapterOptions,
 } from './adapters/MashlibWebAdapter.js'
+export type { ActivityStreamsRelationshipDocument } from './adapters/ActivityStreamsRelationshipAdapter.js'

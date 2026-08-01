@@ -14,6 +14,15 @@ export interface PodContainerLayout {
   socialContainer: string
   backpackContainer: string
   notificationsContainer: string
+  discoveryContainer: string
+  socialInboxContainer: string
+  socialOutboxContainer: string
+  socialQuarantineContainer: string
+  socialConsentContainer: string
+  relationshipsContainer: string
+  moderationContainer: string
+  processedActivitiesContainer: string
+  deliveryReceiptsContainer: string
 }
 
 export const ACL_POLICY_RULES = {
@@ -21,13 +30,22 @@ export const ACL_POLICY_RULES = {
   TARGET_MALFORMED: 'ACL_PAYLOAD_MALFORMED',
 } as const
 
-export type ContainerVisibility = 'public-read' | 'private'
+export type ContainerVisibility = 'public-read' | 'public-append' | 'private'
 
 export interface PodPolicyMatrix {
   docustream: ContainerVisibility
   social: ContainerVisibility
   backpack: ContainerVisibility
   notifications: ContainerVisibility
+  discovery: ContainerVisibility
+  socialInbox: ContainerVisibility
+  socialOutbox: ContainerVisibility
+  socialQuarantine: ContainerVisibility
+  socialConsent: ContainerVisibility
+  relationships: ContainerVisibility
+  moderation: ContainerVisibility
+  processedActivities: ContainerVisibility
+  deliveryReceipts: ContainerVisibility
 }
 
 export const DEFAULT_POLICY_MATRIX: PodPolicyMatrix = {
@@ -35,6 +53,15 @@ export const DEFAULT_POLICY_MATRIX: PodPolicyMatrix = {
   social: 'private',
   backpack: 'private',
   notifications: 'private',
+  discovery: 'public-read',
+  socialInbox: 'public-append',
+  socialOutbox: 'private',
+  socialQuarantine: 'private',
+  socialConsent: 'private',
+  relationships: 'private',
+  moderation: 'private',
+  processedActivities: 'private',
+  deliveryReceipts: 'private',
 }
 
 export function buildPodContainerLayout(podRoot: string): PodContainerLayout {
@@ -44,6 +71,15 @@ export function buildPodContainerLayout(podRoot: string): PodContainerLayout {
     socialContainer: `${base}/social/`,
     backpackContainer: `${base}/backpack/`,
     notificationsContainer: `${base}/backpack/notifications/`,
+    discoveryContainer: `${base}/public/discovery/`,
+    socialInboxContainer: `${base}/social/inbox/`,
+    socialOutboxContainer: `${base}/social/outbox/`,
+    socialQuarantineContainer: `${base}/social/quarantine/`,
+    socialConsentContainer: `${base}/social/consent/`,
+    relationshipsContainer: `${base}/social/relationships/`,
+    moderationContainer: `${base}/social/moderation/`,
+    processedActivitiesContainer: `${base}/social/processed-activities/`,
+    deliveryReceiptsContainer: `${base}/social/delivery-receipts/`,
   }
 }
 
@@ -108,6 +144,8 @@ export function buildAclDocument(
     return `${ownerBlock}\n`
   }
 
+  const publicMode = visibility === 'public-append' ? 'acl:Append' : 'acl:Read'
+
   const publicBlock = `
 
 <#public>
@@ -115,7 +153,7 @@ export function buildAclDocument(
     acl:accessTo <${containerPath}> ;
     acl:default <${containerPath}> ;
     acl:agentClass foaf:Agent ;
-    acl:mode acl:Read .`
+    acl:mode ${publicMode} .`
 
   return `${ownerBlock}${publicBlock}\n`
 }
@@ -140,6 +178,15 @@ export class PodLayoutManager {
     await this.ensureContainer(layout.socialContainer)
     await this.ensureContainer(layout.backpackContainer)
     await this.ensureContainer(layout.notificationsContainer)
+    await this.ensureContainer(layout.discoveryContainer)
+    await this.ensureContainer(layout.socialInboxContainer)
+    await this.ensureContainer(layout.socialOutboxContainer)
+    await this.ensureContainer(layout.socialQuarantineContainer)
+    await this.ensureContainer(layout.socialConsentContainer)
+    await this.ensureContainer(layout.relationshipsContainer)
+    await this.ensureContainer(layout.moderationContainer)
+    await this.ensureContainer(layout.processedActivitiesContainer)
+    await this.ensureContainer(layout.deliveryReceiptsContainer)
 
     return layout
   }
@@ -154,6 +201,15 @@ export class PodLayoutManager {
     await this.ensureAcl(layout.socialContainer, policyMatrix.social)
     await this.ensureAcl(layout.backpackContainer, policyMatrix.backpack)
     await this.ensureAcl(layout.notificationsContainer, policyMatrix.notifications)
+    await this.ensureAcl(layout.discoveryContainer, policyMatrix.discovery)
+    await this.ensureAcl(layout.socialInboxContainer, policyMatrix.socialInbox)
+    await this.ensureAcl(layout.socialOutboxContainer, policyMatrix.socialOutbox)
+    await this.ensureAcl(layout.socialQuarantineContainer, policyMatrix.socialQuarantine)
+    await this.ensureAcl(layout.socialConsentContainer, policyMatrix.socialConsent)
+    await this.ensureAcl(layout.relationshipsContainer, policyMatrix.relationships)
+    await this.ensureAcl(layout.moderationContainer, policyMatrix.moderation)
+    await this.ensureAcl(layout.processedActivitiesContainer, policyMatrix.processedActivities)
+    await this.ensureAcl(layout.deliveryReceiptsContainer, policyMatrix.deliveryReceipts)
 
     return layout
   }

@@ -90,6 +90,64 @@ export function evictPodTokenCache(webId: string): void {
   tokenCache.delete(webId.trim())
 }
 
+export class PodProxyTargetError extends Error {
+  constructor(message: string, readonly code: string) {
+    super(message)
+    this.name = 'PodProxyTargetError'
+  }
+}
+
+export function buildPodProxyTarget(
+  cssBaseUrl: string,
+  sessionPodUrl: string,
+  rawRest: string
+): string {
+  let cssBase: URL
+  let sessionPod: URL
+  try {
+    cssBase = new URL(cssBaseUrl.endsWith('/') ? cssBaseUrl : `${cssBaseUrl}/`)
+    sessionPod = new URL(sessionPodUrl.endsWith('/') ? sessionPodUrl : `${sessionPodUrl}/`)
+  } catch {
+    throw new PodProxyTargetError('Pod proxy target configuration is invalid.', 'pod_target_invalid')
+  }
+
+  if (cssBase.origin !== sessionPod.origin) {
+    throw new PodProxyTargetError(
+      'Session Pod origin does not match the configured Pod server.',
+      'pod_origin_mismatch'
+    )
+  }
+
+  const rawPath = rawRest.split('?', 1)[0] ?? ''
+  if (
+    rawPath.startsWith('/') ||
+    rawPath.includes('\\') ||
+    /(?:^|\/)\.\.?($|\/)/.test(rawPath) ||
+    /%(?:2f|5c|2e)/i.test(rawPath)
+  ) {
+    throw new PodProxyTargetError('Pod proxy path is not allowed.', 'pod_path_invalid')
+  }
+
+  let target: URL
+  try {
+    decodeURIComponent(rawPath)
+    target = new URL(rawRest, cssBase)
+  } catch {
+    throw new PodProxyTargetError('Pod proxy path is malformed.', 'pod_path_invalid')
+  }
+
+  const podPath = sessionPod.pathname.endsWith('/') ? sessionPod.pathname : `${sessionPod.pathname}/`
+  const targetPath = target.pathname
+  if (targetPath !== podPath.slice(0, -1) && !targetPath.startsWith(podPath)) {
+    throw new PodProxyTargetError(
+      'The requested resource is outside the authenticated Pod namespace.',
+      'pod_scope_denied'
+    )
+  }
+
+  return target.toString()
+}
+
 function sendProxyJson(
   req: IncomingMessage,
   res: ServerResponse,
@@ -185,7 +243,17 @@ export async function handlePodProxyRequest(
 
   // Preserve raw (still-encoded) path + query when building the CSS target.
   const rest = rawUrl.slice(POD_PROXY_PREFIX.length)
-  const targetUrl = `${deps.cssBaseUrl.replace(/\/+$/, '')}/${rest}`
+  let targetUrl: string
+  try {
+    targetUrl = buildPodProxyTarget(deps.cssBaseUrl, claims.pod, rest)
+  } catch (error) {
+    const code = error instanceof PodProxyTargetError ? error.code : 'pod_target_invalid'
+    sendProxyJson(req, res, deps.corsHeaders, 403, {
+      error: 'The requested resource is outside this session Pod.',
+      code,
+    })
+    return true
+  }
 
   const body = method === 'GET' || method === 'HEAD' ? null : await readRawBody(req)
 

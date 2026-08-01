@@ -23,18 +23,6 @@ import { resolveAudienceRecipients } from '../src/social/composeRecipients';
 import { getAudienceDescription, type AudienceType } from '../src/social/composeAudience';
 import { listTrustCircleMembers } from '../src/social/trustCircleStore';
 
-function toWebIdList(connections: Array<unknown>): string[] {
-  return connections
-    .map((entry) => {
-      if (typeof entry === 'string') return entry;
-      if (entry && typeof entry === 'object' && typeof (entry as { webId?: unknown }).webId === 'string') {
-        return (entry as { webId: string }).webId;
-      }
-      return '';
-    })
-    .filter((webId) => webId.length > 0);
-}
-
 export default function ComposeScreen(): JSX.Element {
   const [postText, setPostText] = useState('');
   const [audience, setAudience] = useState<AudienceType>('verified');
@@ -88,13 +76,23 @@ export default function ComposeScreen(): JSX.Element {
         // Write payload to Pod /outbox/ container via the authenticated proxy fetch.
         // Verified mode applies an extra per-recipient PoH gate.
         const podRoot = (webId ?? '').split('/profile/')[0] + '/';
-        const { socialGraph: graph } = getSolidPodSyncManagers({ fetch: authFetch });
-        const connections = toWebIdList(await graph.listConnections(podRoot).catch(() => []));
+        const { relationshipManager, moderationManager } = getSolidPodSyncManagers({ fetch: authFetch });
+        const [relationships, moderation] = await Promise.all([
+          relationshipManager.listRelationships(podRoot).catch(() => []),
+          moderationManager.listModeration(podRoot).catch(() => []),
+        ]);
+        const acceptedRelationships = relationships
+          .filter((relationship) => relationship.state === 'accepted')
+          .map((relationship) => relationship.peerWebId);
+        const blockedWebIds = moderation
+          .filter((record) => record.action === 'block')
+          .map((record) => record.subjectWebId);
         const trustCircleMembers = webId ? await listTrustCircleMembers(webId, { fetch: authFetch }) : [];
         const recipientIds = resolveAudienceRecipients({
           audience,
-          connections,
+          acceptedRelationships,
           trustCircleMembers,
+          blockedWebIds,
         });
         const payload = JSON.stringify({ text: postText, audience, ts: Date.now() });
         await Promise.allSettled(

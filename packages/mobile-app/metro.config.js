@@ -65,7 +65,10 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
       ? defaultResolveRequest(context, moduleName, platform)
       : context.resolveRequest(context, moduleName, platform)
   } catch (error) {
-    if (moduleName.startsWith('./') && moduleName.endsWith('.js')) {
+    if (
+      (moduleName.startsWith('./') || moduleName.startsWith('../')) &&
+      moduleName.endsWith('.js')
+    ) {
       return context.resolveRequest(context, moduleName.replace(/\.js$/, '.ts'), platform)
     }
     throw error

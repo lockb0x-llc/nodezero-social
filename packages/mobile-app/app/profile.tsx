@@ -20,6 +20,7 @@ import {
   Modal,
   Alert,
   Platform,
+  Switch,
 } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useNodeZeroSession } from '../src/contexts/NodeZeroSessionContext'
@@ -83,7 +84,13 @@ export default function ProfileScreen(): JSX.Element {
     connections,
     connectionBusyWebId,
     connectionStatus,
+    incomingRequests,
+    inboundRequestsEnabled,
+    inboxSyncing,
     loadConnections,
+    syncIncomingRequests,
+    setInboundRequestsEnabled,
+    respondToIncomingRequest,
     addConnection,
     removeConnection,
   } = useConnections({
@@ -422,6 +429,74 @@ export default function ProfileScreen(): JSX.Element {
             {connectionsLoading ? <ActivityIndicator color={aesthetic.color.accentSoft} size="small" /> : null}
           </View>
 
+          {!isPeerView ? (
+            <>
+              <View style={styles.requestConsentRow}>
+                <View style={styles.requestConsentCopy}>
+                  <Text style={styles.requestConsentTitle}>Relationship requests</Text>
+                  <Text style={styles.emptySubtleText}>
+                    Allow signed requests to be verified and shown here.
+                  </Text>
+                </View>
+                <Switch
+                  value={inboundRequestsEnabled}
+                  onValueChange={(enabled) => void setInboundRequestsEnabled(enabled)}
+                  trackColor={{ false: '#343842', true: aesthetic.color.accent }}
+                  thumbColor="#FFF"
+                  accessibilityLabel="Allow relationship requests"
+                />
+              </View>
+
+              {inboundRequestsEnabled ? (
+                <>
+                  <TouchableOpacity
+                    style={styles.requestRefreshButton}
+                    onPress={() => void syncIncomingRequests()}
+                    disabled={inboxSyncing}
+                    activeOpacity={aesthetic.motion.pressOpacity}
+                    accessibilityRole="button"
+                    accessibilityLabel="Refresh relationship requests"
+                  >
+                    {inboxSyncing ? (
+                      <ActivityIndicator color="#FFF" size="small" />
+                    ) : (
+                      <Ionicons name="refresh" size={16} color="#FFF" />
+                    )}
+                    <Text style={styles.requestRefreshText}>Refresh requests</Text>
+                  </TouchableOpacity>
+
+                  {incomingRequests.map((request) => (
+                    <View key={request.peerWebId} style={styles.incomingRequestRow}>
+                      <Text style={styles.connectionWebId} numberOfLines={2}>
+                        {request.peerWebId}
+                      </Text>
+                      <View style={styles.incomingRequestActions}>
+                        <TouchableOpacity
+                          style={styles.requestRejectButton}
+                          onPress={() => void respondToIncomingRequest(request.peerWebId, 'reject')}
+                          disabled={connectionBusyWebId === request.peerWebId}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Reject request from ${request.peerWebId}`}
+                        >
+                          <Ionicons name="close" size={17} color="#FFF" />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.requestAcceptButton}
+                          onPress={() => void respondToIncomingRequest(request.peerWebId, 'accept')}
+                          disabled={connectionBusyWebId === request.peerWebId}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Accept request from ${request.peerWebId}`}
+                        >
+                          <Ionicons name="checkmark" size={17} color="#FFF" />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))}
+                </>
+              ) : null}
+            </>
+          ) : null}
+
           <View style={styles.connectionComposerRow}>
             <TextInput
               style={[styles.input, styles.connectionInput]}
@@ -566,6 +641,53 @@ const styles = StyleSheet.create({
   },
   connectionStatusError: {
     color: '#FCA5A5',
+  },
+  requestConsentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 16,
+    marginBottom: 14,
+  },
+  requestConsentCopy: { flex: 1 },
+  requestConsentTitle: { color: aesthetic.color.textHigh, fontSize: 14, fontWeight: '700' },
+  requestRefreshButton: {
+    minHeight: 38,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#343842',
+    borderRadius: 6,
+    marginBottom: 12,
+    paddingHorizontal: 14,
+  },
+  requestRefreshText: { color: '#FFF', fontSize: 13, fontWeight: '700' },
+  incomingRequestRow: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#343842',
+    paddingVertical: 8,
+  },
+  incomingRequestActions: { flexDirection: 'row', gap: 8 },
+  requestRejectButton: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 6,
+    backgroundColor: '#7A3036',
+  },
+  requestAcceptButton: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 6,
+    backgroundColor: '#23775A',
   },
   emptySubtleText: {
     color: aesthetic.color.textMid,

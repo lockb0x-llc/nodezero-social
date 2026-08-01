@@ -82,6 +82,9 @@ importers:
 
   packages/jss-provisioner:
     dependencies:
+      '@nodezero/solid-pod-sync':
+        specifier: workspace:*
+        version: link:../solid-pod-sync
       '@nodezero/zk-crypto':
         specifier: workspace:*
         version: link:../zk-crypto

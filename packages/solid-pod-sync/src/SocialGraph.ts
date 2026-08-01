@@ -228,10 +228,9 @@ export class SocialGraph {
     const existingUrls = existing ? getUrlAll(existing, FOAF_KNOWS) : []
     const allUrls = Array.from(new Set([...existingUrls, targetWebId]))
 
-    let thingBuilder = buildThing(createThing({ url: ownerWebId })).setUrl(
-      RDF_TYPE,
-      FOAF_PERSON
-    )
+    let thingBuilder = buildThing(existing ?? createThing({ url: ownerWebId }))
+      .removeAll(FOAF_KNOWS)
+      .setUrl(RDF_TYPE, FOAF_PERSON)
     for (const url of allUrls) {
       thingBuilder = thingBuilder.addUrl(FOAF_KNOWS, url)
     }
@@ -278,21 +277,9 @@ export class SocialGraph {
 
     const remainingUrls = getUrlAll(existing, FOAF_KNOWS).filter((u) => u !== targetWebId)
 
-    if (remainingUrls.length === 0) {
-      // Remove the whole thing if no connections remain.
-      let stripped = removeThing(dataset, ownerWebId)
-      if (legacyOwnerWebId !== ownerWebId) {
-        stripped = removeThing(stripped, legacyOwnerWebId)
-      }
-      const targetUrl = getSourceUrl(stripped) || datasetUrl
-      await saveSolidDatasetAt(targetUrl, stripped, { fetch: this.session.fetch })
-      return datasetUrl
-    }
-
-    let thingBuilder = buildThing(createThing({ url: ownerWebId })).setUrl(
-      RDF_TYPE,
-      FOAF_PERSON
-    )
+    let thingBuilder = buildThing(existing)
+      .removeAll(FOAF_KNOWS)
+      .setUrl(RDF_TYPE, FOAF_PERSON)
     for (const url of remainingUrls) {
       thingBuilder = thingBuilder.addUrl(FOAF_KNOWS, url)
     }
