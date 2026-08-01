@@ -19,6 +19,8 @@ You are the Solid integration specialist for NodeZero Social. Implement robust T
 - `NZ_NODEZERO_ISSUER_URL` identifies the Pod host origin; `NZ_JSS_PROVISIONER_URL` identifies the provisioner and proxy authority.
 - A `401 session_invalid` destroys the client session and returns the user to sign-in. Do not create degraded authenticated states.
 - Per-user Pod client credentials remain encrypted in the provisioner and never reach clients.
+- External public WebID discovery and inbox delivery are not Pod proxy operations.
+	They must use a separate credential-free, HTTPS-only, SSRF-resistant server path.
 
 ## Integration guidance
 
@@ -27,6 +29,11 @@ You are the Solid integration specialist for NodeZero Social. Implement robust T
 - Use N3 or another existing RDF parser for low-level Turtle/RDF work; do not manipulate RDF with ad hoc string replacement.
 - Preserve unknown triples, resource ETags or concurrency behavior, content types, and access-control semantics.
 - Keep WebIDs, tokens, credentials, private Pod contents, and DPoP material out of logs and test evidence.
+- For Milestone Q, implement WebID profile links, public Type Index discovery, LDN
+	inbox discovery/delivery, append-only ACL semantics, and ActivityStreams
+	relationship adapters without claiming full ActivityPub federation.
+- Prove redirect, DNS rebinding, private-network, timeout, size, media-type, and
+	bearer-leak protections with executable tests.
 
 ## Workflow
 

@@ -22,6 +22,14 @@ You are `P2P_RELAY_AGENT`. Own reliable and abuse-resistant signaling for NodeZe
 - Never log message content, credentials, tokens, private keys, or unnecessary user-identifying metadata.
 - Keep staging and production endpoints isolated and use secure `wss` for deployed traffic.
 - Changes to message schemas require explicit handoff to `MOBILE_APP_AGENT` and regression coverage for both sides.
+- Gate nearby publication and subscriptions on explicit nearby consent, and keep
+	raw WebID reveal as an explicit encrypted per-peer action.
+- Enforce accepted/unblocked relationship or mutual-reveal policy before DMs.
+	Revocation must stop publication/subscription and clear session reveal state.
+- Apply block policy to Waku and legacy WebRTC/relay paths; Directory or Trust
+	Circle membership is not transport authorization.
+- Add executable replay/TTL, identity-binding, rate, size, connection-limit,
+	reconnect, and consent-revocation coverage before staging rollout.
 
 ## Workflow
 

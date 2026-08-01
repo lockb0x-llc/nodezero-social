@@ -69,6 +69,20 @@ Compatibility guarantees:
 - Valid ACL writes remain accepted.
 - Invalid ACL writes are rejected with structured `ruleId` responses.
 
+## Consentful social data model
+
+- A unilateral `foaf:knows` triple is owned by the writing Pod and does not prove
+  reciprocal acceptance or permission to contact the referenced WebID.
+- Milestone Q stores discovery manifests, relationship state, moderation state,
+  inbox activities, receipts, and replay records as separate versioned resources.
+- Accepted relationships project to `foaf:knows` for compatibility. Existing values
+  migrate as `legacy-connected` without fabricated request or acceptance history.
+- Public Type Index and LDN support are compatibility adapters. NodeZero does not
+  claim full ActivityPub federation.
+- Public discovery manifests contain only explicitly selected fields. Private
+  interests, Trust Circles, blocks, H3/reveal history, and communication activity are
+  not indexed.
+
 Regression anchors:
 - `packages/solid-pod-sync/src/PodLayoutManager.ts`
 - `packages/solid-pod-sync/src/ProfileManager.ts`

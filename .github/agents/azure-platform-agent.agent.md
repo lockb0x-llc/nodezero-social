@@ -25,6 +25,13 @@ You are `AZURE_PLATFORM_AGENT`. Own Azure infrastructure and publishing reliabil
 - Before diagnosing deployed behavior, verify the latest relevant GitHub Actions deployment succeeded and that its commit provenance matches the deployed marker.
 - Manual Azure deployment is recovery work, not release evidence. Reconcile it through a successful deployment workflow before declaring delivery.
 - For Azure Functions or Static Web Apps code generation, present a plan and obtain user approval before editing files.
+- Milestone Q infrastructure must use durable derived-index storage, default-off
+	feature flags, privacy-safe telemetry, retained provisioner slots, retained
+	frontend artifacts, and retained Waku/relay revisions before rollout.
+- Never place raw WebIDs, H3 cells, private interests, relationship payloads,
+	block state, reveal history, or message content in telemetry.
+- Rollback must never restore an opted-out public listing and must preserve
+	private consent and safety records.
 
 ## Workflow
 

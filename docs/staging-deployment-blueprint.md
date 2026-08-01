@@ -13,6 +13,13 @@ NodeZero is a decentralized social platform where:
 - Geo-local discovery uses H3 abstraction instead of sharing raw GPS.
 - UX is delivered through Expo Router (web/mobile).
 
+The next staged product milestone is consentful Pod-owner discovery and
+communication. Its source-of-truth and trust boundaries are defined in
+[system-description.md](system-description.md),
+[ADR-001](adrs/consentful-discovery-communication/ADR-001-consentful-discovery-and-communication.md),
+and the
+[Milestone Q plan](consentful-pod-owner-discovery-and-communication-plan.md).
+
 The staging goal is to validate that these layers interoperate in a production-like Azure environment under real network conditions.
 
 ## 2. Architecture map (as implemented now)
@@ -108,6 +115,18 @@ G5: Production-mainnet promotion guardrails incomplete
 - Required outcome: separate production workflow, approvals, identity, and promotion checklist.
 - Acceptance: no production deployment path reuses staging scripts or identities.
 
+G6: Discovery authority and communication consent are incomplete
+- Required outcome: Pod-authoritative default-off discovery manifests, reciprocal
+  relationship lifecycle, block precedence, and a rebuildable public index.
+- Acceptance: two accounts pass opt-in/out, request/accept/reject/cancel, block,
+  reveal, DM, recipient, and rollback journeys with exact deployed provenance.
+
+G7: External WebID and inbox delivery require a new security boundary
+- Required outcome: credential-free HTTPS-only remote discovery/delivery with SSRF,
+  redirect, DNS, timeout, content-type, and response-size controls.
+- Acceptance: security tests prove NodeZero bearer credentials never leave the
+  authenticated user's Pod proxy boundary.
+
 ## 6. End-to-end staged roadmap
 
 ### Stage A: Foundation hardening (Day 1-2)
@@ -187,6 +206,10 @@ R7: Missing rollback mechanism for faulty front-end releases.
 R8: ZK artifact hosting integrity not enforced.
 R9: Key Vault access model not fully least-privileged.
 R10: Incomplete telemetry obscures incident diagnosis.
+R11: Public directory scraping or stale consent continues surfacing opted-out users.
+R12: Unilateral graph or Trust Circle state is mistaken for reciprocal contact consent.
+R13: External WebID/inbox fetch leaks credentials or reaches private network resources.
+R14: Block policy is enforced in one UI but bypassed through another transport.
 
 ## 9. Definition of Ready and Definition of Done
 

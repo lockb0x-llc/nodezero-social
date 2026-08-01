@@ -22,3 +22,13 @@ Provision and harden Azure staging infrastructure and publishing flow.
 2. Deploy and validate resources.
 3. Configure staging.nodezero.social custom domain + TLS.
 4. Hand off endpoint and telemetry links to QA_RELEASE_AGENT.
+
+## Milestone Q responsibilities
+- Provision durable derived-index storage and default-off feature flags.
+- Complete or incorporate P6 slot deployment before enabling Milestone Q behavior.
+- Retain N-1 frontend artifacts, provisioner slots, and Waku/relay revisions and
+	rehearse rollback before cohort expansion.
+- Keep telemetry free of raw WebIDs, H3 cells, private interests, relationship
+	payloads, block state, reveal history, and message content.
+- Rollback must preserve private consent/safety state and never restore an opted-out
+	public listing.

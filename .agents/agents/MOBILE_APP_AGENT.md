@@ -22,3 +22,14 @@ Deliver production-ready app behavior for web/mobile staging validation.
 2. Ensure wallet registration flow works with deployed contract IDs.
 3. Validate web build compatibility for SWA deployment.
 4. Hand off smoke steps to QA_RELEASE_AGENT.
+
+## Milestone Q responsibilities
+- Implement independent default-off controls for directory listing, public
+	indexing, nearby presence, inbound requests, and local broadcasts. Location
+	permission alone must not start presence.
+- Replace immediate Connect behavior with request, accept, decline, cancel,
+	disconnect, mute, block, and report states using shared person/action services.
+- Use one relationship and safety state across Directory, peer Profile, and Local.
+- Display stable recommendation reasons and never reveal private ranking inputs.
+- Apply block and accepted-relationship policy before compose, reveal, send,
+	receive, and rendering paths.

@@ -274,6 +274,24 @@ Each row is a discrete unit of work. Mark ✅ when complete with evidence.
 | PLAN-03 | Week-by-week execution tracker created with phase-aligned schedule | ✅ Done | [data-backpack-docustream-weekly-execution-tracker.md](data-backpack-docustream-weekly-execution-tracker.md) |
 | PLAN-04 | Assign named owners and target dates across tracker + ADR pack | ✅ Done | Owner/date fields prefilled in [data-backpack-docustream-weekly-execution-tracker.md](data-backpack-docustream-weekly-execution-tracker.md) and ADR-001..005 (2026-07-04) |
 
+### 6.7 Milestone Q: Consentful discovery and communication
+
+The approved architecture and implementation sequence are maintained in the
+[Milestone Q plan](consentful-pod-owner-discovery-and-communication-plan.md). The
+current Directory, `foaf:knows`, Trust Circle, and Local Node features are baseline
+primitives; they do not yet provide reciprocal contact consent.
+
+| ID | Item | Status | Evidence / Notes |
+|---|---|---|---|
+| Q-00 | Canonical system description, ADR, implementation plan, architecture, and agent governance | ✅ Done | [System description](system-description.md), [ADR-001](adrs/consentful-discovery-communication/ADR-001-consentful-discovery-and-communication.md), and [Milestone Q plan](consentful-pod-owner-discovery-and-communication-plan.md) |
+| Q-01 | Versioned discovery, relationship, moderation, receipt, and replay contracts | 🔄 In Progress | Pure v1 contracts, exports, conservative transition matrix, and focused conformance tests implemented; Pod managers and RDF fixtures remain |
+| Q-02 | Secure WebID/Type Index/LDN discovery and append-only inbox delivery | ⬜ To Do | Requires credential-free SSRF-safe remote fetch and session-bound Pod proxy tests |
+| Q-03 | Reciprocal relationship lifecycle, legacy migration, mute/block/report, and `foaf:knows` projection | ⬜ To Do | Existing connections migrate as `legacy-connected`; no fabricated acceptance |
+| Q-04 | Owner-controlled public manifest and rebuildable derived directory | ⬜ To Do | All consent scopes default off; private interests and safety state excluded |
+| Q-05 | Explainable recommendation engine and unified Directory/Profile/Local actions | ⬜ To Do | Stable reason codes and block precedence required |
+| Q-06 | Consent-aware Waku, WebRTC, compose, and in-app notification integration | ⬜ To Do | Directed audiences require accepted and unblocked relationships |
+| Q-07 | Policy, zero-retry E2E, staging rollout, rollback, and 24-hour soak | ⬜ To Do | New `qa:smoke:consentful-discovery`; identity gate remains separate |
+
 ---
 
 ## 7. Open Gaps and Risk Register
@@ -289,6 +307,9 @@ Each row is a discrete unit of work. Mark ✅ when complete with evidence.
 | G7 | B1/B2 (real feed/social graph from Solid) still placeholder | **Low (current milestone)** | Post-hackathon scope; document as known gap |
 | G8 | ZK artifact checksum verification not in CI | **Low** | Wire `pnpm verify:checksums:testnet` into CI gate (ZK-08) |
 | G9 | CSS recovery mail can be misconfigured if SMTP secrets are absent in GitHub environment | **High** | Ensure `SOLID_SMTP_USERNAME` and `SOLID_SMTP_PASSWORD` are populated before redeploy; verify forgot-password smoke after each Solid redeploy |
+| G10 | Directory listing is not yet controlled through an authenticated Pod-owner manifest | **High** | Complete Q-01, Q-02, and Q-04 before broad discovery rollout |
+| G11 | Unilateral `foaf:knows` and Trust Circle state can be mistaken for reciprocal contact consent | **High** | Complete Q-03 and require accepted/unblocked relationship state in compose and transports |
+| G12 | External WebID and inbox fetching could leak credentials or introduce SSRF if built on the Pod proxy | **High** | Implement the separate credential-free fetch boundary and security tests in Q-02 |
 
 ---
 

@@ -21,3 +21,15 @@ Guarantee Solid Pod profile/social graph correctness and interoperability.
 2. Fix parsing limitations and schema edge cases.
 3. Confirm nsfw tagging and retrieval behavior.
 4. Publish migration notes for existing Pod data.
+
+## Milestone Q responsibilities
+- Own versioned discovery, relationship, moderation, receipt, and replay contracts.
+- Keep public manifests, derived-index records, relationship activities,
+	relationship state, moderation state, and Trust Circles distinct.
+- Preserve unknown RDF triples, use conditional writes, and distinguish 404 from
+	authorization or transport failures.
+- Add WebID, public Type Index, LDN, and ActivityStreams compatibility adapters
+	without claiming full ActivityPub federation.
+- Migrate existing `foaf:knows` values as `legacy-connected`; never infer
+	acceptance, public listing, or public-interest consent.
+- Require accepted and unblocked relationships before directed recipient eligibility.

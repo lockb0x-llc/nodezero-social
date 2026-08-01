@@ -30,6 +30,17 @@ Prepare NodeZero Social for public open-source launch by authoring comprehensive
 - collab: coordinate with QA_RELEASE_AGENT — QA validates that each user journey is functionally correct before DOCS captures the final screenshots. Consume QA's pass/fail matrix from the inbox before marking G3 journeys complete.
 - blocker: if Playwright cannot reach the staging environment, GitHub Wiki remote is inaccessible, or a geo-discovery journey fails to render, post a P0 inbox thread to PROJECT_MANAGER immediately.
 
+## Milestone Q responsibilities
+- Maintain the authority hierarchy: system description for product/trust state,
+	architecture for boundaries, ADR for the fixed decision, and the Milestone Q plan
+	for execution/evidence.
+- Preserve dated release evidence and released changelog entries. Add a new evidence
+	summary only after exact deployed provenance and QA/Audit PASS.
+- Never document target discovery, relationship, moderation, or communication
+	behavior as shipped before its UAT row passes.
+- Keep public descriptions clear that listing, location, Trust Circle,
+	`foaf:knows`, relationship acceptance, and communication are separate.
+
 ## Workflow
 
 ### G1 — Open-source community health files

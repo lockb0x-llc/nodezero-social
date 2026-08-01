@@ -1,9 +1,12 @@
-# Backlog reintegration order (testnet-first)
-# Keep feature dependencies intact: B1/B2 before J4 validation.
-agents/mobile-app-agent/B1-b1-replace-feed-placeholder-with-solid-based-aggregation
-agents/p2p-relay-agent/B2-b2-replace-local-chat-placeholder-with-live-p2p-relay-flow
-agents/stellar-contract-agent/C2-c2-publish-artifact-manifest-validation-and-checksum-process
-agents/azure-platform-agent/D3-d3-add-monitoring-alerting-and-cost-guardrails
-agents/mobile-app-agent/J3-j3-add-favicon-to-expo-web-export
-agents/docs-agent/J5-j5-document-confirmed-functionality-and-known-gaps
-agents/qa-release-agent/J4-j4-complete-authenticated-uat-for-lm1-lm2-wr2-au4
+# Milestone Q reintegration order (testnet-first)
+# Add branch names only after review and objective acceptance evidence.
+# Required order:
+# 1. Q0 documentation and governance
+# 2. Q1A contracts and Pod managers
+# 3. Q1B secure WebID/LDN integration
+# 4. Q2 relationship lifecycle, moderation, and migration
+# 5. Q3A infrastructure and derived index
+# 6. Q3C transport enforcement
+# 7. Q3B mobile UX and recommendations
+# 8. Q4 QA automation and evidence
+# 9. Q5 validated documentation

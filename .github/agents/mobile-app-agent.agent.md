@@ -22,6 +22,16 @@ You are `MOBILE_APP_AGENT`. Deliver production-grade Expo web and mobile behavio
 - All Pod traffic must use the provisioner's `/v1/pod-proxy/*` path. A `401 session_invalid` must clear the client session and return to sign-in.
 - Keep the independent on-chain `attestationStatus === 'verified'` gate after session issuance.
 - Resolve broadcast recipients through `src/social/composeRecipients.ts`; Trust Circle entries become recipients only when they are real connections.
+- Milestone Q replaces direct connection UI with request, accept, decline,
+	cancel, disconnect, mute, block, and report states. Use shared person/action
+	services across Directory, peer Profile, and Local Node.
+- Keep directory listing, public indexing, nearby presence, nearby reveal,
+	inbound requests, broadcast participation, and notification channels as
+	separate controls. OS location permission must not start presence by itself.
+- Require accepted and unblocked relationship state for every directed audience.
+	Apply block policy before candidates, actions, compose, reveals, and inbound
+	transport rendering.
+- Display stable recommendation reasons and never expose private ranking inputs.
 - Preserve environment guards in `app.config.js`. Strict builds require `NZ_ENV_PROFILE`, `NZ_NODEZERO_ISSUER_URL`, and `NZ_JSS_PROVISIONER_URL`.
 - Never mix TestNet and MainNet identifiers, RPC endpoints, or passphrases.
 

@@ -76,6 +76,18 @@ Gate D: Cloud gate
 Gate E: Release gate
 - QA pass matrix complete and PM GO decision posted.
 
+Gate Q: Consentful discovery and communication gate
+- Canonical system description, ADR, implementation tracker, and agent rules agree.
+- New public and nearby consent scopes default off; no consent is inferred from
+	legacy directory, location, connection, Trust Circle, or presence state.
+- Pod authority, derived-index provenance, relationship lifecycle, block
+	precedence, and external-fetch security checks pass.
+- `qa:smoke:consentful-discovery` remains separate from the identity-only auth gate.
+- Exact-SHA two-account, physical-device, opt-out, block, rollback, and soak
+	evidence pass before flags expand beyond the approved Testnet cohort.
+- QA_RELEASE_AGENT and AUDIT_AGENT post explicit GO; production Mainnet remains
+	a separate release decision.
+
 ## 5. Hook implementation guidance
 
 Pre-work hook checklist:
@@ -239,6 +251,11 @@ What loop mode does:
 
 Default reintegration validation command:
 - pnpm lint; pnpm type-check; pnpm test; pnpm policy:validate-env
+
+Milestone Q reintegration validation additionally includes focused tests for every
+touched package and, once the scripts exist:
+- pnpm policy:validate-consentful-discovery
+- pnpm qa:smoke:consentful-discovery
 
 Override validation command example:
 - pwsh -NoProfile -File ./scripts/agents/reintegrate-parallel.ps1 -ValidationCommand "pnpm lint; pnpm type-check; pnpm policy:validate-env"

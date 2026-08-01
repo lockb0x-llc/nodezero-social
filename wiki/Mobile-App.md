@@ -72,6 +72,11 @@ Session continuity note:
 	- reads known peers from social graph connections.
 	- raw GPS coordinates are not displayed or transmitted by this flow; H3 cell identity is used.
 
+Milestone Q separates OS location permission from nearby presence publication. The
+app may compute an H3 cell locally without beaconing. Raw WebID reveal remains an
+explicit encrypted per-peer action and does not create a directory listing or durable
+relationship.
+
 ### Broadcast tab
 
 - **Purpose**: compose and target broadcasts by trust boundary.
@@ -80,6 +85,10 @@ Session continuity note:
 	- FOAF audience reads social connections and writes JSON payloads to Pod outbox path via authenticated fetch.
 	- Verified audience applies an additional verification gate before writes for recipient targets.
 	- Local audience path initializes local channel targeting and currently does not persist post content to Pod from this screen.
+
+The target consent model requires accepted and unblocked relationship state for every
+directed audience, including Trust Circle. Trust Circle remains sender-curated grouping
+state, not reciprocal contact permission.
 
 ### Stream tab
 
@@ -113,6 +122,11 @@ Session continuity note:
 	- merges results with connection-derived state for consistent connect actions.
 	- trust-circle actions persist local state and do not auto-promote recipients
 	  for broadcast targeting.
+
+The current Connect action is a unilateral `foaf:knows` baseline. Milestone Q replaces
+it with Request, Accept, Decline, Cancel, Disconnect, Mute, Block, and Report states
+backed by Pod records and durable inbox activities. Directory listing and relationship
+acceptance remain separate choices.
 
 ### Backpack tab
 

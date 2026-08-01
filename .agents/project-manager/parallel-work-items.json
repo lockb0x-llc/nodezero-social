@@ -1,127 +1,89 @@
-[ 
+[
   {
-    "id": "B1",
-    "agent": "MOBILE_APP_AGENT",
-    "slug": "solid-feed-aggregation",
-    "title": "B1 - Replace feed placeholder with Solid-based aggregation",
-    "objective": "Implement feed aggregation from Solid Pod social graph/content sources in packages/mobile-app without breaking existing auth guards or environment isolation.",
+    "id": "Q1A",
+    "agent": "SOLID_DATA_AGENT",
+    "slug": "consent-data-contracts",
+    "title": "Q1A - Add consentful discovery and relationship data contracts",
+    "objective": "Implement versioned Pod-authoritative discovery, relationship, moderation, receipt, and replay contracts plus layout and manager foundations without enabling user-facing behavior.",
     "acceptanceCriteria": [
-      "feed route renders real aggregated items when authenticated and preserves empty-state messaging when no data exists.",
-      "No regression to web navigation/auth redirect behavior introduced by J6/J7.",
-      "Type-check passes for packages/mobile-app."
+      "Contracts and fixtures cover explicit public fields, schema versions, immutable activity IDs, expiry, provenance, and private moderation state.",
+      "Pod layout includes public discovery, append-only inbox, private relationships, private moderation, and replay resources with least-privilege ACL tests.",
+      "Unknown RDF triples survive round trips and conditional-write conflict behavior is tested.",
+      "Legacy foaf:knows migration is documented as legacy-connected without inferred acceptance or public consent.",
+      "Focused solid-pod-sync lint, type-check, and tests pass."
     ],
     "sourceReferences": [
-      "packages/mobile-app/app/feed.tsx",
-      "packages/mobile-app/src/contexts/SolidContext.tsx",
+      "docs/adrs/consentful-discovery-communication/ADR-001-consentful-discovery-and-communication.md",
+      "docs/consentful-pod-owner-discovery-and-communication-plan.md",
+      "packages/solid-pod-sync/src/contracts/",
+      "packages/solid-pod-sync/src/PodLayoutManager.ts",
+      "packages/solid-pod-sync/src/createSolidPodSyncManagers.ts"
+    ],
+    "dependsOn": ["Q0"]
+  },
+  {
+    "id": "Q1B",
+    "agent": "SOLID_INTEGRATION_SPECIALIST",
+    "slug": "secure-webid-ldn-integration",
+    "title": "Q1B - Build secure WebID and LDN integration boundary",
+    "objective": "Design and implement standards-compatible WebID, Type Index, and LDN adapters with session-bound owned-Pod operations and a credential-free SSRF-resistant external discovery/delivery path.",
+    "acceptanceCriteria": [
+      "NodeZero bearer credentials are never sent to external origins and tests prove the boundary.",
+      "External fetch rejects non-HTTPS, loopback/private/metadata targets, unsafe redirects, DNS rebinding, oversized responses, unsupported media types, and timeouts.",
+      "WebID inbox and public Type Index links are discovered from RDF and supported HTTP Link headers.",
+      "LDN delivery uses bounded payloads, explicit recipient targets, and no full ActivityPub claim.",
+      "Focused provisioner and solid-pod-sync checks pass."
+    ],
+    "sourceReferences": [
+      "docs/architecture.md",
+      "packages/jss-provisioner/src/podProxy.ts",
+      "packages/jss-provisioner/src/index.ts",
+      "packages/mobile-app/src/contexts/NodeZeroSessionContext.tsx",
       "packages/solid-pod-sync/src/"
     ],
-    "dependsOn": []
+    "dependsOn": ["Q0", "Q1A-contract-review"]
   },
   {
-    "id": "B2",
-    "agent": "P2P_RELAY_AGENT",
-    "slug": "live-p2p-chat-flow",
-    "title": "B2 - Replace local chat placeholder with live P2P relay flow",
-    "objective": "Wire Local Grid/local chat flow to relay-backed live messaging path using existing p2p-comms and relay-service interfaces.",
+    "id": "Q1C",
+    "agent": "AUDIT_AGENT",
+    "slug": "consent-security-test-vectors",
+    "title": "Q1C - Define consent and delivery security test vectors",
+    "objective": "Produce executable security and privacy acceptance vectors for append-only inboxes, external fetch, replay, sender verification, migration, indexing, H3 linkability, block precedence, and rollback.",
     "acceptanceCriteria": [
-      "local route sends and receives live relay-backed messages for authenticated users.",
-      "Graceful offline or relay-unavailable error handling is visible to user.",
-      "Type-check passes for packages/mobile-app and packages/p2p-comms."
+      "Test vectors classify release-stop failures for credential leakage, SSRF, public inbox reads, spoofing, replay, inferred consent, private indexing, and block bypass.",
+      "Public field minimization and telemetry/evidence redaction requirements are explicit.",
+      "Vectors map to concrete package tests and Milestone Q UAT rows.",
+      "A security handoff is posted to SOLID_DATA_AGENT, SOLID_INTEGRATION_SPECIALIST, P2P_RELAY_AGENT, and QA_RELEASE_AGENT."
     ],
     "sourceReferences": [
-      "packages/mobile-app/app/local.tsx",
-      "packages/p2p-comms/src/",
-      "packages/relay-service/src/"
-    ],
-    "dependsOn": []
-  },
-  {
-    "id": "C2",
-    "agent": "STELLAR_CONTRACT_AGENT",
-    "slug": "artifact-manifest-checksums",
-    "title": "C2 - Publish artifact manifest validation and checksum process",
-    "objective": "Define and implement reproducible checksum validation process for contract/zk artifacts and publish runbook-level documentation.",
-    "acceptanceCriteria": [
-      "Artifact manifest checksum generation and validation command path is documented and script-backed where feasible.",
-      "No weakening of testnet/mainnet environment invariants in deployment scripts.",
-      "Type-check/lint impact for touched files is clean."
-    ],
-    "sourceReferences": [
-      "deployments/stellar-testnet.contracts.json",
-      "scripts/stellar/",
-      "docs/testnet-azure-release-requirements.md"
-    ],
-    "dependsOn": []
-  },
-  {
-    "id": "D3",
-    "agent": "AZURE_PLATFORM_AGENT",
-    "slug": "staging-monitoring-alerting-cost-guardrails",
-    "title": "D3 - Add monitoring/alerting and cost guardrails",
-    "objective": "Implement baseline staging observability and cost guardrails in Azure IaC/workflows without impacting production protections.",
-    "acceptanceCriteria": [
-      "Alerting and monitoring baseline is defined and committed under infrastructure/azure and/or deployment workflows.",
-      "Cost guardrail defaults are documented and aligned to staging-testnet only.",
-      "policy:validate-env invariants remain intact."
-    ],
-    "sourceReferences": [
-      "infrastructure/azure/main.bicep",
-      "infrastructure/azure/README.md",
-      "scripts/azure/deploy.sh"
-    ],
-    "dependsOn": []
-  },
-  {
-    "id": "J3",
-    "agent": "MOBILE_APP_AGENT",
-    "slug": "expo-web-favicon",
-    "title": "J3 - Add favicon to Expo web export",
-    "objective": "Add favicon asset/config so staging web export no longer returns 404 for favicon.ico.",
-    "acceptanceCriteria": [
-      "Expo web build includes favicon and route no longer 404s.",
-      "No regression to app.config.js profile guards.",
-      "Type-check for mobile-app remains clean."
-    ],
-    "sourceReferences": [
-      "packages/mobile-app/app.config.js",
-      "packages/mobile-app/assets/"
-    ],
-    "dependsOn": []
-  },
-  {
-    "id": "J5",
-    "agent": "DOCS_AGENT",
-    "slug": "document-confirmed-functionality-and-gaps",
-    "title": "J5 - Document confirmed functionality and known gaps",
-    "objective": "Update wiki/docs with currently confirmed functionality, unresolved gaps, and remediation status from latest QA matrix.",
-    "acceptanceCriteria": [
-      "Updated docs summarize working user journeys, known gaps, and release impact.",
-      "References point to current testnet evidence artifacts.",
-      "Handoff note in shared inbox includes changed file list."
-    ],
-    "sourceReferences": [
+      "docs/architecture.md",
       "docs/staging-uat-checklist.md",
-      "wiki/Mobile-App.md",
-      "wiki/Embedded-Wallet.md"
+      "docs/consentful-pod-owner-discovery-and-communication-plan.md",
+      "packages/jss-provisioner/src/",
+      "packages/solid-pod-sync/src/",
+      "packages/waku-comms/src/"
     ],
-    "dependsOn": []
+    "dependsOn": ["Q0"]
   },
   {
-    "id": "J4",
+    "id": "Q4D",
     "agent": "QA_RELEASE_AGENT",
-    "slug": "authenticated-uat-completion",
-    "title": "J4 - Complete authenticated UAT for LM1/LM2/WR2/AU4",
-    "objective": "Re-run authenticated staging UAT journeys and publish pass/fail matrix with blockers after latest testnet fixes and feature merges.",
+    "slug": "consent-qa-design",
+    "title": "Q4D - Design the consentful discovery QA program",
+    "objective": "Translate the ADR and Milestone Q UAT rows into package, integration, zero-retry browser, physical-device, deployment, rollback, and soak test specifications before implementation completes.",
     "acceptanceCriteria": [
-      "AU4, LM1, LM2, WR2 status captured with evidence and timestamps.",
-      "Release recommendation updated (BLOCK or APPROVE) with rationale.",
-      "Any blocker is posted as NEEDS-INFO in shared inbox."
+      "Two-account test matrix covers default-off, own mutation, cross-user denial, opt-out, relationship transitions, block precedence, location without presence, reveal, DMs, recipients, restart, and rollback.",
+      "Identity-only auth evidence remains separate from consentful discovery evidence.",
+      "Artifact privacy rules exclude credentials, tokens, private interests, blocks, H3/reveal history, and message content.",
+      "The proposed qa:smoke:consentful-discovery contract and required environment inputs are documented."
     ],
     "sourceReferences": [
       "docs/staging-uat-checklist.md",
-      "scripts/qa/staging-smoke.sh",
-      "packages/mobile-app/qa-L7-evidence.md"
+      "docs/consentful-pod-owner-discovery-and-communication-plan.md",
+      "scripts/qa/staging-community-directory-evidence.mjs",
+      "scripts/qa/staging-auth-evidence.mjs",
+      "playwright.config.ts"
     ],
-    "dependsOn": ["B1", "B2"]
+    "dependsOn": ["Q0"]
   }
 ]

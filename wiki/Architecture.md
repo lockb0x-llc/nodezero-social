@@ -23,6 +23,25 @@ NodeZero Social uses a pnpm workspace monorepo with modular packages.
 5. ACL writes are validated against namespace policy before persistence.
 6. Deployment and environment policy are enforced via scripts and Azure templates.
 
+## Consentful discovery and communication
+
+Milestone Q separates public discovery, public indexing, nearby presence, nearby
+identity reveal, relationship requests, Trust Circle membership, and communication
+permission. None of these capabilities silently grants another.
+
+Authoritative public discovery and private relationship/safety records live in the Pod.
+The provisioner directory is a rebuildable projection of explicitly public manifests.
+Relationship requests use WebID-discovered inboxes and ActivityStreams-shaped Linked
+Data Notifications. Waku remains the ephemeral nearby and low-latency transport.
+
+Accepted and unblocked relationships are required for directed audiences. A local block
+overrides Directory, Profile, compose, Solid delivery, Waku, and relay behavior.
+
+This standards-compatible boundary is not full ActivityPub federation. See the
+[system description](../docs/system-description.md),
+[architecture](../docs/architecture.md), and
+[Milestone Q plan](../docs/consentful-pod-owner-discovery-and-communication-plan.md).
+
 ## ACL Policy Enforcement Point
 
 - Evaluation point: ACL write path before persistence.

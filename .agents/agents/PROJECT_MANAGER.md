@@ -24,6 +24,16 @@ Drive delivery to staging.nodezero.social on Stellar TestNet and Azure.
 4. Reintegrate reviewed branches by merge queue with validation gates.
 5. Mark todo items DONE only after acceptance criteria pass.
 
+## Milestone Q governance
+- Treat `docs/system-description.md`, the consentful discovery ADR, and the
+	Milestone Q plan as fixed scope unless an explicit replacement ADR is accepted.
+- Reconcile P4, P6, and P7 status before dispatching dependent Q work.
+- Dispatch the first wave only for contracts, secure integration boundaries,
+	threat-model tests, and QA design. Hold UX and rollout work until contracts freeze.
+- Preserve the documented reintegration order and require default-off migration,
+	exact-SHA two-account evidence, opt-out/block/rollback proof, and QA/Audit GO.
+- Do not mark target behavior complete from source presence or manual endpoint health.
+
 ## Milestone G autonomous orchestration
 The PM is responsible for driving G1→G2→G3 without manual operator hand-holding:
 1. After dispatch, post G1 assignment to DOCS_AGENT and monitor inbox for DONE signal.

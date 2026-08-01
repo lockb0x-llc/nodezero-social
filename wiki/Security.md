@@ -61,7 +61,25 @@ Policy denials return HTTP 4xx with `ruleId`, `reason`, `targetPath`, and
 Security events capture policy decisions using: `decision`, `ruleId`,
 `targetPath`, `principal`, `correlationId`, and `timestamp`.
 
+## Discovery and communication safety
+
+- Public directory listing, public indexing, nearby presence, identity reveal,
+  inbound requests, broadcasts, and notification channels are independent and
+  default off when introduced.
+- Pod records are authoritative. The operator directory is a rebuildable projection
+  of explicit public manifests and never relationship authority.
+- A local block overrides discovery, profile actions, compose, LDN delivery, Waku,
+  and relay behavior.
+- Public indexes and telemetry exclude private interests, Trust Circles, blocks, H3
+  history, reveal history, relationship payloads, and message content.
+- External WebID and inbox requests use a credential-free, HTTPS-only,
+  SSRF-resistant server path. The Pod Access Proxy is not a general remote fetcher.
+- Inbox processing uses bounded payloads, sender verification, immutable activity IDs,
+  replay suppression, expiry, and quarantine before state mutation.
+
 ## Related docs
 
 - `docs/environment-isolation-matrix.md`
 - `docs/testnet-azure-release-requirements.md`
+- `docs/system-description.md`
+- `docs/adrs/consentful-discovery-communication/ADR-001-consentful-discovery-and-communication.md`

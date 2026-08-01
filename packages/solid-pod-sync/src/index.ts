@@ -79,6 +79,29 @@ export {
 	assertValidConnectionRecord,
 	validateConnectionRecord,
 } from './contracts/SocialGraphContract.js'
+export {
+	DISCOVERY_CONSENT_KEYS,
+	RELATIONSHIP_STATES,
+	RELATIONSHIP_ACTIVITY_TYPES,
+	MODERATION_ACTIONS,
+	DELIVERY_STATUSES as SOCIAL_DELIVERY_STATUSES,
+	createDefaultDiscoveryConsent,
+	validateDiscoveryConsent,
+	assertValidDiscoveryConsent,
+	validateDiscoveryManifest,
+	assertValidDiscoveryManifest,
+	validateRelationshipActivity,
+	assertValidRelationshipActivity,
+	validateRelationshipRecord,
+	assertValidRelationshipRecord,
+	canTransitionRelationship,
+	validateModerationRecord,
+	assertValidModerationRecord,
+	validateDeliveryReceipt,
+	assertValidDeliveryReceipt,
+	validateProcessedActivityRecord,
+	assertValidProcessedActivityRecord,
+} from './contracts/ConsentfulDiscoveryContract.js'
 export type { UserProfile, ProfileWriteOptions } from './ProfileManager.js'
 export type {
 	ProfilePreferencesManagerOptions,
@@ -112,6 +135,21 @@ export type {
 	PrivateProfilePreferencesDocument,
 } from './contracts/DataBackpackContract.js'
 export type { ConnectionRecord } from './contracts/SocialGraphContract.js'
+export type {
+	DiscoveryConsentKey,
+	RelationshipState,
+	RelationshipActivityType,
+	ModerationAction,
+	SocialDeliveryStatus,
+	ConsentContractValidationIssue,
+	DiscoveryConsent,
+	DiscoveryManifest,
+	RelationshipActivity,
+	RelationshipRecord,
+	ModerationRecord,
+	DeliveryReceipt,
+	ProcessedActivityRecord,
+} from './contracts/ConsentfulDiscoveryContract.js'
 export type {
 	NotificationCategory,
 	DigestCadence,

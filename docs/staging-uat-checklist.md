@@ -83,6 +83,25 @@ Validate the nav bar overflow fix and the Settings access path change introduced
 | CD6 | Compose in `verified` audience with directory-only trust-circle member (no connection) | Recipient targeting does not include that member | — | Confirms Trust Circle remains a filter signal, not implicit targeting. |
 | CD7 | Compose in `foaf`, `verified`, and `local` with known contacts | Existing audience behavior remains stable across all modes | — | Validate no regression versus pre-directory behavior. |
 
+The CD rows above preserve baseline Directory acceptance. They do not certify the
+Milestone Q consent model. After Q implementation, run the following separate cases.
+
+### Consentful discovery and communication (Milestone Q)
+
+| # | Step | Expected | Result | Notes |
+|---|---|---|---|---|
+| QD1 | Create or migrate an account without changing discovery settings | Directory listing, public indexing, nearby presence, inbound requests, and local broadcast participation are all off | NOT IMPLEMENTED | No consent is inferred from an old directory record, connection, Trust Circle, or OS location permission. |
+| QD2 | Enable directory listing for the current account | A minimal public manifest is written to the owner's Pod and only that account appears in the derived index | NOT IMPLEMENTED | A second account cannot mutate this manifest or index record. |
+| QD3 | Disable directory listing | The public index removes the account promptly while private profile, wallet, relationships, and Pod data remain usable | NOT IMPLEMENTED | Rollback must not recreate the listing. |
+| QR1 | User A sends User B a relationship request | A sees outgoing pending; B sees incoming pending; neither is a directed audience recipient yet | NOT IMPLEMENTED | Activity is durable, deduplicated, and correlated by immutable ID. |
+| QR2 | User B accepts the request | Both users see accepted state; compatible `foaf:knows` projection appears without deleting unrelated graph data | NOT IMPLEMENTED | Accepted and unblocked state enables directed communication. |
+| QR3 | Repeat with reject, cancel, and disconnect | Each transition is idempotent and the UI converges after refresh/restart | NOT IMPLEMENTED | No fabricated reciprocal history. |
+| QS1 | User B blocks User A | A disappears from B's recommendations/actions and cannot reach B through LDN, compose, Waku, or relay fallback | NOT IMPLEMENTED | Block is private and overrides all transport state. |
+| QN1 | Grant OS location while nearby presence remains off | H3 location can be computed locally but no presence beacon or nearby subscription begins | NOT IMPLEMENTED | Location and presence consent are independent. |
+| QN2 | Enable nearby presence, reveal mutually, then revoke | Nearby peer appears without raw WebID; mutual reveal enables the shared profile/action flow; revoke stops publication/subscription and clears reveal state | NOT IMPLEMENTED | Nearby reveal does not create a directory listing or relationship. |
+| QC1 | Message an accepted contact from Directory, Profile, and Local | All entry points show one relationship/safety state and deliver through the authorized channel | NOT IMPLEMENTED | Unaccepted or blocked peers are rejected before send. |
+| QA1 | Inspect public index, telemetry, and evidence | No private interests, Trust Circles, blocks, H3 history, reveal history, message content, credentials, or tokens appear | NOT IMPLEMENTED | Security and privacy release gate. |
+
 ### Global feed
 
 | # | Step | Expected | Result | Notes |

@@ -3,6 +3,7 @@
 - [Home](Home)
 - [v0.2.0 Testnet Release](Release-0.2.0-Testnet)
 - [Architecture](Architecture)
+- [Consentful Discovery](Consentful-Discovery)
 - [Getting Started](Getting-Started)
 - Features
 - [Mobile App](Mobile-App)

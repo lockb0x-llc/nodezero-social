@@ -44,6 +44,16 @@ Optional until the Waku messaging cutover (validated when set):
   nwaku bootstrap peers; staging and production hosts must never mix)
 - NZ_WAKU_CLUSTER_ID (private Waku cluster id; default 0)
 
+Milestone Q discovery and communication resources must also be profile-scoped:
+
+- Public discovery manifests and derived indexes must never be shared between
+  `staging-testnet` and `production-mainnet`.
+- LDN inbox/outbox resources, relationship IDs, moderation records, replay ledgers,
+  and delivery receipts remain in the owner's profile-specific Pod namespace.
+- Waku content topics, bootstrap peers, relay endpoints, and nearby-presence
+  commitments must remain environment-scoped.
+- Consent and directory records do not migrate across profiles automatically.
+
 ## Identity provider defaults
 
 The Node Zero Community Server is the default identity provider in every
@@ -92,6 +102,10 @@ Optional but guarded:
 - Example parameter files must never be used for real deployments.
 - `staging-testnet` must not use `NZ_RELAY_URL=wss://staging.nodezero.social/relay` (or `https://.../relay`), because that path is served by the Static Web App shell and cannot terminate WebSocket signaling.
 - `staging-testnet` Waku bootstrap peers must target the staging Waku host (for example, `waku-staging.nodezero.social`); production-mainnet must never reference the staging Waku host and vice versa. Strict profiles require `/wss/` transports.
+- Staging public discovery and inbox delivery must not target production hosts or
+  forward a staging NodeZero bearer credential to any external origin.
+- Rollback must not republish an opted-out manifest or copy private relationship,
+  moderation, location, or communication data into another environment.
 
 ## CI/CD policy checkpoints
 

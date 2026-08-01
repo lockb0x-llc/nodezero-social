@@ -2,8 +2,11 @@
 
 **Decentralized · Private · Yours.**
 
-NodeZero Social is a decentralized social platform where users own every byte of their
-identity and content. It combines three open protocols into one coherent identity stack:
+NodeZero Social is a decentralized social platform built around portable,
+user-directed data and device-bound cryptographic identity. Users control their device
+Stellar key and authoritative social data in Solid Pods; the current Testnet operator
+hosts the Pod server, provisioner, Pod Access Proxy, discovery index, and relay. It
+combines three open protocols into one coherent identity stack:
 
 - **Solid Pods** — user-controlled Pod for profile, posts, and social graph, served by the Node Zero Community Server at `solid.nodezero.social` in staging.
 - **Stellar Soroban smart contracts** — on-chain identity anchor, per-user `Lockb0x`, and
@@ -166,7 +169,8 @@ enforces that staging and production values never mix. See
 | On-return fail-closed attestation check | ✅ Live |
 | Docustream RSS sources (add/toggle/delete + ingest) | ✅ Live — Pod-backed source registry and feed ingestion |
 | Community Directory tab (`/directory`) | ✅ Live — dedicated tab between Feed and Backpack with connect + Trust Circle actions |
-| Broadcast recipient guardrails | ✅ Live — audience recipients resolved centrally; directory-only trust-circle entries are not implicit recipients |
+| Consentful discovery and reciprocal relationships | 🔄 Milestone Q — approved architecture and implementation plan; current Directory remains a baseline operator-derived index and connections remain unilateral `foaf:knows` writes |
+| Broadcast recipient guardrails | ✅ Baseline — audience recipients resolved centrally; Milestone Q will require accepted and unblocked relationships for every directed audience |
 | Local peer messaging (P2P relay) | ✅ Live — staging relay healthy |
 | Feed / social graph (FOAF) | ✅ Live baseline — Pod-backed profile/social data and chronological feed surface |
 | Proof-of-Humanity (poh.circom + PoHVerifier) | ⚪ Contract deployed; not wired into onboarding yet |
@@ -185,6 +189,9 @@ enforces that staging and production values never mix. See
 - `v0.2.0-testnet` evidence: `docs/milestone-i-release-evidence-summary.md`
 - Release notes: `CHANGELOG.md`
 - Feature progress + upstream attribution: `docs/feature-implementation-attribution.md`
+- System purpose and capability state: `docs/system-description.md`
+- Consentful discovery decision: `docs/adrs/consentful-discovery-communication/ADR-001-consentful-discovery-and-communication.md`
+- Milestone Q implementation plan: `docs/consentful-pod-owner-discovery-and-communication-plan.md`
 
 Identity release gate note:
 - Staging deploy (`.github/workflows/staging-deploy.yml`) runs

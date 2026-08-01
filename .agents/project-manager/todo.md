@@ -94,3 +94,16 @@
 - [TODO] P5: Implement encrypted recovery bundle v2 plus v1 import and inactive key restoration. Owner: MOBILE_APP_AGENT.
 - [TODO] P6: Adopt the provisioner App Service into staged Bicep/slot deployment after no-op resource inventory and secret-continuity proof. Owner: AZURE_PLATFORM_AGENT.
 - [TODO] P7: Expand zero-retry browser/device E2E, rollback rehearsal, orphan reconciliation, and 24-hour observation. Owner: QA_RELEASE_AGENT + AUDIT_AGENT.
+
+## Milestone Q: Consentful discovery and communication (2026-07-31)
+- [DONE] Q0: Memorialize the approved system description, consent architecture ADR, implementation plan, architecture boundaries, agent instructions, PM board, and validation gates. Owners: PROJECT_MANAGER + DOCS_AGENT. Evidence: canonical docs created, agent layers synchronized, and `pnpm pm:dispatch:dry` passed.
+- [IN_PROGRESS] Q1A: Add versioned discovery, relationship, moderation, receipt, and replay contracts; Pod layout; managers; public Type Index registration; and fixtures. Owner: SOLID_DATA_AGENT. Depends on Q0. Evidence: pure v1 contracts, exports, transition matrix, focused test 13/13 PASS, and package type-check PASS; persistence managers remain.
+- [TODO] Q1B: Add WebID/LDN discovery and delivery adapters, session-bound Pod proxy enforcement, and credential-free SSRF-safe external fetch. Owner: SOLID_INTEGRATION_SPECIALIST. Depends on Q0 and shared Q1 contracts.
+- [TODO] Q1C: Publish executable security test vectors for inbox ACLs, external fetch, replay, sender verification, privacy, migration, and block precedence. Owner: AUDIT_AGENT. Depends on Q0.
+- [TODO] Q2: Implement reciprocal relationship lifecycle, replay ledger, legacy `foaf:knows` migration, moderation state, and compatibility projection. Owner: SOLID_DATA_AGENT. Depends on Q1A/Q1B.
+- [TODO] Q3A: Add durable derived-index infrastructure, default-off flags, privacy-safe telemetry, retained slots/revisions, and rollback assets. Owner: AZURE_PLATFORM_AGENT. Depends on Q1 contracts and P6.
+- [TODO] Q3B: Add user consent controls, selected public interests, explainable recommendations, and unified Directory/Profile/Local actions. Owner: MOBILE_APP_AGENT. Depends on Q2 and Q3A API contract.
+- [TODO] Q3C: Enforce consent and block policy in Presence, Waku, WebRTC, and relay paths; add abuse and lifecycle tests. Owner: P2P_RELAY_AGENT. Depends on Q1 contracts.
+- [TODO] Q4: Add consent policy validation, behavior-complete smoke, zero-retry two-account/browser/device coverage, deployment certification, rollback, and soak. Owner: QA_RELEASE_AGENT. Test design begins after Q0; final execution depends on Q1-Q3.
+- [TODO] Q5: Publish validated Wiki/status updates and a new Milestone Q release evidence summary. Owner: DOCS_AGENT. Depends on Q4 PASS and AUDIT_AGENT GO.
+- [TODO] Q6: Keep email social notifications disabled unless an independent email-channel consent design is approved. Owners: SOLID_DATA_AGENT + AZURE_PLATFORM_AGENT.

@@ -169,6 +169,110 @@ browser context because non-extractable WebCrypto keys cannot be serialized.
 
 ---
 
+## Discovery and communication consent model
+
+Milestone Q turns the existing Directory, social graph, Local Node, Waku, and
+compose primitives into one consentful social lifecycle. The durable decision is
+recorded in
+[ADR-001: Consentful Discovery and Communication](adrs/consentful-discovery-communication/ADR-001-consentful-discovery-and-communication.md),
+and execution is tracked in the
+[Milestone Q plan](consentful-pod-owner-discovery-and-communication-plan.md).
+
+### Independent capabilities
+
+The following capabilities are evaluated separately and default off when introduced:
+
+1. Public directory listing.
+2. Public profile indexing and selected public interests.
+3. Nearby presence publication.
+4. Per-peer nearby identity reveal.
+5. Receipt of relationship requests.
+6. Receipt of local broadcasts.
+7. Optional notification channels.
+
+OS location permission only makes an H3 cell available to the app. It does not grant
+nearby presence publication. Directory membership, recommendation results, Trust
+Circle membership, and unilateral `foaf:knows` state do not grant relationship
+acceptance, message delivery, or compose-audience eligibility.
+
+### Authority and projection flow
+
+```text
+Pod owner
+   |
+   | writes explicit public discovery manifest
+   v
+Solid Pod (authority) ---- WebID + public Type Index ----> discovery clients
+   |
+   | validated public fields, source revision, expiry
+   v
+Provisioner directory index (rebuildable projection)
+   |
+   | candidates + manifest provenance
+   v
+Client recommendation engine (local, deterministic, explainable)
+```
+
+The Pod remains authoritative for discovery consent. The operator index stores only
+validated public manifest fields and provenance needed for expiry and removal. An
+absent, invalid, expired, or opted-out manifest removes its public projection. The
+index is never relationship authority and never contains private interests, Trust
+Circles, blocks, H3 history, revealed-nearby history, or communication activity.
+
+### Relationship and delivery flow
+
+```text
+Requester Pod outbox
+   |
+   | ActivityStreams-shaped Follow over LDN
+   v
+Recipient WebID -> advertised inbox -> recipient Pod
+   |
+   | Accept | Reject | no response | local block
+   v
+Private relationship state in each participant's Pod
+   |
+   | accepted + not blocked
+   v
+Durable social delivery and optional Waku low-latency communication
+```
+
+The relationship state machine is:
+
+`none -> outgoing-pending | incoming-pending -> accepted | rejected | cancelled`
+
+An accepted relationship can later become disconnected. A local block overrides all
+states and is evaluated before directory ranking, profile actions, relationship
+delivery, compose recipient resolution, nearby reveal, Waku messages, and legacy
+WebRTC signaling. Accepted relationships are projected to `foaf:knows` for legacy
+compatibility; existing `foaf:knows` values migrate as `legacy-connected` without
+fabricated request or acceptance events.
+
+### Protocol scope
+
+NodeZero implements standards-compatible WebID discovery, Solid public Type Index
+registration, Linked Data Notifications inbox semantics, and ActivityStreams-shaped
+`Follow`, `Accept`, `Reject`, `Undo`, and `Block` payloads. This is not full
+ActivityPub federation. ActivityPub actor documents, WebFinger, shared inboxes,
+followers/following federation, global content federation, and general Fediverse
+authentication are not part of Milestone Q.
+
+### Transport separation
+
+- Solid and LDN are the durable plane for manifests, relationships, moderation,
+   inbox activities, receipts, replay state, and notification state.
+- Waku is the ephemeral plane for nearby presence, encrypted reveal, local broadcast,
+   and low-latency chat.
+- The WebRTC signaling relay remains a compatibility fallback until separately
+   retired.
+- The provisioner can validate, retry, and cache delivery but does not become the
+   authoritative social graph.
+- Browser-owned Pod operations continue through `/v1/pod-proxy/*`. External WebID
+   discovery and inbox delivery use a separate credential-free, SSRF-resistant server
+   path; NodeZero bearer credentials are never sent to external origins.
+
+---
+
 ## Trust boundary table
 
 | Component | Centralized / Decentralized | Can observe |
@@ -178,7 +282,11 @@ browser context because non-extractable WebCrypto keys cannot be serialized.
 | **Device wallet** | User-controlled | Holds `stellarSecretKey`; derives `identitySecret`; generates proof and encryption key; signs login challenges |
 | **Node Zero Community Server (CSS Pod server)** | Centralized (operator-run) | Pod content, DPoP-bound access tokens minted by the provisioner |
 | **Provisioner (Azure App Service)** | Centralized (operator-run) | CSS account creation payload, encrypted per-user client credentials, NodeZero session issuance, every proxied Pod request, `accountCommitmentHex`, `ciphertextHex`, Stellar deploy invocations |
-| **WebSocket relay** | Centralized (operator-run) | Signaling messages (offer/answer/ICE), not message content |
+| **Discovery manifest** | Pod-owner controlled | Public fields selected by the Pod owner when discovery is enabled |
+| **Community Directory** | Centralized derived index | Validated public manifest fields, source revision, consent time, expiry, and index health |
+| **Relationship and moderation records** | Pod-owner controlled | Hosted CSS and proxy infrastructure can observe stored records and requests |
+| **Waku network** | Decentralized transport with configured bootstrap infrastructure | Content topics and network metadata; signed payload content and encrypted DM/reveal bodies where supported |
+| **WebSocket relay** | Centralized fallback transport | Signaling messages (offer/answer/ICE), not WebRTC data-channel message content |
 | **On-chain NodeZeroIdentity** | Decentralized (on-chain) | Stellar public key → WebID mapping (public) |
 
 **On returning login the on-chain attestation check runs client-side.** The
@@ -241,6 +349,51 @@ cell at the same time (ephemeral signaling only; no message content).
 GPS). The relay does not log signaling sessions. A future mitigation is to run
 the relay as a community-operated node.
 
+### Discovery enumeration and stale consent
+
+**What an attacker can do:** scrape intentionally public directory entries, correlate
+public WebIDs and selected interests, retain a copy after opt-out, or exploit stale
+index state to continue surfacing an account.
+
+**Mitigation:** Discovery defaults off; the public manifest contains a strict allowlist
+of fields; the derived index stores source revisions and expiry; opt-out produces
+immediate removal and a tombstone; index APIs use pagination, cache validators, and
+rate limits. Public data cannot be made secret retroactively, so the UI must explain
+that public listing can be copied by third parties.
+
+### Unsolicited contact and relationship spoofing
+
+**What an attacker can do:** flood append-only inboxes, replay an activity, claim to be
+another WebID, submit actor/object mismatches, or use a directory or Trust Circle entry
+as an unauthorized recipient.
+
+**Mitigation:** Inbox requests have size, rate, and expiry limits; immutable activity
+IDs are recorded in a private replay ledger; sender and actor relationships are
+verified before state mutation; invalid activities are quarantined; directed compose
+audiences require accepted and unblocked relationships. A valid JSON-LD payload alone
+does not authenticate its sender.
+
+### External resource fetching
+
+**What an attacker can do:** use WebID or inbox URLs to trigger server-side requests to
+loopback, private, cloud-metadata, oversized, slow, redirected, or credential-capturing
+resources.
+
+**Mitigation:** External discovery and delivery use a credential-free fetch path with
+HTTPS-only URLs, redirect and DNS/IP validation, private-network denial, response-size
+and timeout limits, content-type allowlists, cache/backoff behavior, and secret-free
+errors. The authenticated Pod proxy is never generalized into an external fetcher.
+
+### Block bypass across transports
+
+**What an attacker can do:** continue appearing in recommendations, send through LDN,
+publish to a Waku topic, or use legacy relay signaling after being blocked in one UI.
+
+**Mitigation:** Private Pod moderation state is loaded into a shared safety policy.
+Block evaluation precedes candidate rendering, relationship and compose actions, LDN
+processing, nearby reveal, Waku subscription/message handling, and relay signaling.
+Rollback preserves private safety state.
+
 ### Soroban contract bugs
 
 **What an attacker can do:** exploit a contract bug to overwrite state roots or
@@ -257,7 +410,7 @@ factory re-initialisation (explicit, not automatic).
 
 | Key | Stored in | Used by | Rotation |
 |---|---|---|---|
-| **User Stellar keypair** | `localStorage` / `expo-secure-store` | User's device only (login signatures, ZK derivation) | Destroy + re-provision |
+| **User Stellar keypair** | Encrypted profile-scoped IndexedDB with a non-extractable AES-GCM wrapping key (web) / `expo-secure-store` (native) | User's device only (login signatures, ZK derivation) | Recovery import or explicit destroy + re-provision |
 | **Deployer keypair** | Azure Key Vault (`stellar-deployer-secret`) | Provisioner (read at startup via managed identity) | `setup-treasury-deployer.sh` |
 | **Treasury keypair** | Azure Key Vault (`stellar-treasury-secret`) | Provisioner (top-up only) | `setup-treasury-deployer.sh` |
 | **CSS client credentials (per user)** | Azure Table Storage, AES-256-GCM encrypted (`JSS_CREDENTIALS_ENC_KEY`) | Pod Access Proxy + session issuance | `POST /v1/auth/revoke` + re-provision |

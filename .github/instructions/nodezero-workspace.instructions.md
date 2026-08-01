@@ -46,6 +46,33 @@ Build and maintain NodeZero Social: a decentralized social app that integrates S
 - In CI, `pnpm qa:smoke:auth` remains the blocking identity gate; it runs
 	without retries because session issuance has no redirect-timing window.
 
+## Milestone Q discovery and communication contract
+
+Follow the canonical decision and execution documents:
+- `docs/system-description.md`
+- `docs/adrs/consentful-discovery-communication/ADR-001-consentful-discovery-and-communication.md`
+- `docs/consentful-pod-owner-discovery-and-communication-plan.md`
+
+Hard rules:
+- Pod records are authoritative; operator indexes are derived and rebuildable.
+- Discovery listing, public indexing, nearby presence, identity reveal, contact
+	requests, broadcasts, and notification channels remain independent and
+	default off when introduced.
+- Directory, recommendation, location, Trust Circle, and unilateral
+	`foaf:knows` state do not grant directed communication.
+- Accepted and unblocked relationship state is required for directed audiences;
+	block policy applies before every Solid, LDN, Waku, WebRTC, relay, compose,
+	and rendering path.
+- Never index private interests, Trust Circles, blocks, location history,
+	reveal history, or communication activity.
+- Implement standards-compatible WebID, Type Index, LDN, ActivityStreams
+	relationship, and FOAF projection boundaries without claiming full
+	ActivityPub federation.
+- External discovery/delivery is credential-free and SSRF-resistant. Never
+	forward NodeZero bearer credentials outside the authenticated user's Pod
+	proxy boundary.
+- Legacy `foaf:knows` migrates as compatibility state only. Never infer consent.
+
 Keep edits constrained to the relevant package unless cross-package changes are explicitly required.
 
 ## Non-negotiable environment rules
@@ -126,6 +153,16 @@ For staging readiness or release work, additionally run:
 - `pnpm qa:smoke`
 - `pnpm qa:smoke:auth` (blocking onboarding/authentication E2E gate — identity only)
 - Manual checks from `docs/staging-uat-checklist.md` (document PASS/FAIL)
+
+For Milestone Q changes, additionally run the focused package checks for every
+touched social/transport package and, once implemented:
+- `pnpm policy:validate-consentful-discovery`
+- `pnpm qa:smoke:consentful-discovery`
+- zero-retry two-account browser journeys
+
+Do not mark Milestone Q delivered until the latest deployment succeeds with
+matching provenance, opt-out/block/rollback cases pass, and QA_RELEASE_AGENT and
+AUDIT_AGENT both issue GO.
 
 Keep concerns separated: `qa:smoke:auth` gates identity (Pod/WebID creation,
 lockb0x anchoring, ZK attestation, inline session issuance, returning one-tap

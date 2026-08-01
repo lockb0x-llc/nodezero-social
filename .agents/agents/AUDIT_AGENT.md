@@ -17,6 +17,12 @@
 3. **Internal Session and Pod Binding Monitoring:**
    - Ensure V3 onboarding binds the hashed Pod claim and proof material to the lockb0x without sending a WebID, session token, or Stellar secret to the browser.
    - Investigate fail-closed states such as RPC propagation lag or a missing child instance after a factory creation event.
+4. **Consentful Discovery and Communication:**
+    - Audit public field minimization, append-only inbox ACLs, external-fetch SSRF
+       controls, replay protection, sender verification, migration, block precedence,
+       H3/WebID linkability, opt-out latency, and rollback preservation.
+    - Treat external bearer leakage, inferred consent, private-field indexing,
+       public-read inboxes, actor spoofing, or block bypass as release-stop defects.
 
 ## **Standard Operating Procedures (SOP)**
 

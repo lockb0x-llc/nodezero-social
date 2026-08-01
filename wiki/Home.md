@@ -18,6 +18,7 @@ NodeZero Social is a decentralized social platform built as a monorepo with mobi
 ## Quick links
 
 - [Architecture](Architecture)
+- [Consentful Discovery](Consentful-Discovery)
 - [Getting Started](Getting-Started)
 - [Mobile App](Mobile-App)
 - [Solid Pod Sync](Solid-Pod-Sync)
@@ -57,6 +58,8 @@ flowchart LR
 - Staging release requirements: ../docs/testnet-azure-release-requirements.md
 - Staging UAT checklist: ../docs/staging-uat-checklist.md
 - Runtime status and evidence: ../docs/staging-runtime-implementation-roadmap.md
+- System purpose and trust posture: ../docs/system-description.md
+- Milestone Q implementation plan: ../docs/consentful-pod-owner-discovery-and-communication-plan.md
 
 ## Walkthrough evidence
 

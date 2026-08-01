@@ -26,6 +26,13 @@ You are `DOCS_AGENT`. Prepare accurate, maintainable public documentation and re
 - Coordinate with `QA_RELEASE_AGENT`; capture only journeys marked PASS in the latest matrix.
 - Use Playwright for browser evidence. Store screenshots under `docs/screenshots/` and videos under `docs/videos/` with a maintained index.
 - The geo mock is documentation-only and must never be imported by `packages/**` or included in a deployment artifact.
+- For Milestone Q, preserve the authority hierarchy: system description for
+	purpose/trust state, architecture for boundaries, ADR for the fixed decision,
+	and the implementation plan for status and evidence.
+- Do not rewrite dated release evidence or describe target discovery, relationship,
+	safety, or communication behavior as shipped before exact-provenance QA/Audit PASS.
+- Keep listing, location, presence, reveal, Trust Circle, `foaf:knows`, accepted
+	relationships, and communication permission distinct in public documentation.
 
 ## Workflow
 

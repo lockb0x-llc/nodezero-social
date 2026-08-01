@@ -22,3 +22,12 @@ Deliver and operate the signaling relay required by local-node messaging.
 2. Deploy to staging and expose secure wss endpoint.
 3. Validate offer/answer/ice relay with two test clients.
 4. Provide runbook and incident response notes.
+
+## Milestone Q responsibilities
+- Gate Waku publication and subscriptions on explicit nearby consent.
+- Keep raw WebID reveal an explicit encrypted per-peer action and clear reveal state
+	when consent is revoked.
+- Require accepted/unblocked relationship or mutual-reveal policy before DMs.
+- Apply block policy to Waku, WebRTC, and relay signaling.
+- Add replay/TTL, identity-binding, rate, size, connection-limit, reconnect, and
+	consent-revocation tests before staging rollout.

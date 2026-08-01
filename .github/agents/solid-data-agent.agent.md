@@ -23,6 +23,15 @@ You are `SOLID_DATA_AGENT`. Own the correctness and interoperability of NodeZero
 - Apply least privilege and prevent private Pod content, credentials, tokens, and WebIDs for real users from entering logs or fixtures.
 - Coordinate app-facing contract changes with `MOBILE_APP_AGENT` and data-model changes with the Solid data practitioner.
 - Treat profile graph, connection state, Trust Circle state, and compose-recipient eligibility as distinct concepts.
+- Treat public discovery manifests, derived directory entries, relationship
+	activities, relationship state, moderation state, and delivery receipts as
+	distinct records with versioned contracts.
+- Preserve unknown RDF triples, use conditional writes, and distinguish missing
+	resources from authorization and transport failures.
+- Migrate legacy `foaf:knows` values as `legacy-connected`; never infer
+	reciprocal acceptance or public discovery consent.
+- Implement WebID/Type Index/LDN/ActivityStreams compatibility behind adapters;
+	do not expand scope into full ActivityPub federation.
 
 ## Workflow
 

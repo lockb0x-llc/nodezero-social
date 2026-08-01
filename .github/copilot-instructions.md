@@ -45,6 +45,38 @@ Primary packages and responsibilities:
   internal account chooser and retries `/v1/auth/stellar-token` with the
   selected `webId`.
 
+## Milestone Q: consentful discovery and communication
+
+The approved target architecture is defined by:
+- `docs/system-description.md`
+- `docs/adrs/consentful-discovery-communication/ADR-001-consentful-discovery-and-communication.md`
+- `docs/consentful-pod-owner-discovery-and-communication-plan.md`
+
+Preserve these invariants in all discovery, relationship, messaging, and
+recommendation work:
+- The Pod is authoritative for discovery consent, relationship state,
+  moderation state, inbox activities, and durable notification state.
+- The provisioner Community Directory is a rebuildable projection of explicit
+  public manifests, never relationship authority.
+- Public listing, public indexing, nearby presence, nearby identity reveal,
+  inbound contact requests, local broadcast participation, and notification
+  channels are independent choices and default off when introduced.
+- Directory membership, recommendations, OS location permission, Trust Circle
+  membership, and unilateral `foaf:knows` state never grant communication or
+  recipient eligibility.
+- Directed audiences require accepted and unblocked relationship state. A local
+  block overrides Directory, Profile, compose, LDN, Waku, and relay behavior.
+- Never index private interests, Trust Circles, blocks, H3/location history,
+  revealed-nearby identity history, or communication activity.
+- Use WebID, Solid Type Indexes, LDN, ActivityStreams relationship payloads,
+  and `foaf:knows` compatibility projection. Do not describe this as full
+  ActivityPub or AT Protocol adoption.
+- External WebID discovery and inbox delivery must use a credential-free,
+  SSRF-resistant server path. Never broaden the authenticated Pod proxy or send
+  NodeZero bearer credentials to external origins.
+- Existing `foaf:knows` values migrate as `legacy-connected`; never fabricate
+  historical request/accept events or infer public consent from legacy data.
+
 ## Mandatory policy constraints
 Preserve environment isolation at all times:
 - Allowed profiles: `local`, `staging-testnet`, `production-mainnet`.
@@ -131,6 +163,12 @@ Staging gate checks (when relevant):
 
 Application-feature proofs (`pnpm qa:smoke:docustream-pane`, `qa:smoke:mashlib-*`)
 are NOT part of the identity gate; run them separately for feature work.
+
+Milestone Q adds a separate `qa:smoke:consentful-discovery` application gate
+after it is implemented. Keep it separate from `qa:smoke:auth`, run release
+browser journeys with zero retries, and require exact deployed provenance,
+rollback evidence, and QA/Audit GO before enabling discovery or communication
+flags beyond the approved Testnet cohort.
 
 Package-focused checks are acceptable for scoped changes (for example `pnpm --filter <pkg> type-check`) when full-suite execution is not required.
 

@@ -24,3 +24,13 @@ Certify staging quality and enforce release gates.
 3. Validate staging domain routing and TLS.
 4. Post journey pass/fail matrix to inbox as a handoff signal to DOCS_AGENT.
 5. Approve or block release with explicit rationale.
+
+## Milestone Q responsibilities
+- Design and execute zero-retry two-account journeys for defaults off, own opt-in,
+  cross-user denial, immediate opt-out, relationship transitions, block precedence,
+  location without presence, mutual reveal, DM authorization, and recipients.
+- Keep `qa:smoke:consentful-discovery` separate from `qa:smoke:auth`.
+- Verify no private interests, Trust Circles, blocks, H3/reveal history, messages,
+  credentials, or tokens enter public indexes, telemetry, or evidence.
+- Require exact deployed provenance, physical-device evidence, N-1 rollback,
+  forward restoration, and a 24-hour sanitized soak before GO.
