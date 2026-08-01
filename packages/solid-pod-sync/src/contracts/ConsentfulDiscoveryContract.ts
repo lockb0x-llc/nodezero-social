@@ -115,6 +115,18 @@ export interface ProcessedActivityRecord {
   expiresAt: string
 }
 
+const DISCOVERY_MANIFEST_FIELDS = new Set([
+  'version',
+  'webId',
+  'publishedAt',
+  'expiresAt',
+  'displayName',
+  'avatarUrl',
+  'publicInterests',
+  'capabilities',
+  'inboxUrl',
+])
+
 const RELATIONSHIP_TRANSITIONS: Readonly<Record<RelationshipState, readonly RelationshipState[]>> = {
   none: ['outgoing-pending', 'incoming-pending', 'legacy-connected'],
   'outgoing-pending': ['accepted', 'rejected', 'cancelled'],
@@ -190,6 +202,11 @@ export function assertValidDiscoveryConsent(consent: DiscoveryConsent): void {
 
 export function validateDiscoveryManifest(manifest: DiscoveryManifest): ConsentContractValidationIssue[] {
   const issues: ConsentContractValidationIssue[] = []
+  for (const field of Object.keys(manifest)) {
+    if (!DISCOVERY_MANIFEST_FIELDS.has(field)) {
+      issues.push({ field, message: `${field} is not a public discovery field` })
+    }
+  }
   if (manifest.version !== 1) issues.push({ field: 'version', message: 'version must be 1' })
   if (!isWebId(manifest.webId)) issues.push({ field: 'webId', message: 'webId must be an https WebID with a fragment' })
   if (!isIsoDate(manifest.publishedAt)) issues.push({ field: 'publishedAt', message: 'publishedAt must be an ISO-compatible timestamp' })

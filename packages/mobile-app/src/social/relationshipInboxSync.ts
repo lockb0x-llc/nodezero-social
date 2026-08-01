@@ -32,6 +32,7 @@ export interface SyncRelationshipInboxResult {
   scanned: number
   processed: number
   duplicates: number
+  inProgress: number
   quarantined: number
   readFailures: number
   incomingRequests: RelationshipRecord[]
@@ -57,6 +58,7 @@ export async function syncRelationshipInbox(
   const resourceUrls = await input.managers.relationshipInboxReader.listResourceUrls(input.podRoot)
   let processed = 0
   let duplicates = 0
+  let inProgress = 0
   let quarantined = 0
   let readFailures = 0
 
@@ -75,6 +77,10 @@ export async function syncRelationshipInbox(
       })
       if (result.status === 'processed') processed += 1
       else if (result.status === 'duplicate') duplicates += 1
+      else if (result.status === 'in-progress') {
+        inProgress += 1
+        continue
+      }
       else quarantined += 1
       await input.managers.relationshipInboxReader.removeResource(input.podRoot, sourceUrl)
     } catch {
@@ -88,6 +94,7 @@ export async function syncRelationshipInbox(
     scanned: resourceUrls.length,
     processed,
     duplicates,
+    inProgress,
     quarantined,
     readFailures,
     incomingRequests: relationships.filter((record) => record.state === 'incoming-pending'),
@@ -100,6 +107,7 @@ function emptyResult(enabled: boolean): SyncRelationshipInboxResult {
     scanned: 0,
     processed: 0,
     duplicates: 0,
+    inProgress: 0,
     quarantined: 0,
     readFailures: 0,
     incomingRequests: [],

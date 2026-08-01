@@ -362,7 +362,7 @@ export async function resolvePublicAddresses(
 }
 
 export function isBlockedAddress(address: string): boolean {
-  const normalized = address.trim().toLowerCase()
+  const normalized = address.trim().toLowerCase().replace(/^\[|\]$/g, '')
   const mappedIpv4 = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(normalized)?.[1]
   if (mappedIpv4) return isBlockedAddress(mappedIpv4)
 
@@ -379,14 +379,79 @@ export function isBlockedAddress(address: string): boolean {
   }
 
   if (version === 6) {
+    const hextets = parseIpv6Hextets(normalized)
+    if (
+      hextets &&
+      (hextets.every((part) => part === 0) ||
+        (hextets.slice(0, 7).every((part) => part === 0) && hextets[7] === 1))
+    ) return true
+    const mappedAddress = extractMappedIpv4(normalized)
+    if (mappedAddress) return isBlockedAddress(mappedAddress)
+    const embeddedIpv4 = hextets ? extractEmbeddedIpv4(hextets) : null
+    if (embeddedIpv4 && isBlockedAddress(embeddedIpv4)) return true
     if (normalized === '::' || normalized === '::1') return true
     if (normalized.startsWith('fc') || normalized.startsWith('fd')) return true
     if (/^fe[89ab]/.test(normalized)) return true
+    if (hextets && (hextets[0] & 0xffc0) === 0xfec0) return true
+    if (hextets && hextets[0] === 0x64 && hextets[1] === 0xff9b && hextets[2] === 1) return true
     if (normalized.startsWith('ff')) return true
     return false
   }
 
   return false
+}
+
+function extractEmbeddedIpv4(hextets: number[]): string | null {
+  const fromWords = (high: number, low: number): string =>
+    `${high >>> 8}.${high & 0xff}.${low >>> 8}.${low & 0xff}`
+  if (hextets.slice(0, 6).every((part) => part === 0)) {
+    return fromWords(hextets[6] ?? 0, hextets[7] ?? 0)
+  }
+  if (
+    hextets[0] === 0x64 &&
+    hextets[1] === 0xff9b &&
+    hextets.slice(2, 6).every((part) => part === 0)
+  ) {
+    return fromWords(hextets[6] ?? 0, hextets[7] ?? 0)
+  }
+  if (hextets[0] === 0x2002) {
+    return fromWords(hextets[1] ?? 0, hextets[2] ?? 0)
+  }
+  if (hextets[0] === 0x2001 && hextets[1] === 0) {
+    return fromWords((hextets[6] ?? 0) ^ 0xffff, (hextets[7] ?? 0) ^ 0xffff)
+  }
+  return null
+}
+
+function extractMappedIpv4(address: string): string | null {
+  const hextets = parseIpv6Hextets(address)
+  if (
+    !hextets ||
+    hextets.slice(0, 5).some((part) => part !== 0) ||
+    hextets[5] !== 0xffff
+  ) return null
+  const high = hextets[6] ?? 0
+  const low = hextets[7] ?? 0
+  return `${high >>> 8}.${high & 0xff}.${low >>> 8}.${low & 0xff}`
+}
+
+function parseIpv6Hextets(address: string): number[] | null {
+  const halves = address.split('::')
+  if (halves.length > 2) return null
+  const left = halves[0] ? halves[0].split(':') : []
+  const right = halves.length === 2 && halves[1] ? halves[1].split(':') : []
+  const missing = 8 - left.length - right.length
+  if (missing < 0 || (halves.length === 1 && missing !== 0)) return null
+  const hextets = [
+    ...left,
+    ...Array.from({ length: halves.length === 2 ? missing : 0 }, () => '0'),
+    ...right,
+  ].map((part) => Number.parseInt(part || '0', 16))
+  if (
+    hextets.length !== 8 ||
+    hextets.some((part) => !Number.isInteger(part) || part < 0 || part > 0xffff)
+  ) return null
+  return hextets
 }
 
 async function requestPinnedHttps(

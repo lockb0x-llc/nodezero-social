@@ -37,6 +37,7 @@ export interface RelationshipDeliveryOptions {
   postActivity?: typeof postPublicResource
   postOptions?: PublicResourceDeliveryOptions
   assertionManager?: Pick<RelationshipDeliveryAssertionManager, 'issue'>
+  isRecipientBlocked?: (claims: SessionClaims, recipientWebId: string) => Promise<boolean>
 }
 
 export class RelationshipDeliveryError extends Error {
@@ -64,6 +65,13 @@ export async function deliverRelationshipActivity(
       'actor_mismatch'
     )
   }
+  if (!isActivityIdOwnedBySessionPod(activity.id, claims.pod)) {
+    throw new RelationshipDeliveryError(
+      'Relationship activity ID must be a direct child of the authenticated Pod outbox.',
+      403,
+      'activity_id_scope_mismatch'
+    )
+  }
   if (activity.type === 'Block') {
     throw new RelationshipDeliveryError(
       'Block activities are private local moderation state and are not delivered.',
@@ -76,6 +84,13 @@ export async function deliverRelationshipActivity(
       'Follow activity object must match recipientWebId.',
       400,
       'recipient_mismatch'
+    )
+  }
+  if (options.isRecipientBlocked && await options.isRecipientBlocked(claims, recipientWebId)) {
+    throw new RelationshipDeliveryError(
+      'Relationship delivery is blocked by the authenticated owner policy.',
+      403,
+      'recipient_blocked'
     )
   }
 
@@ -115,6 +130,19 @@ export async function deliverRelationshipActivity(
   }
   if (response.location) result.location = response.location
   return result
+}
+
+function isActivityIdOwnedBySessionPod(activityId: string, podUrl: string): boolean {
+  try {
+    const activity = new URL(activityId)
+    const pod = new URL(podUrl.endsWith('/') ? podUrl : `${podUrl}/`)
+    const outboxPath = `${pod.pathname}social/outbox/`.replace(/\/+/g, '/')
+    if (activity.origin !== pod.origin || !activity.pathname.startsWith(outboxPath)) return false
+    const relativePath = activity.pathname.slice(outboxPath.length)
+    return relativePath.length > 0 && !relativePath.includes('/') && !activity.hash
+  } catch {
+    return false
+  }
 }
 
 async function discoverRecipient(

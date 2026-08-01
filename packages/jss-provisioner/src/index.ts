@@ -44,6 +44,8 @@ import {
   readRelationshipDeliveryAssertion,
   RelationshipDeliveryAssertionManager,
 } from './relationshipDeliveryAssertions.js'
+import { RelationshipRateLimiter } from './relationshipRateLimiter.js'
+import { isRelationshipRecipientBlocked } from './relationshipBlockPolicy.js'
 // Stellar StrKey base32 decode + Ed25519 verify using Web Crypto API
 const _B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
 function _b32Decode(s: string): Uint8Array {
@@ -149,9 +151,21 @@ const credentialStore = new CredentialStore()
 const provisioningStore = new ProvisioningStore(credentialStore)
 const sessions = new SessionTokenManager({ issuer: ISSUER })
 const relationshipDeliveryAssertions = new RelationshipDeliveryAssertionManager({ issuer: ISSUER })
+const relationshipDeliveryRateLimiter = new RelationshipRateLimiter({
+  maxRequests: Number(process.env.JSS_RELATIONSHIP_DELIVERY_RATE_LIMIT ?? 30),
+  windowMs: Number(process.env.JSS_RELATIONSHIP_DELIVERY_RATE_WINDOW_MS ?? 60_000),
+})
+const relationshipVerificationRateLimiter = new RelationshipRateLimiter({
+  maxRequests: Number(process.env.JSS_RELATIONSHIP_VERIFY_RATE_LIMIT ?? 120),
+  windowMs: Number(process.env.JSS_RELATIONSHIP_VERIFY_RATE_WINDOW_MS ?? 60_000),
+})
 const RELATIONSHIP_ASSERTIONS_READY =
   (process.env.NZ_ENV_PROFILE ?? 'local') === 'local' ||
   !relationshipDeliveryAssertions.usesEphemeralKey
+
+export interface RequestHandlerOverrides {
+  isRelationshipRecipientBlocked?: typeof isRelationshipRecipientBlocked
+}
 const knownSolidAccountEmails = new Set<string>()
 const notificationPublisher = createNotificationEventPublisherFromEnv()
 const DOCUSTREAM_RSS_FETCH_TIMEOUT_MS = Number(process.env.JSS_DOCUSTREAM_RSS_FETCH_TIMEOUT_MS ?? 12000)
@@ -778,7 +792,11 @@ async function issueVerifiedSession(input: {
   })
 }
 
-export async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
+export async function handleHttpRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+  overrides: RequestHandlerOverrides = {}
+): Promise<void> {
   const url = new URL(req.url ?? '/', 'http://localhost')
 
   if (req.method === 'OPTIONS') {
@@ -910,6 +928,14 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
       })
       return
     }
+    const deliveryLimit = relationshipDeliveryRateLimiter.consume(claims.sub)
+    if (!deliveryLimit.allowed) {
+      sendJson(req, res, 429, {
+        error: 'Relationship delivery rate limit exceeded.',
+        code: 'relationship_delivery_rate_limited',
+      }, { 'retry-after': String(deliveryLimit.retryAfterSeconds) })
+      return
+    }
 
     try {
       const body = await readBoundedJsonBody<{
@@ -926,7 +952,15 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
       const result = await deliverRelationshipActivity(claims, {
         recipientWebId: body.recipientWebId,
         activity: body.activity,
-      }, { assertionManager: relationshipDeliveryAssertions })
+      }, {
+        assertionManager: relationshipDeliveryAssertions,
+        isRecipientBlocked: (sessionClaims, recipientWebId) =>
+          (overrides.isRelationshipRecipientBlocked ?? isRelationshipRecipientBlocked)(
+            sessionClaims,
+            recipientWebId,
+            { cssBaseUrl: SOLID_CSS_BASE_URL, credentialStore }
+          ),
+      })
       sendJson(req, res, 200, result)
     } catch (error) {
       if (error instanceof RelationshipDeliveryError) {
@@ -958,6 +992,14 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
         error: 'A valid NodeZero session is required.',
         code: 'session_invalid',
       })
+      return
+    }
+    const verificationLimit = relationshipVerificationRateLimiter.consume(claims.sub)
+    if (!verificationLimit.allowed) {
+      sendJson(req, res, 429, {
+        error: 'Relationship verification rate limit exceeded.',
+        code: 'relationship_verification_rate_limited',
+      }, { 'retry-after': String(verificationLimit.retryAfterSeconds) })
       return
     }
     try {
@@ -2052,9 +2094,9 @@ export async function handleHttpRequest(req: IncomingMessage, res: ServerRespons
   sendJson(req, res, 404, { error: 'Not found' })
 }
 
-export function createRequestHandler() {
+export function createRequestHandler(overrides: RequestHandlerOverrides = {}) {
   return (req: IncomingMessage, res: ServerResponse): void => {
-    handleHttpRequest(req, res).catch((err) => {
+    handleHttpRequest(req, res, overrides).catch((err) => {
       const message = err instanceof Error ? err.message : 'Unhandled server error.'
       sendJson(req, res, 500, { error: message })
     })

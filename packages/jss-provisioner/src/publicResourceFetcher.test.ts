@@ -33,14 +33,27 @@ void test('isBlockedAddress covers private, carrier-grade NAT, mapped IPv4, and 
     '192.168.1.1',
     '100.64.0.1',
     '::1',
+    '0:0:0:0:0:0:0:0',
+    '0:0:0:0:0:0:0:1',
+    '[0:0:0:0:0:0:0:1]',
+    'fec0::1',
+    '::127.0.0.1',
+    '64:ff9b::7f00:1',
+    '64:ff9b:1::1',
+    '2002:7f00:1::1',
     'fd00::1',
     'fe80::1',
     '::ffff:127.0.0.1',
+    '::ffff:7f00:1',
+    '::ffff:a9fe:a9fe',
+    '0:0:0:0:0:ffff:7f00:1',
+    '[::ffff:7f00:1]',
   ]) {
     assert.equal(isBlockedAddress(address), true, address)
   }
   assert.equal(isBlockedAddress('93.184.216.34'), false)
   assert.equal(isBlockedAddress('2606:2800:220:1:248:1893:25c8:1946'), false)
+  assert.throws(() => parsePublicUrl('https://[::ffff:7f00:1]/profile'))
 })
 
 void test('fetchPublicResource pins validated DNS addresses into each request', async () => {

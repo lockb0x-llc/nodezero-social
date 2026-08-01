@@ -1,6 +1,9 @@
 import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
-import { createProvisionerRelationshipSenderVerifier } from './relationshipSenderVerifier'
+import {
+  RelationshipSenderVerificationUnavailableError,
+  createProvisionerRelationshipSenderVerifier,
+} from './relationshipSenderVerifier'
 
 const payload = {
   '@context': 'https://www.w3.org/ns/activitystreams',
@@ -40,7 +43,7 @@ void test('returns the actor from recipient-authenticated provisioner verificati
   assert.deepEqual(JSON.parse(requestedBody), { activity: payload })
 })
 
-void test('fails closed on missing configuration, rejection, malformed response, or network error', async () => {
+void test('returns null only for deterministic assertion rejection', async () => {
   const activity = {
     version: 1 as const,
     id: 'https://alice.example/social/outbox/follow-bob',
@@ -49,21 +52,43 @@ void test('fails closed on missing configuration, rejection, malformed response,
     object: 'https://bob.example/profile/card#me',
     publishedAt: '2026-08-01T12:00:00.000Z',
   }
-  const missing = createProvisionerRelationshipSenderVerifier({
-    provisionerUrl: '',
-    authFetch: async () => { throw new Error('must not run') },
+  const rejected = createProvisionerRelationshipSenderVerifier({
+    provisionerUrl: 'https://api.nodezero.example',
+    authFetch: async () => new Response('{}', { status: 422 }),
   })
-  assert.equal(await missing.verifySender({ activity, payload }), null)
+  assert.equal(await rejected.verifySender({ activity, payload }), null)
+})
 
-  for (const authFetch of [
-    async (): Promise<Response> => new Response('{}', { status: 422 }),
+void test('marks configuration, network, throttling, server, and malformed responses retryable', async () => {
+  const activity = {
+    version: 1 as const,
+    id: 'https://alice.example/social/outbox/follow-bob',
+    type: 'Follow' as const,
+    actor: 'https://alice.example/profile/card#me',
+    object: 'https://bob.example/profile/card#me',
+    publishedAt: '2026-08-01T12:00:00.000Z',
+  }
+
+  const verifiers = [
+    createProvisionerRelationshipSenderVerifier({
+      provisionerUrl: '',
+      authFetch: async () => { throw new Error('must not run') },
+    }),
+    ...[
     async (): Promise<Response> => new Response('{}', { status: 200 }),
+    async (): Promise<Response> => new Response('{}', { status: 429 }),
+    async (): Promise<Response> => new Response('{}', { status: 503 }),
     async (): Promise<Response> => { throw new Error('offline') },
-  ]) {
-    const verifier = createProvisionerRelationshipSenderVerifier({
+    ].map((authFetch) => createProvisionerRelationshipSenderVerifier({
       provisionerUrl: 'https://api.nodezero.example',
       authFetch,
-    })
-    assert.equal(await verifier.verifySender({ activity, payload }), null)
+    })),
+  ]
+  for (const verifier of verifiers) {
+    await assert.rejects(
+      verifier.verifySender({ activity, payload }),
+      (error: unknown) =>
+        error instanceof RelationshipSenderVerificationUnavailableError && error.retryable
+    )
   }
 })

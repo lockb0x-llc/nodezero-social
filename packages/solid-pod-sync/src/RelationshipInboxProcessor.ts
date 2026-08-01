@@ -27,7 +27,7 @@ export interface ProcessRelationshipInboxInput {
 }
 
 export interface RelationshipInboxResult {
-  status: 'processed' | 'duplicate'
+  status: 'processed' | 'duplicate' | 'in-progress'
   activity: RelationshipActivity
   relationship: RelationshipRecord | null
 }
@@ -45,8 +45,9 @@ interface RelationshipStore {
 }
 
 interface ReplayStore {
-  hasProcessedActivity: ProcessedActivityManager['hasProcessedActivity']
-  recordProcessedActivity: ProcessedActivityManager['recordProcessedActivity']
+  reserveProcessedActivity: ProcessedActivityManager['reserveProcessedActivity']
+  commitProcessedActivity: ProcessedActivityManager['commitProcessedActivity']
+  releaseProcessedActivity: ProcessedActivityManager['releaseProcessedActivity']
 }
 
 interface ModerationStore {
@@ -56,6 +57,7 @@ interface ModerationStore {
 const DEFAULT_MAX_ACTIVITY_AGE_MS = 7 * 24 * 60 * 60_000
 const DEFAULT_MAX_FUTURE_SKEW_MS = 5 * 60_000
 const DEFAULT_REPLAY_RETENTION_MS = 30 * 24 * 60 * 60_000
+const REPLAY_RESERVATION_TTL_MS = 5 * 60_000
 
 export class RelationshipInboxProcessor {
   private readonly maxActivityAgeMs: number
@@ -86,19 +88,43 @@ export class RelationshipInboxProcessor {
       )
     }
 
-    if (await this.replay.hasProcessedActivity(input.podRoot, activity.id, now)) {
-      return { status: 'duplicate', activity, relationship: null }
-    }
-
-    const relationship = await this.applyActivity(input.podRoot, activity, now)
-    const replayRecord: ProcessedActivityRecord = {
+    const reservation: ProcessedActivityRecord = {
       version: 1,
       activityId: activity.id,
       actorWebId: activity.actor,
       processedAt: now.toISOString(),
-      expiresAt: new Date(now.getTime() + this.replayRetentionMs).toISOString(),
+      expiresAt: new Date(now.getTime() + REPLAY_RESERVATION_TTL_MS).toISOString(),
     }
-    await this.replay.recordProcessedActivity(input.podRoot, replayRecord)
+    const replayReservation = await this.replay.reserveProcessedActivity(
+      input.podRoot,
+      reservation,
+      now
+    )
+    if (replayReservation.status === 'actor-mismatch') {
+      throw new RelationshipInboxError(
+        'Activity ID is already bound to another verified actor.',
+        'replay_actor_mismatch'
+      )
+    }
+    if (replayReservation.status !== 'acquired') {
+      return { status: replayReservation.status, activity, relationship: null }
+    }
+
+    let relationship: RelationshipRecord
+    try {
+      relationship = await this.applyActivity(input.podRoot, activity, now)
+    } catch (error) {
+      await this.replay.releaseProcessedActivity(input.podRoot, replayReservation.lease)
+      throw error
+    }
+    await this.replay.commitProcessedActivity(
+      input.podRoot,
+      {
+        ...reservation,
+        expiresAt: new Date(now.getTime() + this.replayRetentionMs).toISOString(),
+      },
+      replayReservation.lease
+    )
     return { status: 'processed', activity, relationship }
   }
 
@@ -115,6 +141,10 @@ export class RelationshipInboxProcessor {
     }
 
     if (activity.type === 'Follow') {
+      const existing = await this.relationships.getRelationship(podRoot, activity.actor)
+      if (existing?.state === 'incoming-pending' && existing.activityId === activity.id) {
+        return existing
+      }
       return this.relationships.transitionRelationship(podRoot, {
         peerWebId: activity.actor,
         to: 'incoming-pending',
@@ -125,6 +155,8 @@ export class RelationshipInboxProcessor {
 
     if (activity.type === 'Accept' || activity.type === 'Reject') {
       const existing = await this.relationships.getRelationship(podRoot, activity.actor)
+      const completedState = activity.type === 'Accept' ? 'accepted' : 'rejected'
+      if (existing?.state === completedState && existing.activityId === activity.id) return existing
       if (!existing || existing.state !== 'outgoing-pending') {
         throw new RelationshipInboxError(
           `${activity.type} requires an outgoing-pending relationship.`,
@@ -146,6 +178,7 @@ export class RelationshipInboxProcessor {
     }
 
     const existing = await this.relationships.getRelationship(podRoot, activity.actor)
+    if (existing?.state === 'disconnected' && existing.activityId === activity.id) return existing
     if (!existing || existing.activityId !== activity.inReplyTo) {
       throw new RelationshipInboxError(
         'Undo does not reference the current relationship activity.',

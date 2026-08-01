@@ -1,8 +1,11 @@
 import { parseRelationshipActivity } from './adapters/ActivityStreamsRelationshipAdapter.js'
 import type { RelationshipActivity } from './contracts/ConsentfulDiscoveryContract.js'
+import {
+  RelationshipInboxError,
+  type RelationshipInboxResult,
+} from './RelationshipInboxProcessor.js'
 import type {
   RelationshipInboxProcessor,
-  RelationshipInboxResult,
 } from './RelationshipInboxProcessor.js'
 import type {
   QuarantinedRelationshipActivity,
@@ -26,7 +29,7 @@ export interface IngestRelationshipActivityInput {
 }
 
 export type RelationshipInboxIngestionResult =
-  | { status: 'processed' | 'duplicate'; result: RelationshipInboxResult }
+  | { status: 'processed' | 'duplicate' | 'in-progress'; result: RelationshipInboxResult }
   | { status: 'quarantined'; record: QuarantinedRelationshipActivity }
 
 interface InboxProcessor {
@@ -61,7 +64,8 @@ export class RelationshipInboxIngestion {
         payload: input.payload,
         ...(input.sourceUrl ? { sourceUrl: input.sourceUrl } : {}),
       })
-    } catch {
+    } catch (error) {
+      if (isRetryableVerificationError(error)) throw error
       return this.quarantine(
         input,
         receivedAt,
@@ -93,6 +97,7 @@ export class RelationshipInboxIngestion {
       })
       return { status: result.status, result }
     } catch (error) {
+      if (!(error instanceof RelationshipInboxError)) throw error
       const reasonCode = getErrorCode(error) ?? 'processing_rejected'
       return this.quarantine(input, receivedAt, payloadJson, reasonCode, activity)
     }
@@ -145,4 +150,12 @@ function getErrorCode(error: unknown): string | null {
   if (!error || typeof error !== 'object') return null
   const code = (error as { code?: unknown }).code
   return typeof code === 'string' && code.trim() ? code : null
+}
+
+function isRetryableVerificationError(error: unknown): boolean {
+  return Boolean(
+    error &&
+    typeof error === 'object' &&
+    (error as { retryable?: unknown }).retryable === true
+  )
 }

@@ -35,7 +35,7 @@ describe('DiscoveryManifestManager', () => {
     expect(body).toContain('relationship-requests')
   })
 
-  it('preserves unknown RDF triples when replacing owned manifest fields', async () => {
+  it('removes stale unknown predicates from the public manifest Thing', async () => {
     const existing = `
       @prefix nz: <https://nodezero.social/ns#> .
       @prefix ex: <https://example.test/ns#> .
@@ -63,8 +63,13 @@ describe('DiscoveryManifestManager', () => {
     await manager.writeManifest('https://alice.example/', manifest)
 
     const body = String(fetch.mock.calls[1]?.[1]?.body ?? '')
-    expect(body).not.toContain('https://example.test/ns#preserved')
-    expect(body).not.toContain('third-party')
+    const insertStart = body.indexOf('INSERT DATA')
+    const deleteClause = insertStart >= 0 ? body.slice(0, insertStart) : body
+    const insertClause = insertStart >= 0 ? body.slice(insertStart) : ''
+    expect(deleteClause).toContain('https://example.test/ns#preserved')
+    expect(deleteClause).toContain('third-party')
+    expect(insertClause).not.toContain('https://example.test/ns#preserved')
+    expect(insertClause).not.toContain('third-party')
     expect(body).toContain(manifest.publishedAt)
     expect(body).toContain('2026-07-01T00:00:00.000Z')
   })

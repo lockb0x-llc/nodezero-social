@@ -95,3 +95,44 @@ void test('verifies and processes bounded inbox resources when explicitly enable
   assert.equal(result.processed, 1)
   assert.equal(result.incomingRequests[0]?.peerWebId, alice)
 })
+
+void test('retains inbox resources when a transient read fails', async () => {
+  const input = setup(true)
+  let removeCalls = 0
+  input.managers.relationshipInboxReader.readResource = async () => {
+    throw new Error('temporary Pod read failure')
+  }
+  input.managers.relationshipInboxReader.removeResource = async () => {
+    removeCalls += 1
+  }
+
+  const result = await syncRelationshipInbox(input)
+
+  assert.equal(result.readFailures, 1)
+  assert.equal(removeCalls, 0)
+})
+
+void test('retains inbox resources while another processor owns the replay lease', async () => {
+  const input = setup(true)
+  let removeCalls = 0
+  input.managers.relationshipInboxProcessor.process = async () => ({
+    status: 'in-progress',
+    activity: {
+      version: 1,
+      id: payload.id,
+      type: 'Follow',
+      actor: alice,
+      object: bob,
+      publishedAt: payload.published,
+    },
+    relationship: null,
+  })
+  input.managers.relationshipInboxReader.removeResource = async () => {
+    removeCalls += 1
+  }
+
+  const result = await syncRelationshipInbox(input)
+
+  assert.equal(result.inProgress, 1)
+  assert.equal(removeCalls, 0)
+})

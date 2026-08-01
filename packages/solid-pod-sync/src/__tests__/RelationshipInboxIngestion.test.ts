@@ -1,4 +1,5 @@
 import { RelationshipInboxIngestion } from '../RelationshipInboxIngestion.js'
+import { RelationshipInboxError } from '../RelationshipInboxProcessor.js'
 import type { QuarantinedRelationshipActivity } from '../RelationshipQuarantineManager.js'
 
 const jestGlobal = import.meta.jest
@@ -84,7 +85,11 @@ describe('RelationshipInboxIngestion', () => {
       (_podRoot: string, record: QuarantinedRelationshipActivity) => Promise.resolve(record)
     )
     const ingestion = new RelationshipInboxIngestion(
-      { process: jestGlobal.fn().mockRejectedValue({ code: 'actor_blocked' }) },
+      {
+        process: jestGlobal.fn().mockRejectedValue(
+          new RelationshipInboxError('Actor is blocked.', 'actor_blocked')
+        ),
+      },
       { quarantine },
       { verifySender: jestGlobal.fn().mockResolvedValue(alice) }
     )
@@ -95,5 +100,35 @@ describe('RelationshipInboxIngestion', () => {
       status: 'quarantined',
       record: { reasonCode: 'actor_blocked' },
     })
+  })
+
+  it('propagates transient processor storage failures without quarantine', async () => {
+    const quarantine = jestGlobal.fn()
+    const storageError = new Error('temporary replay store failure')
+    const ingestion = new RelationshipInboxIngestion(
+      { process: jestGlobal.fn().mockRejectedValue(storageError) },
+      { quarantine },
+      { verifySender: jestGlobal.fn().mockResolvedValue(alice) }
+    )
+
+    await expect(ingestion.ingest({
+      podRoot: 'https://bob.example/', recipientWebId: bob, payload, receivedAt,
+    })).rejects.toBe(storageError)
+    expect(quarantine).not.toHaveBeenCalled()
+  })
+
+  it('propagates retryable sender verification failures without quarantine', async () => {
+    const quarantine = jestGlobal.fn()
+    const retryableError = Object.assign(new Error('temporarily unavailable'), { retryable: true })
+    const ingestion = new RelationshipInboxIngestion(
+      { process: jestGlobal.fn() },
+      { quarantine },
+      { verifySender: jestGlobal.fn().mockRejectedValue(retryableError) }
+    )
+
+    await expect(ingestion.ingest({
+      podRoot: 'https://bob.example/', recipientWebId: bob, payload, receivedAt,
+    })).rejects.toBe(retryableError)
+    expect(quarantine).not.toHaveBeenCalled()
   })
 })

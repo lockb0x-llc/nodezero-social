@@ -46,6 +46,7 @@
   {
     "id": "Q1C",
     "agent": "AUDIT_AGENT",
+    "status": "complete",
     "slug": "consent-security-test-vectors",
     "title": "Q1C - Define consent and delivery security test vectors",
     "objective": "Produce executable security and privacy acceptance vectors for append-only inboxes, external fetch, replay, sender verification, migration, indexing, H3 linkability, block precedence, and rollback.",
@@ -63,7 +64,8 @@
       "packages/solid-pod-sync/src/",
       "packages/waku-comms/src/"
     ],
-    "dependsOn": ["Q0"]
+    "dependsOn": ["Q0"],
+    "evidence": "policy:validate-consentful-discovery PASS: 22 vectors across 10 categories; Solid 168, mobile 90, provisioner 101; strict staging PWA artifact PASS; AUDIT_AGENT local GO; no deployment performed."
   },
   {
     "id": "Q4D",

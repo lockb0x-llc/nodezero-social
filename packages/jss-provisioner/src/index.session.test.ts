@@ -242,6 +242,7 @@ const INTERNAL_KEY = 'test-internal-key-0123456789abcdef'
 let mockCss: ReturnType<typeof createServer>
 let provisioner: ReturnType<typeof createServer>
 let baseUrl = ''
+let routeBlockedRecipient: string | null = null
 
 before(async () => {
   mockCss = createServer((req, res) => {
@@ -260,6 +261,10 @@ before(async () => {
   process.env.JSS_INTERNAL_API_KEY = INTERNAL_KEY
   process.env.JSS_SESSION_SIGNING_KEY = 'unit-test-session-signing-key-32b!'
   process.env.JSS_RELATIONSHIP_DELIVERY_SIGNING_KEY = 'unit-test-delivery-signing-key-32b!'
+  process.env.JSS_RELATIONSHIP_DELIVERY_RATE_LIMIT = '1'
+  process.env.JSS_RELATIONSHIP_DELIVERY_RATE_WINDOW_MS = '60000'
+  process.env.JSS_RELATIONSHIP_VERIFY_RATE_LIMIT = '2'
+  process.env.JSS_RELATIONSHIP_VERIFY_RATE_WINDOW_MS = '60000'
   process.env.JSS_BROWSER_SESSION_ENABLED = 'true'
   process.env.NZ_ENV_PROFILE = 'local'
   process.env.JSS_BUILD_COMMIT = 'test-build-commit'
@@ -284,7 +289,10 @@ before(async () => {
   delete process.env.JSS_CREDENTIALS_ENC_KEY
 
   const mod = await import('./index.js')
-  provisioner = createServer(mod.createRequestHandler())
+  provisioner = createServer(mod.createRequestHandler({
+    isRelationshipRecipientBlocked: (_claims, recipientWebId) =>
+      Promise.resolve(recipientWebId === routeBlockedRecipient),
+  }))
   provisioner.listen(0, '127.0.0.1')
   await once(provisioner, 'listening')
   const address = provisioner.address()
@@ -302,6 +310,7 @@ beforeEach(() => {
   cssState.transientPodBadRequests = 0
   cssState.loseNextPodCreateResponse = false
   cssState.loseNextAccountCreateResponse = false
+  routeBlockedRecipient = null
 })
 
 async function postJson(
@@ -787,6 +796,107 @@ void test('relationship assertion verification requires the recipient session an
   )
   assert.equal(tampered.status, 422)
   assert.equal(tampered.json.code, 'sender_unverified')
+})
+
+void test('relationship delivery route rate limits authenticated floods with Retry-After', async () => {
+  const sessionManager = new SessionTokenManager({
+    signingKey: process.env.JSS_SESSION_SIGNING_KEY,
+    issuer: 'https://staging.nodezero.social',
+  })
+  const session = sessionManager.issue({
+    webId: 'https://rate-limited.example/profile/card#me',
+    podUrl: 'https://rate-limited.example/',
+  })
+  const body = {
+    recipientWebId: 'https://bob.example/profile/card#me',
+    activity: {
+      '@context': 'https://www.w3.org/ns/activitystreams',
+      id: 'https://rate-limited.example/social/outbox/follow-bob',
+      type: 'Follow',
+      actor: 'https://rate-limited.example/profile/card#me',
+      object: 'https://bob.example/profile/card#me',
+      published: new Date().toISOString(),
+    },
+  }
+
+  await postJson(
+    '/v1/social/relationship-delivery',
+    body,
+    { authorization: `Bearer ${session.accessToken}` }
+  )
+  const limited = await fetch(`${baseUrl}/v1/social/relationship-delivery`, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${session.accessToken}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  })
+  assert.equal(limited.status, 429)
+  assert.equal(limited.headers.get('retry-after'), '60')
+  assert.equal(((await limited.json()) as { code?: string }).code, 'relationship_delivery_rate_limited')
+})
+
+void test('relationship delivery route enforces the authenticated owner Pod block before discovery', async () => {
+  const webId = 'https://blocked-route.example/profile/card#me'
+  const recipientWebId = 'https://bob.example/profile/card#me'
+  const session = new SessionTokenManager({
+    signingKey: process.env.JSS_SESSION_SIGNING_KEY,
+    issuer: 'https://staging.nodezero.social',
+  }).issue({
+    webId,
+    podUrl: 'https://blocked-route.example/',
+  })
+  routeBlockedRecipient = recipientWebId
+
+  const delivery = await postJson(
+    '/v1/social/relationship-delivery',
+    {
+      recipientWebId,
+      activity: {
+        '@context': 'https://www.w3.org/ns/activitystreams',
+        id: 'https://blocked-route.example/social/outbox/follow-bob',
+        type: 'Follow',
+        actor: webId,
+        object: recipientWebId,
+        published: new Date().toISOString(),
+      },
+    },
+    { authorization: `Bearer ${session.accessToken}` }
+  )
+  assert.equal(delivery.status, 403)
+  assert.equal(delivery.json.code, 'recipient_blocked')
+})
+
+void test('relationship verification route rate limits authenticated floods with Retry-After', async () => {
+  const session = new SessionTokenManager({
+    signingKey: process.env.JSS_SESSION_SIGNING_KEY,
+    issuer: 'https://staging.nodezero.social',
+  }).issue({
+    webId: 'https://verify-rate.example/profile/card#me',
+    podUrl: 'https://verify-rate.example/',
+  })
+  const request = (): Promise<Response> => fetch(
+    `${baseUrl}/v1/social/relationship-delivery/verify`,
+    {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${session.accessToken}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ activity: {} }),
+    }
+  )
+
+  assert.equal((await request()).status, 422)
+  assert.equal((await request()).status, 422)
+  const limited = await request()
+  assert.equal(limited.status, 429)
+  assert.equal(limited.headers.get('retry-after'), '60')
+  assert.equal(
+    ((await limited.json()) as { code?: string }).code,
+    'relationship_verification_rate_limited'
+  )
 })
 
 void test('proxy: rejects sibling Pod paths before forwarding to CSS', async () => {

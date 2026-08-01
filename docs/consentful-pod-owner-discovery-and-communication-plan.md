@@ -35,8 +35,8 @@ retaining immediate disconnect, mute, block, and discovery-revocation controls.
 | Q0 | Project Manager and Docs Agent | None | Canonical system description, ADR, architecture updates, agent instructions, PM board, and baseline evidence | Complete |
 | Q1A | Solid Data Agent | Q0 | Versioned contracts, Pod layout, discovery, relationship, moderation, Type Index, and compatibility managers | Complete: superseded package evidence is recorded under Q2 |
 | Q1B | Solid Integration Specialist | Q0, shared Q1 contracts | LDN and WebID discovery adapters, credential-free remote fetch, Pod proxy constraints, and inbox delivery | Complete: Solid 20 suites/114 tests and provisioner 88/88 tests pass |
-| Q1C | Audit Agent | Q0 | Threat model and security test vectors for ACL, SSRF, replay, privacy, migration, and block precedence | Not started |
-| Q2 | Solid Data Agent | Q1A, Q1B | Relationship lifecycle, replay ledger, legacy migration, moderation, and `foaf:knows` projection | Complete: Solid 155, mobile 87, and provisioner 92 tests pass; strict staging PWA artifact passes |
+| Q1C | Audit Agent | Q0 | Threat model and security test vectors for ACL, SSRF, replay, privacy, migration, and block precedence | Complete: 22 executable vectors across 10 categories pass; Audit Agent GO |
+| Q2 | Solid Data Agent | Q1A, Q1B | Relationship lifecycle, replay ledger, legacy migration, moderation, and `foaf:knows` projection | Complete: Solid 168, mobile 90, and provisioner 101 tests pass; strict staging PWA artifact passes |
 | Q3A | Azure Platform Agent | Q1 contracts, P6 | Durable derived index, feature flags, telemetry, slots/revisions, rollback assets, and staging deployment wiring | Not started |
 | Q3B | Mobile App Agent | Q2, Q3A API contract | Consent controls, public-interest selection, explainable recommendations, and unified Directory/Profile/Local actions | Not started |
 | Q3C | P2P Relay Agent | Q1 contracts | Presence, reveal, Waku, WebRTC, and relay consent/block enforcement plus abuse controls | Not started |
@@ -121,18 +121,23 @@ Implemented:
 
 Validation:
 
-- `@nodezero/solid-pod-sync`: 31 suites, 155 tests pass; build/type-check pass; lint
+- `@nodezero/solid-pod-sync`: 31 suites, 168 tests pass; build/type-check pass; lint
    has zero errors and one pre-existing warning in `NsfwDecision.test.ts`.
-- `@nodezero/mobile-app`: 87 tests pass; type-check and touched-file lint pass; strict
+- `@nodezero/mobile-app`: 90 tests pass; type-check and touched-file lint pass; strict
    `staging-testnet` web export and `pwa:validate:artifact` pass.
-- `@nodezero/jss-provisioner`: 92 tests pass; type-check and touched-file lint pass.
+- `@nodezero/jss-provisioner`: 101 tests pass; type-check and touched-file lint pass.
+- `pnpm policy:validate-consentful-discovery` passes 22 versioned vectors across
+   inbox ACL, inbox flood, rate limiting, SSRF, credential isolation, replay,
+   sender verification, privacy, migration, and block-precedence categories.
 - `pnpm policy:validate-env` and `git diff --check` pass.
 - Full mobile source lint remains blocked by unrelated pre-existing diagnostics in
    `app/index.tsx` and `src/contexts/WalletContext.tsx`.
 
-Q2 is complete locally. Q1C remains responsible for executable abuse, flood, and
-rate-limit vectors before external cohorts are enabled. No staging deployment or
-release certification was performed in Q2.
+Q1C and Q2 are complete locally with Audit Agent GO. The security gate includes
+actor-bound, ETag-fenced replay leases; adversarial chunked inbox cancellation;
+retry-safe transient failures; complete embedded-private IPv6 denial; server-side
+owner block policy; runtime public-manifest sanitation; and route-level rate limits.
+No staging deployment or release certification was performed in Q1C/Q2.
 
 ## Phase 3: Discovery And Recommendations
 

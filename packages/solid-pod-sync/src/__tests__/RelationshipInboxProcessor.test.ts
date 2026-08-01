@@ -22,7 +22,8 @@ function activity(type: 'Follow' | 'Accept' | 'Reject' | 'Undo' | 'Block', overr
 function harness(existing: RelationshipRecord | null = null, duplicate = false): {
   processor: RelationshipInboxProcessor
   transitionRelationship: jest.Mock
-  recordProcessedActivity: jest.Mock
+  commitProcessedActivity: jest.Mock
+  releaseProcessedActivity: jest.Mock
 } {
   const transitionRelationship = jestGlobal.fn().mockImplementation(
     (_podRoot: string, input: { peerWebId: string; to: RelationshipRecord['state']; updatedAt: string; activityId?: string }) =>
@@ -35,9 +36,11 @@ function harness(existing: RelationshipRecord | null = null, duplicate = false):
         ...(input.activityId ? { activityId: input.activityId } : {}),
       })
   )
-  const recordProcessedActivity = jestGlobal.fn().mockImplementation(
+  const commitProcessedActivity = jestGlobal.fn().mockImplementation(
     (_podRoot: string, record: ProcessedActivityRecord) => Promise.resolve(record)
   )
+  const releaseProcessedActivity = jestGlobal.fn().mockResolvedValue(undefined)
+  const lease = { activityId: followId, etag: '"lease-1"' }
   return {
     processor: new RelationshipInboxProcessor(
       {
@@ -45,19 +48,23 @@ function harness(existing: RelationshipRecord | null = null, duplicate = false):
         transitionRelationship,
       },
       {
-        hasProcessedActivity: jestGlobal.fn().mockResolvedValue(duplicate),
-        recordProcessedActivity,
+        reserveProcessedActivity: jestGlobal.fn().mockResolvedValue(
+          duplicate ? { status: 'duplicate' } : { status: 'acquired', lease }
+        ),
+        commitProcessedActivity,
+        releaseProcessedActivity,
       },
       { isBlocked: jestGlobal.fn().mockResolvedValue(false) }
     ),
     transitionRelationship,
-    recordProcessedActivity,
+    commitProcessedActivity,
+    releaseProcessedActivity,
   }
 }
 
 describe('RelationshipInboxProcessor', () => {
   it('processes a verified Follow into incoming-pending and records replay state', async () => {
-    const { processor, transitionRelationship, recordProcessedActivity } = harness()
+    const { processor, transitionRelationship, commitProcessedActivity } = harness()
     const result = await processor.process({
       podRoot: 'https://bob.example/',
       recipientWebId: bob,
@@ -72,14 +79,15 @@ describe('RelationshipInboxProcessor', () => {
       'https://bob.example/',
       expect.objectContaining({ peerWebId: alice, to: 'incoming-pending', activityId: followId })
     )
-    expect(recordProcessedActivity).toHaveBeenCalledWith(
+    expect(commitProcessedActivity).toHaveBeenCalledWith(
       'https://bob.example/',
-      expect.objectContaining({ activityId: followId, actorWebId: alice })
+      expect.objectContaining({ activityId: followId, actorWebId: alice }),
+      { activityId: followId, etag: '"lease-1"' }
     )
   })
 
   it('suppresses replay before relationship mutation', async () => {
-    const { processor, transitionRelationship, recordProcessedActivity } = harness(null, true)
+    const { processor, transitionRelationship, commitProcessedActivity } = harness(null, true)
     const result = await processor.process({
       podRoot: 'https://bob.example/',
       recipientWebId: bob,
@@ -89,7 +97,7 @@ describe('RelationshipInboxProcessor', () => {
     })
     expect(result.status).toBe('duplicate')
     expect(transitionRelationship).not.toHaveBeenCalled()
-    expect(recordProcessedActivity).not.toHaveBeenCalled()
+    expect(commitProcessedActivity).not.toHaveBeenCalled()
   })
 
   it('accepts or rejects only the matching outgoing Follow', async () => {
@@ -184,15 +192,16 @@ describe('RelationshipInboxProcessor', () => {
 
   it('enforces block precedence before replay checks or relationship mutation', async () => {
     const transitionRelationship = jestGlobal.fn()
-    const hasProcessedActivity = jestGlobal.fn()
+    const reserveProcessedActivity = jestGlobal.fn()
     const processor = new RelationshipInboxProcessor(
       {
         getRelationship: jestGlobal.fn(),
         transitionRelationship,
       },
       {
-        hasProcessedActivity,
-        recordProcessedActivity: jestGlobal.fn(),
+        reserveProcessedActivity,
+        commitProcessedActivity: jestGlobal.fn(),
+        releaseProcessedActivity: jestGlobal.fn(),
       },
       { isBlocked: jestGlobal.fn().mockResolvedValue(true) }
     )
@@ -204,8 +213,106 @@ describe('RelationshipInboxProcessor', () => {
       payload: activity('Follow'),
       now,
     })).rejects.toMatchObject({ code: 'actor_blocked' })
-    expect(hasProcessedActivity).not.toHaveBeenCalled()
+    expect(reserveProcessedActivity).not.toHaveBeenCalled()
     expect(transitionRelationship).not.toHaveBeenCalled()
+  })
+
+  it('quarantines cross-actor replay-key collisions before relationship mutation', async () => {
+    const transitionRelationship = jestGlobal.fn()
+    const processor = new RelationshipInboxProcessor(
+      { getRelationship: jestGlobal.fn(), transitionRelationship },
+      {
+        reserveProcessedActivity: jestGlobal.fn().mockResolvedValue({ status: 'actor-mismatch' }),
+        commitProcessedActivity: jestGlobal.fn(),
+        releaseProcessedActivity: jestGlobal.fn(),
+      },
+      { isBlocked: jestGlobal.fn().mockResolvedValue(false) }
+    )
+
+    await expect(processor.process({
+      podRoot: 'https://bob.example/',
+      recipientWebId: bob,
+      verifiedActorWebId: alice,
+      payload: activity('Follow', { id: followId }),
+      now,
+    })).rejects.toMatchObject({ code: 'replay_actor_mismatch' })
+    expect(transitionRelationship).not.toHaveBeenCalled()
+  })
+
+  it('allows only one concurrent processor to mutate the same activity', async () => {
+    let reserved = false
+    const transitionRelationship = jestGlobal.fn().mockResolvedValue({
+      version: 1,
+      ownerWebId: bob,
+      peerWebId: alice,
+      state: 'incoming-pending',
+      updatedAt: now.toISOString(),
+      activityId: followId,
+    })
+    const processor = new RelationshipInboxProcessor(
+      {
+        getRelationship: jestGlobal.fn(),
+        transitionRelationship,
+      },
+      {
+        reserveProcessedActivity: jestGlobal.fn().mockImplementation(() => {
+          if (reserved) return Promise.resolve({ status: 'in-progress' })
+          reserved = true
+          return Promise.resolve({
+            status: 'acquired',
+            lease: { activityId: followId, etag: '"lease-1"' },
+          })
+        }),
+        commitProcessedActivity: jestGlobal.fn().mockImplementation(
+          (_podRoot: string, record: ProcessedActivityRecord) => Promise.resolve(record)
+        ),
+        releaseProcessedActivity: jestGlobal.fn().mockResolvedValue(undefined),
+      },
+      { isBlocked: jestGlobal.fn().mockResolvedValue(false) }
+    )
+    const input = {
+      podRoot: 'https://bob.example/',
+      recipientWebId: bob,
+      verifiedActorWebId: alice,
+      payload: activity('Follow', { id: followId }),
+      now,
+    }
+
+    const [first, second] = await Promise.all([processor.process(input), processor.process(input)])
+
+    expect([first.status, second.status].sort()).toEqual(['in-progress', 'processed'])
+    expect(transitionRelationship).toHaveBeenCalledTimes(1)
+  })
+
+  it('releases a reservation only when relationship mutation fails', async () => {
+    const releaseProcessedActivity = jestGlobal.fn().mockResolvedValue(undefined)
+    const processor = new RelationshipInboxProcessor(
+      {
+        getRelationship: jestGlobal.fn(),
+        transitionRelationship: jestGlobal.fn().mockRejectedValue(new Error('mutation failed')),
+      },
+      {
+        reserveProcessedActivity: jestGlobal.fn().mockResolvedValue({
+          status: 'acquired',
+          lease: { activityId: followId, etag: '"lease-1"' },
+        }),
+        commitProcessedActivity: jestGlobal.fn(),
+        releaseProcessedActivity,
+      },
+      { isBlocked: jestGlobal.fn().mockResolvedValue(false) }
+    )
+
+    await expect(processor.process({
+      podRoot: 'https://bob.example/',
+      recipientWebId: bob,
+      verifiedActorWebId: alice,
+      payload: activity('Follow', { id: followId }),
+      now,
+    })).rejects.toThrow('mutation failed')
+    expect(releaseProcessedActivity).toHaveBeenCalledWith(
+      'https://bob.example/',
+      { activityId: followId, etag: '"lease-1"' }
+    )
   })
 
   it('exposes typed inbox errors', () => {

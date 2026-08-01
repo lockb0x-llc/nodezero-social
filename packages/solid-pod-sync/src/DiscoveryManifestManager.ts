@@ -48,19 +48,6 @@ const NZ_PUBLIC_INTEREST = 'https://nodezero.social/ns#publicInterest'
 const NZ_CAPABILITY = 'https://nodezero.social/ns#capability'
 const LDP_INBOX = 'http://www.w3.org/ns/ldp#inbox'
 
-const OWNED_PREDICATES = [
-  RDF_TYPE,
-  NZ_VERSION,
-  NZ_WEB_ID,
-  NZ_PUBLISHED_AT,
-  NZ_EXPIRES_AT,
-  NZ_DISPLAY_NAME,
-  NZ_AVATAR_URL,
-  NZ_PUBLIC_INTEREST,
-  NZ_CAPABILITY,
-  LDP_INBOX,
-] as const
-
 function manifestUrl(podRoot: string): string {
   return `${podRoot.replace(/\/$/, '')}/public/discovery/manifest`
 }
@@ -134,13 +121,7 @@ export class DiscoveryManifestManager {
       dataset = createSolidDataset()
     }
 
-    const existing = getThing(dataset, thingUrl) ?? createThing({ url: thingUrl })
-    let builder = buildThing(existing)
-    for (const predicate of OWNED_PREDICATES) {
-      builder = builder.removeAll(predicate)
-    }
-
-    builder = builder
+    let builder = buildThing(createThing({ url: thingUrl }))
       .setUrl(RDF_TYPE, NZ_DISCOVERY_MANIFEST)
       .setInteger(NZ_VERSION, manifest.version)
       .setUrl(NZ_WEB_ID, manifest.webId)

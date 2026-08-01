@@ -105,6 +105,37 @@ void test('rejects actor and Follow recipient mismatches before discovery', asyn
   assert.equal(discoveryCalls, 0)
 })
 
+void test('rejects an authenticated actor using another Pod owner activity ID', async () => {
+  let discoveryCalls = 0
+  const malloryClaims = {
+    ...claims,
+    sub: 'https://mallory.example/profile/card#me',
+    pod: 'https://mallory.example/',
+  }
+  await assert.rejects(
+    deliverRelationshipActivity(
+      malloryClaims,
+      {
+        recipientWebId: bob,
+        activity: {
+          ...follow,
+          actor: malloryClaims.sub,
+          id: activityId,
+        },
+      },
+      {
+        publicFetch: () => {
+          discoveryCalls += 1
+          return Promise.reject(new Error('must not run'))
+        },
+      }
+    ),
+    (error: unknown) =>
+      error instanceof RelationshipDeliveryError && error.code === 'activity_id_scope_mismatch'
+  )
+  assert.equal(discoveryCalls, 0)
+})
+
 void test('rejects private Block delivery before discovery', async () => {
   let discoveryCalls = 0
   await assert.rejects(
@@ -122,6 +153,25 @@ void test('rejects private Block delivery before discovery', async () => {
       }
     ),
     (error: unknown) => error instanceof RelationshipDeliveryError && error.code === 'block_not_delivered'
+  )
+  assert.equal(discoveryCalls, 0)
+})
+
+void test('rejects an owner-blocked recipient before external discovery', async () => {
+  let discoveryCalls = 0
+  await assert.rejects(
+    deliverRelationshipActivity(
+      claims,
+      { recipientWebId: bob, activity: follow },
+      {
+        isRecipientBlocked: () => Promise.resolve(true),
+        publicFetch: () => {
+          discoveryCalls += 1
+          return Promise.reject(new Error('must not run'))
+        },
+      }
+    ),
+    (error: unknown) => error instanceof RelationshipDeliveryError && error.code === 'recipient_blocked'
   )
   assert.equal(discoveryCalls, 0)
 })

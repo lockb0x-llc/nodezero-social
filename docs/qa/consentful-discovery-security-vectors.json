@@ -1,0 +1,183 @@
+{
+  "version": 1,
+  "milestone": "Q1C",
+  "environment": "local",
+  "vectors": [
+    {
+      "id": "Q1C-ACL-001",
+      "category": "inbox-acl",
+      "threat": "Anonymous inbox readers can enumerate relationship requests.",
+      "expected": "The public authorization grants Append only and never Read, Write, or Control.",
+      "testFile": "packages/solid-pod-sync/src/__tests__/PodLayoutManager.test.ts",
+      "testName": "grants public append without public read, write, or control for the social inbox"
+    },
+    {
+      "id": "Q1C-FLOOD-001",
+      "category": "inbox-flood",
+      "threat": "An attacker fills an append-only inbox beyond the bounded processing budget.",
+      "expected": "Container bytes are stream-bounded and each sync returns a drainable direct-child batch instead of denying all processing.",
+      "testFile": "packages/solid-pod-sync/src/__tests__/RelationshipInboxReader.test.ts",
+      "testName": "returns a bounded drainable batch when the inbox exceeds the processing limit"
+    },
+    {
+      "id": "Q1C-FLOOD-002",
+      "category": "inbox-flood",
+      "threat": "A transient Pod or verification failure causes a valid appended request to be silently discarded.",
+      "expected": "Failed reads remain in the inbox for retry and are not owner-deleted.",
+      "testFile": "packages/mobile-app/src/social/relationshipInboxSync.test.ts",
+      "testName": "retains inbox resources when a transient read fails"
+    },
+    {
+      "id": "Q1C-FLOOD-003",
+      "category": "inbox-flood",
+      "threat": "An oversized container representation prevents processing even when valid children appear early.",
+      "expected": "Incremental parsing survives split IRIs and dots in strings/comments, cancels after collecting a bounded batch, and does not read the oversized tail.",
+      "testFile": "packages/solid-pod-sync/src/__tests__/RelationshipInboxReader.test.ts",
+      "testName": "cancels an adversarially chunked oversized container after a drainable batch"
+    },
+    {
+      "id": "Q1C-FLOOD-004",
+      "category": "inbox-flood",
+      "threat": "A transient replay or relationship store outage quarantines and deletes a valid request.",
+      "expected": "Untyped processor storage failures propagate for retry without quarantine.",
+      "testFile": "packages/solid-pod-sync/src/__tests__/RelationshipInboxIngestion.test.ts",
+      "testName": "propagates transient processor storage failures without quarantine"
+    },
+    {
+      "id": "Q1C-RATE-001",
+      "category": "rate-limit",
+      "threat": "An authenticated identity floods relationship delivery or verification endpoints.",
+      "expected": "Per-identity request budgets reject excess traffic and reset only after the configured window.",
+      "testFile": "packages/jss-provisioner/src/index.session.test.ts",
+      "testName": "relationship delivery route rate limits authenticated floods with Retry-After"
+    },
+    {
+      "id": "Q1C-RATE-002",
+      "category": "rate-limit",
+      "threat": "An authenticated recipient floods delivery-assertion verification.",
+      "expected": "The verification endpoint enforces its own recipient-session budget and emits Retry-After.",
+      "testFile": "packages/jss-provisioner/src/index.session.test.ts",
+      "testName": "relationship verification route rate limits authenticated floods with Retry-After"
+    },
+    {
+      "id": "Q1C-SSRF-001",
+      "category": "external-fetch",
+      "threat": "External WebID discovery reaches loopback, private, link-local, or cloud metadata addresses.",
+      "expected": "Unsafe URLs and resolved addresses are rejected before an HTTP request is sent.",
+      "testFile": "packages/jss-provisioner/src/publicResourceFetcher.test.ts",
+      "testName": "parsePublicUrl rejects unsafe protocols, credentials, ports, and direct private hosts"
+    },
+    {
+      "id": "Q1C-SSRF-002",
+      "category": "external-fetch",
+      "threat": "A public redirect or DNS answer pivots delivery to a private address.",
+      "expected": "Every redirect target and resolved address is revalidated.",
+      "testFile": "packages/jss-provisioner/src/publicResourceFetcher.test.ts",
+      "testName": "fetchPublicResource revalidates redirect targets and blocks private DNS answers"
+    },
+    {
+      "id": "Q1C-CRED-001",
+      "category": "credential-boundary",
+      "threat": "NodeZero bearer or caller-controlled authorization headers leak to an external origin.",
+      "expected": "The public fetch contract exposes no authorization-header input and sends none.",
+      "testFile": "packages/jss-provisioner/src/publicResourceFetcher.test.ts",
+      "testName": "public request contract has no authorization or caller-controlled header input"
+    },
+    {
+      "id": "Q1C-REPLAY-001",
+      "category": "replay",
+      "threat": "The same relationship activity mutates state more than once.",
+      "expected": "A conditional per-activity reservation permits only one concurrent mutation across processors.",
+      "testFile": "packages/solid-pod-sync/src/__tests__/RelationshipInboxProcessor.test.ts",
+      "testName": "allows only one concurrent processor to mutate the same activity"
+    },
+    {
+      "id": "Q1C-REPLAY-002",
+      "category": "replay",
+      "threat": "A processor crashes after reserving an activity and permanently suppresses it.",
+      "expected": "Expired reservations are read, deleted, and conditionally recreated exactly once.",
+      "testFile": "packages/solid-pod-sync/src/__tests__/ProcessedActivityManager.test.ts",
+      "testName": "reclaims an expired replay reservation and retries conditional creation once"
+    },
+    {
+      "id": "Q1C-REPLAY-003",
+      "category": "replay",
+      "threat": "A stale reclaimer deletes another processor's newly acquired replay reservation.",
+      "expected": "Expired reservation deletion requires the stale ETag and fails closed when that ETag loses the race.",
+      "testFile": "packages/solid-pod-sync/src/__tests__/ProcessedActivityManager.test.ts",
+      "testName": "does not delete a replacement reservation when stale reclamation loses the ETag race"
+    },
+    {
+      "id": "Q1C-REPLAY-004",
+      "category": "replay",
+      "threat": "An authenticated attacker consumes another actor's known activity ID and suppresses the legitimate activity.",
+      "expected": "Outbound IDs are session-Pod scoped and receiver replay keys reject a different verified actor.",
+      "testFile": "packages/solid-pod-sync/src/__tests__/RelationshipInboxProcessor.test.ts",
+      "testName": "quarantines cross-actor replay-key collisions before relationship mutation"
+    },
+    {
+      "id": "Q1C-SENDER-001",
+      "category": "sender-verification",
+      "threat": "A syntactically valid activity claims another WebID as actor.",
+      "expected": "Only an exact verified actor reaches relationship processing; mismatches quarantine.",
+      "testFile": "packages/solid-pod-sync/src/__tests__/RelationshipInboxIngestion.test.ts",
+      "testName": "processes only when the verifier returns the exact claimed actor"
+    },
+    {
+      "id": "Q1C-SENDER-002",
+      "category": "sender-verification",
+      "threat": "A delivery assertion is replayed for another recipient or a modified payload.",
+      "expected": "Recipient binding, payload digest, expiry, issuer, and signing key are verified.",
+      "testFile": "packages/jss-provisioner/src/relationshipDeliveryAssertions.test.ts",
+      "testName": "rejects tampering, a different recipient, expiry, and a foreign key"
+    },
+    {
+      "id": "Q1C-PRIVACY-001",
+      "category": "privacy",
+      "threat": "Private relationship or moderation state is accidentally made publicly readable.",
+      "expected": "Consent, outbox, quarantine, relationship, moderation, replay, and receipt ACLs remain owner-only.",
+      "testFile": "packages/solid-pod-sync/src/__tests__/PodLayoutManager.test.ts",
+      "testName": "keeps outbox, quarantine, consent, relationship, and moderation containers owner-only"
+    },
+    {
+      "id": "Q1C-PRIVACY-002",
+      "category": "privacy",
+      "threat": "Private-looking fields enter or remain on the public discovery manifest Thing.",
+      "expected": "The object contract rejects undeclared fields and manifest writes delete stale unknown predicates from the canonical public Thing.",
+      "testFile": "packages/solid-pod-sync/src/__tests__/DiscoveryManifestManager.test.ts",
+      "testName": "removes stale unknown predicates from the public manifest Thing"
+    },
+    {
+      "id": "Q1C-MIGRATE-001",
+      "category": "migration",
+      "threat": "Legacy foaf:knows values are upgraded to accepted consent or duplicate relationship history.",
+      "expected": "Legacy links import idempotently as legacy-connected without fabricated activity IDs.",
+      "testFile": "packages/solid-pod-sync/src/__tests__/LegacyRelationshipMigrator.test.ts",
+      "testName": "runs the complete legacy migration twice without fabricating acceptance history"
+    },
+    {
+      "id": "Q1C-BLOCK-001",
+      "category": "block-precedence",
+      "threat": "A blocked actor reaches replay checks or relationship mutation.",
+      "expected": "Block evaluation occurs before replay lookup and relationship mutation.",
+      "testFile": "packages/solid-pod-sync/src/__tests__/RelationshipInboxProcessor.test.ts",
+      "testName": "enforces block precedence before replay checks or relationship mutation"
+    },
+    {
+      "id": "Q1C-BLOCK-002",
+      "category": "block-precedence",
+      "threat": "An accepted or Trust Circle peer remains eligible for directed compose after being blocked.",
+      "expected": "Block state removes the peer from every explicit compose audience.",
+      "testFile": "packages/mobile-app/src/social/composeRecipients.test.ts",
+      "testName": "block precedence removes accepted Trust Circle members"
+    },
+    {
+      "id": "Q1C-BLOCK-003",
+      "category": "block-precedence",
+      "threat": "A client bypasses compose filtering and directly calls the relationship delivery endpoint for a blocked recipient.",
+      "expected": "The server reads private owner moderation state and rejects before external discovery.",
+      "testFile": "packages/jss-provisioner/src/index.session.test.ts",
+      "testName": "relationship delivery route enforces the authenticated owner Pod block before discovery"
+    }
+  ]
+}

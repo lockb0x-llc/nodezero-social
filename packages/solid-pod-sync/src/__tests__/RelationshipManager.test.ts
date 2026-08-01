@@ -77,12 +77,21 @@ describe('RelationshipManager', () => {
   })
 
   it('imports legacy connections idempotently without fabricated activity IDs', async () => {
+    const existing = `
+      @prefix nz: <https://nodezero.social/ns#> .
+      <https://alice.example/social/relationships/index#peer-${encodeURIComponent(bob)}>
+        a nz:Relationship ; nz:version 1 ; nz:ownerWebId <${alice}> ;
+        nz:peerWebId <${bob}> ; nz:relationshipState "legacy-connected" ;
+        nz:updatedAt "${timestamp}" .
+    `
+    const datasetUrl = 'https://alice.example/social/relationships/index'
     const fetch = jestGlobal
       .fn()
       .mockResolvedValueOnce(new Response('', { status: 404 }))
       .mockResolvedValueOnce(new Response('', { status: 404 }))
       .mockResolvedValueOnce(new Response('', { status: 404 }))
       .mockResolvedValueOnce(new Response('', { status: 201 }))
+      .mockResolvedValueOnce(responseWithUrl(existing, datasetUrl))
     const manager = new RelationshipManager({ fetch })
 
     const imported = await manager.importLegacyConnection('https://alice.example/', bob, timestamp)
@@ -93,6 +102,9 @@ describe('RelationshipManager', () => {
       state: 'legacy-connected',
       updatedAt: timestamp,
     })
+    await expect(manager.importLegacyConnection('https://alice.example/', bob, timestamp))
+      .resolves.toEqual(imported)
+    expect(fetch).toHaveBeenCalledTimes(5)
   })
 
   it('lists only relationship Things in stable peer order', async () => {

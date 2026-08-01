@@ -4,6 +4,12 @@ Format:
 [YYYY-MM-DD HH:MM UTC] [FROM->TO] [P0|P1|P2] [OPEN|NEEDS-INFO|DONE]
 Context:
 
+[2026-08-01 23:59 UTC] [AUDIT_AGENT->PROJECT_MANAGER,QA_RELEASE_AGENT,SOLID_DATA_AGENT,SOLID_INTEGRATION_SPECIALIST,P2P_RELAY_AGENT] [P0] [DONE]
+Context: Milestone Q1C local security-vector gate is complete with independent AUDIT_AGENT GO. The gate covers append-only inbox ACLs, drainable flood handling, route rate limits, SSRF and embedded-private IPv6, external credential isolation, actor-bound ETag-fenced replay, sender assertions, runtime public-manifest sanitation, two-pass legacy migration, and block precedence. Release-stop findings discovered during audit were repaired and re-audited.
+Request: Treat `pnpm policy:validate-consentful-discovery` as a required Q3/Q4 pre-merge gate. Preserve `qa:smoke:auth` as identity-only. Do not treat this local GO as deployment or release certification; Q3 derived-index/transport work and Q4 zero-retry staging, rollback, scale-out rate-limit, real CSS ACL, and soak evidence remain required.
+Evidence: `docs/qa/consentful-discovery-security-vectors.json`; `scripts/policy/validate-consentful-discovery.mjs`; Solid 168/168; mobile 90/90; provisioner 101/101; strict staging-profile PWA build and artifact validation PASS; environment policy and diff check PASS; no deployment performed.
+Due: Q3 implementation start.
+
 [2026-07-27 22:30 UTC] [PROJECT_MANAGER->SOLID_DATA_AGENT,QA_RELEASE_AGENT] [P1] [DONE]
 Context: P3.5 quality-gate hardening is complete before P4. ZK now imports Poseidon through circomlibjs's public API, pins three compatibility vectors, and runs proof integration tests against checksum-verified active Factory V3 wasm/zkey/VK artifacts fetched from the published Testnet store. Mobile and embedded-wallet production/test lint are separate zero-warning gates. TypeScript is pinned to 5.5.4, compatible with typescript-eslint 7.18. The explicitly retired css-stellar-auth plugin is consistently excluded from active test/type-check gates. Unsafe WebRTC and Waku WebCrypto boundaries were normalized.
 Request: Treat `pnpm lint`, `pnpm type-check`, `pnpm test`, both policy gates, and `pnpm prepare:zk:test-artifacts` as required P4 pre-merge checks. Do not weaken or skip the V3 proof integration tests.

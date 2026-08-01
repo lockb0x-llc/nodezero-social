@@ -159,6 +159,23 @@ describe('Consentful discovery contract conformance', () => {
       expiresAt: publishedAt,
       publicInterests: ['solid', 'solid'],
     }).map((issue) => issue.field)).toEqual(expect.arrayContaining(['expiresAt', 'publicInterests']))
+
+    expect(validateDiscoveryManifest({
+      version: 1,
+      webId: alice,
+      publishedAt,
+      expiresAt,
+      privateInterests: ['medical'],
+      trustCircleMembers: [bob],
+      blockedWebIds: [bob],
+      locationHistory: ['8928308280fffff'],
+    } as unknown as Parameters<typeof validateDiscoveryManifest>[0]).map((issue) => issue.field))
+      .toEqual(expect.arrayContaining([
+        'privateInterests',
+        'trustCircleMembers',
+        'blockedWebIds',
+        'locationHistory',
+      ]))
   })
 
   it('requires answer activities to reference the original activity', () => {

@@ -22,6 +22,73 @@ describe('RelationshipInboxReader', () => {
       .resolves.toEqual([`${inboxUrl}a`, `${inboxUrl}b`])
   })
 
+  it('returns a bounded drainable batch when the inbox exceeds the processing limit', async () => {
+    const turtle = `
+      @prefix ldp: <http://www.w3.org/ns/ldp#> .
+      <${inboxUrl}> a ldp:BasicContainer ;
+        ldp:contains <${inboxUrl}a>, <${inboxUrl}b>, <${inboxUrl}c> .
+    `
+    const fetch = jestGlobal.fn().mockResolvedValue(responseWithUrl(turtle, inboxUrl, 'text/turtle'))
+    await expect(new RelationshipInboxReader(
+      { fetch },
+      { maxResources: 2 }
+    ).listResourceUrls('https://bob.example/'))
+      .resolves.toEqual([`${inboxUrl}a`, `${inboxUrl}b`])
+  })
+
+  it('rejects a large container that yields no drainable resources', async () => {
+    const fetch = jestGlobal.fn().mockResolvedValue(responseWithUrl(
+      'x'.repeat(128), inboxUrl, 'text/turtle'
+    ))
+    await expect(new RelationshipInboxReader(
+      { fetch },
+      { maxContainerBytes: 32 }
+    ).listResourceUrls('https://bob.example/'))
+      .rejects.toMatchObject({ code: 'inbox_container_too_large' })
+  })
+
+  it('cancels an adversarially chunked oversized container after a drainable batch', async () => {
+    const encoder = new TextEncoder()
+    const chunks = [
+      '@prefix ldp: <http://www.w3.',
+      'org/ns/ldp#> .\n',
+      `<${inboxUrl}> <https://example.test/note> "dot . in a string" . # dot.in.comment\n`,
+      `<${inboxUrl}> ldp:contains <${inboxUrl}a>, <https://bob.exa`,
+      'mple/social/inbox/b> .\n',
+      ' '.repeat(2048),
+    ].map((chunk) => encoder.encode(chunk))
+    let chunkIndex = 0
+    let cancelled = false
+    let deliveredBytes = 0
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller): void {
+        const chunk = chunks[chunkIndex]
+        chunkIndex += 1
+        if (chunk) {
+          deliveredBytes += chunk.byteLength
+          controller.enqueue(chunk)
+        }
+        else controller.close()
+      },
+      cancel(): void {
+        cancelled = true
+      },
+    }, { highWaterMark: 0 })
+    const response = new Response(stream, {
+      status: 200,
+      headers: { 'content-type': 'text/turtle' },
+    })
+    Object.defineProperty(response, 'url', { value: inboxUrl })
+    const fetch = jestGlobal.fn().mockResolvedValue(response)
+    await expect(new RelationshipInboxReader(
+      { fetch },
+      { maxResources: 2, maxContainerBytes: 512 }
+    ).listResourceUrls('https://bob.example/'))
+      .resolves.toEqual([`${inboxUrl}a`, `${inboxUrl}b`])
+    expect(cancelled).toBe(true)
+    expect(deliveredBytes).toBeLessThan(chunks.reduce((total, chunk) => total + chunk.byteLength, 0))
+  })
+
   it('reads bounded JSON-LD from a direct child', async () => {
     const payload = { '@context': 'https://www.w3.org/ns/activitystreams', type: 'Follow' }
     const fetch = jestGlobal.fn().mockResolvedValue(responseWithUrl(
