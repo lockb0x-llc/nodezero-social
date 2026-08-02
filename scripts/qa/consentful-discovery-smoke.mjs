@@ -80,6 +80,10 @@ for (const path of [
 const rollbackWorkflow = sources.get('.github/workflows/staging-rollback.yml') ?? ''
 for (const [label, pattern] of [
   [
+    'mandatory provisioner tree identity',
+    /expected_provisioner_tree[\s\S]*provisioner-files\.sha256[\s\S]*authenticated-live-tree/,
+  ],
+  [
     'mandatory relay ZIP digest',
     /expected_relay_sha[\s\S]*\[\[ "\$expected_relay_sha" =~ \^\[0-9a-f\]\{64\}\$ \]\]/,
   ],
@@ -94,6 +98,22 @@ for (const [label, pattern] of [
   ],
 ]) {
   if (!pattern.test(rollbackWorkflow)) failures.push(`rollback workflow: missing ${label}`)
+}
+
+if (
+  !/provisioner-confirm\.zip[\s\S]*Provisioner live tree changed between captures/.test(
+    baselineWorkflow
+  )
+) {
+  failures.push('baseline workflow: missing duplicate provisioner live-tree fence')
+}
+
+if (
+  !/RUNNER_TEMP[\s\S]*Verify backend captures survived source checkout[\s\S]*Captured backend file is missing after source checkout/.test(
+    baselineWorkflow
+  )
+) {
+  failures.push('baseline workflow: captured backend files are not guarded across source checkout')
 }
 
 const packageJson = JSON.parse(await readFile('package.json', 'utf8'))

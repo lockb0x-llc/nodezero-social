@@ -132,7 +132,33 @@ jobs:
           for flag in directory peerProfile relationship transport; do
             [ "$(jq -r ".qFlags.${flag}" "$manifest")" = "false" ]
           done
-          [ "$(sha256sum rollback-bundle/provisioner.zip | awk '{print $1}')" = "$(jq -r '.sha256.provisionerZip' "$manifest")" ]
+          expected_provisioner_sha="$(jq -r '.sha256.provisionerZip // empty' "$manifest")"
+          expected_provisioner_tree="$(jq -r '.sha256.provisionerTree // empty' "$manifest")"
+          [[ "$expected_provisioner_sha" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$expected_provisioner_tree" =~ ^[0-9a-f]{64}$ ]]
+          test -f rollback-bundle/provisioner.zip
+          test -f rollback-bundle/provisioner-files.sha256
+          [ "$(sha256sum rollback-bundle/provisioner.zip | awk '{print $1}')" = "$expected_provisioner_sha" ]
+          [ "$(sha256sum rollback-bundle/provisioner-files.sha256 | awk '{print $1}')" = "$expected_provisioner_tree" ]
+          rm -rf /tmp/retained-provisioner
+          mkdir -p /tmp/retained-provisioner
+          unzip -q rollback-bundle/provisioner.zip -d /tmp/retained-provisioner
+          (cd /tmp/retained-provisioner && find . -type f -print0 | sort -z | xargs -0 sha256sum) > /tmp/retained-provisioner-files.sha256
+          cmp --silent rollback-bundle/provisioner-files.sha256 /tmp/retained-provisioner-files.sha256
+          provisioner_provenance="$(jq -r '.components.provisioner.provenance // empty' "$manifest")"
+          provisioner_payload="$(jq -r '.components.provisioner.payloadSha256 // empty' "$manifest")"
+          provisioner_configured_artifact="$(jq -r '.components.provisioner.configuredArtifactSha256 // empty' "$manifest")"
+          [[ "$provisioner_payload" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$provisioner_configured_artifact" =~ ^[0-9a-f]{64}$ ]]
+          [ "$(jq -r '.components.provisioner.commit // empty' "$manifest")" = "$EXPECTED_COMMIT" ]
+          [ "$(jq -r '.commit // empty' /tmp/retained-provisioner/dist/build-info.json)" = "$EXPECTED_COMMIT" ]
+          [ "$(jq -r '.payloadSha256 // empty' /tmp/retained-provisioner/dist/build-info.json)" = "$provisioner_payload" ]
+          if [ "$SOURCE_KIND" = "baseline" ]; then
+            [ "$provisioner_provenance" = "authenticated-live-tree" ]
+          else
+            [ "$provisioner_provenance" = "embedded-build-info" ]
+            [ "$provisioner_configured_artifact" = "$expected_provisioner_sha" ]
+          fi
           expected_relay_sha="$(jq -r '.sha256.relayZip // empty' "$manifest")"
           expected_relay_tree="$(jq -r '.sha256.relayTree // empty' "$manifest")"
           [[ "$expected_relay_sha" =~ ^[0-9a-f]{64}$ ]]

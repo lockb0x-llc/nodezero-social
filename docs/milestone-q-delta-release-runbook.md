@@ -97,6 +97,11 @@ This runbook does not authorize Production Mainnet deployment.
    A legacy relay without embedded build metadata is recorded separately as
    `kudu-deployment-tree`: its stable active Kudu deployment ID and complete file tree
    are authenticated without falsely assigning the PWA/provisioner marker commit to it.
+   Provisioner runtime dependencies may be mutated by App Service startup, so its
+   captured bytes are bound to stable before/after health identity, embedded build
+   identity, the authenticated marker run, and two identical complete Kudu file-tree
+   captures rather than by attempting to reconstruct its original pre-deploy payload
+   digest from live files.
 4. Do not use the candidate deployment's own rollback bundle as its N-1 artifact.
 
 ## Phase 4: Dark Staging Deployment

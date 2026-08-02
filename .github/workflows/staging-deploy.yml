@@ -186,11 +186,13 @@ jobs:
           unzip -q /tmp/baseline-artifact/relay.zip -d /tmp/baseline-relay/deploy
           (cd /tmp/baseline-provisioner && sha256sum --check /tmp/baseline-artifact/provisioner-files.sha256)
           (cd /tmp/baseline-relay/deploy && sha256sum --check /tmp/baseline-artifact/relay-files.sha256)
-          provisioner_payload="$(cd /tmp/baseline-provisioner && find dist -type f ! -name build-info.json -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
-          relay_payload="$(cd /tmp/baseline-relay && find deploy -type f ! -name build-info.json -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
+          [ "$(jq -r '.components.provisioner.provenance // empty' "$manifest")" = "authenticated-live-tree" ]
+          provisioner_payload="$(jq -r '.components.provisioner.payloadSha256 // empty' "$manifest")"
+          provisioner_configured_artifact="$(jq -r '.components.provisioner.configuredArtifactSha256 // empty' "$manifest")"
+          [[ "$provisioner_payload" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$provisioner_configured_artifact" =~ ^[0-9a-f]{64}$ ]]
           [ "$(jq -r '.commit' /tmp/baseline-provisioner/dist/build-info.json)" = "$BASELINE_COMMIT" ]
           [ "$(jq -r '.payloadSha256' /tmp/baseline-provisioner/dist/build-info.json)" = "$provisioner_payload" ]
-          [ "$(jq -r '.components.provisioner.payloadSha256' "$manifest")" = "$provisioner_payload" ]
           relay_provenance="$(jq -r '.components.relay.provenance // empty' "$manifest")"
           relay_deployment_id="$(jq -r '.components.relay.kuduDeploymentId // empty' "$manifest")"
           test -n "$relay_deployment_id"
@@ -951,8 +953,13 @@ jobs:
           provisioner_sha="$(sha256sum packages/jss-provisioner/deploy.zip | awk '{print $1}')"
           relay_sha="$(sha256sum packages/relay-service/deploy.zip | awk '{print $1}')"
           (cd packages/mobile-app/dist && find . -type f ! -name deploy-marker.json -print0 | sort -z | xargs -0 sha256sum) > rollback-bundle/pwa-files.sha256
+          rm -rf /tmp/rollback-provisioner
+          mkdir -p /tmp/rollback-provisioner
+          unzip -q packages/jss-provisioner/deploy.zip -d /tmp/rollback-provisioner
+          (cd /tmp/rollback-provisioner && find . -type f -print0 | sort -z | xargs -0 sha256sum) > rollback-bundle/provisioner-files.sha256
           (cd packages/relay-service/deploy && find . -type f -print0 | sort -z | xargs -0 sha256sum) > rollback-bundle/relay-files.sha256
           pwa_sha="$(sha256sum rollback-bundle/pwa-files.sha256 | awk '{print $1}')"
+          provisioner_tree_sha="$(sha256sum rollback-bundle/provisioner-files.sha256 | awk '{print $1}')"
           relay_tree_sha="$(sha256sum rollback-bundle/relay-files.sha256 | awk '{print $1}')"
           cp packages/jss-provisioner/deploy.zip rollback-bundle/provisioner.zip
           cp packages/relay-service/deploy.zip rollback-bundle/relay.zip
@@ -965,6 +972,12 @@ jobs:
             "sourceRunId": "${GITHUB_RUN_ID}",
             "sourceRunAttempt": "${GITHUB_RUN_ATTEMPT}",
             "components": {
+              "provisioner": {
+                "provenance": "embedded-build-info",
+                "commit": "${GITHUB_SHA}",
+                "payloadSha256": "${{ steps.package-provisioner.outputs.payload_sha256 }}",
+                "configuredArtifactSha256": "${provisioner_sha}"
+              },
               "relay": {
                 "provenance": "embedded-build-info",
                 "commit": "${GITHUB_SHA}",
@@ -979,6 +992,7 @@ jobs:
             },
             "sha256": {
               "provisionerZip": "${provisioner_sha}",
+              "provisionerTree": "${provisioner_tree_sha}",
               "relayZip": "${relay_sha}",
               "relayTree": "${relay_tree_sha}",
               "pwaTree": "${pwa_sha}"

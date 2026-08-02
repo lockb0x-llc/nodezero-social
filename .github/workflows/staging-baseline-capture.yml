@@ -103,7 +103,9 @@ jobs:
         id: capture-apps
         run: |
           set -euo pipefail
-          mkdir -p baseline-bundle
+          capture_dir="${RUNNER_TEMP}/baseline-bundle"
+          rm -rf "$capture_dir"
+          mkdir -p "$capture_dir"
           capture_app() {
             local app="$1" destination="$2"
             local scm_host
@@ -115,7 +117,17 @@ jobs:
               --output-file "$destination"
             unzip -t "$destination" >/dev/null
           }
-          capture_app "$JSS_PROVISIONER_APP_NAME" baseline-bundle/provisioner.zip
+          provisioner_health_before="$(curl -fsS --max-time 20 "https://${JSS_PROVISIONER_APP_NAME}.azurewebsites.net/health")"
+          provisioner_commit="$(jq -r '.build.commit // empty' <<<"$provisioner_health_before")"
+          provisioner_payload="$(jq -r '.build.payloadSha256 // empty' <<<"$provisioner_health_before")"
+          provisioner_configured_artifact="$(jq -r '.build.configuredArtifactSha256 // empty' <<<"$provisioner_health_before")"
+          [ "$provisioner_commit" = "${{ steps.live.outputs.commit }}" ] || { echo "Provisioner health commit does not match the live marker."; exit 1; }
+          [[ "$provisioner_payload" =~ ^[0-9a-f]{64}$ ]] || { echo "Provisioner health payload digest is invalid."; exit 1; }
+          [[ "$provisioner_configured_artifact" =~ ^[0-9a-f]{64}$ ]] || { echo "Provisioner configured artifact digest is invalid."; exit 1; }
+          capture_app "$JSS_PROVISIONER_APP_NAME" "$capture_dir/provisioner.zip"
+          capture_app "$JSS_PROVISIONER_APP_NAME" /tmp/provisioner-confirm.zip
+          provisioner_health_after="$(curl -fsS --max-time 20 "https://${JSS_PROVISIONER_APP_NAME}.azurewebsites.net/health")"
+          [ "$(jq -cS '.build' <<<"$provisioner_health_after")" = "$(jq -cS '.build' <<<"$provisioner_health_before")" ] || { echo "Provisioner build identity changed during capture."; exit 1; }
           relay_scm_host="$(az webapp show --resource-group "$AZURE_RESOURCE_GROUP" --name "$RELAY_APP_NAME" --query defaultHostName -o tsv | sed 's/\.azurewebsites\.net$/.scm.azurewebsites.net/')"
           relay_deployment_before="$(timeout 30s az rest \
             --method get \
@@ -127,7 +139,7 @@ jobs:
           [ "$(jq -r '.status' <<<"$relay_deployment_before")" = "4" ]
           [ "$(jq -r '.active' <<<"$relay_deployment_before")" = "true" ]
           [ "$(jq -r '.complete' <<<"$relay_deployment_before")" = "true" ]
-          capture_app "$RELAY_APP_NAME" baseline-bundle/relay.zip
+          capture_app "$RELAY_APP_NAME" "$capture_dir/relay.zip"
           relay_deployment_after="$(timeout 30s az rest \
             --method get \
             --url "https://${relay_scm_host}/api/deployments/latest" \
@@ -137,17 +149,17 @@ jobs:
           [ "$(jq -r '.status' <<<"$relay_deployment_after")" = "4" ]
           [ "$(jq -r '.active' <<<"$relay_deployment_after")" = "true" ]
           [ "$(jq -r '.complete' <<<"$relay_deployment_after")" = "true" ]
-          rm -rf /tmp/provisioner-live /tmp/relay-live
-          mkdir -p /tmp/provisioner-live /tmp/relay-live/deploy
-          unzip -q baseline-bundle/provisioner.zip -d /tmp/provisioner-live
-          unzip -q baseline-bundle/relay.zip -d /tmp/relay-live/deploy
-          (cd /tmp/provisioner-live && find . -type f -print0 | sort -z | xargs -0 sha256sum) > baseline-bundle/provisioner-files.sha256
-          (cd /tmp/relay-live/deploy && find . -type f -print0 | sort -z | xargs -0 sha256sum) > baseline-bundle/relay-files.sha256
-          provisioner_commit="$(jq -r '.commit // empty' /tmp/provisioner-live/dist/build-info.json)"
-          provisioner_payload="$(jq -r '.payloadSha256 // empty' /tmp/provisioner-live/dist/build-info.json)"
-          computed_provisioner_payload="$(cd /tmp/provisioner-live && find dist -type f ! -name build-info.json -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
-          [ "$provisioner_commit" = "${{ steps.live.outputs.commit }}" ]
-          [ "$provisioner_payload" = "$computed_provisioner_payload" ]
+          rm -rf /tmp/provisioner-live /tmp/provisioner-confirm /tmp/relay-live
+          mkdir -p /tmp/provisioner-live /tmp/provisioner-confirm /tmp/relay-live/deploy
+          unzip -q "$capture_dir/provisioner.zip" -d /tmp/provisioner-live
+          unzip -q /tmp/provisioner-confirm.zip -d /tmp/provisioner-confirm
+          unzip -q "$capture_dir/relay.zip" -d /tmp/relay-live/deploy
+          (cd /tmp/provisioner-live && find . -type f -print0 | sort -z | xargs -0 sha256sum) > "$capture_dir/provisioner-files.sha256"
+          (cd /tmp/provisioner-confirm && find . -type f -print0 | sort -z | xargs -0 sha256sum) > /tmp/provisioner-confirm-files.sha256
+          cmp --silent "$capture_dir/provisioner-files.sha256" /tmp/provisioner-confirm-files.sha256 || { echo "Provisioner live tree changed between captures."; exit 1; }
+          (cd /tmp/relay-live/deploy && find . -type f -print0 | sort -z | xargs -0 sha256sum) > "$capture_dir/relay-files.sha256"
+          [ "$(jq -r '.commit // empty' /tmp/provisioner-live/dist/build-info.json)" = "$provisioner_commit" ] || { echo "Captured provisioner commit does not match live health."; exit 1; }
+          [ "$(jq -r '.payloadSha256 // empty' /tmp/provisioner-live/dist/build-info.json)" = "$provisioner_payload" ] || { echo "Captured provisioner payload identity does not match live health."; exit 1; }
           if [ -f /tmp/relay-live/deploy/build-info.json ]; then
             relay_provenance="embedded-build-info"
             relay_commit="$(jq -r '.commit // empty' /tmp/relay-live/deploy/build-info.json)"
@@ -162,6 +174,7 @@ jobs:
           fi
           echo "provisioner_commit=$provisioner_commit" >> "$GITHUB_OUTPUT"
           echo "provisioner_payload=$provisioner_payload" >> "$GITHUB_OUTPUT"
+          echo "provisioner_configured_artifact=$provisioner_configured_artifact" >> "$GITHUB_OUTPUT"
           echo "relay_provenance=$relay_provenance" >> "$GITHUB_OUTPUT"
           echo "relay_deployment_id=$relay_deployment_id" >> "$GITHUB_OUTPUT"
           echo "relay_commit=$relay_commit" >> "$GITHUB_OUTPUT"
@@ -175,6 +188,16 @@ jobs:
 
       - name: Install exact deployed source dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Verify backend captures survived source checkout
+        run: |
+          set -euo pipefail
+          for file in provisioner.zip relay.zip provisioner-files.sha256 relay-files.sha256; do
+            test -s "${RUNNER_TEMP}/baseline-bundle/${file}" || {
+              echo "Captured backend file is missing after source checkout: ${file}"
+              exit 1
+            }
+          done
 
       - name: Build strict staging PWA baseline
         env:
@@ -219,6 +242,10 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p baseline-bundle
+          cp "${RUNNER_TEMP}/baseline-bundle/provisioner.zip" baseline-bundle/provisioner.zip
+          cp "${RUNNER_TEMP}/baseline-bundle/relay.zip" baseline-bundle/relay.zip
+          cp "${RUNNER_TEMP}/baseline-bundle/provisioner-files.sha256" baseline-bundle/provisioner-files.sha256
+          cp "${RUNNER_TEMP}/baseline-bundle/relay-files.sha256" baseline-bundle/relay-files.sha256
           cp -r packages/mobile-app/dist baseline-bundle/pwa-dist
           (cd packages/mobile-app/dist && find . -type f ! -name deploy-marker.json -print0 | sort -z | xargs -0 sha256sum) > baseline-bundle/pwa-files.sha256
           provisioner_sha="$(sha256sum baseline-bundle/provisioner.zip | awk '{print $1}')"
@@ -237,8 +264,10 @@ jobs:
             "liveMarkerRunAttempt": "$(jq -r '.runAttempt' /tmp/live-marker.json)",
             "components": {
               "provisioner": {
+                "provenance": "authenticated-live-tree",
                 "commit": "${{ steps.capture-apps.outputs.provisioner_commit }}",
-                "payloadSha256": "${{ steps.capture-apps.outputs.provisioner_payload }}"
+                "payloadSha256": "${{ steps.capture-apps.outputs.provisioner_payload }}",
+                "configuredArtifactSha256": "${{ steps.capture-apps.outputs.provisioner_configured_artifact }}"
               },
               "relay": {
                 "provenance": "${{ steps.capture-apps.outputs.relay_provenance }}",
