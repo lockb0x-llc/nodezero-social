@@ -70,7 +70,7 @@
   {
     "id": "Q3A",
     "agent": "AZURE_PLATFORM_AGENT",
-    "status": "in-progress",
+    "status": "complete",
     "slug": "durable-derived-directory",
     "title": "Q3A - Implement durable derived directory infrastructure",
     "objective": "Implement durable Azure-backed projection storage, default-off flags, privacy-safe telemetry, retained slots/revisions, reconciliation, and rollback against the completed authenticated refresh API contract.",
@@ -86,7 +86,8 @@
       "infrastructure/azure/",
       ".github/workflows/staging-deploy.yml"
     ],
-    "dependsOn": ["Q1C", "Q2", "P6"]
+    "dependsOn": ["Q1C", "Q2", "P6"],
+    "evidence": "Local Azure/Audit GO: durable ETag-fenced Azure Table Directory with immediate opt-out suppression; keyed default-off cohorts; aggregate-only telemetry; exact-SHA provisioner/relay/PWA workflow; 90-day digest-bound rollback bundle; authenticated retained-artifact rollback with live per-file PWA verification. Provisioner 136/136, relay 3/3, consent 22/22, type/lint/env/PWA/YAML/diff PASS. Basic B1 has no slots; retained artifacts are the approved local substitute. No deployment/rehearsal; Q4 remains."
   },
   {
     "id": "Q3B",

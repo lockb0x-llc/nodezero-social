@@ -378,6 +378,7 @@ jobs:
           fi
 
           for required_setting in \
+            JSS_SESSION_SIGNING_KEY \
             JSS_TRANSPORT_IDENTITY_SIGNING_KEY \
             JSS_CREDENTIALS_TABLE_SAS_URL \
             JSS_COMMUNITY_DIRECTORY_TABLE_SAS_URL; do
@@ -436,6 +437,7 @@ jobs:
                   [ "$directory_backend" = "table" ] && \
                   [ "$directory_ready" = "true" ] && \
                   [ "$transport_ready" = "true" ] && \
+                  [ "$(jq -r '.session.signingKeyConfigured // false' /tmp/provisioner-health.json)" = "true" ] && \
                   [ "$q_directory_enabled" = "false" ] && \
                   [ "$q_peer_profile_enabled" = "false" ] && \
                   [ "$q_relationship_enabled" = "false" ] && \

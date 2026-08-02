@@ -5,6 +5,7 @@ const DIRECTORY_PARTITION = 'nz-community-directory'
 const MAX_DIRECTORY_RECORDS = 10_000
 const MAX_TABLE_PAGES = 100
 const MAX_WRITE_ATTEMPTS = 5
+const TABLE_REQUEST_TIMEOUT_MS = 5_000
 
 export interface CommunityDirectoryPersistence {
   loadRecords(): Promise<CommunityDirectoryRecord[]>
@@ -57,7 +58,7 @@ export class AzureTableCommunityDirectoryPersistence implements CommunityDirecto
           : []),
         ...(nextRowKey ? [`NextRowKey=${encodeURIComponent(nextRowKey)}`] : []),
       ].join('&')
-      const response: Response = await this.fetchImpl(
+      const response: Response = await this.fetchWithTimeout(
         `${this.tableUrl}?$filter=${filter}${continuation ? `&${continuation}` : ''}&${this.sasQuery}`,
         { headers: tableHeaders() }
       )
@@ -88,7 +89,7 @@ export class AzureTableCommunityDirectoryPersistence implements CommunityDirecto
     for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt += 1) {
       const current = await this.readVersionedRecord(entityUrl)
       if (current && !shouldReplaceDirectoryRecord(current.record, record)) return
-      const response = await this.fetchImpl(current ? entityUrl : this.tableRequestUrl(), {
+      const response = await this.fetchWithTimeout(current ? entityUrl : this.tableRequestUrl(), {
         method: current ? 'PUT' : 'POST',
         headers: {
           ...tableHeaders(),
@@ -117,7 +118,7 @@ export class AzureTableCommunityDirectoryPersistence implements CommunityDirecto
     let probeError: Error | null = null
     let cleanupError: Error | null = null
     try {
-      const createResponse = await this.fetchImpl(this.tableRequestUrl(), {
+      const createResponse = await this.fetchWithTimeout(this.tableRequestUrl(), {
         method: 'POST',
         headers: {
           ...tableHeaders(),
@@ -136,7 +137,7 @@ export class AzureTableCommunityDirectoryPersistence implements CommunityDirecto
         )
       }
       created = true
-      const readResponse = await this.fetchImpl(entityUrl, { headers: tableHeaders() })
+      const readResponse = await this.fetchWithTimeout(entityUrl, { headers: tableHeaders() })
       if (!readResponse.ok) {
         throw new Error(
           `Community Directory table readiness read failed: HTTP ${readResponse.status}`
@@ -146,7 +147,7 @@ export class AzureTableCommunityDirectoryPersistence implements CommunityDirecto
       probeError = error instanceof Error ? error : new Error(String(error))
     } finally {
       if (created) {
-        const deleteResponse = await this.fetchImpl(entityUrl, {
+        const deleteResponse = await this.fetchWithTimeout(entityUrl, {
           method: 'DELETE',
           headers: { ...tableHeaders(), 'if-match': '*' },
         })
@@ -178,7 +179,7 @@ export class AzureTableCommunityDirectoryPersistence implements CommunityDirecto
     record: CommunityDirectoryRecord
     etag: string
   } | null> {
-    const response = await this.fetchImpl(entityUrl, { headers: tableHeaders() })
+    const response = await this.fetchWithTimeout(entityUrl, { headers: tableHeaders() })
     if (response.status === 404) return null
     if (!response.ok) {
       throw new Error(`Community Directory table row read failed: HTTP ${response.status}`)
@@ -193,6 +194,19 @@ export class AzureTableCommunityDirectoryPersistence implements CommunityDirecto
     const [record] = records
     if (!record) throw new Error('Community Directory table row is missing its record.')
     return { record, etag }
+  }
+
+  private async fetchWithTimeout(
+    input: string,
+    init: RequestInit = {}
+  ): Promise<Response> {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), TABLE_REQUEST_TIMEOUT_MS)
+    try {
+      return await this.fetchImpl(input, { ...init, signal: controller.signal })
+    } finally {
+      clearTimeout(timer)
+    }
   }
 }
 

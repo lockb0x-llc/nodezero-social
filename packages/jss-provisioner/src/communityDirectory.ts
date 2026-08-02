@@ -1,7 +1,10 @@
 import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import type { CommunityDirectoryPersistence } from './communityDirectoryPersistence.js'
+import {
+  shouldReplaceDirectoryRecord,
+  type CommunityDirectoryPersistence,
+} from './communityDirectoryPersistence.js'
 
 export interface CommunityDirectoryRecord {
   webId: string
@@ -92,11 +95,9 @@ export class CommunityDirectoryStore {
     if (!force && Date.now() - this.lastReloadAtMs < this.reloadTtlMs) return
     if (this.reloadInFlight) return this.reloadInFlight
     this.reloadInFlight = this.persistence.loadRecords().then((records) => {
-      this.records.clear()
-      this.committedRecords.clear()
       for (const record of records) {
-        this.records.set(record.webId, { ...record })
-        this.committedRecords.set(record.webId, { ...record })
+        this.mergeRecord(this.records, record)
+        this.mergeRecord(this.committedRecords, record)
       }
       this.lastReloadAtMs = Date.now()
     }).finally(() => {
@@ -113,11 +114,11 @@ export class CommunityDirectoryStore {
     if (!this.persistence) return
     const record = await this.persistence.loadRecord(webId)
     if (record) {
-      this.records.set(webId, { ...record })
-      this.committedRecords.set(webId, { ...record })
+      this.mergeRecord(this.records, record)
+      this.mergeRecord(this.committedRecords, record)
     } else {
-      this.records.delete(webId)
-      this.committedRecords.delete(webId)
+      const working = this.records.get(webId)
+      if (!working) this.committedRecords.delete(webId)
     }
   }
 
@@ -195,6 +196,16 @@ export class CommunityDirectoryStore {
     this.pendingPersistence = this.pendingPersistence.catch(() => undefined).then(() =>
       this.persistence!.upsertRecord(snapshot)
     )
+  }
+
+  private mergeRecord(
+    target: Map<string, CommunityDirectoryRecord>,
+    incoming: CommunityDirectoryRecord
+  ): void {
+    const current = target.get(incoming.webId)
+    if (!current || shouldReplaceDirectoryRecord(current, incoming)) {
+      target.set(incoming.webId, { ...incoming })
+    }
   }
 
   seedRecord(input: { webId: string; podUrl: string; issuer: string }): CommunityDirectoryRecord {
@@ -282,6 +293,7 @@ export class CommunityDirectoryStore {
     }
 
     this.records.set(input.webId, record)
+    if (!record.listed) this.committedRecords.set(input.webId, { ...record })
     this.persistRecord(record)
     return record
   }

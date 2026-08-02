@@ -37,10 +37,10 @@ retaining immediate disconnect, mute, block, and discovery-revocation controls.
 | Q1B | Solid Integration Specialist | Q0, shared Q1 contracts | LDN and WebID discovery adapters, credential-free remote fetch, Pod proxy constraints, and inbox delivery | Complete: Solid 20 suites/114 tests and provisioner 88/88 tests pass |
 | Q1C | Audit Agent | Q0 | Threat model and security test vectors for ACL, SSRF, replay, privacy, migration, and block precedence | Complete: 22 executable vectors across 10 categories pass; Audit Agent GO |
 | Q2 | Solid Data Agent | Q1A, Q1B | Relationship lifecycle, replay ledger, legacy migration, moderation, and `foaf:knows` projection | Complete: Solid 168, mobile 90, and provisioner 101 tests pass; strict staging PWA artifact passes |
-| Q3A | Azure Platform Agent | Q1 contracts, P6 | Durable derived index, feature flags, telemetry, slots/revisions, rollback assets, and staging deployment wiring | In progress: API/projection contract complete; Azure durability and deployment controls remain |
+| Q3A | Azure Platform Agent | Q1 contracts, P6 | Durable derived index, feature flags, telemetry, slots/revisions, rollback assets, and staging deployment wiring | Complete locally: Azure/Audit GO; retained-artifact rollback substitutes for unavailable B1 slots; Q4 deployment/rehearsal pending |
 | Q3B | Mobile App Agent | Q2, Q3A API contract | Consent controls, public-interest selection, explainable recommendations, and unified Directory/Profile/Local actions | Complete locally: independent Mobile and Audit GO; deployment validation pending Q3A/Q4 |
 | Q3C | P2P Relay Agent | Q1 contracts | Presence, reveal, Waku, WebRTC, and relay consent/block enforcement plus abuse controls | Complete locally: independent Mobile and Audit GO; deployment configuration and Q4 journeys pending |
-| Q4 | QA Release Agent | Q1-Q3 | Package, integration, browser, device, deployment, rollback, and soak evidence | Not started |
+| Q4 | QA Release Agent | Q1-Q3 | Package, integration, browser, device, deployment, rollback, and soak evidence | In progress: exact-SHA staging deployment is the current blocker |
 | Q5 | Docs Agent | Q4 and Audit GO | Validated Wiki/status updates and Milestone Q release evidence | Not started |
 
 ## Phase 0: Documentation And Governance
@@ -168,9 +168,39 @@ interest separation, pagination, and recommendation-reason suites pass.
    ETags, and never expose internal removal tombstones or always-private records.
 - Focused directory projection/refresh/route tests pass 18/18; full provisioner tests
    pass 113/113; Q1C 22-vector and environment-isolation policies pass.
-- This is an API contract, not durable infrastructure or deployment evidence. Azure
-   storage, default-off cohort flags, privacy-safe telemetry, retained slots/revisions,
-   rollback, reconciliation, and staging provenance remain Q3A work.
+- At the time recorded, this was API-contract evidence only. The durable platform
+   implementation completed locally on 2026-08-02 as recorded below; deployed
+   provenance and rehearsal remain Q4 work.
+
+### Q3A local platform evidence (2026-08-02)
+
+- The derived Directory uses a partition-isolated Azure Table backend with hashed
+   row keys, ETag-fenced monotonic writes, equal-time opt-out precedence, bounded
+   scans, targeted mutation reads, active read/write/delete readiness, and immediate
+   in-process suppression of observed opt-outs even when persistence fails.
+- Rollout controls default Directory, peer Profile, relationship, and transport
+   features off. Enabled features require keyed cohort HMAC membership. Telemetry
+   emits aggregate feature/outcome counters without WebIDs, interests, blocks, H3
+   cells, relationship payloads, or message content.
+- The staging workflow packages and verifies provisioner, relay, and PWA artifacts
+   from one commit, requires stable session/relationship/transport keys, proves Table
+   readiness, retains a digest-bound rollback bundle for 90 days, and keeps all Q
+   feature flags dark.
+- The guarded rollback workflow authenticates the exact successful source workflow,
+   run attempt, branch, and commit; validates all artifact digests; clean-deploys the
+   retained provisioner and relay; verifies every retained PWA asset live; and reports
+   partial component outcomes without claiming unconditional success.
+- The current App Service plan is Basic B1 and does not support deployment slots.
+   Retained-artifact rollback is the accepted local Q3A mechanism. Slot adoption or a
+   paid SKU change remains P6 work and requires explicit approval.
+- Validation: provisioner 136/136, relay 3/3, adversarial opt-out 2/2, consent policy
+   22/22, touched type/lint, environment/PWA policy, both workflow YAML files, rollback
+   digest relocation, and diff hygiene pass. Azure Platform Agent and Audit Agent
+   issued local Q3A GO.
+- No Q3A deployment or rollback rehearsal has occurred. Local `testnet` is ahead of
+   `origin/testnet`; the latest successful staging workflow and deploy marker remain
+   commit `5d0d3532ba4d1e035c141dd9f4dbf8f751dea5b9`. Deployment provenance,
+   zero-retry two-account/device journeys, rollback rehearsal, and soak are Q4 gates.
 
 ### Q3B/Q3C local implementation evidence (2026-08-01)
 
@@ -193,10 +223,9 @@ interest separation, pagination, and recommendation-reason suites pass.
    touched lint and five package type-checks pass; consent security 22/22, environment,
    PWA policy, strict staging-profile build, artifact validation, and diff checks pass.
    Mobile App Agent and Audit Agent issued local-code GO.
-- This is not deployment or release GO. Q3A Azure durability remains open. Staging
-   must configure `RELAY_PROVISIONER_URL` and a stable shared
-   `JSS_TRANSPORT_IDENTITY_SIGNING_KEY`, then obtain successful matching workflow
-   provenance, zero-retry two-account journeys, rollback evidence, and soak results.
+- This is not deployment or release GO. Q3A platform implementation is complete
+   locally; staging must now obtain successful matching workflow provenance,
+   zero-retry two-account journeys, rollback evidence, and soak results under Q4.
 
 ## Phase 4: Integrated Social Experience
 

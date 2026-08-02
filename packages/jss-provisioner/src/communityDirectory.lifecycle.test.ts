@@ -327,6 +327,73 @@ void test('concurrent reloads share one backend scan', async () => {
   assert.equal(loadCalls, 1)
 })
 
+void test('a failed durable opt-out is immediately suppressed from public pages', async () => {
+  let stored = {
+    webId: seededWebId,
+    podUrl: 'https://solid.nodezero.social/lifecycle-user/',
+    issuer: 'https://solid.nodezero.social',
+    listed: true,
+    updatedAt: '2026-08-02T01:00:00.000Z',
+    consentUpdatedAt: '2026-08-02T01:00:00.000Z',
+    manifestExpiresAt: '2026-08-09T01:00:00.000Z',
+  }
+  const persistence: CommunityDirectoryPersistence = {
+    loadRecords: () => Promise.resolve([stored]),
+    loadRecord: () => Promise.resolve(stored),
+    upsertRecord: () => Promise.reject(new Error('table outage')),
+    probe: () => Promise.resolve(),
+  }
+  const store = new CommunityDirectoryStore({ persistence })
+  await store.reload(true)
+  store.refreshProjection({
+    webId: seededWebId,
+    podUrl: stored.podUrl,
+    issuer: stored.issuer,
+    publicListing: false,
+    publicIndexing: false,
+    consentUpdatedAt: '2026-08-02T02:00:00.000Z',
+    manifest: null,
+    manifestUrl: `${stored.podUrl}public/discovery/manifest`,
+    now: new Date('2026-08-02T02:00:00.000Z'),
+  })
+  assert.deepEqual(store.buildPublicPage({ now }).members, [])
+  await assert.rejects(store.flush(), /table outage/)
+  assert.deepEqual(store.buildPublicPage({ now }).members, [])
+  stored = { ...stored }
+})
+
+void test('an older full scan cannot overwrite a newer targeted opt-out', async () => {
+  const olderOptIn = {
+    webId: seededWebId,
+    podUrl: 'https://solid.nodezero.social/lifecycle-user/',
+    issuer: 'https://solid.nodezero.social',
+    listed: true,
+    updatedAt: '2026-08-02T01:00:00.000Z',
+    consentUpdatedAt: '2026-08-02T01:00:00.000Z',
+    manifestExpiresAt: '2026-08-09T01:00:00.000Z',
+  }
+  const newerOptOut = {
+    ...olderOptIn,
+    listed: false,
+    updatedAt: '2026-08-02T02:00:00.000Z',
+    consentUpdatedAt: '2026-08-02T02:00:00.000Z',
+  }
+  let releaseScan: ((records: typeof olderOptIn[]) => void) | null = null
+  const persistence: CommunityDirectoryPersistence = {
+    loadRecords: () => new Promise((resolve) => { releaseScan = resolve }),
+    loadRecord: () => Promise.resolve(newerOptOut),
+    upsertRecord: () => Promise.resolve(),
+    probe: () => Promise.resolve(),
+  }
+  const store = new CommunityDirectoryStore({ persistence })
+  const scan = store.reload(true)
+  await store.reloadRecord(seededWebId)
+  releaseScan?.([olderOptIn])
+  await scan
+  assert.equal(store.getByWebId(seededWebId)?.listed, false)
+  assert.deepEqual(store.buildPublicPage({ now }).members, [])
+})
+
 void test('pending and failed durable opt-ins never enter public pages', async () => {
   let rejectWrite: ((error: Error) => void) | null = null
   let signalWriteStarted: (() => void) | null = null

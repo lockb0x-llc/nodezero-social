@@ -193,6 +193,12 @@ const communityDirectoryRefreshRateLimiter = new RelationshipRateLimiter({
     process.env.JSS_COMMUNITY_DIRECTORY_REFRESH_RATE_WINDOW_MS ?? 60_000
   ),
 })
+const communityDirectoryIndexRateLimiter = new RelationshipRateLimiter({
+  maxRequests: Number(process.env.JSS_COMMUNITY_DIRECTORY_INDEX_RATE_LIMIT ?? 60),
+  windowMs: Number(
+    process.env.JSS_COMMUNITY_DIRECTORY_INDEX_RATE_WINDOW_MS ?? 60_000
+  ),
+})
 const COMMUNITY_DIRECTORY_REFRESH_MAX_CONCURRENCY = positiveIntegerEnvironment(
   'JSS_COMMUNITY_DIRECTORY_REFRESH_MAX_CONCURRENCY',
   4
@@ -908,9 +914,11 @@ export async function handleHttpRequest(
     } catch {
       communityDirectoryReady = false
     }
-    const healthReady = communityDirectoryReady && TRANSPORT_IDENTITY_READY
+    const sessionReady = (process.env.NZ_ENV_PROFILE ?? 'local') === 'local' ||
+      !sessions.usesEphemeralKey
+    const healthReady = communityDirectoryReady && TRANSPORT_IDENTITY_READY && sessionReady
     sendJson(req, res, healthReady ? 200 : 503, {
-      ok: true,
+      ok: healthReady,
       service: 'jss-provisioner',
       build: {
         commit: EMBEDDED_BUILD.commit,
@@ -1012,6 +1020,17 @@ export async function handleHttpRequest(
     if (!claims || !milestoneQControls.isEnabled('directory', claims.sub)) {
       milestoneQControls.count('directory', claims ? 'cohort-denied' : 'unauthorized')
       sendJson(req, res, 404, { error: 'Not found' })
+      return
+    }
+    const indexLimit = communityDirectoryIndexRateLimiter.consume(claims.sub)
+    if (!indexLimit.allowed) {
+      sendJson(req, res, 429, {
+        error: 'Community directory index rate limit exceeded.',
+        code: 'directory_index_rate_limited',
+      }, {
+        'retry-after': String(indexLimit.retryAfterSeconds),
+        'cache-control': 'private, no-store',
+      })
       return
     }
     await communityDirectory.reload()
@@ -1396,7 +1415,8 @@ export async function handleHttpRequest(
 
   if (
     req.method === 'POST' &&
-    (url.pathname === '/v1/community-directory/opt-in' || url.pathname === '/v1/community-directory/opt-out')
+    (url.pathname === '/v1/community-directory/opt-in' ||
+      url.pathname === '/v1/community-directory/opt-out')
   ) {
     sendJson(req, res, 410, {
       error: 'Legacy directory mutation is retired. Use the authenticated refresh endpoint.',
@@ -1699,19 +1719,15 @@ export async function handleHttpRequest(
         return
       }
 
-      try {
-        await communityDirectory.reloadRecord(account.webId)
-        communityDirectory.seedRecord({
-          webId: account.webId,
-          podUrl: account.podUrl,
-          issuer: ISSUER,
-        })
-        await communityDirectory.flush()
-        await communityDirectory.reloadRecord(account.webId)
-      } catch (error) {
+      communityDirectory.seedRecord({
+        webId: account.webId,
+        podUrl: account.podUrl,
+        issuer: ISSUER,
+      })
+      void communityDirectory.flush().catch((error) => {
         console.warn('[community-directory] onboarding seed deferred:',
           error instanceof Error ? error.message : 'unknown error')
-      }
+      })
       rememberKnownSolidEmail(email)
 
       // P3: on MainNet there is no Friendbot, so the member's Stellar account
