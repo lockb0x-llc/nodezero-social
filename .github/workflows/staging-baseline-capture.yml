@@ -43,7 +43,7 @@ jobs:
           EXPECTED_COMMIT: ${{ inputs.expected_deployed_commit }}
         run: |
           set -euo pipefail
-          marker="$(curl -fsS --max-time 20 "${STAGING_BASE_URL}/deploy-marker.json")"
+          marker="$(node ./scripts/qa/fetch-exact.mjs "${STAGING_BASE_URL}/deploy-marker.json")"
           [ "$(jq -r '.environment // empty' <<<"$marker")" = "staging-testnet" ]
           [ "$(jq -r '.workflow // empty' <<<"$marker")" = "staging-deploy" ]
           live_commit="$(jq -r '.commit // empty' <<<"$marker")"
@@ -96,7 +96,7 @@ jobs:
           EXPECTED_COMMIT: ${{ steps.live.outputs.commit }}
         run: |
           set -euo pipefail
-          marker="$(curl -fsS --max-time 20 "${STAGING_BASE_URL}/deploy-marker.json")"
+          marker="$(node ./scripts/qa/fetch-exact.mjs "${STAGING_BASE_URL}/deploy-marker.json")"
           [ "$(jq -r '.commit // empty' <<<"$marker")" = "$EXPECTED_COMMIT" ]
 
       - name: Capture exact deployed App Service bytes
@@ -117,7 +117,7 @@ jobs:
               --output-file "$destination"
             unzip -t "$destination" >/dev/null
           }
-          provisioner_health_before="$(curl -fsS --max-time 20 "https://${JSS_PROVISIONER_APP_NAME}.azurewebsites.net/health")"
+          provisioner_health_before="$(node ./scripts/qa/fetch-exact.mjs "https://${JSS_PROVISIONER_APP_NAME}.azurewebsites.net/health")"
           provisioner_commit="$(jq -r '.build.commit // empty' <<<"$provisioner_health_before")"
           provisioner_payload="$(jq -r '.build.payloadSha256 // empty' <<<"$provisioner_health_before")"
           provisioner_configured_artifact="$(jq -r '.build.configuredArtifactSha256 // empty' <<<"$provisioner_health_before")"
@@ -126,7 +126,7 @@ jobs:
           [[ "$provisioner_configured_artifact" =~ ^[0-9a-f]{64}$ ]] || { echo "Provisioner configured artifact digest is invalid."; exit 1; }
           capture_app "$JSS_PROVISIONER_APP_NAME" "$capture_dir/provisioner.zip"
           capture_app "$JSS_PROVISIONER_APP_NAME" /tmp/provisioner-confirm.zip
-          provisioner_health_after="$(curl -fsS --max-time 20 "https://${JSS_PROVISIONER_APP_NAME}.azurewebsites.net/health")"
+          provisioner_health_after="$(node ./scripts/qa/fetch-exact.mjs "https://${JSS_PROVISIONER_APP_NAME}.azurewebsites.net/health")"
           [ "$(jq -cS '.build' <<<"$provisioner_health_after")" = "$(jq -cS '.build' <<<"$provisioner_health_before")" ] || { echo "Provisioner build identity changed during capture."; exit 1; }
           relay_scm_host="$(az webapp show --resource-group "$AZURE_RESOURCE_GROUP" --name "$RELAY_APP_NAME" --query defaultHostName -o tsv | sed 's/\.azurewebsites\.net$/.scm.azurewebsites.net/')"
           relay_deployment_before="$(timeout 30s az rest \
@@ -185,8 +185,10 @@ jobs:
         with:
           ref: ${{ steps.live.outputs.commit }}
           fetch-depth: 1
+          path: deployed-source
 
       - name: Install exact deployed source dependencies
+        working-directory: deployed-source
         run: pnpm install --frozen-lockfile
 
       - name: Verify backend captures survived source checkout
@@ -200,6 +202,7 @@ jobs:
           done
 
       - name: Build strict staging PWA baseline
+        working-directory: deployed-source
         env:
           NZ_ENV_PROFILE: staging-testnet
           NZ_RELAY_URL: wss://nodezero-social-staging-testnet-relay.azurewebsites.net
@@ -222,19 +225,114 @@ jobs:
           pnpm --filter @nodezero/mobile-app build:web
           pnpm pwa:validate:artifact
 
-      - name: Verify rebuilt PWA matches every live staging asset
+      - name: Capture and verify exact live PWA graph
         run: |
           set -euo pipefail
-          while IFS= read -r -d '' file; do
-            relative="${file#packages/mobile-app/dist/}"
-            if [ "$relative" = "deploy-marker.json" ]; then continue; fi
-            local_hash="$(sha256sum "$file" | awk '{print $1}')"
-            live_hash="$(curl -fsS --max-time 30 "${STAGING_BASE_URL}/${relative}" | sha256sum | awk '{print $1}')"
-            if [ "$local_hash" != "$live_hash" ]; then
-              echo "Baseline PWA mismatch for ${relative}."
+          live_pwa_dir="${RUNNER_TEMP}/baseline-pwa"
+          rm -rf "$live_pwa_dir"
+          mkdir -p "$live_pwa_dir"
+          fetch_exact() {
+            local path="$1" destination="$2" metadata status effective_url expected_url
+            expected_url="${STAGING_BASE_URL}${path}"
+            metadata="$(curl --silent --show-error --max-time 30 \
+              --proto '=https' --tlsv1.2 --max-redirs 0 \
+              --output "$destination" \
+              --write-out '%{http_code}\n%{url_effective}' \
+              "$expected_url")"
+            status="$(sed -n '1p' <<<"$metadata")"
+            effective_url="$(sed -n '2p' <<<"$metadata")"
+            [ "$status" = "200" ] || { echo "Live PWA request returned HTTP ${status}: ${path}"; exit 1; }
+            [ "$effective_url" = "$expected_url" ] || { echo "Live PWA request changed URL: ${path}"; exit 1; }
+          }
+          fetch_exact /service-worker.js /tmp/service-worker-first.js
+          fetch_exact /service-worker.js /tmp/service-worker-second.js
+          cmp --silent /tmp/service-worker-first.js /tmp/service-worker-second.js || {
+            echo "Live service worker changed during baseline capture."
+            exit 1
+          }
+          cp /tmp/service-worker-first.js "$live_pwa_dir/service-worker.js"
+          LIVE_PWA_DIR="$live_pwa_dir" STAGING_BASE_URL="$STAGING_BASE_URL" node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs'
+          import { extractExpoAssetPaths } from './scripts/qa/extract-expo-assets.mjs'
+          const worker = readFileSync(`${process.env.LIVE_PWA_DIR}/service-worker.js`, 'utf8')
+          const match = worker.match(/const PRECACHE_URLS = (\[[\s\S]*?\]);/)
+          if (!match) throw new Error('Live service worker is missing a JSON precache list.')
+          const urls = JSON.parse(match[1])
+          if (!Array.isArray(urls) || urls.length === 0 || new Set(urls).size !== urls.length) {
+            throw new Error('Live service worker precache list must be a nonempty unique array.')
+          }
+          for (const url of urls) {
+            if (typeof url !== 'string' || !/^\/[A-Za-z0-9._/-]+$/.test(url) || url.includes('..')) {
+              throw new Error(`Unsafe live PWA precache path: ${String(url)}`)
+            }
+          }
+          for (const required of ['/index.html', '/manifest.json', '/pwa-bootstrap.js']) {
+            if (!urls.includes(required)) throw new Error(`Live PWA precache is missing ${required}.`)
+          }
+          const runtimeAssets = new Set()
+          for (const url of urls.filter((value) => value.endsWith('.js'))) {
+            const expectedUrl = `${process.env.STAGING_BASE_URL}${url}`
+            const response = await fetch(expectedUrl, {
+              headers: { 'cache-control': 'no-cache' },
+              redirect: 'error',
+            })
+            if (!response.ok || response.url !== expectedUrl) {
+              throw new Error(`Unable to inspect exact live PWA source ${url}: HTTP ${response.status}`)
+            }
+            const source = await response.text()
+            for (const assetPath of extractExpoAssetPaths(source)) runtimeAssets.add(assetPath)
+          }
+          for (const asset of runtimeAssets) urls.push(asset)
+          urls.sort()
+          if (runtimeAssets.size === 0) throw new Error('Active Expo bundle exposed no runtime asset metadata.')
+          for (const url of urls) {
+            if (typeof url !== 'string' || !/^\/[A-Za-z0-9._@+~/-]+$/.test(url) || url.includes('..')) {
+              throw new Error(`Unsafe live PWA graph path: ${String(url)}`)
+            }
+          }
+          writeFileSync('/tmp/live-pwa-paths.txt', `${[...new Set(urls)].join('\n')}\n`)
+          NODE
+          while IFS= read -r asset_path; do
+            relative="${asset_path#/}"
+            destination="$live_pwa_dir/$relative"
+            confirm="${RUNNER_TEMP}/pwa-confirm/$relative"
+            mkdir -p "$(dirname "$destination")" "$(dirname "$confirm")"
+            fetch_exact "$asset_path" "$destination"
+            fetch_exact "$asset_path" "$confirm"
+            cmp --silent "$destination" "$confirm" || {
+              echo "Live PWA asset changed during baseline capture: ${asset_path}"
               exit 1
-            fi
-          done < <(find packages/mobile-app/dist -type f -print0)
+            }
+          done < /tmp/live-pwa-paths.txt
+          cp deployed-source/packages/mobile-app/dist/staticwebapp.config.json "$live_pwa_dir/staticwebapp.config.json"
+          LIVE_PWA_DIR="$live_pwa_dir" node --input-type=module <<'NODE'
+          import { createHash } from 'node:crypto'
+          import { readFileSync } from 'node:fs'
+          import { join } from 'node:path'
+          import { extractExpoAssetPaths } from './scripts/qa/extract-expo-assets.mjs'
+          const root = process.env.LIVE_PWA_DIR
+          const worker = readFileSync(join(root, 'service-worker.js'), 'utf8')
+          const urls = JSON.parse(worker.match(/const PRECACHE_URLS = (\[[\s\S]*?\]);/)[1])
+          const revision = createHash('sha256')
+          for (const url of urls) {
+            revision.update(url)
+            revision.update(readFileSync(join(root, url.slice(1))))
+          }
+          const expected = `nodezero-pwa-staging-testnet-${revision.digest('hex').slice(0, 16)}`
+          const actual = worker.match(/const CACHE_NAME = "([^"]+)";/)?.[1]
+          if (actual !== expected) throw new Error(`Live PWA cache revision mismatch: ${String(actual)}`)
+          const retainedPaths = new Set(
+            readFileSync('/tmp/live-pwa-paths.txt', 'utf8').trim().split('\n')
+          )
+          for (const url of urls.filter((value) => value.endsWith('.js'))) {
+            const source = readFileSync(join(root, url.slice(1)), 'utf8')
+            for (const assetPath of extractExpoAssetPaths(source)) {
+              if (!retainedPaths.has(assetPath)) {
+                throw new Error(`Retained PWA is missing runtime asset ${assetPath}.`)
+              }
+            }
+          }
+          NODE
 
       - name: Build authenticated N-1 baseline manifest
         env:
@@ -246,8 +344,8 @@ jobs:
           cp "${RUNNER_TEMP}/baseline-bundle/relay.zip" baseline-bundle/relay.zip
           cp "${RUNNER_TEMP}/baseline-bundle/provisioner-files.sha256" baseline-bundle/provisioner-files.sha256
           cp "${RUNNER_TEMP}/baseline-bundle/relay-files.sha256" baseline-bundle/relay-files.sha256
-          cp -r packages/mobile-app/dist baseline-bundle/pwa-dist
-          (cd packages/mobile-app/dist && find . -type f ! -name deploy-marker.json -print0 | sort -z | xargs -0 sha256sum) > baseline-bundle/pwa-files.sha256
+          cp -r "${RUNNER_TEMP}/baseline-pwa" baseline-bundle/pwa-dist
+          (cd baseline-bundle/pwa-dist && find . -type f ! -name deploy-marker.json ! -name staticwebapp.config.json -print0 | sort -z | xargs -0 sha256sum) > baseline-bundle/pwa-files.sha256
           provisioner_sha="$(sha256sum baseline-bundle/provisioner.zip | awk '{print $1}')"
           pwa_sha="$(sha256sum baseline-bundle/pwa-files.sha256 | awk '{print $1}')"
           relay_sha="$(sha256sum baseline-bundle/relay.zip | awk '{print $1}')"

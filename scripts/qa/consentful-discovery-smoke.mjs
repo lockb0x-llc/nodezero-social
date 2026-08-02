@@ -116,6 +116,45 @@ if (
   failures.push('baseline workflow: captured backend files are not guarded across source checkout')
 }
 
+if (
+  !/Capture and verify exact live PWA graph/.test(baselineWorkflow) ||
+  !/--max-redirs 0[\s\S]*url_effective/.test(baselineWorkflow) ||
+  !/extractExpoAssetPaths/.test(baselineWorkflow) ||
+  !/Retained PWA is missing runtime asset/.test(baselineWorkflow)
+) {
+  failures.push(
+    'baseline workflow: live PWA graph is not path-bounded, revision-authenticated, and runtime-complete'
+  )
+}
+
+for (const path of [
+  '.github/workflows/staging-baseline-capture.yml',
+  '.github/workflows/staging-deploy.yml',
+  '.github/workflows/staging-rollback.yml',
+]) {
+  const workflow = sources.get(path) ?? (await readFile(path, 'utf8'))
+  if (!/pwa-files\.sha256/.test(workflow) || !/! -name staticwebapp\.config\.json/.test(workflow)) {
+    failures.push(`${path}: public PWA checksum must exclude deployment-only SWA configuration`)
+  }
+}
+
+for (const path of [
+  '.github/workflows/staging-baseline-capture.yml',
+  '.github/workflows/staging-deploy.yml',
+  '.github/workflows/staging-rollback.yml',
+]) {
+  const workflow = sources.get(path) ?? (await readFile(path, 'utf8'))
+  const directCurlCount = (workflow.match(/\bcurl\b/g) ?? []).length
+  const directFetchCount = (workflow.match(/\bfetch\(/g) ?? []).length
+  const allowedCurlCount = path.endsWith('staging-baseline-capture.yml') ? 1 : 0
+  const allowedFetchCount = path.endsWith('staging-baseline-capture.yml') ? 1 : 0
+  if (directCurlCount !== allowedCurlCount || directFetchCount !== allowedFetchCount) {
+    failures.push(
+      `${path}: release HTTP reads must use fetch-exact except the guarded PWA fetch helpers`
+    )
+  }
+}
+
 const packageJson = JSON.parse(await readFile('package.json', 'utf8'))
 for (const script of [
   'policy:validate-consentful-discovery',

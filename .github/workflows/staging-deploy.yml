@@ -158,7 +158,7 @@ jobs:
           [ "$(jq -r '.head_sha' <<<"$run_json")" = "$BASELINE_TOOLING_COMMIT" ]
           [ "$(jq -r '.run_attempt' <<<"$run_json")" = "$BASELINE_RUN_ATTEMPT" ]
           [ "$BASELINE_TOOLING_COMMIT" = "$GITHUB_SHA" ]
-          marker="$(curl -fsS --max-time 20 https://staging.nodezero.social/deploy-marker.json)"
+          marker="$(node ./scripts/qa/fetch-exact.mjs https://staging.nodezero.social/deploy-marker.json)"
           [ "$(jq -r '.commit // empty' <<<"$marker")" = "$BASELINE_COMMIT" ]
           artifact_id="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${BASELINE_RUN_ID}/artifacts" \
             --jq ".artifacts[] | select(.name == \"staging-baseline-${BASELINE_COMMIT}\" and .expired == false) | .id" \
@@ -350,7 +350,7 @@ jobs:
           set -euo pipefail
           url="https://api.nodezero.social/health"
           for attempt in {1..20}; do
-            if curl --fail --silent --show-error --max-time 20 "$url" >/dev/null; then
+            if node ./scripts/qa/fetch-exact.mjs "$url" /tmp/api-health.json; then
               break
             fi
             if [ "$attempt" -eq 20 ]; then
@@ -575,8 +575,8 @@ jobs:
           consecutive_healthy=0
 
           for attempt in {1..30}; do
-            status_code="$(curl -sS -o /tmp/provisioner-health.json -w "%{http_code}" --max-time 10 "$health_url" || true)"
-            if [ "$status_code" = "200" ]; then
+            rm -f /tmp/provisioner-health.json
+            if NZ_FETCH_TIMEOUT_MS=10000 node ./scripts/qa/fetch-exact.mjs "$health_url" /tmp/provisioner-health.json; then
               deployed_commit="$(jq -r '.build.commit // empty' /tmp/provisioner-health.json)"
               payload_sha="$(jq -r '.build.payloadSha256 // empty' /tmp/provisioner-health.json)"
               configured_artifact_sha="$(jq -r '.build.configuredArtifactSha256 // empty' /tmp/provisioner-health.json)"
@@ -604,7 +604,7 @@ jobs:
                 if [ "$consecutive_healthy" -eq 3 ]; then
                   echo "Holding exact provenance for 30 seconds before mutating staging checks."
                   sleep 30
-                  stable_commit="$(curl --fail --silent --show-error --max-time 10 "$health_url" | jq -r '.build.commit // empty')"
+                  stable_commit="$(NZ_FETCH_TIMEOUT_MS=10000 node ./scripts/qa/fetch-exact.mjs "$health_url" | jq -r '.build.commit // empty')"
                   if [ "$stable_commit" != "$EXPECTED_COMMIT" ]; then
                     echo "Provisioner provenance changed during stabilization (${stable_commit})."
                     exit 1
@@ -620,7 +620,7 @@ jobs:
               consecutive_healthy=0
             fi
 
-            echo "Attempt ${attempt}/30: health returned HTTP ${status_code}. Retrying in 10s..."
+            echo "Attempt ${attempt}/30: exact health fetch or provenance check failed. Retrying in 10s..."
             sleep 10
           done
 
@@ -634,21 +634,18 @@ jobs:
           payload='{"email":"qa-warmup+staging@nodezero.social"}'
 
           for attempt in {1..20}; do
-            status_code="$(curl -sS -o /tmp/provisioner-warmup.json -w "%{http_code}" \
-              --max-time 15 \
-              -H "content-type: application/json" \
-              -H "accept: application/json" \
-              -X POST \
-              --data "$payload" \
-              "$warmup_url" || true)"
-
-            if [ "$status_code" = "200" ]; then
+            rm -f /tmp/provisioner-warmup.json
+            if NZ_FETCH_METHOD=POST \
+              NZ_FETCH_BODY="$payload" \
+              NZ_FETCH_HEADERS_JSON='{"content-type":"application/json","accept":"application/json"}' \
+              NZ_FETCH_TIMEOUT_MS=15000 \
+              node ./scripts/qa/fetch-exact.mjs "$warmup_url" /tmp/provisioner-warmup.json; then
               echo "Provisioner warmup succeeded on attempt ${attempt}."
               cat /tmp/provisioner-warmup.json
               exit 0
             fi
 
-            echo "Attempt ${attempt}/20: warmup returned HTTP ${status_code}. Retrying in 6s..."
+            echo "Attempt ${attempt}/20: exact warmup fetch failed. Retrying in 6s..."
             sleep 6
           done
 
@@ -705,8 +702,8 @@ jobs:
           set -euo pipefail
           relay_health_url="https://${RELAY_APP_NAME}.azurewebsites.net/health"
           for attempt in {1..30}; do
-            status_code="$(curl -sS -o /tmp/relay-health.json -w "%{http_code}" --max-time 10 "$relay_health_url" || true)"
-            if [ "$status_code" = "200" ] && \
+            rm -f /tmp/relay-health.json
+            if NZ_FETCH_TIMEOUT_MS=10000 node ./scripts/qa/fetch-exact.mjs "$relay_health_url" /tmp/relay-health.json && \
               [ "$(jq -r '.identityVerifierConfigured // false' /tmp/relay-health.json)" = "true" ] && \
               [ "$(jq -r '.identityVerifierReachable // false' /tmp/relay-health.json)" = "true" ] && \
               [ "$(jq -r '.transportEnabled // true' /tmp/relay-health.json)" = "false" ] && \
@@ -715,7 +712,7 @@ jobs:
               cat /tmp/relay-health.json
               exit 0
             fi
-            echo "Attempt ${attempt}/30: relay health returned HTTP ${status_code}. Retrying in 10s..."
+            echo "Attempt ${attempt}/30: exact relay health fetch or provenance check failed. Retrying in 10s..."
             sleep 10
           done
           echo "Relay failed health/configuration check after 30 attempts."
@@ -811,8 +808,12 @@ jobs:
           echo "Checking marker: ${marker_url}"
 
           for attempt in {1..18}; do
-            marker_json="$(curl -sS --max-time 20 "$marker_url" || true)"
-            echo "$marker_json" > /tmp/deploy-marker.json
+            rm -f /tmp/deploy-marker.json
+            if ! node ./scripts/qa/fetch-exact.mjs "$marker_url" /tmp/deploy-marker.json; then
+              echo "Attempt ${attempt}/18: exact marker fetch failed. Retrying in 10s..."
+              sleep 10
+              continue
+            fi
 
             marker_env="$(jq -r '.environment // empty' /tmp/deploy-marker.json 2>/dev/null || true)"
             marker_workflow="$(jq -r '.workflow // empty' /tmp/deploy-marker.json 2>/dev/null || true)"
@@ -855,8 +856,12 @@ jobs:
           echo "Checking public apex marker: ${marker_url}"
 
           for attempt in {1..24}; do
-            marker_json="$(curl -sS --max-time 20 "$marker_url" || true)"
-            echo "$marker_json" > /tmp/staging-domain-marker.json
+            rm -f /tmp/staging-domain-marker.json
+            if ! node ./scripts/qa/fetch-exact.mjs "$marker_url" /tmp/staging-domain-marker.json; then
+              echo "Attempt ${attempt}/24: exact public marker fetch failed. Retrying in 10s..."
+              sleep 10
+              continue
+            fi
 
             marker_env="$(jq -r '.environment // empty' /tmp/staging-domain-marker.json 2>/dev/null || true)"
             marker_workflow="$(jq -r '.workflow // empty' /tmp/staging-domain-marker.json 2>/dev/null || true)"
@@ -952,7 +957,7 @@ jobs:
           mkdir -p rollback-bundle
           provisioner_sha="$(sha256sum packages/jss-provisioner/deploy.zip | awk '{print $1}')"
           relay_sha="$(sha256sum packages/relay-service/deploy.zip | awk '{print $1}')"
-          (cd packages/mobile-app/dist && find . -type f ! -name deploy-marker.json -print0 | sort -z | xargs -0 sha256sum) > rollback-bundle/pwa-files.sha256
+          (cd packages/mobile-app/dist && find . -type f ! -name deploy-marker.json ! -name staticwebapp.config.json -print0 | sort -z | xargs -0 sha256sum) > rollback-bundle/pwa-files.sha256
           rm -rf /tmp/rollback-provisioner
           mkdir -p /tmp/rollback-provisioner
           unzip -q packages/jss-provisioner/deploy.zip -d /tmp/rollback-provisioner
@@ -1027,7 +1032,7 @@ jobs:
       - name: Verify exact live candidate
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error https://staging.nodezero.social/deploy-marker.json > /tmp/deploy-marker.json
+          node ./scripts/qa/fetch-exact.mjs https://staging.nodezero.social/deploy-marker.json /tmp/deploy-marker.json
           live_sha="$(jq -r '.commit // empty' /tmp/deploy-marker.json)"
           live_run_id="$(jq -r '.runId // empty' /tmp/deploy-marker.json)"
           live_run_attempt="$(jq -r '.runAttempt // empty' /tmp/deploy-marker.json)"

@@ -102,6 +102,14 @@ This runbook does not authorize Production Mainnet deployment.
    identity, the authenticated marker run, and two identical complete Kudu file-tree
    captures rather than by attempting to reconstruct its original pre-deploy payload
    digest from live files.
+   Expo bundle hashes are not assumed reproducible from a later build. The active live
+   service worker supplies a strict same-origin precache graph; Expo `registerAsset`
+   metadata extends it with runtime fonts and images. Each referenced asset is fetched
+   twice, all runtime references must resolve inside the retained tree, and the worker
+   cache revision is recomputed from the exact precache bytes before retention.
+   `staticwebapp.config.json` remains in the deployable rollback artifact but is excluded
+   from the public HTTP checksum manifest because Static Web Apps consumes rather than
+   serves that file.
 4. Do not use the candidate deployment's own rollback bundle as its N-1 artifact.
 
 ## Phase 4: Dark Staging Deployment

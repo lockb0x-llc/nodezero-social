@@ -37,7 +37,7 @@
     "qa:q4:candidate": "node ./scripts/qa/q4-release-preflight.mjs --phase=candidate",
     "qa:q4:published": "node ./scripts/qa/q4-release-preflight.mjs --phase=published",
     "qa:q4:deployed": "node ./scripts/qa/q4-release-preflight.mjs --phase=deployed",
-    "test:device-evidence": "node --test ./scripts/qa/validate-device-evidence.test.mjs ./scripts/qa/q4-release-preflight.test.mjs",
+    "test:device-evidence": "node --test ./scripts/qa/validate-device-evidence.test.mjs ./scripts/qa/q4-release-preflight.test.mjs ./scripts/qa/extract-expo-assets.test.mjs ./scripts/qa/fetch-exact.test.mjs",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
     "pm:dispatch": "pwsh -NoProfile -File ./scripts/agents/dispatch-parallel.ps1",
@@ -69,6 +69,7 @@
     "@stellar/stellar-sdk": "^16.0.0",
     "@typescript-eslint/eslint-plugin": "^7.18.0",
     "@typescript-eslint/parser": "^7.18.0",
+    "acorn": "8.17.0",
     "eslint": "^8.57.0",
     "prettier": "^3.3.2",
     "typescript": "^5.5.4"
