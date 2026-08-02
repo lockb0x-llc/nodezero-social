@@ -1,7 +1,7 @@
 name: Capture Staging Baseline
 
 on:
-  workflow_dispatch:
+  workflow_call:
     inputs:
       expected_deployed_commit:
         description: Exact commit currently recorded by the live staging marker
@@ -10,17 +10,12 @@ on:
       confirm_staging_testnet:
         description: Confirm this captures the current staging-testnet N-1 baseline
         required: true
-        default: false
         type: boolean
 
 permissions:
   actions: read
   contents: read
   id-token: write
-
-concurrency:
-  group: staging-testnet-deploy
-  cancel-in-progress: false
 
 jobs:
   capture-baseline:

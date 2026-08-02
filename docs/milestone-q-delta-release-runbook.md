@@ -82,11 +82,15 @@ This runbook does not authorize Production Mainnet deployment.
 
 ## Phase 3: Capture Genuine N-1 Baseline
 
-1. Before deploying the Q candidate, dispatch `staging-baseline-capture.yml` with:
+1. Before deploying the Q candidate, dispatch the registered `staging-deploy.yml`
+   workflow with `release_action=capture-baseline` and:
    - the exact commit in the current live staging marker;
    - explicit staging-testnet confirmation.
-2. Require a successful `Capture Staging Baseline` run and retained artifact named
-   `staging-baseline-<current-live-sha>`.
+     The dispatcher calls `staging-baseline-capture.yml` as a reusable workflow because
+     GitHub only exposes manual dispatch for workflows present on the default branch.
+2. Require a successful `Staging Deploy` capture run whose
+   `Capture authenticated live N-1` job passes and whose retained artifact is named
+   `staging-baseline-<current-live-sha>`. The deploy job must be skipped.
 3. Record the capture run ID, capture run attempt, capture tooling SHA, and baseline
    commit. The first Q deployment must supply all four values and fails closed if the
    live marker, source workflow, attempt, tooling SHA, manifest, or digests differ.
@@ -94,9 +98,9 @@ This runbook does not authorize Production Mainnet deployment.
 
 ## Phase 4: Dark Staging Deployment
 
-1. Manually dispatch `staging-deploy.yml` for the exact candidate SHA, supplying the
-   successful baseline-capture run ID/attempt, baseline commit, and baseline tooling
-   commit.
+1. Manually dispatch `staging-deploy.yml` for the exact candidate SHA with
+   `release_action=deploy`, explicit staging-testnet confirmation, and the successful
+   baseline-capture run ID/attempt, baseline commit, and baseline tooling commit.
 2. Require successful blocking jobs:
    - environment isolation;
    - consentful discovery policy;

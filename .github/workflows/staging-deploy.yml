@@ -3,6 +3,23 @@ name: Staging Deploy
 on:
   workflow_dispatch:
     inputs:
+      release_action:
+        description: Capture the live N-1 baseline or deploy an authenticated candidate
+        required: true
+        default: capture-baseline
+        type: choice
+        options:
+          - capture-baseline
+          - deploy
+      expected_deployed_commit:
+        description: Exact live staging commit required for baseline capture
+        required: false
+        type: string
+      confirm_staging_testnet:
+        description: Confirm this operation targets staging-testnet only
+        required: true
+        default: false
+        type: boolean
       certify_physical_devices:
         description: Run exact-SHA physical-device certification after deployment
         required: true
@@ -14,19 +31,19 @@ on:
         type: string
       baseline_capture_run_id:
         description: Successful Capture Staging Baseline run containing the current N-1 artifact
-        required: true
+        required: false
         type: string
       baseline_commit:
         description: Exact currently deployed commit captured as the N-1 baseline
-        required: true
+        required: false
         type: string
       baseline_capture_run_attempt:
         description: Exact successful Capture Staging Baseline run attempt
-        required: true
+        required: false
         type: string
       baseline_tooling_commit:
         description: Exact candidate SHA that executed the baseline capture workflow
-        required: true
+        required: false
         type: string
 
 permissions:
@@ -39,8 +56,52 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  validate-dispatch:
+    name: Validate staging release action
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate fail-closed dispatch inputs
+        env:
+          RELEASE_ACTION: ${{ inputs.release_action }}
+          CONFIRM_STAGING_TESTNET: ${{ inputs.confirm_staging_testnet }}
+          EXPECTED_DEPLOYED_COMMIT: ${{ inputs.expected_deployed_commit }}
+          BASELINE_RUN_ID: ${{ inputs.baseline_capture_run_id }}
+          BASELINE_COMMIT: ${{ inputs.baseline_commit }}
+          BASELINE_RUN_ATTEMPT: ${{ inputs.baseline_capture_run_attempt }}
+          BASELINE_TOOLING_COMMIT: ${{ inputs.baseline_tooling_commit }}
+        run: |
+          set -euo pipefail
+          [ "$CONFIRM_STAGING_TESTNET" = "true" ]
+          case "$RELEASE_ACTION" in
+            capture-baseline)
+              [[ "$EXPECTED_DEPLOYED_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+              ;;
+            deploy)
+              [[ "$BASELINE_RUN_ID" =~ ^[0-9]+$ ]]
+              [[ "$BASELINE_RUN_ATTEMPT" =~ ^[0-9]+$ ]]
+              [[ "$BASELINE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+              [[ "$BASELINE_TOOLING_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+              ;;
+            *)
+              echo "Unsupported release action: $RELEASE_ACTION"
+              exit 1
+              ;;
+          esac
+
+  capture-baseline:
+    name: Capture authenticated live N-1
+    needs: validate-dispatch
+    if: ${{ inputs.release_action == 'capture-baseline' }}
+    uses: ./.github/workflows/staging-baseline-capture.yml
+    with:
+      expected_deployed_commit: ${{ inputs.expected_deployed_commit }}
+      confirm_staging_testnet: ${{ inputs.confirm_staging_testnet }}
+    secrets: inherit
+
   deploy-staging:
     name: Deploy staging-testnet
+    needs: validate-dispatch
+    if: ${{ inputs.release_action == 'deploy' }}
     runs-on: ubuntu-latest
     environment: staging-testnet
 
@@ -83,8 +144,15 @@ jobs:
           set -euo pipefail
           run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${BASELINE_RUN_ID}")"
           workflow_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/$(jq -r '.workflow_id' <<<"$run_json")")"
-          [ "$(jq -r '.path' <<<"$workflow_json")" = ".github/workflows/staging-baseline-capture.yml" ]
-          [ "$(jq -r '.name' <<<"$workflow_json")" = "Capture Staging Baseline" ]
+          workflow_path="$(jq -r '.path' <<<"$workflow_json")"
+          workflow_name="$(jq -r '.name' <<<"$workflow_json")"
+          if [ "$workflow_path" = ".github/workflows/staging-baseline-capture.yml" ]; then
+            [ "$workflow_name" = "Capture Staging Baseline" ]
+          else
+            [ "$workflow_path" = ".github/workflows/staging-deploy.yml" ]
+            [ "$workflow_name" = "Staging Deploy" ]
+            [ "$(jq -r '.event' <<<"$run_json")" = "workflow_dispatch" ]
+          fi
           [ "$(jq -r '.conclusion' <<<"$run_json")" = "success" ]
           [ "$(jq -r '.head_branch' <<<"$run_json")" = "testnet" ]
           [ "$(jq -r '.head_sha' <<<"$run_json")" = "$BASELINE_TOOLING_COMMIT" ]

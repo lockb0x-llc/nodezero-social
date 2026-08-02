@@ -83,8 +83,15 @@ jobs:
           run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}")"
           workflow_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/$(jq -r '.workflow_id' <<<"$run_json")")"
           if [ "$SOURCE_KIND" = "baseline" ]; then
-            [ "$(jq -r '.path' <<<"$workflow_json")" = ".github/workflows/staging-baseline-capture.yml" ]
-            [ "$(jq -r '.name' <<<"$workflow_json")" = "Capture Staging Baseline" ]
+            workflow_path="$(jq -r '.path' <<<"$workflow_json")"
+            workflow_name="$(jq -r '.name' <<<"$workflow_json")"
+            if [ "$workflow_path" = ".github/workflows/staging-baseline-capture.yml" ]; then
+              [ "$workflow_name" = "Capture Staging Baseline" ]
+            else
+              [ "$workflow_path" = ".github/workflows/staging-deploy.yml" ]
+              [ "$workflow_name" = "Staging Deploy" ]
+              [ "$(jq -r '.event' <<<"$run_json")" = "workflow_dispatch" ]
+            fi
           else
             [ "$(jq -r '.path' <<<"$workflow_json")" = ".github/workflows/staging-deploy.yml" ]
             [ "$(jq -r '.name' <<<"$workflow_json")" = "Staging Deploy" ]

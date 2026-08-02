@@ -28,18 +28,36 @@ const checks = [
     '.github/workflows/staging-rollback.yml',
     /Force Milestone Q flags off/,
   ],
+  [
+    'Registered baseline dispatcher',
+    '.github/workflows/staging-deploy.yml',
+    /release_action:[\s\S]*capture-baseline:[\s\S]*staging-baseline-capture\.yml/,
+  ],
+  ['Reusable baseline capture', '.github/workflows/staging-baseline-capture.yml', /workflow_call:/],
 ]
 
 const failures = []
+const sources = new Map()
 for (const [label, path, pattern] of checks) {
   let source = ''
   try {
     source = await readFile(path, 'utf8')
+    sources.set(path, source)
   } catch {
     failures.push(`${label}: missing ${path}`)
     continue
   }
   if (!pattern.test(source)) failures.push(`${label}: contract marker missing from ${path}`)
+}
+
+const baselineWorkflow = sources.get('.github/workflows/staging-baseline-capture.yml') ?? ''
+if (/^\s*concurrency:/m.test(baselineWorkflow)) {
+  failures.push('reusable baseline capture must rely on the registered caller concurrency lock')
+}
+if (/^\s*workflow_dispatch:/m.test(baselineWorkflow)) {
+  failures.push(
+    'reusable baseline capture must not expose an unregistered standalone dispatch path'
+  )
 }
 
 const packageJson = JSON.parse(await readFile('package.json', 'utf8'))
