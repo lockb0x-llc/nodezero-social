@@ -106,21 +106,13 @@ jobs:
           mkdir -p baseline-bundle
           capture_app() {
             local app="$1" destination="$2"
-            local credentials username password scm_host
-            credentials="$(az webapp deployment list-publishing-credentials \
-              --resource-group "$AZURE_RESOURCE_GROUP" \
-              --name "$app" -o json)"
-            username="$(jq -r '.publishingUserName' <<<"$credentials")"
-            password="$(jq -r '.publishingPassword' <<<"$credentials")"
+            local scm_host
             scm_host="$(az webapp show --resource-group "$AZURE_RESOURCE_GROUP" --name "$app" --query defaultHostName -o tsv | sed 's/\.azurewebsites\.net$/.scm.azurewebsites.net/')"
-            test -n "$username"
-            test -n "$password"
-            echo "::add-mask::$username"
-            echo "::add-mask::$password"
-            curl --fail --silent --show-error --max-time 120 \
-              --user "${username}:${password}" \
-              "https://${scm_host}/api/zip/site/wwwroot/" \
-              --output "$destination"
+            timeout 120s az rest \
+              --method get \
+              --url "https://${scm_host}/api/zip/site/wwwroot/" \
+              --resource "https://management.azure.com/" \
+              --output-file "$destination"
             unzip -t "$destination" >/dev/null
           }
           capture_app "$JSS_PROVISIONER_APP_NAME" baseline-bundle/provisioner.zip

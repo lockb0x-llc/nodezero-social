@@ -234,18 +234,12 @@ jobs:
           set -euo pipefail
           if [ "$SOURCE_KIND" = "baseline" ]; then
             test -f rollback-bundle/relay-files.sha256
-            credentials="$(az webapp deployment list-publishing-credentials \
-              --resource-group "$AZURE_RESOURCE_GROUP" \
-              --name "$RELAY_APP_NAME" -o json)"
-            username="$(jq -r '.publishingUserName' <<<"$credentials")"
-            password="$(jq -r '.publishingPassword' <<<"$credentials")"
             scm_host="$(az webapp show --resource-group "$AZURE_RESOURCE_GROUP" --name "$RELAY_APP_NAME" --query defaultHostName -o tsv | sed 's/\.azurewebsites\.net$/.scm.azurewebsites.net/')"
-            echo "::add-mask::$username"
-            echo "::add-mask::$password"
-            curl --fail --silent --show-error --max-time 120 \
-              --user "${username}:${password}" \
-              "https://${scm_host}/api/zip/site/wwwroot/" \
-              --output /tmp/live-relay.zip
+            timeout 120s az rest \
+              --method get \
+              --url "https://${scm_host}/api/zip/site/wwwroot/" \
+              --resource "https://management.azure.com/" \
+              --output-file /tmp/live-relay.zip
             rm -rf /tmp/live-relay
             mkdir -p /tmp/live-relay
             unzip -q /tmp/live-relay.zip -d /tmp/live-relay

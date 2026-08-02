@@ -60,6 +60,23 @@ if (/^\s*workflow_dispatch:/m.test(baselineWorkflow)) {
   )
 }
 
+for (const path of [
+  '.github/workflows/staging-baseline-capture.yml',
+  '.github/workflows/staging-rollback.yml',
+]) {
+  const workflow = sources.get(path) ?? (await readFile(path, 'utf8'))
+  if (/list-publishing-credentials|--user\b/.test(workflow)) {
+    failures.push(`${path}: Kudu capture must use short-lived Entra bearer authentication`)
+  }
+  if (
+    !/timeout 120s az rest[\s\S]{0,300}\/api\/zip\/site\/wwwroot\/[\s\S]{0,300}--resource "https:\/\/management\.azure\.com\/"/.test(
+      workflow
+    )
+  ) {
+    failures.push(`${path}: Kudu capture is missing the ARM-audience bearer token path`)
+  }
+}
+
 const packageJson = JSON.parse(await readFile('package.json', 'utf8'))
 for (const script of [
   'policy:validate-consentful-discovery',
