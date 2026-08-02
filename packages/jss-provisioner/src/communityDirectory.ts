@@ -172,7 +172,7 @@ export class CommunityDirectoryStore {
     const manifestIsCurrent = Boolean(
       input.manifest && Date.parse(input.manifest.expiresAt) > now.getTime()
     )
-    const listed = input.publicListing && input.publicIndexing && manifestIsCurrent
+    const listed = input.publicListing && manifestIsCurrent
     const record: CommunityDirectoryRecord = {
       webId: input.webId,
       podUrl: input.podUrl,
@@ -191,11 +191,13 @@ export class CommunityDirectoryStore {
       record.manifestExpiresAt = input.manifest.expiresAt
       if (input.manifest.displayName) record.displayName = input.manifest.displayName
       if (input.manifest.avatarUrl) record.avatarUrl = input.manifest.avatarUrl
-      if (input.manifest.publicInterests) {
+      if (input.publicIndexing && input.manifest.publicInterests) {
         record.publicInterests = [...input.manifest.publicInterests]
       }
-      if (input.manifest.capabilities) record.capabilities = [...input.manifest.capabilities]
-      if (input.manifest.inboxUrl) record.inboxUrl = input.manifest.inboxUrl
+      if (input.publicIndexing && input.manifest.capabilities) {
+        record.capabilities = [...input.manifest.capabilities]
+      }
+      if (input.publicIndexing && input.manifest.inboxUrl) record.inboxUrl = input.manifest.inboxUrl
     } else {
       delete record.listedAt
       if (existing?.listed) record.removedAt = now.toISOString()

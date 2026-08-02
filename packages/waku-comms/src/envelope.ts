@@ -38,6 +38,7 @@ export function canonicalSigningBytes(envelope: Omit<MessageEnvelope, 'signature
     envelope.id,
     envelope.senderWebId,
     envelope.senderStellarPublicKey,
+    envelope.transportIdentityAssertion,
     envelope.timestamp,
     envelope.kind,
     envelope.body,
@@ -65,6 +66,7 @@ export async function createEnvelope(
     id: input.id ?? globalThis.crypto.randomUUID(),
     senderWebId: input.senderWebId,
     senderStellarPublicKey: signer.stellarPublicKey,
+    transportIdentityAssertion: signer.transportIdentityAssertion,
     timestamp: input.timestamp ?? new Date().toISOString(),
     kind: input.kind,
     body: input.body,
@@ -115,6 +117,7 @@ function isEnvelopeShape(value: unknown): value is MessageEnvelope {
     typeof candidate.id === 'string' &&
     typeof candidate.senderWebId === 'string' &&
     typeof candidate.senderStellarPublicKey === 'string' &&
+    typeof candidate.transportIdentityAssertion === 'string' &&
     typeof candidate.timestamp === 'string' &&
     typeof candidate.kind === 'string' &&
     ENVELOPE_KINDS.includes(candidate.kind as EnvelopeKind) &&
@@ -131,6 +134,7 @@ function isEnvelopeShape(value: unknown): value is MessageEnvelope {
 export function keypairSigner(keypair: Keypair): EnvelopeSigner {
   return {
     stellarPublicKey: keypair.publicKey(),
+    transportIdentityAssertion: 'test-waku-identity-assertion',
     sign: (payload: Uint8Array) => Promise.resolve(new Uint8Array(keypair.sign(Buffer.from(payload)))),
   }
 }

@@ -460,7 +460,7 @@ jobs:
           NZ_ZK_ARTIFACTS_URL: https://stki7yquyjmnskg.blob.core.windows.net/zk-artifacts/
           NZ_ZK_MANIFEST_URL: https://stki7yquyjmnskg.blob.core.windows.net/zk-artifacts/lockb0x-bridge-v3/zk-testnet-lockbox-bridge-v3-artifacts.json
           NZ_NODEZERO_ISSUER_URL: https://solid.nodezero.social/
-          NZ_NODEZERO_DIRECTORY_URL: https://solid.nodezero.social/public/nodezero-pod-holders.json
+          NZ_NODEZERO_DIRECTORY_URL: https://api.nodezero.social/v1/community-directory/index
           NZ_APP_ORIGIN: https://staging.nodezero.social
           NZ_SEAMLESS_ONBOARDING_ENABLED: 'true'
           NZ_JSS_PROVISIONER_URL: https://api.nodezero.social

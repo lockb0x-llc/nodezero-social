@@ -8,6 +8,7 @@ import { join } from 'node:path'
 import { after, before, test } from 'node:test'
 import { SessionTokenManager } from './sessionTokens.js'
 import type { CommunityDirectoryRecord } from './communityDirectory.js'
+import type { PublicPeerProfileResult } from './publicPeerProfile.js'
 
 process.env.JSS_SOLID_CSS_BASE_URL = 'https://solid.nodezero.social'
 process.env.JSS_ISSUER_URL = 'https://staging.nodezero.social'
@@ -126,6 +127,61 @@ void test('/v1/community-directory/refresh derives the owner from the session', 
     ): Promise<CommunityDirectoryRecord> => {
       refreshedSubject = claims.sub
       return Promise.resolve(record)
+    },
+  })
+})
+
+void test('/v1/public-profile/read requires a valid NodeZero session', async () => {
+  await withServer(async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/v1/public-profile/read`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ webId: 'https://peer.example/profile/card#me' }),
+    })
+    assert.equal(response.status, 401)
+    assert.equal(((await response.json()) as { code?: string }).code, 'session_invalid')
+  })
+})
+
+void test('/v1/public-profile/read delegates peer WebID to credential-free service', async () => {
+  const ownerWebId = 'https://solid.nodezero.social/alice/profile/card#me'
+  const peerWebId = 'https://peer.example/profile/card#me'
+  const session = new SessionTokenManager({
+    signingKey: process.env.JSS_SESSION_SIGNING_KEY,
+    issuer: 'https://staging.nodezero.social',
+  }).issue({
+    webId: ownerWebId,
+    podUrl: 'https://solid.nodezero.social/alice/',
+  })
+  let requestedWebId = ''
+  await withServer(async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/v1/public-profile/read`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${session.accessToken}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ webId: peerWebId }),
+    })
+    const payload = (await response.json()) as PublicPeerProfileResult
+    assert.equal(response.status, 200)
+    assert.equal(payload.webId, peerWebId)
+    assert.equal(payload.profile?.displayName, 'Peer')
+    assert.equal(payload.authenticated, false)
+    assert.equal(requestedWebId, peerWebId)
+  }, {
+    readPublicPeerProfile: (webId: string): Promise<PublicPeerProfileResult> => {
+      requestedWebId = webId
+      return Promise.resolve({
+        webId,
+        profile: {
+          displayName: 'Peer',
+          bio: 'Public profile',
+          interests: ['solid'],
+          isNsfw: false,
+        },
+        authenticated: false,
+      })
     },
   })
 })

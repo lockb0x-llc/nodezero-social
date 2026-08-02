@@ -3,10 +3,14 @@ import { Alert } from 'react-native'
 import { getSolidPodSyncManagers } from '../solid/podSyncManagers'
 import { isLikelyWebId } from '../directory/directorySource'
 import { getProvisionerUrl } from '../contexts/NodeZeroSessionContext'
-import { disconnectRelationship, sendRelationshipRequest } from './relationshipRequestFlow'
+import {
+  cancelRelationshipRequest,
+  disconnectRelationship,
+  sendRelationshipRequest,
+} from './relationshipRequestFlow'
 import { respondToRelationshipRequest } from './relationshipRequestFlow'
 import { syncRelationshipInbox } from './relationshipInboxSync'
-import type { RelationshipRecord } from '@nodezero/solid-pod-sync'
+import type { ModerationRecord, RelationshipRecord } from '@nodezero/solid-pod-sync'
 
 export interface ConnectionStatus {
   type: 'info' | 'success' | 'error'
@@ -30,7 +34,10 @@ export function useConnections({
   onConnectionsChanged,
 }: UseConnectionsArgs): {
   connectionsLoading: boolean
+  connectionAuthorityReady: boolean
   connections: string[]
+  relationships: RelationshipRecord[]
+  blockedWebIds: string[]
   connectionBusyWebId: string | null
   connectionStatus: ConnectionStatus | null
   incomingRequests: RelationshipRecord[]
@@ -41,11 +48,16 @@ export function useConnections({
   setInboundRequestsEnabled: (enabled: boolean) => Promise<void>
   respondToIncomingRequest: (peerWebId: string, decision: 'accept' | 'reject') => Promise<boolean>
   addConnection: (targetWebId: string) => Promise<boolean>
+  cancelConnectionRequest: (targetWebId: string) => Promise<boolean>
   removeConnection: (targetWebId: string) => Promise<boolean>
+  setBlocked: (targetWebId: string, blocked: boolean) => Promise<boolean>
   setConnectionStatus: Dispatch<SetStateAction<ConnectionStatus | null>>
 } {
   const [connectionsLoading, setConnectionsLoading] = useState(false)
+  const [connectionAuthorityReady, setConnectionAuthorityReady] = useState(false)
   const [connections, setConnections] = useState<string[]>([])
+  const [relationships, setRelationships] = useState<RelationshipRecord[]>([])
+  const [blockedWebIds, setBlockedWebIds] = useState<string[]>([])
   const [connectionBusyWebId, setConnectionBusyWebId] = useState<string | null>(null)
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus | null>(null)
   const [incomingRequests, setIncomingRequests] = useState<RelationshipRecord[]>([])
@@ -83,6 +95,9 @@ export function useConnections({
   const loadConnections = useCallback(async (): Promise<void> => {
     if (!effectiveWebId) {
       setConnections([])
+      setRelationships([])
+      setBlockedWebIds([])
+      setConnectionAuthorityReady(false)
       return
     }
 
@@ -91,16 +106,27 @@ export function useConnections({
       const podRoot = `${effectiveWebId.split('/profile/')[0]}/`
       const managers = getSolidPodSyncManagers({ fetch: authFetch })
       await managers.legacyRelationshipMigrator.migrate(podRoot)
-      const relationships = await managers.relationshipManager.listRelationships(podRoot)
-      setConnections(relationships
+      const [relationshipRecords, moderationRecords] = await Promise.all([
+        managers.relationshipManager.listRelationships(podRoot),
+        managers.moderationManager.listModeration(podRoot),
+      ])
+      setRelationships(relationshipRecords)
+      setBlockedWebIds(moderationRecords
+        .filter((record: ModerationRecord) => record.action === 'block')
+        .map((record) => record.subjectWebId))
+      setConnections(relationshipRecords
         .filter((relationship) =>
           relationship.state === 'accepted' || relationship.state === 'legacy-connected'
         )
         .map((relationship) => relationship.peerWebId)
         .filter((item) => item !== effectiveWebId))
+      setConnectionAuthorityReady(true)
       await syncIncomingRequests()
     } catch {
       setConnections([])
+      setRelationships([])
+      setBlockedWebIds([])
+      setConnectionAuthorityReady(false)
     } finally {
       setConnectionsLoading(false)
     }
@@ -235,9 +261,76 @@ export function useConnections({
     }
   }, [authFetch, effectiveWebId, loadConnections, onConnectionsChanged])
 
+  const cancelConnectionRequest = useCallback(async (targetWebId: string): Promise<boolean> => {
+    if (!effectiveWebId) return false
+
+    const podRoot = `${effectiveWebId.split('/profile/')[0]}/`
+    setConnectionStatus(null)
+    setConnectionBusyWebId(targetWebId)
+    try {
+      const managers = getSolidPodSyncManagers({ fetch: authFetch })
+      await cancelRelationshipRequest({
+        podRoot,
+        ownerWebId: effectiveWebId,
+        recipientWebId: targetWebId,
+        provisionerUrl: getProvisionerUrl(),
+        authFetch,
+        managers,
+      })
+      await loadConnections()
+      await onConnectionsChanged?.()
+      setConnectionStatus({ type: 'success', message: 'Connection request cancelled.' })
+      return true
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to cancel request.'
+      setConnectionStatus({ type: 'error', message: `Cancel failed: ${message}` })
+      return false
+    } finally {
+      setConnectionBusyWebId(null)
+    }
+  }, [authFetch, effectiveWebId, loadConnections, onConnectionsChanged])
+
+  const setBlocked = useCallback(async (
+    targetWebId: string,
+    blocked: boolean
+  ): Promise<boolean> => {
+    if (!effectiveWebId || targetWebId === effectiveWebId) return false
+    const podRoot = `${effectiveWebId.split('/profile/')[0]}/`
+    setConnectionBusyWebId(targetWebId)
+    setConnectionStatus(null)
+    try {
+      const { moderationManager } = getSolidPodSyncManagers({ fetch: authFetch })
+      if (blocked) {
+        await moderationManager.setModeration(podRoot, {
+          subjectWebId: targetWebId,
+          action: 'block',
+          reasonCode: 'user-blocked',
+        })
+      } else {
+        await moderationManager.removeModeration(podRoot, targetWebId, 'block')
+      }
+      await loadConnections()
+      await onConnectionsChanged?.()
+      setConnectionStatus({
+        type: 'success',
+        message: blocked ? 'Person blocked.' : 'Person unblocked.',
+      })
+      return true
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to update block state.'
+      setConnectionStatus({ type: 'error', message })
+      return false
+    } finally {
+      setConnectionBusyWebId(null)
+    }
+  }, [authFetch, effectiveWebId, loadConnections, onConnectionsChanged])
+
   return useMemo(() => ({
     connectionsLoading,
+    connectionAuthorityReady,
     connections,
+    relationships,
+    blockedWebIds,
     connectionBusyWebId,
     connectionStatus,
     incomingRequests,
@@ -248,11 +341,16 @@ export function useConnections({
     setInboundRequestsEnabled,
     respondToIncomingRequest,
     addConnection,
+    cancelConnectionRequest,
     removeConnection,
+    setBlocked,
     setConnectionStatus,
   }), [
     connectionsLoading,
+    connectionAuthorityReady,
     connections,
+    relationships,
+    blockedWebIds,
     connectionBusyWebId,
     connectionStatus,
     incomingRequests,
@@ -263,6 +361,8 @@ export function useConnections({
     setInboundRequestsEnabled,
     respondToIncomingRequest,
     addConnection,
+    cancelConnectionRequest,
     removeConnection,
+    setBlocked,
   ])
 }

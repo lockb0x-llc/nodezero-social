@@ -50,6 +50,14 @@ import {
   CommunityDirectoryRefreshError,
   refreshCommunityDirectoryProjection,
 } from './communityDirectoryRefresh.js'
+import {
+  PublicPeerProfileError,
+  readPublicPeerProfile,
+} from './publicPeerProfile.js'
+import {
+  isTransportIdentityAudience,
+  TransportIdentityAssertionManager,
+} from './transportIdentityAssertions.js'
 // Stellar StrKey base32 decode + Ed25519 verify using Web Crypto API
 const _B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
 function _b32Decode(s: string): Uint8Array {
@@ -155,6 +163,7 @@ const credentialStore = new CredentialStore()
 const provisioningStore = new ProvisioningStore(credentialStore)
 const sessions = new SessionTokenManager({ issuer: ISSUER })
 const relationshipDeliveryAssertions = new RelationshipDeliveryAssertionManager({ issuer: ISSUER })
+const transportIdentityAssertions = new TransportIdentityAssertionManager({ issuer: ISSUER })
 const relationshipDeliveryRateLimiter = new RelationshipRateLimiter({
   maxRequests: Number(process.env.JSS_RELATIONSHIP_DELIVERY_RATE_LIMIT ?? 30),
   windowMs: Number(process.env.JSS_RELATIONSHIP_DELIVERY_RATE_WINDOW_MS ?? 60_000),
@@ -170,6 +179,7 @@ const RELATIONSHIP_ASSERTIONS_READY =
 export interface RequestHandlerOverrides {
   isRelationshipRecipientBlocked?: typeof isRelationshipRecipientBlocked
   refreshCommunityDirectoryProjection?: typeof refreshCommunityDirectoryProjection
+  readPublicPeerProfile?: typeof readPublicPeerProfile
 }
 const knownSolidAccountEmails = new Set<string>()
 const notificationPublisher = createNotificationEventPublisherFromEnv()
@@ -964,6 +974,101 @@ export async function handleHttpRequest(
         code: 'directory_refresh_unavailable',
       })
     }
+    return
+  }
+
+  if (req.method === 'POST' && url.pathname === '/v1/public-profile/read') {
+    const claims = verifyBearerSession(req)
+    if (!claims) {
+      sendJson(req, res, 401, {
+        error: 'A valid NodeZero session is required.',
+        code: 'session_invalid',
+      })
+      return
+    }
+    try {
+      const body = await readBoundedJsonBody<{ webId?: string }>(req, 4 * 1024)
+      if (!isNonEmpty(body.webId)) {
+        sendJson(req, res, 400, { error: 'webId is required.', code: 'invalid_webid' })
+        return
+      }
+      const readProfile = overrides.readPublicPeerProfile ?? readPublicPeerProfile
+      const result = await readProfile(body.webId)
+      if (!result.profile) {
+        sendJson(req, res, 404, { error: 'Public profile not found.', code: 'profile_not_found' })
+        return
+      }
+      sendJson(req, res, 200, result, { 'cache-control': 'private, no-store' })
+    } catch (error) {
+      if (error instanceof PublicPeerProfileError && error.code === 'invalid_webid') {
+        sendJson(req, res, 400, { error: error.message, code: error.code })
+        return
+      }
+      sendJson(req, res, 503, {
+        error: 'Public profile is temporarily unavailable.',
+        code: 'public_profile_unavailable',
+      })
+    }
+    return
+  }
+
+  if (req.method === 'POST' && url.pathname === '/v1/transport-identity/assertion') {
+    const claims = verifyBearerSession(req)
+    if (!claims) {
+      sendJson(req, res, 401, {
+        error: 'A valid NodeZero session is required.',
+        code: 'session_invalid',
+      })
+      return
+    }
+    const body = await readBoundedJsonBody<{ audience?: unknown; subject?: unknown }>(req, 1024)
+    if (!isTransportIdentityAudience(body.audience)) {
+      sendJson(req, res, 400, { error: 'audience must be waku or relay.', code: 'invalid_audience' })
+      return
+    }
+    try {
+      sendJson(req, res, 200, {
+        assertion: transportIdentityAssertions.issue(
+          claims,
+          body.audience,
+          new Date(),
+          typeof body.subject === 'string' ? body.subject : claims.sub
+        ),
+        webId: claims.sub,
+        stellarPublicKey: claims.spk,
+        audience: body.audience,
+      }, { 'cache-control': 'private, no-store' })
+    } catch {
+      sendJson(req, res, 403, {
+        error: 'The session is not bound to a Stellar identity key.',
+        code: 'identity_key_unavailable',
+      })
+    }
+    return
+  }
+
+  if (req.method === 'POST' && url.pathname === '/v1/transport-identity/verify') {
+    const body = await readBoundedJsonBody<{
+      assertion?: unknown
+      audience?: unknown
+      accountWebId?: unknown
+    }>(req, 8 * 1024)
+    if (typeof body.assertion !== 'string' || !isTransportIdentityAudience(body.audience)) {
+      sendJson(req, res, 400, { error: 'A valid assertion and audience are required.', code: 'invalid_assertion' })
+      return
+    }
+    const identity = transportIdentityAssertions.readVerified(body.assertion, body.audience)
+    const accountMatches = typeof body.accountWebId !== 'string' ||
+      transportIdentityAssertions.isAccountBound(
+        body.assertion,
+        body.audience,
+        body.accountWebId
+      )
+    if (!identity || !accountMatches) {
+      sendJson(req, res, 401, { error: 'Transport identity assertion is invalid.', code: 'invalid_assertion' })
+      return
+    }
+    sendJson(req, res, 200, identity, { 'cache-control': 'no-store' })
     return
   }
 

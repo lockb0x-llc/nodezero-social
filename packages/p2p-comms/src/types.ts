@@ -47,4 +47,6 @@ export interface SignalRelayOptions {
   relayUrl: string
   /** Local peer's Solid WebID (used as the connection identity). */
   localWebId: string
+  /** Short-lived provisioner assertion binding the local WebID for relay use. */
+  identityAssertion: string
 }

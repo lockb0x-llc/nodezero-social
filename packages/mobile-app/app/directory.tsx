@@ -1,87 +1,112 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView, Platform } from 'react-native'
-import type { ProfileManager } from '@nodezero/solid-pod-sync'
+import { useRouter } from 'expo-router'
 import { useNodeZeroSession } from '../src/contexts/NodeZeroSessionContext'
 import { getSolidPodSyncManagers } from '../src/solid/podSyncManagers'
 import { aesthetic } from '../src/theme/aesthetic'
-import { parseDirectoryRecords, resolveDirectoryEndpoint } from '../src/directory/directorySource'
+import { resolveDirectoryEndpoint } from '../src/directory/directorySource'
 import type { DirectoryEntry } from '../src/directory/types'
 import type { DirectoryRecord } from '../src/directory/types'
-import { buildDirectoryEntry } from '../src/directory/entryBuilder'
+import {
+  buildDirectoryEntry,
+  directoryRecommendationRank,
+} from '../src/directory/entryBuilder'
 import { buildDirectoryBadges } from '../src/directory/badgeModel'
+import {
+  fetchDirectoryPage,
+  type DirectoryPageCacheEntry,
+} from '../src/directory/directoryPageClient'
 import { useConnections } from '../src/social/useConnections'
 import {
   addTrustCircleMember,
   listTrustCircleMembers,
   removeTrustCircleMember,
 } from '../src/social/trustCircleStore'
+import { derivePersonActionPolicy } from '../src/social/personActionPolicy'
 
 export default function CommunityDirectoryScreen(): JSX.Element {
   const { status, webId, authFetch } = useNodeZeroSession()
+  const router = useRouter()
   const isLoggedIn = status === 'authenticated'
-  const managerRef = useRef<ProfileManager | null>(null)
   const effectiveWebId = webId
 
   const [directoryLoading, setDirectoryLoading] = useState(false)
   const [communityDirectory, setCommunityDirectory] = useState<DirectoryEntry[]>([])
   const [trustCircleMembers, setTrustCircleMembers] = useState<string[]>([])
   const [trustCircleBusyWebId, setTrustCircleBusyWebId] = useState<string | null>(null)
+  const [nextCursor, setNextCursor] = useState<string | null>(null)
+  const [publicInterests, setPublicInterests] = useState<string[]>([])
+  const [acceptedRelationships, setAcceptedRelationships] = useState<string[]>([])
+  const pageCacheRef = useRef<DirectoryPageCacheEntry | null>(null)
+  const directoryRecordsRef = useRef<DirectoryRecord[]>([])
 
-  const loadCommunityDirectory = useCallback(async (connections: string[]): Promise<void> => {
-    if (!effectiveWebId || !managerRef.current) {
+  const loadCommunityDirectory = useCallback(async (
+    connections: string[],
+    cursor?: string
+  ): Promise<void> => {
+    if (!effectiveWebId) {
       setCommunityDirectory([])
       return
     }
 
     setDirectoryLoading(true)
     try {
-      const seed = new Set<string>([effectiveWebId, ...connections])
-      const directoryMeta = new Map<string, DirectoryRecord>()
       const directoryEndpoint = resolveDirectoryEndpoint()
-
-      if (directoryEndpoint) {
-        try {
-          const response = await authFetch(directoryEndpoint)
-          if (response.ok) {
-            const payload = (await response.json()) as unknown
-            for (const candidate of parseDirectoryRecords(payload)) {
-              if (candidate.listed === false) continue
-              seed.add(candidate.webId)
-              directoryMeta.set(candidate.webId, candidate)
-            }
-          }
-        } catch {
-          // Optional source.
-        }
-      }
-
-      const entries = await Promise.all(
-        Array.from(seed).map(async (candidateWebId) => {
-          const profileData = await managerRef.current?.readProfile(candidateWebId).catch(() => null)
-          return buildDirectoryEntry({
-            candidateWebId,
-            effectiveWebId,
-            connections,
-            profileDisplayName: profileData?.displayName,
-            directoryRecord: directoryMeta.get(candidateWebId),
-          })
+      if (!directoryEndpoint) throw new Error('Community directory is not configured.')
+      const result = await fetchDirectoryPage({
+        endpoint: directoryEndpoint,
+        fetch: authFetch,
+        ...(cursor ? { cursor } : {}),
+        limit: 50,
+        ...(!cursor && pageCacheRef.current ? { cached: pageCacheRef.current } : {}),
+      })
+      if (!cursor) pageCacheRef.current = result.cache
+      const nextRecords = cursor
+        ? [...directoryRecordsRef.current, ...result.page.members]
+        : result.page.members
+      const dedupedRecords = Array.from(
+        new Map(nextRecords.map((record) => [record.webId, record])).values()
+      )
+      directoryRecordsRef.current = dedupedRecords
+      setNextCursor(result.page.nextCursor)
+      const seed = new Map<string, DirectoryRecord | undefined>([
+        [effectiveWebId, undefined],
+        ...connections.map((connection): [string, DirectoryRecord | undefined] => [connection, undefined]),
+        ...dedupedRecords.map((record): [string, DirectoryRecord | undefined] => [record.webId, record]),
+      ])
+      const entries = Array.from(seed).map(([candidateWebId, directoryRecord]) =>
+        buildDirectoryEntry({
+          candidateWebId,
+          effectiveWebId,
+          connections,
+          acceptedRelationships,
+          directoryRecord,
+          localPublicInterests: publicInterests,
         })
       )
-
-      entries.sort((a, b) => a.displayName.localeCompare(b.displayName))
+      entries.sort((left, right) => {
+        const rank = directoryRecommendationRank(left) - directoryRecommendationRank(right)
+        return rank !== 0 ? rank : left.displayName.localeCompare(right.displayName)
+      })
       setCommunityDirectory(entries)
     } finally {
       setDirectoryLoading(false)
     }
-  }, [authFetch, effectiveWebId])
+  }, [acceptedRelationships, authFetch, effectiveWebId, publicInterests])
 
   const {
     connections,
+    relationships,
+    blockedWebIds,
     connectionsLoading,
+    connectionAuthorityReady,
     connectionBusyWebId,
     connectionStatus,
     loadConnections,
     addConnection,
+    cancelConnectionRequest,
+    removeConnection,
+    setBlocked,
   } = useConnections({
     effectiveWebId,
     authFetch,
@@ -97,12 +122,25 @@ export default function CommunityDirectoryScreen(): JSX.Element {
       return
     }
 
-    managerRef.current = getSolidPodSyncManagers({ fetch: authFetch }).profileManager
+    const managers = getSolidPodSyncManagers({ fetch: authFetch })
+    if (effectiveWebId) {
+      const podRoot = `${effectiveWebId.split('/profile/')[0]}/`
+      void managers.relationshipManager.listRelationships(podRoot)
+        .then((relationships) => setAcceptedRelationships(
+          relationships
+            .filter((relationship) => relationship.state === 'accepted')
+            .map((relationship) => relationship.peerWebId)
+        ))
+        .catch(() => setAcceptedRelationships([]))
+      void managers.discoveryManifestManager.readManifest(podRoot)
+        .then((manifest) => setPublicInterests(manifest?.publicInterests ?? []))
+        .catch(() => setPublicInterests([]))
+    }
     void loadConnections()
-  }, [authFetch, isLoggedIn, loadConnections])
+  }, [authFetch, effectiveWebId, isLoggedIn, loadConnections])
 
   useEffect(() => {
-    if (!isLoggedIn || !effectiveWebId || !managerRef.current) {
+    if (!isLoggedIn || !effectiveWebId) {
       setCommunityDirectory([])
       setTrustCircleMembers([])
       return
@@ -155,7 +193,7 @@ export default function CommunityDirectoryScreen(): JSX.Element {
         </View>
 
         <Text style={styles.directoryHintText}>
-          Master directory of discoverable Node Zero Pod holders. Trust Circle controls remain in Broadcast.
+          Public Pod-owner manifests, ranked by your explicit public context.
         </Text>
 
         {connectionStatus ? (
@@ -176,10 +214,23 @@ export default function CommunityDirectoryScreen(): JSX.Element {
         {communityDirectory.length === 0 ? (
           <Text style={styles.emptySubtleText}>No directory entries available yet.</Text>
         ) : (
-          communityDirectory.slice(0, 50).map((entry) => {
+          communityDirectory
+            .filter((entry) =>
+              entry.webId === effectiveWebId ||
+              (connectionAuthorityReady && !blockedWebIds.includes(entry.webId))
+            )
+            .slice(0, 50)
+            .map((entry) => {
             const isSelf = entry.webId === effectiveWebId
             const isConnected = connections.includes(entry.webId)
             const inTrustCircle = trustCircleMembers.includes(entry.webId)
+            const relationship = relationships.find((record) => record.peerWebId === entry.webId)
+            const actionPolicy = derivePersonActionPolicy({
+              isSelf,
+              relationshipState: relationship?.state ?? null,
+              blocked: blockedWebIds.includes(entry.webId),
+              inTrustCircle,
+            })
             const badges = buildDirectoryBadges({
               isSelf,
               isConnected,
@@ -201,30 +252,87 @@ export default function CommunityDirectoryScreen(): JSX.Element {
                       </Text>
                     ))}
                   </View>
+                  <Text style={styles.recommendationReasonText}>
+                    {recommendationLabel(entry.recommendationReasons[0])}
+                  </Text>
+                  {entry.publicInterests.length > 0 ? (
+                    <Text style={styles.publicInterestPreview} numberOfLines={1}>
+                      {entry.publicInterests.join(' · ')}
+                    </Text>
+                  ) : null}
                 </View>
                 <View style={styles.actionColumn}>
-                  <TouchableOpacity
-                    style={[
-                      styles.directoryConnectButton,
-                      (isSelf || isConnected) && styles.directoryConnectButtonDisabled,
-                    ]}
-                    onPress={() => void addConnection(entry.webId)}
-                    disabled={isSelf || isConnected || connectionBusyWebId === entry.webId}
-                    activeOpacity={aesthetic.motion.pressOpacity}
-                  >
-                    {connectionBusyWebId === entry.webId ? (
-                      <ActivityIndicator color="#FFF" size="small" />
-                    ) : (
-                      <Text style={styles.directoryConnectButtonText}>
-                        {isSelf ? 'You' : isConnected ? 'Connected' : 'Connect'}
-                      </Text>
-                    )}
-                  </TouchableOpacity>
+                  {!isSelf ? (
+                    <TouchableOpacity
+                      style={styles.profileButton}
+                      onPress={() => router.push({ pathname: '/profile', params: { peerWebId: entry.webId } })}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Open profile for ${entry.displayName}`}
+                    >
+                      <Text style={styles.directoryConnectButtonText}>Profile</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                  {actionPolicy.canRequest ? (
+                    <TouchableOpacity
+                      style={styles.directoryConnectButton}
+                      onPress={() => void addConnection(entry.webId)}
+                      disabled={connectionBusyWebId === entry.webId}
+                      activeOpacity={aesthetic.motion.pressOpacity}
+                    >
+                      {connectionBusyWebId === entry.webId ? (
+                        <ActivityIndicator color="#FFF" size="small" />
+                      ) : (
+                        <Text style={styles.directoryConnectButtonText}>Connect</Text>
+                      )}
+                    </TouchableOpacity>
+                  ) : null}
+
+                  {actionPolicy.canCancelRequest ? (
+                    <TouchableOpacity
+                      style={styles.connectionActionButtonSecondary}
+                      onPress={() => void cancelConnectionRequest(entry.webId)}
+                      disabled={connectionBusyWebId === entry.webId}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Cancel request to ${entry.displayName}`}
+                    >
+                      <Text style={styles.directoryConnectButtonText}>Cancel</Text>
+                    </TouchableOpacity>
+                  ) : null}
+
+                  {actionPolicy.canMessage ? (
+                    <TouchableOpacity
+                      style={styles.messageButton}
+                      onPress={() => router.push({ pathname: '/local', params: { peerWebId: entry.webId } })}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Message ${entry.displayName}`}
+                    >
+                      <Text style={styles.directoryConnectButtonText}>Message</Text>
+                    </TouchableOpacity>
+                  ) : null}
+
+                  {actionPolicy.canDisconnect ? (
+                    <TouchableOpacity
+                      style={styles.connectionActionButtonSecondary}
+                      onPress={() => void removeConnection(entry.webId)}
+                      disabled={connectionBusyWebId === entry.webId}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Disconnect from ${entry.displayName}`}
+                    >
+                      <Text style={styles.directoryConnectButtonText}>Disconnect</Text>
+                    </TouchableOpacity>
+                  ) : null}
 
                   <TouchableOpacity
-                    style={[styles.trustCircleButton, (isSelf || trustCircleBusyWebId === entry.webId) && styles.directoryConnectButtonDisabled]}
+                    style={[
+                      styles.trustCircleButton,
+                      (!actionPolicy.canAddTrustCircle && !actionPolicy.canRemoveTrustCircle) &&
+                        styles.directoryConnectButtonDisabled,
+                    ]}
                     onPress={() => void toggleTrustCircle(entry.webId)}
-                    disabled={isSelf || trustCircleBusyWebId === entry.webId}
+                    disabled={
+                      (!actionPolicy.canAddTrustCircle && !actionPolicy.canRemoveTrustCircle) ||
+                      trustCircleBusyWebId === entry.webId
+                    }
                     activeOpacity={aesthetic.motion.pressOpacity}
                   >
                     {trustCircleBusyWebId === entry.webId ? (
@@ -235,14 +343,51 @@ export default function CommunityDirectoryScreen(): JSX.Element {
                       </Text>
                     )}
                   </TouchableOpacity>
+
+                  {!isSelf && actionPolicy.canBlock ? (
+                    <TouchableOpacity
+                      style={actionPolicy.reason === 'blocked' ? styles.unblockButton : styles.blockButton}
+                      onPress={() => void setBlocked(entry.webId, actionPolicy.reason !== 'blocked')}
+                      disabled={connectionBusyWebId === entry.webId}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${actionPolicy.reason === 'blocked' ? 'Unblock' : 'Block'} ${entry.displayName}`}
+                    >
+                      <Text style={styles.directoryConnectButtonText}>
+                        {actionPolicy.reason === 'blocked' ? 'Unblock' : 'Block'}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
               </View>
             )
           })
         )}
+        {nextCursor ? (
+          <TouchableOpacity
+            style={styles.loadMoreButton}
+            onPress={() => void loadCommunityDirectory(connections, nextCursor)}
+            disabled={directoryLoading}
+            accessibilityRole="button"
+            accessibilityLabel="Load more directory entries"
+          >
+            {directoryLoading ? (
+              <ActivityIndicator color="#FFF" size="small" />
+            ) : (
+              <Text style={styles.directoryConnectButtonText}>Load more</Text>
+            )}
+          </TouchableOpacity>
+        ) : null}
       </View>
     </ScrollView>
   )
+}
+
+function recommendationLabel(reason: DirectoryEntry['recommendationReasons'][number] | undefined): string {
+  if (reason === 'self') return 'Your profile'
+  if (reason === 'accepted-relationship') return 'Accepted relationship'
+  if (reason === 'legacy-contact') return 'Legacy contact'
+  if (reason === 'shared-public-interest') return 'Shared public interest'
+  return 'Public directory'
 }
 
 const styles = StyleSheet.create({
@@ -366,6 +511,22 @@ const styles = StyleSheet.create({
     minWidth: 84,
     alignItems: 'center',
   },
+  messageButton: {
+    backgroundColor: '#276B73',
+    borderRadius: 9,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    minWidth: 84,
+    alignItems: 'center',
+  },
+  connectionActionButtonSecondary: {
+    backgroundColor: '#4A4F59',
+    borderRadius: 9,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    minWidth: 84,
+    alignItems: 'center',
+  },
   trustCircleButton: {
     backgroundColor: '#315D44',
     borderRadius: 9,
@@ -373,6 +534,48 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     minWidth: 84,
     alignItems: 'center',
+  },
+  profileButton: {
+    minWidth: 86,
+    backgroundColor: '#343842',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  blockButton: {
+    minWidth: 86,
+    backgroundColor: '#7A3036',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  unblockButton: {
+    minWidth: 86,
+    backgroundColor: '#455A64',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  loadMoreButton: {
+    minHeight: 40,
+    marginTop: 14,
+    backgroundColor: '#343842',
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recommendationReasonText: {
+    color: aesthetic.color.accentSoft,
+    fontSize: 11,
+    marginTop: 5,
+  },
+  publicInterestPreview: {
+    color: aesthetic.color.textMid,
+    fontSize: 11,
+    marginTop: 3,
   },
   directoryConnectButtonDisabled: {
     backgroundColor: '#384158',

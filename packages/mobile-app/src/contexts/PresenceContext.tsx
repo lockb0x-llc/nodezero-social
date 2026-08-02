@@ -50,8 +50,14 @@ import {
   type PresencePeer,
 } from '@nodezero/waku-comms'
 import { useDiscovery } from './DiscoveryContext'
-import { useNodeZeroSession } from './NodeZeroSessionContext'
+import { getProvisionerUrl, useNodeZeroSession } from './NodeZeroSessionContext'
 import { useWaku } from './WakuContext'
+import { getSolidPodSyncManagers } from '../solid/podSyncManagers'
+import { subscribeDiscoveryConsentChanged } from '../directory/discoveryConsentEvents'
+import {
+  issueTransportIdentityAssertion,
+  verifyWakuEnvelopeIdentity,
+} from '../social/transportIdentityClient'
 
 /** How often the live peer map is swept for expired beacons. */
 const SWEEP_INTERVAL_MS = 10_000
@@ -90,6 +96,8 @@ interface PresenceContextValue {
   revealedPeers: RevealedPeer[]
   /** Commitments we have already sent a reveal to (this session). */
   revealedTo: string[]
+  nearbyPresenceEnabled: boolean
+  localBroadcastsEnabled: boolean
   /**
    * Reveal our WebID + DM key to a present peer (E2EE to their beacon key).
    * Rejects when the peer advertises no DM key or the Waku plane is down.
@@ -103,13 +111,15 @@ const PresenceContext = createContext<PresenceContextValue | null>(null)
 export function PresenceProvider({ children }: { children: ReactNode }): JSX.Element {
   const { transport, status: wakuStatus, appPrefix, signer, dmKeyPair } = useWaku()
   const { currentNode, surroundingNodes } = useDiscovery()
-  const { webId } = useNodeZeroSession()
+  const { webId, authFetch } = useNodeZeroSession()
 
   const [presentPeers, setPresentPeers] = useState<PresencePeer[]>([])
   const [presenceError, setPresenceError] = useState<string | null>(null)
   const [revealedPeers, setRevealedPeers] = useState<RevealedPeer[]>([])
   const [revealedTo, setRevealedTo] = useState<string[]>([])
   const [ownCommitments, setOwnCommitments] = useState<string[]>([])
+  const [nearbyPresenceEnabled, setNearbyPresenceEnabled] = useState(false)
+  const [localBroadcastsEnabled, setLocalBroadcastsEnabled] = useState(false)
 
   const trackerRef = useRef(new PresenceTracker())
   // Own commitments for the current + previous epoch, so the user's own
@@ -118,6 +128,49 @@ export function PresenceProvider({ children }: { children: ReactNode }): JSX.Ele
 
   const connected = wakuStatus === 'connected' && transport !== null
   const currentH3 = currentNode?.h3Index ?? null
+
+  useEffect((): (() => void) | void => {
+    if (!webId) {
+      setNearbyPresenceEnabled(false)
+      setLocalBroadcastsEnabled(false)
+      return
+    }
+    let cancelled = false
+    const applyConsent = (consent: {
+      ownerWebId: string
+      nearbyPresence: boolean
+      localBroadcasts: boolean
+    }): void => {
+      if (cancelled || consent.ownerWebId !== webId) return
+      setNearbyPresenceEnabled(consent.nearbyPresence)
+      setLocalBroadcastsEnabled(consent.localBroadcasts)
+    }
+    const unsubscribe = subscribeDiscoveryConsentChanged(applyConsent)
+    const podRoot = `${webId.split('/profile/')[0]}/`
+    void getSolidPodSyncManagers({ fetch: authFetch }).discoveryConsentManager
+      .readConsent(podRoot)
+      .then(applyConsent)
+      .catch(() => {
+        if (!cancelled) {
+          setNearbyPresenceEnabled(false)
+          setLocalBroadcastsEnabled(false)
+        }
+      })
+    return () => {
+      cancelled = true
+      unsubscribe()
+    }
+  }, [authFetch, webId])
+
+  useEffect(() => {
+    if (nearbyPresenceEnabled) return
+    trackerRef.current.clear()
+    ownCommitmentsRef.current.clear()
+    setPresentPeers([])
+    setRevealedPeers([])
+    setRevealedTo([])
+    setOwnCommitments([])
+  }, [nearbyPresenceEnabled])
 
   // Stable key for the surrounding cell set so the subscription effect only
   // re-runs when the actual set of cells changes.
@@ -129,7 +182,7 @@ export function PresenceProvider({ children }: { children: ReactNode }): JSX.Ele
 
   // Subscribe to the presence topics of the surrounding cells.
   useEffect((): (() => void) | void => {
-    if (!connected || !transport || topicKey.length === 0) {
+    if (!nearbyPresenceEnabled || !connected || !transport || topicKey.length === 0) {
       trackerRef.current.clear()
       setPresentPeers([])
       return
@@ -140,18 +193,22 @@ export function PresenceProvider({ children }: { children: ReactNode }): JSX.Ele
     let unsubscribe: (() => Promise<void>) | null = null
 
     const handler = (message: InboundMessage): void => {
-      if (cancelled) return
-      const beaconCommitment = message.envelope.senderWebId
-      if (
-        [...ownCommitmentsRef.current].some(
-          (commitment) => beaconCommitment === presenceSenderId(commitment),
-        )
-      ) {
-        return
-      }
-      if (trackerRef.current.ingest(message)) {
-        setPresentPeers(trackerRef.current.peers())
-      }
+      if (cancelled || !message.verified) return
+      void verifyWakuEnvelopeIdentity({
+        provisionerUrl: getProvisionerUrl(),
+        envelope: message.envelope,
+      }).then((identityVerified) => {
+        if (cancelled || !identityVerified) return
+        const beaconCommitment = message.envelope.senderWebId
+        if (
+          [...ownCommitmentsRef.current].some(
+            (commitment) => beaconCommitment === presenceSenderId(commitment),
+          )
+        ) return
+        if (trackerRef.current.ingest(message)) {
+          setPresentPeers(trackerRef.current.peers())
+        }
+      })
     }
 
     void transport
@@ -178,11 +235,11 @@ export function PresenceProvider({ children }: { children: ReactNode }): JSX.Ele
         void unsubscribe().catch(() => undefined)
       }
     }
-  }, [appPrefix, connected, topicKey, transport])
+  }, [appPrefix, connected, nearbyPresenceEnabled, topicKey, transport])
 
   // Publish our own beacon on an interval while connected and located.
   useEffect((): (() => void) | void => {
-    if (!connected || !transport || !currentH3 || !webId || !signer) {
+    if (!nearbyPresenceEnabled || !connected || !transport || !currentH3 || !webId || !signer) {
       return
     }
 
@@ -202,8 +259,18 @@ export function PresenceProvider({ children }: { children: ReactNode }): JSX.Ele
         )
         if (cancelled) return
 
-        const envelope = await createEnvelope(signer, {
-          senderWebId: presenceSenderId(commitment),
+        const senderWebId = presenceSenderId(commitment)
+        const transportIdentityAssertion = await issueTransportIdentityAssertion({
+          provisionerUrl: getProvisionerUrl(),
+          audience: 'waku',
+          subject: senderWebId,
+          authFetch,
+        })
+        const envelope = await createEnvelope({
+          ...signer,
+          transportIdentityAssertion,
+        }, {
+          senderWebId,
           kind: 'presence',
           body: createPresenceBeaconBody({
             webIdCommitment: commitment,
@@ -230,7 +297,7 @@ export function PresenceProvider({ children }: { children: ReactNode }): JSX.Ele
       cancelled = true
       clearInterval(interval)
     }
-  }, [appPrefix, connected, currentH3, dmKeyPair, signer, transport, webId])
+  }, [appPrefix, authFetch, connected, currentH3, dmKeyPair, nearbyPresenceEnabled, signer, transport, webId])
 
   // Listen for E2EE reveals addressed to our current (and previous) presence
   // commitment. Payloads are sealed to our DM session key; a reveal is only
@@ -238,7 +305,13 @@ export function PresenceProvider({ children }: { children: ReactNode }): JSX.Ele
   // same Stellar key (anti-spoof) or the peer is no longer tracked but the
   // envelope still verified.
   useEffect((): (() => void) | void => {
-    if (!connected || !transport || !dmKeyPair || ownCommitments.length === 0) {
+    if (
+      !nearbyPresenceEnabled ||
+      !connected ||
+      !transport ||
+      !dmKeyPair ||
+      ownCommitments.length === 0
+    ) {
       return
     }
 
@@ -248,30 +321,48 @@ export function PresenceProvider({ children }: { children: ReactNode }): JSX.Ele
 
     const handler = (message: InboundMessage): void => {
       if (cancelled || message.envelope.kind !== 'reveal' || !message.verified) return
-      const sealed = parseRevealBody(message.envelope.body)
-      if (!sealed) return
-      void decryptDmBody(dmKeyPair.privateKey, sealed)
+      void verifyWakuEnvelopeIdentity({
+        provisionerUrl: getProvisionerUrl(),
+        envelope: message.envelope,
+      }).then((identityVerified) => {
+        if (!identityVerified || cancelled) return null
+        const sealed = parseRevealBody(message.envelope.body)
+        return sealed ? decryptDmBody(dmKeyPair.privateKey, sealed) : null
+      })
         .then((plaintext) => {
-          if (cancelled) return
+          if (cancelled || plaintext === null) return
           const payload = parseRevealPayload(plaintext)
           if (!payload) return
-          const tracked = trackerRef.current
-            .peers()
-            .find((peer) => peer.webIdCommitment === payload.senderCommitment)
-          if (tracked && tracked.stellarPublicKey !== message.envelope.senderStellarPublicKey) {
-            return
-          }
-          const revealed: RevealedPeer = {
-            commitment: payload.senderCommitment,
-            webId: payload.webId,
-            dmPublicKeyJwk: payload.dmPublicKeyJwk,
-            stellarPublicKey: message.envelope.senderStellarPublicKey,
-            revealedAt: new Date().toISOString(),
-          }
-          setRevealedPeers((existing) => [
-            revealed,
-            ...existing.filter((peer) => peer.webId !== revealed.webId),
-          ])
+          const podRoot = webId ? `${webId.split('/profile/')[0]}/` : null
+          if (!podRoot) return
+          void Promise.all([
+            verifyWakuEnvelopeIdentity({
+              provisionerUrl: getProvisionerUrl(),
+              envelope: message.envelope,
+              accountWebId: payload.webId,
+            }),
+            getSolidPodSyncManagers({ fetch: authFetch }).moderationManager
+              .isBlocked(podRoot, payload.webId),
+          ]).then(([accountVerified, blocked]) => {
+            if (cancelled || !accountVerified || blocked) return
+            const tracked = trackerRef.current
+              .peers()
+              .find((peer) => peer.webIdCommitment === payload.senderCommitment)
+            if (tracked && tracked.stellarPublicKey !== message.envelope.senderStellarPublicKey) {
+              return
+            }
+            const revealed: RevealedPeer = {
+              commitment: payload.senderCommitment,
+              webId: payload.webId,
+              dmPublicKeyJwk: payload.dmPublicKeyJwk,
+              stellarPublicKey: message.envelope.senderStellarPublicKey,
+              revealedAt: new Date().toISOString(),
+            }
+            setRevealedPeers((existing) => [
+              revealed,
+              ...existing.filter((peer) => peer.webId !== revealed.webId),
+            ])
+          }).catch(() => undefined)
         })
         .catch(() => undefined)
     }
@@ -297,11 +388,11 @@ export function PresenceProvider({ children }: { children: ReactNode }): JSX.Ele
         void unsubscribe().catch(() => undefined)
       }
     }
-  }, [appPrefix, connected, dmKeyPair, ownCommitments, transport])
+  }, [appPrefix, authFetch, connected, dmKeyPair, nearbyPresenceEnabled, ownCommitments, transport, webId])
 
   const revealToPeer = useCallback(
     async (peer: PresencePeer): Promise<void> => {
-      if (!connected || !transport || !signer || !webId) {
+      if (!nearbyPresenceEnabled || !connected || !transport || !signer || !webId) {
         throw new Error('Local mesh is not connected.')
       }
       if (!dmKeyPair) {
@@ -312,6 +403,13 @@ export function PresenceProvider({ children }: { children: ReactNode }): JSX.Ele
       }
       const commitment =
         ownCommitments[0] ?? (await presenceCommitment(webId, presenceEpoch(new Date())))
+      const senderWebId = presenceSenderId(commitment)
+      const transportIdentityAssertion = await issueTransportIdentityAssertion({
+        provisionerUrl: getProvisionerUrl(),
+        audience: 'waku',
+        subject: senderWebId,
+        authFetch,
+      })
       const sealed = await encryptDmBody(
         peer.dmPublicKeyJwk,
         createRevealPayload({
@@ -320,8 +418,11 @@ export function PresenceProvider({ children }: { children: ReactNode }): JSX.Ele
           senderCommitment: commitment,
         }),
       )
-      const envelope = await createEnvelope(signer, {
-        senderWebId: presenceSenderId(commitment),
+      const envelope = await createEnvelope({
+        ...signer,
+        transportIdentityAssertion,
+      }, {
+        senderWebId,
         kind: 'reveal',
         body: createRevealBody(sealed),
       })
@@ -332,22 +433,22 @@ export function PresenceProvider({ children }: { children: ReactNode }): JSX.Ele
         existing.includes(peer.webIdCommitment) ? existing : [...existing, peer.webIdCommitment],
       )
     },
-    [appPrefix, connected, dmKeyPair, ownCommitments, signer, transport, webId],
+    [appPrefix, authFetch, connected, dmKeyPair, nearbyPresenceEnabled, ownCommitments, signer, transport, webId],
   )
 
   // Sweep expired peers on a slower cadence.
   useEffect((): (() => void) | void => {
-    if (!connected) return
+    if (!nearbyPresenceEnabled || !connected) return
     const interval = setInterval(() => {
       if (trackerRef.current.sweep() > 0) {
         setPresentPeers(trackerRef.current.peers())
       }
     }, SWEEP_INTERVAL_MS)
     return () => clearInterval(interval)
-  }, [connected])
+  }, [connected, nearbyPresenceEnabled])
 
   const presenceStatus: PresenceStatus =
-    wakuStatus === 'disabled'
+    !nearbyPresenceEnabled || wakuStatus === 'disabled'
       ? 'disabled'
       : presenceError !== null
         ? 'error'
@@ -356,8 +457,26 @@ export function PresenceProvider({ children }: { children: ReactNode }): JSX.Ele
           : 'waiting'
 
   const value = useMemo<PresenceContextValue>(
-    () => ({ presentPeers, presenceStatus, presenceError, revealedPeers, revealedTo, revealToPeer }),
-    [presentPeers, presenceStatus, presenceError, revealedPeers, revealedTo, revealToPeer],
+    () => ({
+      presentPeers,
+      presenceStatus,
+      presenceError,
+      revealedPeers,
+      revealedTo,
+      nearbyPresenceEnabled,
+      localBroadcastsEnabled,
+      revealToPeer,
+    }),
+    [
+      presentPeers,
+      presenceStatus,
+      presenceError,
+      revealedPeers,
+      revealedTo,
+      nearbyPresenceEnabled,
+      localBroadcastsEnabled,
+      revealToPeer,
+    ],
   )
 
   return <PresenceContext.Provider value={value}>{children}</PresenceContext.Provider>

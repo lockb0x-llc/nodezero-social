@@ -28,6 +28,7 @@ import React, {
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import Constants from 'expo-constants'
 import { Platform } from 'react-native'
+import { isProvisionerRequest } from '../auth/provisionerRequestPolicy'
 
 export type SessionStatus = 'restoring' | 'unauthenticated' | 'authenticated'
 
@@ -418,7 +419,9 @@ export function NodeZeroSessionProvider({ children }: { children: ReactNode }): 
         init?.headers ??
           (typeof input === 'object' && 'headers' in input ? input.headers : undefined)
       )
-      headers.set('authorization', `Bearer ${active.accessToken}`)
+      const authorized = isProvisionerRequest(targetUrl, provisionerUrl)
+      if (authorized) headers.set('authorization', `Bearer ${active.accessToken}`)
+      else headers.delete('authorization')
 
       const response = await fetch(targetUrl, {
         ...(typeof input === 'object' && !(input instanceof URL)
@@ -428,7 +431,7 @@ export function NodeZeroSessionProvider({ children }: { children: ReactNode }): 
         headers,
       })
 
-      if (response.status === 401) {
+      if (authorized && response.status === 401) {
         const clone = response.clone()
         const payload = (await clone.json().catch(() => ({}))) as { code?: string }
         if (payload.code === 'session_invalid') {

@@ -177,6 +177,43 @@ void test('missing or expired manifests cannot remain publicly projected', () =>
   })
 })
 
+void test('listing and indexing independently control membership and projected metadata', () => {
+  withStore((store) => {
+    const base = {
+      webId: seededWebId,
+      podUrl: 'https://solid.nodezero.social/lifecycle-user/',
+      issuer: 'https://solid.nodezero.social',
+      consentUpdatedAt: '2026-08-01T12:00:00.000Z',
+      manifestUrl: 'https://solid.nodezero.social/lifecycle-user/public/discovery/manifest',
+      manifest: {
+        publishedAt: '2026-08-01T12:00:00.000Z',
+        expiresAt: '2026-08-08T12:00:00.000Z',
+        displayName: 'Alice',
+        publicInterests: ['solid'],
+        capabilities: ['relationship-requests'],
+      },
+      now,
+    }
+    const listingOnly = store.refreshProjection({
+      ...base,
+      publicListing: true,
+      publicIndexing: false,
+    })
+    assert.equal(listingOnly.listed, true)
+    assert.equal(listingOnly.displayName, 'Alice')
+    assert.equal(listingOnly.publicInterests, undefined)
+    assert.equal(listingOnly.capabilities, undefined)
+
+    const indexingOnly = store.refreshProjection({
+      ...base,
+      publicListing: false,
+      publicIndexing: true,
+    })
+    assert.equal(indexingOnly.listed, false)
+    assert.deepEqual(store.buildPublicPage({ now }).members, [])
+  })
+})
+
 void test('public pages are bounded, cursor-stable, and emit deterministic validators', () => {
   withStore((store) => {
     for (const name of ['alice', 'bob', 'carol']) {

@@ -55,7 +55,7 @@ export async function refreshCommunityDirectoryProjection(
   }
 
   let manifest = null
-  if (consent.publicListing && consent.publicIndexing) {
+  if (consent.publicListing || consent.publicIndexing) {
     try {
       manifest = await new DiscoveryManifestManager({ fetch: ownerFetch }).readManifest(
         podRoot.toString()

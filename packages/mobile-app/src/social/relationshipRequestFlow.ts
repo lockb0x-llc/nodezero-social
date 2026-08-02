@@ -50,6 +50,7 @@ export interface SendRelationshipRequestResult {
 }
 
 export interface DisconnectRelationshipInput extends SendRelationshipRequestInput {}
+export interface CancelRelationshipRequestInput extends SendRelationshipRequestInput {}
 
 export interface RespondRelationshipRequestInput extends SendRelationshipRequestInput {
   decision: 'accept' | 'reject'
@@ -185,21 +186,66 @@ export async function disconnectRelationship(
     inReplyTo: existing.activityId,
   }
   await input.managers.relationshipOutboxManager.writeActivity(input.podRoot, activity)
+  const disconnected = await input.managers.relationshipManager.transitionRelationship(
+    input.podRoot,
+    {
+      peerWebId: input.recipientWebId,
+      to: 'disconnected',
+      updatedAt: new Date().toISOString(),
+      activityId: activity.id,
+    }
+  )
+  await input.managers.relationshipFoafProjector.project(input.podRoot, disconnected)
   await recordReceipt(input, activity, 'pending', activity.publishedAt)
   try {
     await deliverActivity(input, activity)
-    const disconnected = await input.managers.relationshipManager.transitionRelationship(
+    await recordReceipt(input, activity, 'delivered', disconnected.updatedAt)
+  } catch (error) {
+    const errorCode = error instanceof RelationshipRequestError ? error.code : 'delivery_failed'
+    await recordReceipt(input, activity, 'failed', new Date().toISOString(), errorCode)
+  }
+  return disconnected
+}
+
+export async function cancelRelationshipRequest(
+  input: CancelRelationshipRequestInput
+): Promise<RelationshipRecord> {
+  const existing = await input.managers.relationshipManager.getRelationship(
+    input.podRoot,
+    input.recipientWebId
+  )
+  if (!existing || existing.state !== 'outgoing-pending' || !existing.activityId) {
+    throw new RelationshipRequestError(
+      'A correlated outgoing request is required for cancellation.',
+      'outgoing_request_unavailable'
+    )
+  }
+
+  const now = input.now ?? new Date()
+  const activity: RelationshipActivity = {
+    version: 1,
+    id: input.activityId ?? createActivityId(input.podRoot, 'undo', now),
+    type: 'Undo',
+    actor: input.ownerWebId,
+    object: existing.activityId,
+    publishedAt: now.toISOString(),
+    inReplyTo: existing.activityId,
+  }
+  await input.managers.relationshipOutboxManager.writeActivity(input.podRoot, activity)
+  await recordReceipt(input, activity, 'pending', activity.publishedAt)
+  try {
+    await deliverActivity(input, activity)
+    const cancelled = await input.managers.relationshipManager.transitionRelationship(
       input.podRoot,
       {
         peerWebId: input.recipientWebId,
-        to: 'disconnected',
+        to: 'cancelled',
         updatedAt: new Date().toISOString(),
         activityId: activity.id,
       }
     )
-    await input.managers.relationshipFoafProjector.project(input.podRoot, disconnected)
-    await recordReceipt(input, activity, 'delivered', disconnected.updatedAt)
-    return disconnected
+    await recordReceipt(input, activity, 'delivered', cancelled.updatedAt)
+    return cancelled
   } catch (error) {
     const errorCode = error instanceof RelationshipRequestError ? error.code : 'delivery_failed'
     await recordReceipt(input, activity, 'failed', new Date().toISOString(), errorCode)

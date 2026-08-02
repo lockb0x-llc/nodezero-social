@@ -34,8 +34,9 @@ import {
   type EnvelopeSigner,
   type MessageTransport,
 } from '@nodezero/waku-comms'
-import { useNodeZeroSession } from './NodeZeroSessionContext'
+import { getProvisionerUrl, useNodeZeroSession } from './NodeZeroSessionContext'
 import { useWallet } from './WalletContext'
+import { issueTransportIdentityAssertion } from '../social/transportIdentityClient'
 
 /** Lifecycle of the app-level Waku transport. */
 export type WakuStatus =
@@ -92,7 +93,7 @@ function base64ToBytes(base64: string): Uint8Array {
 
 /** Provides the Waku transport + envelope signer to child components. */
 export function WakuProvider({ children }: { children: ReactNode }): JSX.Element {
-  const { status: sessionStatus } = useNodeZeroSession()
+  const { status: sessionStatus, authFetch } = useNodeZeroSession()
   const { walletInfo, attestationStatus, signAttestationChallenge } = useWallet()
 
   const { bootstrapPeers, clusterId, envProfile } = useMemo(readExtra, [])
@@ -102,16 +103,38 @@ export function WakuProvider({ children }: { children: ReactNode }): JSX.Element
   const [status, setStatus] = useState<WakuStatus>(bootstrapPeers.length > 0 ? 'idle' : 'disabled')
   const [error, setError] = useState<string | null>(null)
   const [dmKeyPair, setDmKeyPair] = useState<DmKeyPair | null>(null)
+  const [wakuIdentityAssertion, setWakuIdentityAssertion] = useState<string | null>(null)
   const generationRef = useRef(0)
 
   const walletPublicKey = walletInfo?.publicKey ?? null
 
+  useEffect((): (() => void) | void => {
+    if (sessionStatus !== 'authenticated' || !walletPublicKey) {
+      setWakuIdentityAssertion(null)
+      return
+    }
+    let cancelled = false
+    void issueTransportIdentityAssertion({
+      provisionerUrl: getProvisionerUrl(),
+      audience: 'waku',
+      authFetch,
+    }).then((assertion) => {
+      if (!cancelled) setWakuIdentityAssertion(assertion)
+    }).catch(() => {
+      if (!cancelled) setWakuIdentityAssertion(null)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [authFetch, sessionStatus, walletPublicKey])
+
   // Canonical envelope bytes are UTF-8 JSON text, so they round-trip through
   // the wallet's string-based challenge signer without loss.
   const signer = useMemo<EnvelopeSigner | null>(() => {
-    if (!walletPublicKey) return null
+    if (!walletPublicKey || !wakuIdentityAssertion) return null
     return {
       stellarPublicKey: walletPublicKey,
+      transportIdentityAssertion: wakuIdentityAssertion,
       sign: async (payload: Uint8Array): Promise<Uint8Array> => {
         const { signatureBase64 } = await signAttestationChallenge(
           new TextDecoder().decode(payload),
@@ -119,13 +142,14 @@ export function WakuProvider({ children }: { children: ReactNode }): JSX.Element
         return base64ToBytes(signatureBase64)
       },
     }
-  }, [signAttestationChallenge, walletPublicKey])
+  }, [signAttestationChallenge, wakuIdentityAssertion, walletPublicKey])
 
   const enabled =
     bootstrapPeers.length > 0 &&
     sessionStatus === 'authenticated' &&
     attestationStatus === 'verified' &&
-    walletPublicKey !== null
+    walletPublicKey !== null &&
+    wakuIdentityAssertion !== null
 
   // One DM session key pair per provider mount. Best-effort: platforms
   // without WebCrypto ECDH simply fall back to plaintext-signed chat.

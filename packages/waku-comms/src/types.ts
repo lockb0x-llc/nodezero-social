@@ -40,6 +40,8 @@ export interface MessageEnvelope {
   senderWebId: string
   /** Sender's Stellar account public key (G...), the signing identity. */
   senderStellarPublicKey: string
+  /** Short-lived provisioner assertion binding WebID to the Stellar key for Waku. */
+  transportIdentityAssertion: string
   /** ISO 8601 timestamp when the message was created on the sender's device. */
   timestamp: string
   /** Payload discriminator. */
@@ -58,6 +60,8 @@ export interface MessageEnvelope {
 export interface EnvelopeSigner {
   /** Stellar account public key (G...) that will verify the signatures. */
   stellarPublicKey: string
+  /** Short-lived Waku audience assertion issued to the authenticated session. */
+  transportIdentityAssertion: string
   /** Sign the canonical envelope bytes; resolves to the raw Ed25519 signature. */
   sign(payload: Uint8Array): Promise<Uint8Array>
 }

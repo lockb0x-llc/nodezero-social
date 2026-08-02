@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
-import { buildDirectoryEntry } from './entryBuilder'
+import { buildDirectoryEntry, directoryRecommendationRank } from './entryBuilder'
 
 void test('buildDirectoryEntry sets verified from trust signal', () => {
   const entry = buildDirectoryEntry({
@@ -68,4 +68,37 @@ void test('buildDirectoryEntry keeps connection source when directory metadata e
 
   assert.equal(entry.source, 'connection')
   assert.equal(entry.verified, true)
+})
+
+void test('buildDirectoryEntry emits stable recommendation reasons and ranks them', () => {
+  const shared = buildDirectoryEntry({
+    candidateWebId: 'https://solid.nodezero.social/shared/profile/card#me',
+    effectiveWebId: 'https://solid.nodezero.social/self/profile/card#me',
+    connections: [],
+    localPublicInterests: ['Privacy'],
+    directoryRecord: {
+      webId: 'https://solid.nodezero.social/shared/profile/card#me',
+      publicInterests: ['privacy', 'solid'],
+    },
+  })
+  const publicOnly = buildDirectoryEntry({
+    candidateWebId: 'https://solid.nodezero.social/public/profile/card#me',
+    effectiveWebId: 'https://solid.nodezero.social/self/profile/card#me',
+    connections: [],
+  })
+  assert.deepEqual(shared.recommendationReasons, ['shared-public-interest'])
+  assert.equal(directoryRecommendationRank(shared), 2)
+  assert.deepEqual(publicOnly.recommendationReasons, ['public-directory'])
+  assert.equal(directoryRecommendationRank(publicOnly), 3)
+})
+
+void test('legacy-compatible contacts are not labeled as accepted relationships', () => {
+  const legacy = buildDirectoryEntry({
+    candidateWebId: 'https://solid.nodezero.social/legacy/profile/card#me',
+    effectiveWebId: 'https://solid.nodezero.social/self/profile/card#me',
+    connections: ['https://solid.nodezero.social/legacy/profile/card#me'],
+    acceptedRelationships: [],
+  })
+  assert.equal(legacy.source, 'connection')
+  assert.deepEqual(legacy.recommendationReasons, ['legacy-contact'])
 })

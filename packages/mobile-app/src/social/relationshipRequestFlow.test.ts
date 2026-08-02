@@ -2,6 +2,7 @@ import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 import {
   RelationshipRequestError,
+  cancelRelationshipRequest,
   disconnectRelationship,
   respondToRelationshipRequest,
   sendRelationshipRequest,
@@ -171,11 +172,39 @@ void test('disconnects accepted relationships through one correlated Undo delive
   assert.equal(result.state, 'disconnected')
   assert.deepEqual(calls, [
     `outbox:${activityId}`,
-    'receipt:pending:',
-    'deliver:true',
     'transition:disconnected',
     'project:disconnected',
+    'receipt:pending:',
+    'deliver:true',
     'receipt:delivered:',
+  ])
+})
+
+void test('keeps local disconnect authoritative when remote Undo delivery fails', async () => {
+  const input = setup({
+    authFetch: async () => new Response(JSON.stringify({
+      error: 'Recipient inbox unavailable.',
+      code: 'inbox_unavailable',
+    }), { status: 422, headers: { 'content-type': 'application/json' } }),
+  })
+  input.managers.relationshipManager.getRelationship = async () => ({
+    version: 1,
+    ownerWebId: alice,
+    peerWebId: bob,
+    state: 'accepted',
+    updatedAt: '2026-08-01T11:00:00.000Z',
+    activityId: 'https://bob.example/social/outbox/accept-alice.jsonld',
+  })
+
+  const result = await disconnectRelationship(input)
+
+  assert.equal(result.state, 'disconnected')
+  assert.deepEqual(calls, [
+    `outbox:${activityId}`,
+    'transition:disconnected',
+    'project:disconnected',
+    'receipt:pending:',
+    'receipt:failed:inbox_unavailable',
   ])
 })
 
@@ -193,6 +222,29 @@ void test('disconnects legacy links locally without fabricating remote activity 
 
   assert.equal(result.state, 'disconnected')
   assert.deepEqual(calls, ['transition:disconnected', 'project:disconnected'])
+})
+
+void test('cancels an outgoing request through one correlated Undo delivery', async () => {
+  const input = setup()
+  input.managers.relationshipManager.getRelationship = async () => ({
+    version: 1,
+    ownerWebId: alice,
+    peerWebId: bob,
+    state: 'outgoing-pending',
+    updatedAt: '2026-08-01T11:00:00.000Z',
+    activityId: 'https://alice.example/social/outbox/follow-bob.jsonld',
+  })
+
+  const result = await cancelRelationshipRequest(input)
+
+  assert.equal(result.state, 'cancelled')
+  assert.deepEqual(calls, [
+    `outbox:${activityId}`,
+    'receipt:pending:',
+    'deliver:true',
+    'transition:cancelled',
+    'receipt:delivered:',
+  ])
 })
 
 void test('accepts a correlated incoming request and projects compatibility state', async () => {

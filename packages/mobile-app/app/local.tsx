@@ -12,6 +12,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useLocalSearchParams } from 'expo-router'
 import {
   View,
   Text,
@@ -23,10 +24,9 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native'
-import { useLocalSearchParams } from 'expo-router'
 import Constants from 'expo-constants'
 import { useDiscovery } from '../src/contexts/DiscoveryContext'
-import { useNodeZeroSession } from '../src/contexts/NodeZeroSessionContext'
+import { getProvisionerUrl, useNodeZeroSession } from '../src/contexts/NodeZeroSessionContext'
 import { useWallet } from '../src/contexts/WalletContext'
 import { usePresence } from '../src/contexts/PresenceContext'
 import { useWaku } from '../src/contexts/WakuContext'
@@ -44,6 +44,12 @@ import {
   type InboundMessage,
 } from '@nodezero/waku-comms'
 import { getSolidPodSyncManagers } from '../src/solid/podSyncManagers'
+import { derivePersonActionPolicy } from '../src/social/personActionPolicy'
+import { canReceiveDirectedCommunication } from '../src/social/directedCommunicationPolicy'
+import { verifyWakuEnvelopeIdentity } from '../src/social/transportIdentityClient'
+import { issueTransportIdentityAssertion } from '../src/social/transportIdentityClient'
+import { isLikelyWebId } from '../src/directory/directorySource'
+import type { RelationshipRecord } from '@nodezero/solid-pod-sync'
 import { aesthetic } from '../src/theme/aesthetic'
 import { Ionicons } from '@expo/vector-icons'
 
@@ -74,10 +80,18 @@ function isValidRelayOverrideWebId(raw: string): boolean {
 }
 
 export default function LocalNodeScreen(): JSX.Element {
+  const { peerWebId } = useLocalSearchParams<{ peerWebId?: string }>()
   const { currentNode, surroundingNodes, locationStatus, requestAccess } = useDiscovery()
   const { webId, status, authFetch } = useNodeZeroSession()
-  const { presentPeers, presenceStatus, presenceError, revealedPeers, revealedTo, revealToPeer } =
-    usePresence()
+  const {
+    presentPeers,
+    presenceStatus,
+    presenceError,
+    revealedPeers,
+    revealedTo,
+    localBroadcastsEnabled,
+    revealToPeer,
+  } = usePresence()
   const { transport: wakuTransport, status: wakuStatus, appPrefix, signer, dmKeyPair } = useWaku()
   const isLoggedIn = status === 'authenticated'
   const { attestationStatus } = useWallet()
@@ -107,7 +121,8 @@ export default function LocalNodeScreen(): JSX.Element {
   const [relayError, setRelayError] = useState<string | null>(null)
   const [openPeers, setOpenPeers] = useState<Record<string, boolean>>({})
   const [knownPeers, setKnownPeers] = useState<string[]>([])
-  const [chatPartners, setChatPartners] = useState<string[]>([])
+  const [relationships, setRelationships] = useState<RelationshipRecord[]>([])
+  const [blockedWebIds, setBlockedWebIds] = useState<string[]>([])
   const [showAuthModeHint, setShowAuthModeHint] = useState(false)
 
   const relayRef = useRef<SignalRelay | null>(null)
@@ -116,12 +131,36 @@ export default function LocalNodeScreen(): JSX.Element {
 
   const wakuActive = wakuStatus === 'connected' && wakuTransport !== null
 
+  useEffect(() => {
+    if (typeof peerWebId === 'string' && isLikelyWebId(peerWebId)) setTargetWebId(peerWebId)
+  }, [peerWebId])
+
   /** Append a message once, deduplicating live/store/echo deliveries by id. */
   const appendMessage = useCallback((incoming: LocalMessage): void => {
     if (seenMessageIdsRef.current.has(incoming.id)) return
     seenMessageIdsRef.current.add(incoming.id)
     setMessages((prev) => [incoming, ...prev])
   }, [])
+
+  const authorizeInbound = useCallback(async (senderWebId: string): Promise<boolean> => {
+    if (!webId) return false
+    try {
+      const podRoot = `${webId.split('/profile/')[0]}/`
+      const managers = getSolidPodSyncManagers({ fetch: authFetch })
+      const [currentRelationships, currentModeration] = await Promise.all([
+        managers.relationshipManager.listRelationships(podRoot),
+        managers.moderationManager.listModeration(podRoot),
+      ])
+      return canReceiveDirectedCommunication(
+        senderWebId,
+        webId,
+        currentRelationships,
+        currentModeration
+      )
+    } catch {
+      return false
+    }
+  }, [authFetch, webId])
 
   const upsertChannel = useCallback((remoteWebId: string): P2PChannel | null => {
     if (!effectiveWebId) return null
@@ -131,7 +170,14 @@ export default function LocalNodeScreen(): JSX.Element {
     const channel = new P2PChannel({ localWebId: effectiveWebId, remoteWebId })
 
     channel.on('message', (incoming) => {
-      setMessages((prev) => [incoming, ...prev])
+      void authorizeInbound(remoteWebId).then((authorized) => {
+        if (authorized) {
+          setMessages((prev) => [incoming, ...prev])
+          return
+        }
+        channel.close()
+        channelsRef.current.delete(remoteWebId)
+      })
     })
 
     channel.on('open', () => {
@@ -158,69 +204,93 @@ export default function LocalNodeScreen(): JSX.Element {
 
     channelsRef.current.set(remoteWebId, channel)
     return channel
-  }, [effectiveWebId])
+  }, [authorizeInbound, effectiveWebId])
 
   useEffect((): (() => void) | void => {
-    if (!isLoggedIn || !effectiveWebId || !relayUrl) {
+    if (!isLoggedIn || !webId || effectiveWebId !== webId || !relayUrl) {
       setRelayState('idle')
       return
     }
 
     setRelayState('connecting')
     setRelayError(null)
+    let cancelled = false
+    let relay: SignalRelay | null = null
 
-    const relay = new SignalRelay({ relayUrl, localWebId: effectiveWebId })
-    relayRef.current = relay
+    void issueTransportIdentityAssertion({
+      provisionerUrl: getProvisionerUrl(),
+      audience: 'relay',
+      authFetch,
+    }).then((identityAssertion) => {
+      if (cancelled) return
+      relay = new SignalRelay({
+        relayUrl,
+        localWebId: webId,
+        identityAssertion,
+      })
+      relayRef.current = relay
 
-    relay.on('connected', () => {
-      setRelayState('connected')
-      setRelayError(null)
-    })
+      relay.on('connected', () => {
+        setRelayState('connected')
+        setRelayError(null)
+      })
 
-    relay.on('disconnected', () => {
-      setRelayState('idle')
-    })
+      relay.on('disconnected', () => {
+        setRelayState('idle')
+      })
 
-    relay.on('error', (err) => {
-      setRelayState('error')
-      setRelayError(err.message)
-    })
+      relay.on('error', (err) => {
+        setRelayState('error')
+        setRelayError(err.message)
+      })
 
-    relay.on('signal', (signal: SignalMessage) => {
-      void (async (): Promise<void> => {
-        if (!effectiveWebId || signal.to !== effectiveWebId) return
-        const channel = upsertChannel(signal.from)
-        if (!channel || !relayRef.current) return
-
-        try {
-          if (signal.type === 'offer') {
-            await channel.receiveOffer(signal.payload as RTCSessionDescriptionInit)
-            const answer = await channel.createAnswer()
-            relayRef.current.send({
-              type: 'answer',
-              from: effectiveWebId,
-              to: signal.from,
-              payload: answer,
-            })
+      relay.on('signal', (signal: SignalMessage) => {
+        void (async (): Promise<void> => {
+          if (signal.to !== webId) return
+          if (!await authorizeInbound(signal.from)) {
+            channelsRef.current.get(signal.from)?.close()
+            channelsRef.current.delete(signal.from)
             return
           }
+          const channel = upsertChannel(signal.from)
+          if (!channel || !relayRef.current) return
 
-          if (signal.type === 'answer') {
-            await channel.receiveAnswer(signal.payload as RTCSessionDescriptionInit)
-            return
+          try {
+            if (signal.type === 'offer') {
+              await channel.receiveOffer(signal.payload as RTCSessionDescriptionInit)
+              const answer = await channel.createAnswer()
+              relayRef.current.send({
+                type: 'answer',
+                from: webId,
+                to: signal.from,
+                payload: answer,
+              })
+              return
+            }
+
+            if (signal.type === 'answer') {
+              await channel.receiveAnswer(signal.payload as RTCSessionDescriptionInit)
+              return
+            }
+
+            await channel.addIceCandidate(signal.payload as RTCIceCandidateInit)
+          } catch (err) {
+            console.warn('[LocalNodeScreen] Failed to process signal:', err)
           }
+        })()
+      })
 
-          await channel.addIceCandidate(signal.payload as RTCIceCandidateInit)
-        } catch (err) {
-          console.warn('[LocalNodeScreen] Failed to process signal:', err)
-        }
-      })()
+      relay.connect()
+    }).catch((error: unknown) => {
+      if (!cancelled) {
+        setRelayState('error')
+        setRelayError(error instanceof Error ? error.message : 'Relay identity is unavailable.')
+      }
     })
-
-    relay.connect()
 
     return () => {
-      relay.disconnect()
+      cancelled = true
+      relay?.disconnect()
       relayRef.current = null
       for (const channel of channelsRef.current.values()) {
         channel.close()
@@ -228,7 +298,7 @@ export default function LocalNodeScreen(): JSX.Element {
       channelsRef.current.clear()
       setOpenPeers({})
     }
-  }, [effectiveWebId, isLoggedIn, relayUrl, upsertChannel])
+  }, [authFetch, authorizeInbound, effectiveWebId, isLoggedIn, relayUrl, upsertChannel, webId])
 
   useEffect(() => {
     if (!isLoggedIn || !webId) {
@@ -236,18 +306,39 @@ export default function LocalNodeScreen(): JSX.Element {
       return
     }
 
-    const { socialGraph } = getSolidPodSyncManagers({ fetch: authFetch })
+    const managers = getSolidPodSyncManagers({ fetch: authFetch })
     const podRoot = webId.split('/profile/')[0] + '/'
 
-    void socialGraph
-      .listConnections(podRoot)
-      .then((connections) => {
-        setKnownPeers(connections.map((connection) => connection.webId).filter((peer) => peer !== webId))
+    void Promise.all([
+      managers.relationshipManager.listRelationships(podRoot),
+      managers.moderationManager.listModeration(podRoot),
+    ])
+      .then(([relationshipRecords, moderationRecords]) => {
+        const blocked = moderationRecords
+          .filter((record) => record.action === 'block')
+          .map((record) => record.subjectWebId)
+        setRelationships(relationshipRecords)
+        setBlockedWebIds(blocked)
+        setKnownPeers(relationshipRecords
+          .filter((record) => record.state === 'accepted' && !blocked.includes(record.peerWebId))
+          .map((record) => record.peerWebId)
+          .filter((peer) => peer !== webId))
       })
       .catch(() => {
         setKnownPeers([])
+        setRelationships([])
+        setBlockedWebIds([])
       })
   }, [authFetch, isLoggedIn, webId])
+
+  useEffect(() => {
+    const allowed = new Set(knownPeers)
+    for (const [peer, channel] of channelsRef.current) {
+      if (allowed.has(peer)) continue
+      channel.close()
+      channelsRef.current.delete(peer)
+    }
+  }, [knownPeers])
 
   // Stable key for the surrounding cell set (origin + ring).
   const cellKey = useMemo(() => {
@@ -259,7 +350,7 @@ export default function LocalNodeScreen(): JSX.Element {
   // Live local-broadcast feed: signed 'broadcast' envelopes on the
   // surrounding cell topics, plus a store catch-up on (re)subscribe.
   useEffect((): (() => void) | void => {
-    if (!wakuActive || !wakuTransport || cellKey.length === 0) return
+    if (!localBroadcastsEnabled || !wakuActive || !wakuTransport || cellKey.length === 0) return
 
     let cancelled = false
     let unsubscribe: (() => Promise<void>) | null = null
@@ -267,13 +358,24 @@ export default function LocalNodeScreen(): JSX.Element {
 
     const handler = (inbound: InboundMessage): void => {
       if (cancelled || inbound.envelope.kind !== 'broadcast' || !inbound.verified) return
-      const body = parseBroadcastBody(inbound.envelope.body)
-      if (!body) return
-      appendMessage({
-        id: inbound.envelope.id,
-        senderWebId: inbound.envelope.senderWebId,
-        body: body.text,
-        timestamp: inbound.envelope.timestamp,
+      void verifyWakuEnvelopeIdentity({
+        provisionerUrl: getProvisionerUrl(),
+        envelope: inbound.envelope,
+      }).then(async (identityVerified) => {
+        if (!identityVerified || cancelled || !webId) return
+        const podRoot = `${webId.split('/profile/')[0]}/`
+        const blocked = await getSolidPodSyncManagers({ fetch: authFetch })
+          .moderationManager.isBlocked(podRoot, inbound.envelope.senderWebId)
+          .catch(() => true)
+        if (blocked || cancelled) return
+        const body = parseBroadcastBody(inbound.envelope.body)
+        if (!body) return
+        appendMessage({
+          id: inbound.envelope.id,
+          senderWebId: inbound.envelope.senderWebId,
+          body: body.text,
+          timestamp: inbound.envelope.timestamp,
+        })
       })
     }
 
@@ -297,44 +399,50 @@ export default function LocalNodeScreen(): JSX.Element {
       cancelled = true
       if (unsubscribe) void unsubscribe().catch(() => undefined)
     }
-  }, [appPrefix, appendMessage, cellKey, wakuActive, wakuTransport])
+  }, [appPrefix, appendMessage, authFetch, cellKey, localBroadcastsEnabled, wakuActive, wakuTransport, webId])
 
   // Inbound DM handler: plaintext-signed or ECIES-sealed chat bodies.
   const handleDmInbound = useCallback(
     (inbound: InboundMessage): void => {
       if (inbound.envelope.kind !== 'chat' || !inbound.verified) return
-      const parsed = parseChatBody(inbound.envelope.body)
-      if (!parsed) return
-      const base = {
-        id: inbound.envelope.id,
-        senderWebId: inbound.envelope.senderWebId,
-        timestamp: inbound.envelope.timestamp,
-      }
-      if (parsed.scheme === 'plain') {
-        appendMessage({ ...base, body: parsed.text })
-        return
-      }
-      if (!dmKeyPair) {
-        appendMessage({ ...base, body: '[encrypted message — no session key]' })
-        return
-      }
-      void decryptDmBody(dmKeyPair.privateKey, parsed.sealed)
-        .then((text) => appendMessage({ ...base, body: text }))
-        .catch(() => appendMessage({ ...base, body: '[encrypted message]' }))
+      void Promise.all([
+        verifyWakuEnvelopeIdentity({
+          provisionerUrl: getProvisionerUrl(),
+          envelope: inbound.envelope,
+        }),
+        authorizeInbound(inbound.envelope.senderWebId),
+      ]).then(([identityVerified, authorized]) => {
+        if (!identityVerified || !authorized) return
+        const parsed = parseChatBody(inbound.envelope.body)
+        if (!parsed) return
+        const base = {
+          id: inbound.envelope.id,
+          senderWebId: inbound.envelope.senderWebId,
+          timestamp: inbound.envelope.timestamp,
+        }
+        if (parsed.scheme === 'plain') {
+          appendMessage({ ...base, body: parsed.text })
+          return
+        }
+        if (!dmKeyPair) {
+          appendMessage({ ...base, body: '[encrypted message — no session key]' })
+          return
+        }
+        void decryptDmBody(dmKeyPair.privateKey, parsed.sealed)
+          .then((text) => appendMessage({ ...base, body: text }))
+          .catch(() => appendMessage({ ...base, body: '[encrypted message]' }))
+      })
     },
-    [appendMessage, dmKeyPair],
+    [appendMessage, authorizeInbound, dmKeyPair],
   )
 
-  // DM chat partners: Pod connections + peers who revealed to us + anyone we
-  // messaged this session. Newline-joined stable key avoids re-subscribing on
-  // unrelated renders.
+  // Subscribe only to accepted, unblocked peers. Reveal state never grants
+  // directed communication authority.
   const dmPeersKey = useMemo(() => {
     const peers = new Set<string>(knownPeers)
-    for (const peer of revealedPeers) peers.add(peer.webId)
-    for (const partner of chatPartners) peers.add(partner)
     if (effectiveWebId) peers.delete(effectiveWebId)
     return [...peers].sort().join('\n')
-  }, [chatPartners, effectiveWebId, knownPeers, revealedPeers])
+  }, [effectiveWebId, knownPeers])
 
   // Subscribe to the pairwise DM topics for all chat partners, with a store
   // catch-up so recent messages survive app restarts.
@@ -377,6 +485,24 @@ export default function LocalNodeScreen(): JSX.Element {
 
     const target = targetWebId.trim()
     const bodyText = message.trim()
+    if (!await authorizeInbound(target)) {
+      channelsRef.current.get(target)?.close()
+      channelsRef.current.delete(target)
+      setRelayError('Messaging requires an accepted, unblocked relationship.')
+      return
+    }
+    const targetRelationship = relationships.find((record) => record.peerWebId === target)
+    const targetPolicy = derivePersonActionPolicy({
+      isSelf: target === effectiveWebId,
+      relationshipState: targetRelationship?.state ?? null,
+      blocked: blockedWebIds.includes(target),
+      inTrustCircle: false,
+      mutuallyRevealed: revealedPeers.some((peer) => peer.webId === target),
+    })
+    if (!targetPolicy.canMessage) {
+      setRelayError('Messaging requires an accepted, unblocked relationship.')
+      return
+    }
 
     // Preferred path: signed (and E2EE where possible) chat over the Waku
     // pairwise DM topic.
@@ -393,7 +519,6 @@ export default function LocalNodeScreen(): JSX.Element {
           body,
         })
         await wakuTransport.publish(await dmTopic(appPrefix, effectiveWebId, target), envelope)
-        setChatPartners((prev) => (prev.includes(target) ? prev : [...prev, target]))
         appendMessage({
           id: envelope.id,
           senderWebId: effectiveWebId,
@@ -448,10 +573,13 @@ export default function LocalNodeScreen(): JSX.Element {
   }, [
     appPrefix,
     appendMessage,
+    authorizeInbound,
+    blockedWebIds,
     effectiveWebId,
     message,
     openPeers,
     relayState,
+    relationships,
     revealedPeers,
     signer,
     targetWebId,
@@ -662,7 +790,7 @@ export default function LocalNodeScreen(): JSX.Element {
         </View>
       )}
 
-      {/* Peers who revealed their WebID to us — tap to chat E2EE */}
+      {/* Reveal is identity context only; accepted state is required to chat. */}
       {revealedPeers.length > 0 && (
         <View style={styles.peerRow}>
           <Text style={styles.peerRowLabel}>Revealed to you</Text>
@@ -679,7 +807,7 @@ export default function LocalNodeScreen(): JSX.Element {
                   style={[styles.peerChip, selected && styles.peerChipSelected]}
                   activeOpacity={aesthetic.motion.pressOpacity}
                   accessibilityRole="button"
-                  accessibilityLabel={`Chat with revealed peer ${item.webId}`}
+                  accessibilityLabel={`Select revealed peer ${item.webId}`}
                 >
                   <Text
                     style={[styles.peerChipText, selected && styles.peerChipTextSelected]}
@@ -720,7 +848,7 @@ export default function LocalNodeScreen(): JSX.Element {
 
       {knownPeers.length > 0 && (
         <View style={styles.peerRow}>
-          <Text style={styles.peerRowLabel}>Known peers</Text>
+          <Text style={styles.peerRowLabel}>Accepted peers</Text>
           <FlatList
             horizontal
             data={knownPeers}

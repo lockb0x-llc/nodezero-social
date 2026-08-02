@@ -1,6 +1,7 @@
 import { createServer } from 'node:http'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { WebSocketServer, type WebSocket } from 'ws'
+import { readRelayIdentityAssertion, verifyRelayIdentity } from './relayIdentity.js'
 
 type SignalType = 'offer' | 'answer' | 'ice-candidate'
 
@@ -14,11 +15,14 @@ interface SignalMessage {
 const PORT = Number(process.env.RELAY_PORT ?? 8080)
 const MAX_MESSAGE_BYTES = Number(process.env.RELAY_MAX_MESSAGE_BYTES ?? 32_768)
 const PING_INTERVAL_MS = Number(process.env.RELAY_PING_INTERVAL_MS ?? 30_000)
+const PROVISIONER_URL = (process.env.RELAY_PROVISIONER_URL ?? '').trim().replace(/\/+$/, '')
 
 const server = createServer()
 const wss = new WebSocketServer({
   server,
   maxPayload: MAX_MESSAGE_BYTES,
+  handleProtocols: (protocols): string | false =>
+    protocols.has('nz-relay-v1') ? 'nz-relay-v1' : false,
 })
 
 const peers = new Map<string, WebSocket>()
@@ -32,17 +36,6 @@ function isSignalMessage(value: unknown): value is SignalMessage {
     typeof maybe.to === 'string' &&
     'payload' in maybe
   )
-}
-
-function parseWebId(reqUrl: string | undefined): string | null {
-  if (!reqUrl) return null
-  try {
-    const url = new URL(reqUrl, 'http://localhost')
-    const webId = url.searchParams.get('webId')
-    return webId && webId.trim().length > 0 ? webId.trim() : null
-  } catch {
-    return null
-  }
 }
 
 function sendJson(ws: WebSocket, payload: unknown): void {
@@ -68,6 +61,7 @@ function handleHttpRequest(req: IncomingMessage, res: ServerResponse): void {
       ok: true,
       service: 'relay-service',
       activePeers: peers.size,
+      identityVerifierConfigured: Boolean(PROVISIONER_URL),
       uptimeMs: Math.round(process.uptime() * 1000),
     })
     return
@@ -87,6 +81,7 @@ function handleHttpRequest(req: IncomingMessage, res: ServerResponse): void {
       ok: true,
       service: 'relay-service',
       activePeers: peers.size,
+      identityVerifierConfigured: Boolean(PROVISIONER_URL),
       uptimeMs: Math.round(process.uptime() * 1000),
     })
     return
@@ -96,11 +91,21 @@ function handleHttpRequest(req: IncomingMessage, res: ServerResponse): void {
 }
 
 wss.on('connection', (ws, req) => {
-  const webId = parseWebId(req.url)
-  if (!webId) {
-    ws.close(1008, 'Missing webId query parameter')
+  void admitConnection(ws, req)
+})
+
+async function admitConnection(ws: WebSocket, req: IncomingMessage): Promise<void> {
+  const assertion = readRelayIdentityAssertion(req.headers['sec-websocket-protocol'])
+  if (!assertion || !PROVISIONER_URL) {
+    ws.close(1008, 'Relay identity verification is unavailable')
     return
   }
+  const identity = await verifyRelayIdentity({ assertion, provisionerUrl: PROVISIONER_URL })
+  if (!identity || ws.readyState !== ws.OPEN) {
+    ws.close(1008, 'Invalid relay identity')
+    return
+  }
+  const webId = identity.webId
 
   const existing = peers.get(webId)
   if (existing && existing !== ws) {
@@ -149,7 +154,7 @@ wss.on('connection', (ws, req) => {
   })
 
   sendJson(ws, { ok: true, webId })
-})
+}
 
 const pingTimer = setInterval(() => {
   for (const [webId, ws] of peers.entries()) {

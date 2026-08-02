@@ -23,7 +23,10 @@ import {
   Switch,
 } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
-import { useNodeZeroSession } from '../src/contexts/NodeZeroSessionContext'
+import {
+  getProvisionerUrl,
+  useNodeZeroSession,
+} from '../src/contexts/NodeZeroSessionContext'
 import type {
   ProfileManager,
   ProfilePreferencesManager,
@@ -44,6 +47,17 @@ import {
   getProfileSaveValidationMessage,
   PROFILE_LIMITS,
 } from '../src/profile/profileValidation'
+import { updateDiscoveryPreferences } from '../src/directory/discoveryPreferences'
+import { derivePersonActionPolicy } from '../src/social/personActionPolicy'
+import {
+  addTrustCircleMember,
+  hasTrustCircleMember,
+  removeTrustCircleMember,
+} from '../src/social/trustCircleStore'
+import {
+  findPublicInterestOverlap,
+  readPublicPeerProfile,
+} from '../src/profile/publicPeerProfileClient'
 
 const EMPTY_PROFILE: UserProfile = {
   displayName: '',
@@ -69,6 +83,15 @@ export default function ProfileScreen(): JSX.Element {
   const [sharedThreads, setSharedThreads] = useState<string[]>([])
   const [zkTooltipOpen, setZkTooltipOpen] = useState(false)
   const [connectionInput, setConnectionInput] = useState('')
+  const [publicListing, setPublicListing] = useState(false)
+  const [publicIndexing, setPublicIndexing] = useState(false)
+  const [nearbyPresence, setNearbyPresence] = useState(false)
+  const [localBroadcasts, setLocalBroadcasts] = useState(false)
+  const [selectedPublicInterests, setSelectedPublicInterests] = useState<string[]>([])
+  const [discoverySaving, setDiscoverySaving] = useState(false)
+  const [discoveryStatus, setDiscoveryStatus] = useState<string | null>(null)
+  const [peerInTrustCircle, setPeerInTrustCircle] = useState(false)
+  const [trustCircleBusy, setTrustCircleBusy] = useState(false)
 
   const { peerWebId } = useLocalSearchParams<{ peerWebId?: string }>()
   const router = useRouter()
@@ -81,7 +104,10 @@ export default function ProfileScreen(): JSX.Element {
 
   const {
     connectionsLoading,
+    connectionAuthorityReady,
     connections,
+    relationships,
+    blockedWebIds,
     connectionBusyWebId,
     connectionStatus,
     incomingRequests,
@@ -92,25 +118,45 @@ export default function ProfileScreen(): JSX.Element {
     setInboundRequestsEnabled,
     respondToIncomingRequest,
     addConnection,
+    cancelConnectionRequest,
     removeConnection,
+    setBlocked,
   } = useConnections({
     effectiveWebId: ownerWebId,
     authFetch,
   })
+  const viewedRelationship = viewedWebId
+    ? relationships.find((record) => record.peerWebId === viewedWebId)
+    : undefined
+  const peerActionPolicy = derivePersonActionPolicy({
+    isSelf: !isPeerView,
+    relationshipState: viewedRelationship?.state ?? null,
+    blocked: Boolean(viewedWebId && blockedWebIds.includes(viewedWebId)),
+    inTrustCircle: peerInTrustCircle,
+  })
 
-  // Peer view: load semantic overlap when viewing another user's profile.
   useEffect(() => {
-    if (!peerWebId || !isLoggedIn) return
-    getSolidPodSyncManagers({ fetch: authFetch })
-      .socialGraph
-      .findSemanticOverlap(peerWebId, profile.interests)
-      .then((threads) => {
-        setSharedThreads(threads)
-      })
-      .catch(() => {
-        setSharedThreads([])
-      })
-  }, [authFetch, peerWebId, isLoggedIn, profile.interests])
+    if (!isLoggedIn || !isPeerView || !ownerWebId || !viewedWebId) {
+      setPeerInTrustCircle(false)
+      return
+    }
+    void hasTrustCircleMember(ownerWebId, viewedWebId, { fetch: authFetch })
+      .then(setPeerInTrustCircle)
+      .catch(() => setPeerInTrustCircle(false))
+  }, [authFetch, isLoggedIn, isPeerView, ownerWebId, viewedWebId])
+
+  const togglePeerTrustCircle = useCallback(async (): Promise<void> => {
+    if (!ownerWebId || !viewedWebId) return
+    setTrustCircleBusy(true)
+    try {
+      const next = peerInTrustCircle
+        ? await removeTrustCircleMember(ownerWebId, viewedWebId, { fetch: authFetch })
+        : await addTrustCircleMember(ownerWebId, viewedWebId, { fetch: authFetch })
+      setPeerInTrustCircle(next.includes(viewedWebId))
+    } finally {
+      setTrustCircleBusy(false)
+    }
+  }, [authFetch, ownerWebId, peerInTrustCircle, viewedWebId])
 
   // Initialise ProfileManager once the session is available.
   useEffect(() => {
@@ -126,6 +172,71 @@ export default function ProfileScreen(): JSX.Element {
     void loadConnections()
   }, [authFetch, isLoggedIn, loadConnections])
 
+  useEffect(() => {
+    if (!isLoggedIn || !ownerWebId || isPeerView) return
+    const podRoot = `${ownerWebId.split('/profile/')[0]}/`
+    const managers = getSolidPodSyncManagers({ fetch: authFetch })
+    void Promise.all([
+      managers.discoveryConsentManager.readConsent(podRoot),
+      managers.discoveryManifestManager.readManifest(podRoot),
+    ]).then(([consent, manifest]) => {
+      setPublicListing(consent.publicListing)
+      setPublicIndexing(consent.publicIndexing)
+      setNearbyPresence(consent.nearbyPresence)
+      setLocalBroadcasts(consent.localBroadcasts)
+      setSelectedPublicInterests(manifest?.publicInterests ?? [])
+    }).catch(() => {
+      setPublicListing(false)
+      setPublicIndexing(false)
+      setNearbyPresence(false)
+      setLocalBroadcasts(false)
+      setSelectedPublicInterests([])
+    })
+  }, [authFetch, isLoggedIn, isPeerView, ownerWebId])
+
+  const togglePublicInterest = useCallback((interest: string): void => {
+    setSelectedPublicInterests((current) =>
+      current.some((value) => value.toLowerCase() === interest.toLowerCase())
+        ? current.filter((value) => value.toLowerCase() !== interest.toLowerCase())
+        : [...current, interest]
+    )
+  }, [])
+
+  const saveDiscoveryPreferences = useCallback(async (): Promise<void> => {
+    if (!ownerWebId) return
+    setDiscoverySaving(true)
+    setDiscoveryStatus(null)
+    try {
+      const podRoot = `${ownerWebId.split('/profile/')[0]}/`
+      const result = await updateDiscoveryPreferences({
+        podRoot,
+        ownerWebId,
+        preferences: {
+          publicListing,
+          publicIndexing,
+          nearbyPresence,
+          localBroadcasts,
+          selectedPublicInterests,
+        },
+        provisionerUrl: getProvisionerUrl(),
+        authFetch,
+        managers: getSolidPodSyncManagers({ fetch: authFetch }),
+      })
+      setSelectedPublicInterests(result.selectedPublicInterests)
+      setDiscoveryStatus(
+        result.listed
+          ? 'Public directory projection updated.'
+          : publicIndexing
+            ? 'Public indexing manifest updated without directory listing.'
+            : 'Public directory projection removed.'
+      )
+    } catch (error) {
+      setDiscoveryStatus(error instanceof Error ? error.message : 'Unable to update discovery settings.')
+    } finally {
+      setDiscoverySaving(false)
+    }
+  }, [authFetch, localBroadcasts, nearbyPresence, ownerWebId, publicIndexing, publicListing, selectedPublicInterests])
+
   // Load profile from Pod.
   useEffect(() => {
     if (!viewedWebId || !managersReady || !managerRef.current) {
@@ -134,10 +245,36 @@ export default function ProfileScreen(): JSX.Element {
     }
 
     setLoading(true)
+    if (isPeerView) {
+      const ownerProfileRead = ownerWebId
+        ? managerRef.current.readProfile(ownerWebId)
+        : Promise.resolve(null)
+      void Promise.all([
+        readPublicPeerProfile(getProvisionerUrl(), viewedWebId, authFetch),
+        ownerProfileRead,
+      ])
+        .then(([peerProfile, ownerProfile]) => {
+          if (peerProfile) {
+            setProfile(peerProfile)
+            setInterestsInput(interestsToInput(peerProfile.interests))
+            setSharedThreads(findPublicInterestOverlap(
+              ownerProfile?.interests ?? [],
+              peerProfile.interests
+            ))
+          }
+        })
+        .catch(() => {
+          setSharedThreads([])
+        })
+        .finally(() => {
+          setLoading(false)
+        })
+      return
+    }
+
     const viewedPodRoot = viewedWebId.split('/profile/')[0] + '/'
-    const preferenceRead = !isPeerView
-      ? (preferencesManagerRef.current?.readPreferences(viewedPodRoot) ?? Promise.resolve(null))
-      : Promise.resolve(null)
+    const preferenceRead = preferencesManagerRef.current?.readPreferences(viewedPodRoot) ??
+      Promise.resolve(null)
 
     void Promise.all([
       managerRef.current.readProfile(viewedWebId),
@@ -153,7 +290,7 @@ export default function ProfileScreen(): JSX.Element {
       .finally(() => {
         setLoading(false)
       })
-  }, [isPeerView, managersReady, viewedWebId])
+  }, [authFetch, isPeerView, managersReady, ownerWebId, viewedWebId])
 
   const saveProfile = useCallback(async () => {
     if (!managerRef.current || !preferencesManagerRef.current) {
@@ -202,6 +339,12 @@ export default function ProfileScreen(): JSX.Element {
         if (result.mergedSavedProfile) {
           setProfile(result.mergedSavedProfile)
           setInterestsInput(result.mergedSavedInterestsInput ?? interestsToInput(result.mergedSavedProfile.interests))
+          const savedInterestKeys = new Set(
+            result.mergedSavedProfile.interests.map((interest) => interest.trim().toLowerCase())
+          )
+          setSelectedPublicInterests((current) =>
+            current.filter((interest) => savedInterestKeys.has(interest.trim().toLowerCase()))
+          )
         }
         Alert.alert('Saved', result.message)
         return
@@ -406,6 +549,91 @@ export default function ProfileScreen(): JSX.Element {
           <Text style={styles.validationText}>{draftValidationMessage}</Text>
         ) : null}
 
+        {isPeerView && viewedWebId && connectionAuthorityReady ? (
+          <View style={styles.peerActionRow}>
+            {peerActionPolicy.canRequest ? (
+              <TouchableOpacity
+                style={styles.connectionActionButton}
+                onPress={() => void addConnection(viewedWebId)}
+                disabled={connectionBusyWebId === viewedWebId}
+                accessibilityRole="button"
+                accessibilityLabel={`Request relationship with ${viewedWebId}`}
+              >
+                <Text style={styles.connectionActionButtonText}>Request</Text>
+              </TouchableOpacity>
+            ) : null}
+            {peerActionPolicy.canCancelRequest ? (
+              <TouchableOpacity
+                style={styles.secondaryActionButton}
+                onPress={() => void cancelConnectionRequest(viewedWebId)}
+                disabled={connectionBusyWebId === viewedWebId}
+                accessibilityRole="button"
+                accessibilityLabel={`Cancel relationship request to ${viewedWebId}`}
+              >
+                <Text style={styles.connectionActionButtonText}>Cancel</Text>
+              </TouchableOpacity>
+            ) : null}
+            {peerActionPolicy.canDisconnect ? (
+              <TouchableOpacity
+                style={styles.connectionRemoveButtonWide}
+                onPress={() => void removeConnection(viewedWebId)}
+                disabled={connectionBusyWebId === viewedWebId}
+                accessibilityRole="button"
+                accessibilityLabel={`Disconnect from ${viewedWebId}`}
+              >
+                <Text style={styles.connectionActionButtonText}>Disconnect</Text>
+              </TouchableOpacity>
+            ) : null}
+            {peerActionPolicy.canMessage ? (
+              <TouchableOpacity
+                style={styles.messageActionButton}
+                onPress={() => router.push({ pathname: '/local', params: { peerWebId: viewedWebId } })}
+                accessibilityRole="button"
+                accessibilityLabel={`Message ${viewedWebId}`}
+              >
+                <Ionicons name="chatbubble" size={16} color="#FFF" />
+                <Text style={styles.connectionActionButtonText}>Message</Text>
+              </TouchableOpacity>
+            ) : null}
+            {peerActionPolicy.canAddTrustCircle || peerActionPolicy.canRemoveTrustCircle ? (
+              <TouchableOpacity
+                style={styles.trustCircleActionButton}
+                onPress={() => void togglePeerTrustCircle()}
+                disabled={trustCircleBusy}
+                accessibilityRole="button"
+                accessibilityLabel={`${peerInTrustCircle ? 'Remove' : 'Add'} ${viewedWebId} ${peerInTrustCircle ? 'from' : 'to'} Trust Circle`}
+              >
+                {trustCircleBusy ? (
+                  <ActivityIndicator color="#FFF" size="small" />
+                ) : (
+                  <Text style={styles.connectionActionButtonText}>
+                    {peerInTrustCircle ? 'Remove Circle' : 'Add Circle'}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            ) : null}
+            {peerActionPolicy.reason === 'blocked' ? (
+              <TouchableOpacity
+                style={styles.unblockActionButton}
+                onPress={() => void setBlocked(viewedWebId, false)}
+                accessibilityRole="button"
+                accessibilityLabel={`Unblock ${viewedWebId}`}
+              >
+                <Text style={styles.connectionActionButtonText}>Unblock</Text>
+              </TouchableOpacity>
+            ) : peerActionPolicy.canBlock ? (
+              <TouchableOpacity
+                style={styles.connectionRemoveButtonWide}
+                onPress={() => void setBlocked(viewedWebId, true)}
+                accessibilityRole="button"
+                accessibilityLabel={`Block ${viewedWebId}`}
+              >
+                <Text style={styles.connectionActionButtonText}>Block</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        ) : null}
+
         {!isPeerView ? (
           <TouchableOpacity
             style={[styles.saveButton, saving && styles.saveButtonDisabled]}
@@ -421,6 +649,96 @@ export default function ProfileScreen(): JSX.Element {
               <Text style={styles.saveButtonText}>Save to Solid Pod</Text>
             )}
           </TouchableOpacity>
+        ) : null}
+
+        {!isPeerView ? (
+          <View style={styles.sectionCard}>
+            <Text style={styles.sectionCardTitle}>Discovery</Text>
+            <View style={styles.requestConsentRow}>
+              <Text style={styles.requestConsentTitle}>Public directory listing</Text>
+              <Switch
+                value={publicListing}
+                onValueChange={setPublicListing}
+                trackColor={{ false: '#343842', true: aesthetic.color.accent }}
+                thumbColor="#FFF"
+                accessibilityLabel="Enable public directory listing"
+              />
+            </View>
+            <View style={styles.requestConsentRow}>
+              <Text style={styles.requestConsentTitle}>Public profile indexing</Text>
+              <Switch
+                value={publicIndexing}
+                onValueChange={setPublicIndexing}
+                trackColor={{ false: '#343842', true: aesthetic.color.accent }}
+                thumbColor="#FFF"
+                accessibilityLabel="Enable public profile indexing"
+              />
+            </View>
+            <View style={styles.requestConsentRow}>
+              <Text style={styles.requestConsentTitle}>Nearby presence</Text>
+              <Switch
+                value={nearbyPresence}
+                onValueChange={setNearbyPresence}
+                trackColor={{ false: '#343842', true: aesthetic.color.accent }}
+                thumbColor="#FFF"
+                accessibilityLabel="Enable nearby presence"
+              />
+            </View>
+            <View style={styles.requestConsentRow}>
+              <Text style={styles.requestConsentTitle}>Local broadcasts</Text>
+              <Switch
+                value={localBroadcasts}
+                onValueChange={setLocalBroadcasts}
+                trackColor={{ false: '#343842', true: aesthetic.color.accent }}
+                thumbColor="#FFF"
+                accessibilityLabel="Enable local broadcasts"
+              />
+            </View>
+
+            {draftProfile.interests.length > 0 ? (
+              <View style={styles.publicInterestList}>
+                {draftProfile.interests.map((interest) => {
+                  const selected = selectedPublicInterests.some(
+                    (value) => value.toLowerCase() === interest.toLowerCase()
+                  )
+                  return (
+                    <TouchableOpacity
+                      key={interest}
+                      style={styles.publicInterestRow}
+                      onPress={() => togglePublicInterest(interest)}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: selected }}
+                      accessibilityLabel={`Publish interest ${interest}`}
+                    >
+                      <Ionicons
+                        name={selected ? 'checkbox' : 'square-outline'}
+                        size={20}
+                        color={selected ? aesthetic.color.accentSoft : aesthetic.color.textLow}
+                      />
+                      <Text style={styles.publicInterestText}>{interest}</Text>
+                    </TouchableOpacity>
+                  )
+                })}
+              </View>
+            ) : null}
+
+            {discoveryStatus ? (
+              <Text style={styles.discoveryStatusText}>{discoveryStatus}</Text>
+            ) : null}
+            <TouchableOpacity
+              style={[styles.saveButton, discoverySaving && styles.saveButtonDisabled]}
+              onPress={() => void saveDiscoveryPreferences()}
+              disabled={discoverySaving}
+              accessibilityRole="button"
+              accessibilityLabel="Save discovery settings"
+            >
+              {discoverySaving ? (
+                <ActivityIndicator color="#FFF" />
+              ) : (
+                <Text style={styles.saveButtonText}>Save discovery settings</Text>
+              )}
+            </TouchableOpacity>
+          </View>
         ) : null}
 
         <View style={styles.sectionCard}>
@@ -629,6 +947,49 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
+  peerActionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
+  },
+  connectionRemoveButtonWide: {
+    minHeight: 38,
+    backgroundColor: '#8B1E3F',
+    borderRadius: 6,
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+  },
+  messageActionButton: {
+    minHeight: 38,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#23775A',
+    borderRadius: 6,
+    paddingHorizontal: 14,
+  },
+  secondaryActionButton: {
+    minHeight: 38,
+    backgroundColor: '#4A4F59',
+    borderRadius: 6,
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+  },
+  trustCircleActionButton: {
+    minHeight: 38,
+    backgroundColor: '#315D44',
+    borderRadius: 6,
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+  },
+  unblockActionButton: {
+    minHeight: 38,
+    backgroundColor: '#455A64',
+    borderRadius: 6,
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+  },
   connectionStatusText: {
     fontSize: 12,
     marginBottom: 8,
@@ -689,6 +1050,15 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     backgroundColor: '#23775A',
   },
+  publicInterestList: { gap: 6, marginBottom: 12 },
+  publicInterestRow: {
+    minHeight: 36,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  publicInterestText: { color: aesthetic.color.textHigh, fontSize: 13 },
+  discoveryStatusText: { color: aesthetic.color.textMid, fontSize: 12, marginBottom: 10 },
   emptySubtleText: {
     color: aesthetic.color.textMid,
     fontSize: 12,

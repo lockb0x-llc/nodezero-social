@@ -1,4 +1,4 @@
-import type { DirectoryRecord } from './types'
+import type { DirectoryPage, DirectoryRecord } from './types'
 
 export function isLikelyWebId(value: string): boolean {
   try {
@@ -13,10 +13,10 @@ export function resolveDirectoryEndpointFromExtra(appExtra: Record<string, strin
   const custom = appExtra?.nodeZeroDirectoryUrl?.trim()
   if (custom) return custom
 
-  const issuer = (appExtra?.nodeZeroIssuerUrl ?? '').trim().replace(/\/+$/, '')
-  if (!issuer) return ''
+  const provisioner = (appExtra?.jssProvisionerUrl ?? '').trim().replace(/\/+$/, '')
+  if (!provisioner) return ''
 
-  return `${issuer}/v1/community-directory/index`
+  return `${provisioner}/v1/community-directory/index`
 }
 
 function parseFromArray(payload: unknown[]): DirectoryRecord[] {
@@ -43,6 +43,17 @@ function parseFromArray(payload: unknown[]): DirectoryRecord[] {
           listed: typeof record.listed === 'boolean' ? record.listed : undefined,
           listedAt: typeof record.listedAt === 'string' ? record.listedAt : undefined,
           updatedAt: typeof record.updatedAt === 'string' ? record.updatedAt : undefined,
+          publicInterests: Array.isArray(record.publicInterests)
+            ? record.publicInterests.filter((value): value is string => typeof value === 'string')
+            : undefined,
+          capabilities: Array.isArray(record.capabilities)
+            ? record.capabilities.filter((value): value is string => typeof value === 'string')
+            : undefined,
+          inboxUrl: typeof record.inboxUrl === 'string' ? record.inboxUrl : undefined,
+          manifestExpiresAt:
+            typeof record.manifestExpiresAt === 'string' ? record.manifestExpiresAt : undefined,
+          sourceRevision:
+            typeof record.sourceRevision === 'string' ? record.sourceRevision : undefined,
           trustSignals: { verified },
         }
       }
@@ -52,6 +63,29 @@ function parseFromArray(payload: unknown[]): DirectoryRecord[] {
   })
 
   return mapped.filter((entry): entry is DirectoryRecord => Boolean(entry && isLikelyWebId(entry.webId)))
+}
+
+export function parseDirectoryPage(payload: unknown, etag: string | null = null): DirectoryPage {
+  if (!payload || typeof payload !== 'object') {
+    return { version: 1, members: [], nextCursor: null, etag }
+  }
+  const record = payload as Record<string, unknown>
+  return {
+    version: 1,
+    members: parseDirectoryRecords(payload),
+    nextCursor: typeof record.nextCursor === 'string' ? record.nextCursor : null,
+    etag,
+  }
+}
+
+export function buildDirectoryPageUrl(
+  endpoint: string,
+  input: { cursor?: string; limit?: number } = {}
+): string {
+  const url = new URL(endpoint)
+  url.searchParams.set('limit', String(Math.min(100, Math.max(1, input.limit ?? 50))))
+  if (input.cursor) url.searchParams.set('cursor', input.cursor)
+  return url.toString()
 }
 
 export function parseDirectoryRecords(payload: unknown): DirectoryRecord[] {

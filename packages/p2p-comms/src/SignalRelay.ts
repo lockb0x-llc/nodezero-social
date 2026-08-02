@@ -51,12 +51,14 @@ interface SignalRelayEvents {
 export class SignalRelay extends EventEmitter<SignalRelayEvents> {
   private readonly relayUrl: string
   private readonly localWebId: string
+  private readonly identityAssertion: string
   private ws: WebSocket | null = null
 
   constructor(options: SignalRelayOptions) {
     super()
     this.relayUrl = options.relayUrl
     this.localWebId = options.localWebId
+    this.identityAssertion = options.identityAssertion
   }
 
   /**
@@ -66,15 +68,14 @@ export class SignalRelay extends EventEmitter<SignalRelayEvents> {
    */
   connect(): void {
     const url = new URL(this.relayUrl)
-    url.searchParams.set('webId', this.localWebId)
 
-    this.ws = new WebSocket(url.toString())
+    this.ws = new WebSocket(url.toString(), ['nz-relay-v1', this.identityAssertion])
 
-    this.ws.onopen = () => this.emit('connected')
-    this.ws.onclose = () => this.emit('disconnected')
-    this.ws.onerror = () => this.emit('error', new Error('SignalRelay WebSocket error'))
+    this.ws.onopen = (): void => { this.emit('connected') }
+    this.ws.onclose = (): void => { this.emit('disconnected') }
+    this.ws.onerror = (): void => { this.emit('error', new Error('SignalRelay WebSocket error')) }
 
-    this.ws.onmessage = ({ data }) => {
+    this.ws.onmessage = ({ data }): void => {
       try {
         const msg = JSON.parse(data as string) as SignalMessage
         this.emit('signal', msg)
@@ -94,6 +95,9 @@ export class SignalRelay extends EventEmitter<SignalRelayEvents> {
   send(msg: SignalMessage): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       throw new Error('SignalRelay is not connected. Call connect() first.')
+    }
+    if (msg.from !== this.localWebId) {
+      throw new Error('SignalRelay message sender does not match the authenticated WebID.')
     }
     this.ws.send(JSON.stringify(msg))
   }
