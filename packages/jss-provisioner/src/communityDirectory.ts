@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import type { CommunityDirectoryPersistence } from './communityDirectoryPersistence.js'
 
 export interface CommunityDirectoryRecord {
   webId: string
@@ -64,13 +65,72 @@ interface PersistedCommunityDirectory {
 
 export class CommunityDirectoryStore {
   private readonly records = new Map<string, CommunityDirectoryRecord>()
+  private readonly committedRecords = new Map<string, CommunityDirectoryRecord>()
   private readonly persistenceFilePath: string
+  private readonly persistence: CommunityDirectoryPersistence | undefined
+  private pendingPersistence: Promise<void> = Promise.resolve()
+  private reloadInFlight: Promise<void> | null = null
+  private lastReloadAtMs = 0
+  private readonly reloadTtlMs = 5_000
+  private probeInFlight: Promise<void> | null = null
+  private lastProbeAtMs = 0
+  private readonly probeTtlMs = 60_000
 
-  constructor(options?: { persistenceFilePath?: string }) {
+  constructor(options?: {
+    persistenceFilePath?: string
+    persistence?: CommunityDirectoryPersistence
+  }) {
     this.persistenceFilePath =
       options?.persistenceFilePath?.trim() ||
       join(process.cwd(), '.data', 'community-directory.json')
-    this.loadFromDisk()
+    this.persistence = options?.persistence
+    if (!this.persistence) this.loadFromDisk()
+  }
+
+  async reload(force = false): Promise<void> {
+    if (!this.persistence) return
+    if (!force && Date.now() - this.lastReloadAtMs < this.reloadTtlMs) return
+    if (this.reloadInFlight) return this.reloadInFlight
+    this.reloadInFlight = this.persistence.loadRecords().then((records) => {
+      this.records.clear()
+      this.committedRecords.clear()
+      for (const record of records) {
+        this.records.set(record.webId, { ...record })
+        this.committedRecords.set(record.webId, { ...record })
+      }
+      this.lastReloadAtMs = Date.now()
+    }).finally(() => {
+      this.reloadInFlight = null
+    })
+    return this.reloadInFlight
+  }
+
+  async flush(): Promise<void> {
+    await this.pendingPersistence
+  }
+
+  async reloadRecord(webId: string): Promise<void> {
+    if (!this.persistence) return
+    const record = await this.persistence.loadRecord(webId)
+    if (record) {
+      this.records.set(webId, { ...record })
+      this.committedRecords.set(webId, { ...record })
+    } else {
+      this.records.delete(webId)
+      this.committedRecords.delete(webId)
+    }
+  }
+
+  async probe(): Promise<void> {
+    if (!this.persistence) return
+    if (Date.now() - this.lastProbeAtMs < this.probeTtlMs) return
+    if (this.probeInFlight) return this.probeInFlight
+    this.probeInFlight = this.persistence.probe().then(() => {
+      this.lastProbeAtMs = Date.now()
+    }).finally(() => {
+      this.probeInFlight = null
+    })
+    return this.probeInFlight
   }
 
   private loadFromDisk(): void {
@@ -88,6 +148,7 @@ export class CommunityDirectoryStore {
           typeof record.updatedAt === 'string'
         ) {
           this.records.set(record.webId, { ...record })
+          this.committedRecords.set(record.webId, { ...record })
         }
       }
     } catch {
@@ -96,6 +157,7 @@ export class CommunityDirectoryStore {
   }
 
   private persistToDisk(): void {
+    if (this.persistence) return
     const payload: PersistedCommunityDirectory = {
       version: 1,
       records: Array.from(this.records.values()),
@@ -118,6 +180,21 @@ export class CommunityDirectoryStore {
         // Best-effort cleanup only.
       }
     }
+    this.committedRecords.clear()
+    for (const record of this.records.values()) {
+      this.committedRecords.set(record.webId, { ...record })
+    }
+  }
+
+  private persistRecord(record: CommunityDirectoryRecord): void {
+    if (!this.persistence) {
+      this.persistToDisk()
+      return
+    }
+    const snapshot = { ...record }
+    this.pendingPersistence = this.pendingPersistence.catch(() => undefined).then(() =>
+      this.persistence!.upsertRecord(snapshot)
+    )
   }
 
   seedRecord(input: { webId: string; podUrl: string; issuer: string }): CommunityDirectoryRecord {
@@ -128,7 +205,7 @@ export class CommunityDirectoryStore {
       existing.issuer = input.issuer
       existing.updatedAt = now
       this.records.set(input.webId, existing)
-      this.persistToDisk()
+      this.persistRecord(existing)
       return existing
     }
 
@@ -141,7 +218,7 @@ export class CommunityDirectoryStore {
     }
 
     this.records.set(input.webId, record)
-    this.persistToDisk()
+    this.persistRecord(record)
     return record
   }
 
@@ -162,7 +239,7 @@ export class CommunityDirectoryStore {
     }
 
     this.records.set(webId, record)
-    this.persistToDisk()
+    this.persistRecord(record)
     return record
   }
 
@@ -205,13 +282,14 @@ export class CommunityDirectoryStore {
     }
 
     this.records.set(input.webId, record)
-    this.persistToDisk()
+    this.persistRecord(record)
     return record
   }
 
   buildPublicIndex(): CommunityDirectoryIndex {
-    const members = Array.from(this.records.values())
-      .filter((entry) => entry.listed)
+    const nowMs = Date.now()
+    const members = Array.from(this.committedRecords.values())
+      .filter((entry) => isPubliclyCurrent(entry, nowMs))
       .sort((a, b) => a.webId.localeCompare(b.webId))
 
     return {
@@ -227,8 +305,9 @@ export class CommunityDirectoryStore {
     now?: Date
   } = {}): CommunityDirectoryPage {
     const limit = Math.min(100, Math.max(1, input.limit ?? 100))
-    const listed = Array.from(this.records.values())
-      .filter((entry) => entry.listed)
+    const now = input.now ?? new Date()
+    const listed = Array.from(this.committedRecords.values())
+      .filter((entry) => isPubliclyCurrent(entry, now.getTime()))
       .sort((left, right) => left.webId.localeCompare(right.webId))
     const start = input.cursor
       ? listed.findIndex((entry) => entry.webId > input.cursor!)
@@ -238,7 +317,7 @@ export class CommunityDirectoryStore {
     const nextCursor = offset + limit < listed.length
       ? members[members.length - 1]?.webId ?? null
       : null
-    const generatedAt = (input.now ?? new Date()).toISOString()
+    const generatedAt = now.toISOString()
     const publicPayload = { version: 1 as const, members, nextCursor }
     const digest = createHash('sha256').update(JSON.stringify(publicPayload)).digest('hex')
     return {
@@ -251,4 +330,9 @@ export class CommunityDirectoryStore {
   getByWebId(webId: string): CommunityDirectoryRecord | null {
     return this.records.get(webId) ?? null
   }
+}
+
+function isPubliclyCurrent(record: CommunityDirectoryRecord, nowMs: number): boolean {
+  return record.listed &&
+    (!record.manifestExpiresAt || Date.parse(record.manifestExpiresAt) > nowMs)
 }

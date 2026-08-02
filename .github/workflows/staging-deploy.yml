@@ -33,6 +33,7 @@ jobs:
     env:
       STATIC_WEB_APP_NAME: nodezero-social-staging-testnet-web
       JSS_PROVISIONER_APP_NAME: nodezero-social-staging-testnet-provisioner
+      RELAY_APP_NAME: nodezero-social-staging-testnet-relay
       SOLID_CONTAINER_APP_NAME: nz-staging-testnet-solid
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
@@ -59,6 +60,9 @@ jobs:
 
       - name: Validate environment isolation policy
         run: pnpm policy:validate-env
+
+      - name: Validate consentful discovery security policy
+        run: pnpm policy:validate-consentful-discovery
 
       - name: Validate attestation fail-closed policy
         run: pnpm policy:validate-attestation-fail-closed
@@ -306,6 +310,10 @@ jobs:
               JSS_SOLID_CSS_POD_LOCK_RETRY_BASE_DELAY_MS="1000" \
               JSS_ALLOWED_ORIGINS="https://staging.nodezero.social,https://nodezero.social,https://www.nodezero.social,https://solid.nodezero.social,http://localhost:19006,http://localhost:8081" \
               JSS_BROWSER_SESSION_ENABLED="true" \
+              JSS_Q_DIRECTORY_ENABLED="false" \
+              JSS_Q_PEER_PROFILE_ENABLED="false" \
+              JSS_Q_RELATIONSHIP_ENABLED="false" \
+              JSS_Q_TRANSPORT_ENABLED="false" \
               JSS_LOCKBOX_FACTORY_MODE="soroban" \
               JSS_LOCKBOX_FACTORY_VERSION="v3" \
               JSS_LOCKBOX_FACTORY_CONTRACT_ID="CDFHCQA3YJCITWEMNLCSRGQVVFEXGTONWSQJTD5VIZO7YV4IOKZUPCGT" \
@@ -333,11 +341,24 @@ jobs:
           if [ -n "${{ secrets.JSS_RELATIONSHIP_DELIVERY_SIGNING_KEY }}" ]; then
             extra_settings+=(JSS_RELATIONSHIP_DELIVERY_SIGNING_KEY="${{ secrets.JSS_RELATIONSHIP_DELIVERY_SIGNING_KEY }}")
           fi
+          if [ -n "${{ secrets.JSS_TRANSPORT_IDENTITY_SIGNING_KEY }}" ]; then
+            extra_settings+=(JSS_TRANSPORT_IDENTITY_SIGNING_KEY="${{ secrets.JSS_TRANSPORT_IDENTITY_SIGNING_KEY }}")
+          fi
           if [ -n "${{ secrets.JSS_CREDENTIALS_ENC_KEY }}" ]; then
             extra_settings+=(JSS_CREDENTIALS_ENC_KEY="${{ secrets.JSS_CREDENTIALS_ENC_KEY }}")
           fi
           if [ -n "${{ secrets.JSS_CREDENTIALS_TABLE_SAS_URL }}" ]; then
             extra_settings+=(JSS_CREDENTIALS_TABLE_SAS_URL="${{ secrets.JSS_CREDENTIALS_TABLE_SAS_URL }}")
+            extra_settings+=(JSS_COMMUNITY_DIRECTORY_TABLE_SAS_URL="${{ secrets.JSS_CREDENTIALS_TABLE_SAS_URL }}")
+          fi
+          if [ -n "${{ secrets.JSS_COMMUNITY_DIRECTORY_TABLE_SAS_URL }}" ]; then
+            extra_settings+=(JSS_COMMUNITY_DIRECTORY_TABLE_SAS_URL="${{ secrets.JSS_COMMUNITY_DIRECTORY_TABLE_SAS_URL }}")
+          fi
+          if [ -n "${{ secrets.JSS_Q_COHORT_KEY }}" ]; then
+            extra_settings+=(JSS_Q_COHORT_KEY="${{ secrets.JSS_Q_COHORT_KEY }}")
+          fi
+          if [ -n "${{ secrets.JSS_Q_COHORT_HASHES }}" ]; then
+            extra_settings+=(JSS_Q_COHORT_HASHES="${{ secrets.JSS_Q_COHORT_HASHES }}")
           fi
           if [ "${#extra_settings[@]}" -gt 0 ]; then
             az webapp config appsettings set \
@@ -356,6 +377,21 @@ jobs:
             exit 1
           fi
 
+          for required_setting in \
+            JSS_TRANSPORT_IDENTITY_SIGNING_KEY \
+            JSS_CREDENTIALS_TABLE_SAS_URL \
+            JSS_COMMUNITY_DIRECTORY_TABLE_SAS_URL; do
+            setting_count="$(az webapp config appsettings list \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --name "$JSS_PROVISIONER_APP_NAME" \
+              --query "length([?name=='${required_setting}' && value!=''].value)" \
+              --output tsv)"
+            if [ "$setting_count" != "1" ]; then
+              echo "${required_setting} must be configured as a GitHub secret or retained App Service setting."
+              exit 1
+            fi
+          done
+
       - name: Deploy JSS provisioner to App Service
         id: deploy-provisioner
         continue-on-error: true
@@ -364,7 +400,8 @@ jobs:
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --name "$JSS_PROVISIONER_APP_NAME" \
             --src-path packages/jss-provisioner/deploy.zip \
-            --type zip
+            --type zip \
+            --clean true
 
       - name: Verify JSS provisioner health
         env:
@@ -385,10 +422,24 @@ jobs:
               deployed_commit="$(jq -r '.build.commit // empty' /tmp/provisioner-health.json)"
               payload_sha="$(jq -r '.build.payloadSha256 // empty' /tmp/provisioner-health.json)"
               configured_artifact_sha="$(jq -r '.build.configuredArtifactSha256 // empty' /tmp/provisioner-health.json)"
+                directory_backend="$(jq -r '.communityDirectory.backend // empty' /tmp/provisioner-health.json)"
+                directory_ready="$(jq -r '.communityDirectory.ready // false' /tmp/provisioner-health.json)"
+                transport_ready="$(jq -r '.transportIdentity.ready // false' /tmp/provisioner-health.json)"
+                q_directory_enabled="$(jq -r '.milestoneQ.flags.directory // true' /tmp/provisioner-health.json)"
+                q_peer_profile_enabled="$(jq -r '.milestoneQ.flags["peer-profile"] // true' /tmp/provisioner-health.json)"
+                q_relationship_enabled="$(jq -r '.milestoneQ.flags.relationship // true' /tmp/provisioner-health.json)"
+                q_transport_enabled="$(jq -r '.milestoneQ.flags.transport // true' /tmp/provisioner-health.json)"
               expected_artifact_sha="$(sha256sum packages/jss-provisioner/deploy.zip | awk '{print $1}')"
               if [ "$deployed_commit" = "$EXPECTED_COMMIT" ] && \
                   [ "$payload_sha" = "$EXPECTED_PAYLOAD_SHA256" ] && \
-                 [ "$configured_artifact_sha" = "$expected_artifact_sha" ]; then
+                  [ "$configured_artifact_sha" = "$expected_artifact_sha" ] && \
+                  [ "$directory_backend" = "table" ] && \
+                  [ "$directory_ready" = "true" ] && \
+                  [ "$transport_ready" = "true" ] && \
+                  [ "$q_directory_enabled" = "false" ] && \
+                  [ "$q_peer_profile_enabled" = "false" ] && \
+                  [ "$q_relationship_enabled" = "false" ] && \
+                  [ "$q_transport_enabled" = "false" ]; then
                 consecutive_healthy=$((consecutive_healthy + 1))
                 echo "Provisioner health and provenance passed on attempt ${attempt} (${consecutive_healthy}/3 consecutive)."
                 if [ "$consecutive_healthy" -eq 3 ]; then
@@ -443,6 +494,72 @@ jobs:
           done
 
           echo "Provisioner warmup failed after 20 attempts."
+          exit 1
+
+      - name: Build and package relay service
+        id: package-relay
+        working-directory: packages/relay-service
+        run: |
+          set -euo pipefail
+          pnpm build
+          rm -rf deploy
+          pnpm --config.inject-workspace-packages=true \
+            --filter @nodezero/relay-service deploy --prod "$(pwd)/deploy"
+          payload_sha256="$(find deploy -type f ! -name build-info.json -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
+          printf '{"commit":"%s","payloadSha256":"%s"}\n' "$GITHUB_SHA" "$payload_sha256" > deploy/build-info.json
+          echo "payload_sha256=${payload_sha256}" >> "$GITHUB_OUTPUT"
+          rm -f deploy.zip
+          cd deploy
+          zip -r ../deploy.zip .
+
+      - name: Configure and deploy relay service
+        run: |
+          set -euo pipefail
+          az webapp config set \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$RELAY_APP_NAME" \
+            --linux-fx-version "NODE|22-lts" \
+            --always-on true \
+            --generic-configurations '{"healthCheckPath":"/health"}' \
+            --startup-file "node dist/index.js"
+
+          az webapp config appsettings set \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$RELAY_APP_NAME" \
+            --settings \
+              RELAY_PROVISIONER_URL="https://api.nodezero.social" \
+              RELAY_PORT="8080" \
+              WEBSITES_PORT="8080"
+
+          az webapp deploy \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$RELAY_APP_NAME" \
+            --src-path packages/relay-service/deploy.zip \
+            --type zip \
+            --clean true
+
+      - name: Verify relay health and identity verifier configuration
+        env:
+          EXPECTED_COMMIT: ${{ github.sha }}
+          EXPECTED_PAYLOAD_SHA256: ${{ steps.package-relay.outputs.payload_sha256 }}
+        run: |
+          set -euo pipefail
+          relay_health_url="https://${RELAY_APP_NAME}.azurewebsites.net/health"
+          for attempt in {1..30}; do
+            status_code="$(curl -sS -o /tmp/relay-health.json -w "%{http_code}" --max-time 10 "$relay_health_url" || true)"
+            if [ "$status_code" = "200" ] && \
+              [ "$(jq -r '.identityVerifierConfigured // false' /tmp/relay-health.json)" = "true" ] && \
+              [ "$(jq -r '.identityVerifierReachable // false' /tmp/relay-health.json)" = "true" ] && \
+              [ "$(jq -r '.transportEnabled // true' /tmp/relay-health.json)" = "false" ] && \
+              [ "$(jq -r '.build.commit // empty' /tmp/relay-health.json)" = "$EXPECTED_COMMIT" ] && \
+              [ "$(jq -r '.build.payloadSha256 // empty' /tmp/relay-health.json)" = "$EXPECTED_PAYLOAD_SHA256" ]; then
+              cat /tmp/relay-health.json
+              exit 0
+            fi
+            echo "Attempt ${attempt}/30: relay health returned HTTP ${status_code}. Retrying in 10s..."
+            sleep 10
+          done
+          echo "Relay failed health/configuration check after 30 attempts."
           exit 1
 
       - name: Build Expo web artifact
@@ -510,8 +627,8 @@ jobs:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           action: upload
           app_location: packages/mobile-app/dist
-          api_location: ""
-          output_location: ""
+          api_location: ''
+          output_location: ''
           skip_app_build: true
 
       - name: Resolve staging hostname
@@ -657,6 +774,46 @@ jobs:
 
       - name: Staging deployment summary
         run: echo "Staging infrastructure deployment, Expo web publish, smoke suite, and auth E2E gate completed."
+
+      - name: Build retained rollback bundle manifest
+        run: |
+          set -euo pipefail
+          mkdir -p rollback-bundle
+          provisioner_sha="$(sha256sum packages/jss-provisioner/deploy.zip | awk '{print $1}')"
+          relay_sha="$(sha256sum packages/relay-service/deploy.zip | awk '{print $1}')"
+          (cd packages/mobile-app/dist && find . -type f ! -name deploy-marker.json -print0 | sort -z | xargs -0 sha256sum) > rollback-bundle/pwa-files.sha256
+          pwa_sha="$(sha256sum rollback-bundle/pwa-files.sha256 | awk '{print $1}')"
+          cp packages/jss-provisioner/deploy.zip rollback-bundle/provisioner.zip
+          cp packages/relay-service/deploy.zip rollback-bundle/relay.zip
+          cp -r packages/mobile-app/dist rollback-bundle/pwa-dist
+          cat > rollback-bundle/manifest.json <<EOF
+          {
+            "version": 1,
+            "environment": "staging-testnet",
+            "commit": "${GITHUB_SHA}",
+            "sourceRunId": "${GITHUB_RUN_ID}",
+            "sourceRunAttempt": "${GITHUB_RUN_ATTEMPT}",
+            "qFlags": {
+              "directory": false,
+              "peerProfile": false,
+              "relationship": false,
+              "transport": false
+            },
+            "sha256": {
+              "provisionerZip": "${provisioner_sha}",
+              "relayZip": "${relay_sha}",
+              "pwaTree": "${pwa_sha}"
+            }
+          }
+          EOF
+
+      - name: Retain exact-SHA rollback bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-rollback-${{ github.sha }}-${{ github.run_attempt }}
+          path: rollback-bundle
+          retention-days: 90
+          if-no-files-found: error
 
   certify-physical-devices:
     name: Exact-SHA physical-device certification

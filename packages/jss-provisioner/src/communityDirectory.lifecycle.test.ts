@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { CommunityDirectoryStore } from './communityDirectory.js'
+import type { CommunityDirectoryPersistence } from './communityDirectoryPersistence.js'
 
 const seededWebId = 'https://solid.nodezero.social/lifecycle-user/profile/card#me'
 const now = new Date('2026-08-02T00:00:00.000Z')
@@ -272,5 +273,116 @@ void test('removal tombstones remain internal and never appear in public pages',
     const page = store.buildPublicPage({ now })
     assert.equal('tombstones' in page, false)
     assert.deepEqual(page.members, [])
+  })
+})
+
+void test('a transient persistence failure does not poison later writes', async () => {
+  let upsertCalls = 0
+  const persistence: CommunityDirectoryPersistence = {
+    loadRecords: () => Promise.resolve([]),
+    loadRecord: () => Promise.resolve(null),
+    upsertRecord: () => {
+      upsertCalls += 1
+      return upsertCalls === 1
+        ? Promise.reject(new Error('table outage'))
+        : Promise.resolve()
+    },
+    probe: () => Promise.resolve(),
+  }
+  const store = new CommunityDirectoryStore({ persistence })
+  store.seedRecord({
+    webId: seededWebId,
+    podUrl: 'https://solid.nodezero.social/lifecycle-user/',
+    issuer: 'https://solid.nodezero.social',
+  })
+  await assert.rejects(store.flush(), /table outage/)
+  store.seedRecord({
+    webId: `${seededWebId}-second`,
+    podUrl: 'https://solid.nodezero.social/lifecycle-user-2/',
+    issuer: 'https://solid.nodezero.social',
+  })
+  await store.flush()
+  assert.equal(upsertCalls, 2)
+})
+
+void test('concurrent reloads share one backend scan', async () => {
+  let loadCalls = 0
+  let releaseLoad: (() => void) | null = null
+  const persistence: CommunityDirectoryPersistence = {
+    loadRecords: (): Promise<[]> => {
+      loadCalls += 1
+      return new Promise((resolve): void => {
+        releaseLoad = (): void => resolve([])
+      })
+    },
+    loadRecord: () => Promise.resolve(null),
+    upsertRecord: () => Promise.resolve(),
+    probe: () => Promise.resolve(),
+  }
+  const store = new CommunityDirectoryStore({ persistence })
+  const first = store.reload()
+  const second = store.reload()
+  releaseLoad?.()
+  await Promise.all([first, second])
+  assert.equal(loadCalls, 1)
+})
+
+void test('pending and failed durable opt-ins never enter public pages', async () => {
+  let rejectWrite: ((error: Error) => void) | null = null
+  let signalWriteStarted: (() => void) | null = null
+  const writeStarted = new Promise<void>((resolve): void => {
+    signalWriteStarted = resolve
+  })
+  const persistence: CommunityDirectoryPersistence = {
+    loadRecords: () => Promise.resolve([]),
+    loadRecord: () => Promise.resolve(null),
+    upsertRecord: () => new Promise((resolve, reject): void => {
+      void resolve
+      rejectWrite = reject
+      signalWriteStarted?.()
+    }),
+    probe: () => Promise.resolve(),
+  }
+  const store = new CommunityDirectoryStore({ persistence })
+  store.refreshProjection({
+    webId: seededWebId,
+    podUrl: 'https://solid.nodezero.social/lifecycle-user/',
+    issuer: 'https://solid.nodezero.social',
+    publicListing: true,
+    publicIndexing: false,
+    consentUpdatedAt: '2026-08-02T00:00:00.000Z',
+    manifestUrl: 'https://solid.nodezero.social/lifecycle-user/public/discovery/manifest',
+    manifest: {
+      publishedAt: '2026-08-02T00:00:00.000Z',
+      expiresAt: '2026-08-03T00:00:00.000Z',
+    },
+    now,
+  })
+  assert.deepEqual(store.buildPublicPage({ now }).members, [])
+  await writeStarted
+  assert.ok(rejectWrite)
+  rejectWrite?.(new Error('table outage'))
+  await assert.rejects(store.flush(), /table outage/)
+  assert.deepEqual(store.buildPublicPage({ now }).members, [])
+})
+
+void test('a durable listing disappears when its manifest expires after publication', () => {
+  withStore((store) => {
+    store.refreshProjection({
+      webId: seededWebId,
+      podUrl: 'https://solid.nodezero.social/lifecycle-user/',
+      issuer: 'https://solid.nodezero.social',
+      publicListing: true,
+      publicIndexing: false,
+      consentUpdatedAt: '2026-08-02T00:00:00.000Z',
+      manifestUrl: 'https://solid.nodezero.social/lifecycle-user/public/discovery/manifest',
+      manifest: {
+        publishedAt: '2026-08-02T00:00:00.000Z',
+        expiresAt: '2026-08-02T01:00:00.000Z',
+      },
+      now: new Date('2026-08-02T00:30:00.000Z'),
+    })
+    assert.equal(store.buildPublicPage({ now: new Date('2026-08-02T00:59:00.000Z') }).members.length, 1)
+    assert.deepEqual(store.buildPublicPage({ now: new Date('2026-08-02T01:00:00.000Z') }).members, [])
   })
 })

@@ -42,3 +42,36 @@ export async function verifyRelayIdentity(input: {
     clearTimeout(timer)
   }
 }
+
+export async function probeRelayIdentityVerifier(input: {
+  provisionerUrl: string
+  fetch?: typeof globalThis.fetch
+  timeoutMs?: number
+}): Promise<{ upstreamReachable: boolean; transportEnabled: boolean }> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), input.timeoutMs ?? 5_000)
+  try {
+    const response = await (input.fetch ?? globalThis.fetch)(
+      `${input.provisionerUrl.replace(/\/+$/, '')}/health`,
+      { signal: controller.signal }
+    )
+    if (!response.ok) return { upstreamReachable: false, transportEnabled: false }
+    const payload = (await response.json()) as Record<string, unknown>
+    const transport = payload.transportIdentity
+    const milestoneQ = payload.milestoneQ
+    const flags = milestoneQ && typeof milestoneQ === 'object'
+      ? (milestoneQ as Record<string, unknown>).flags
+      : null
+    return {
+      upstreamReachable: payload.ok === true &&
+        Boolean(transport && typeof transport === 'object' &&
+          (transport as Record<string, unknown>).ready === true),
+      transportEnabled: Boolean(flags && typeof flags === 'object' &&
+        (flags as Record<string, unknown>).transport === true),
+    }
+  } catch {
+    return { upstreamReachable: false, transportEnabled: false }
+  } finally {
+    clearTimeout(timer)
+  }
+}

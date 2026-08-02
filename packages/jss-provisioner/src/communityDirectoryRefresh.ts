@@ -9,7 +9,10 @@ import { mintPodAccessToken, type PodAccessToken } from './solidAccount.js'
 
 export interface CommunityDirectoryRefreshOptions {
   credentialStore: Pick<CredentialStore, 'findByWebId'>
-  directoryStore: Pick<CommunityDirectoryStore, 'refreshProjection'>
+  directoryStore: Pick<
+    CommunityDirectoryStore,
+    'refreshProjection' | 'reloadRecord' | 'flush' | 'getByWebId'
+  >
   cssBaseUrl: string
   mintToken?: typeof mintPodAccessToken
   now?: Date
@@ -26,6 +29,7 @@ export async function refreshCommunityDirectoryProjection(
   claims: SessionClaims,
   options: CommunityDirectoryRefreshOptions
 ): Promise<CommunityDirectoryRecord> {
+  await options.directoryStore.reloadRecord(claims.sub)
   const podRoot = normalizedPodRoot(claims.pod, options.cssBaseUrl)
   const credentials = await options.credentialStore.findByWebId(claims.sub)
   if (!credentials) {
@@ -67,7 +71,7 @@ export async function refreshCommunityDirectoryProjection(
     }
   }
 
-  return options.directoryStore.refreshProjection({
+  const record = options.directoryStore.refreshProjection({
     webId: claims.sub,
     podUrl: podRoot.toString(),
     issuer: podRoot.origin,
@@ -79,6 +83,14 @@ export async function refreshCommunityDirectoryProjection(
     ...(sourceRevision ? { sourceRevision } : {}),
     ...(options.now ? { now: options.now } : {}),
   })
+  try {
+    await options.directoryStore.flush()
+  } catch (error) {
+    await options.directoryStore.reloadRecord(claims.sub).catch(() => undefined)
+    throw error
+  }
+  await options.directoryStore.reloadRecord(claims.sub)
+  return options.directoryStore.getByWebId(claims.sub) ?? record
 }
 
 function isManifestValidationError(error: unknown): boolean {

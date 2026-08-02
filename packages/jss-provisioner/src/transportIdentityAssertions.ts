@@ -97,6 +97,7 @@ export class TransportIdentityAssertionManager {
 
   readVerified(assertion: string, audience: TransportIdentityAudience, now = new Date()): {
     webId: string
+    accountWebId: string
     stellarPublicKey: string
     audience: TransportIdentityAudience
   } | null {
@@ -109,7 +110,12 @@ export class TransportIdentityAssertionManager {
         stellarPublicKey: claims.spk,
         now,
       })
-        ? { webId: claims.sub, stellarPublicKey: claims.spk, audience: claims.aud }
+        ? {
+            webId: claims.sub,
+            accountWebId: claims.account,
+            stellarPublicKey: claims.spk,
+            audience: claims.aud,
+          }
         : null
     } catch {
       return null

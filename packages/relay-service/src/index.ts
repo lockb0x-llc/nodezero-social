@@ -1,7 +1,13 @@
 import { createServer } from 'node:http'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { WebSocketServer, type WebSocket } from 'ws'
-import { readRelayIdentityAssertion, verifyRelayIdentity } from './relayIdentity.js'
+import {
+  probeRelayIdentityVerifier,
+  readRelayIdentityAssertion,
+  verifyRelayIdentity,
+} from './relayIdentity.js'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import {
   createRelayIdentityChallenge,
   verifyRelayIdentitySignature,
@@ -26,6 +32,7 @@ const AUTH_CHALLENGE_TIMEOUT_MS = Number(process.env.RELAY_AUTH_CHALLENGE_TIMEOU
 const MAX_PENDING_ADMISSIONS = Number(process.env.RELAY_MAX_PENDING_ADMISSIONS ?? 100)
 let pendingAdmissions = 0
 const PROVISIONER_URL = (process.env.RELAY_PROVISIONER_URL ?? '').trim().replace(/\/+$/, '')
+const BUILD_INFO = readBuildInfo()
 
 const server = createServer()
 const wss = new WebSocketServer({
@@ -63,15 +70,20 @@ function sendHttpJson(
   res.end(JSON.stringify(payload))
 }
 
-function handleHttpRequest(req: IncomingMessage, res: ServerResponse): void {
+async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const requestUrl = new URL(req.url ?? '/', 'http://localhost')
 
   if (req.method === 'GET' && requestUrl.pathname === '/health') {
-    sendHttpJson(res, 200, {
-      ok: true,
+    const verifier = PROVISIONER_URL
+      ? await probeRelayIdentityVerifier({ provisionerUrl: PROVISIONER_URL })
+      : { upstreamReachable: false, transportEnabled: false }
+    sendHttpJson(res, verifier.upstreamReachable ? 200 : 503, {
+      ok: verifier.upstreamReachable,
       service: 'relay-service',
-      activePeers: peers.size,
+      build: BUILD_INFO,
       identityVerifierConfigured: Boolean(PROVISIONER_URL),
+      identityVerifierReachable: verifier.upstreamReachable,
+      transportEnabled: verifier.transportEnabled,
       uptimeMs: Math.round(process.uptime() * 1000),
     })
     return
@@ -90,7 +102,6 @@ function handleHttpRequest(req: IncomingMessage, res: ServerResponse): void {
     sendHttpJson(res, 200, {
       ok: true,
       service: 'relay-service',
-      activePeers: peers.size,
       identityVerifierConfigured: Boolean(PROVISIONER_URL),
       uptimeMs: Math.round(process.uptime() * 1000),
     })
@@ -98,6 +109,22 @@ function handleHttpRequest(req: IncomingMessage, res: ServerResponse): void {
   }
 
   sendHttpJson(res, 404, { error: 'Not found' })
+}
+
+function readBuildInfo(): { commit: string; payloadSha256: string } {
+  try {
+    const parsed = JSON.parse(
+      readFileSync(join(process.cwd(), 'build-info.json'), 'utf8')
+    ) as Record<string, unknown>
+    return {
+      commit: typeof parsed.commit === 'string' ? parsed.commit : 'unknown',
+      payloadSha256: typeof parsed.payloadSha256 === 'string'
+        ? parsed.payloadSha256
+        : 'unknown',
+    }
+  } catch {
+    return { commit: 'unknown', payloadSha256: 'unknown' }
+  }
 }
 
 wss.on('connection', (ws, req) => {
@@ -241,7 +268,12 @@ const pingTimer = setInterval(() => {
   }
 }, PING_INTERVAL_MS)
 
-server.on('request', handleHttpRequest)
+server.on('request', (req, res) => {
+  void handleHttpRequest(req, res).catch(() => {
+    if (!res.headersSent) sendHttpJson(res, 503, { ok: false, service: 'relay-service' })
+    else res.end()
+  })
+})
 
 server.listen(PORT, () => {
   console.log(`[relay-service] listening on :${PORT}`)

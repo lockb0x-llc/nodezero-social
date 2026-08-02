@@ -33,6 +33,7 @@ import {
   publishProvisioningEvent,
 } from './notificationEvents.js'
 import { CommunityDirectoryStore } from './communityDirectory.js'
+import { AzureTableCommunityDirectoryPersistence } from './communityDirectoryPersistence.js'
 import type { BridgeProofPayload } from './lockboxFactory.js'
 import { verifyBridgeProof } from './bridgeProofVerifier.js'
 import { buildPodOwnershipClaim } from '@nodezero/zk-crypto/pod-claim'
@@ -58,6 +59,7 @@ import {
   isTransportIdentityAudience,
   TransportIdentityAssertionManager,
 } from './transportIdentityAssertions.js'
+import { createMilestoneQControlsFromEnv } from './milestoneQControls.js'
 // Stellar StrKey base32 decode + Ed25519 verify using Web Crypto API
 const _B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
 function _b32Decode(s: string): Uint8Array {
@@ -151,6 +153,11 @@ const TREASURY_FUND_MEMBERS = /^(1|true|yes)$/i.test((process.env.JSS_TREASURY_F
 const COMMUNITY_DIRECTORY_STORE_PATH =
   (process.env.JSS_COMMUNITY_DIRECTORY_STORE_PATH ?? '').trim() ||
   join(tmpdir(), `nz-community-directory-${process.pid}.json`)
+const COMMUNITY_DIRECTORY_TABLE_SAS_URL = (
+  process.env.JSS_COMMUNITY_DIRECTORY_TABLE_SAS_URL ??
+  process.env.JSS_CREDENTIALS_TABLE_SAS_URL ??
+  ''
+).trim()
 const ALLOWED_ORIGINS = (process.env.JSS_ALLOWED_ORIGINS ?? 'https://staging.nodezero.social,https://nodezero.social,https://www.nodezero.social,https://solid.nodezero.social,http://localhost:19006,http://localhost:8081')
   .split(',')
   .map((origin) => origin.trim())
@@ -158,12 +165,20 @@ const ALLOWED_ORIGINS = (process.env.JSS_ALLOWED_ORIGINS ?? 'https://staging.nod
 const store = new ProvisionStore()
 const communityDirectory = new CommunityDirectoryStore({
   persistenceFilePath: COMMUNITY_DIRECTORY_STORE_PATH,
+  ...(COMMUNITY_DIRECTORY_TABLE_SAS_URL
+    ? {
+        persistence: new AzureTableCommunityDirectoryPersistence(
+          COMMUNITY_DIRECTORY_TABLE_SAS_URL
+        ),
+      }
+    : {}),
 })
 const credentialStore = new CredentialStore()
 const provisioningStore = new ProvisioningStore(credentialStore)
 const sessions = new SessionTokenManager({ issuer: ISSUER })
 const relationshipDeliveryAssertions = new RelationshipDeliveryAssertionManager({ issuer: ISSUER })
 const transportIdentityAssertions = new TransportIdentityAssertionManager({ issuer: ISSUER })
+const milestoneQControls = createMilestoneQControlsFromEnv()
 const relationshipDeliveryRateLimiter = new RelationshipRateLimiter({
   maxRequests: Number(process.env.JSS_RELATIONSHIP_DELIVERY_RATE_LIMIT ?? 30),
   windowMs: Number(process.env.JSS_RELATIONSHIP_DELIVERY_RATE_WINDOW_MS ?? 60_000),
@@ -172,6 +187,17 @@ const relationshipVerificationRateLimiter = new RelationshipRateLimiter({
   maxRequests: Number(process.env.JSS_RELATIONSHIP_VERIFY_RATE_LIMIT ?? 120),
   windowMs: Number(process.env.JSS_RELATIONSHIP_VERIFY_RATE_WINDOW_MS ?? 60_000),
 })
+const communityDirectoryRefreshRateLimiter = new RelationshipRateLimiter({
+  maxRequests: Number(process.env.JSS_COMMUNITY_DIRECTORY_REFRESH_RATE_LIMIT ?? 12),
+  windowMs: Number(
+    process.env.JSS_COMMUNITY_DIRECTORY_REFRESH_RATE_WINDOW_MS ?? 60_000
+  ),
+})
+const COMMUNITY_DIRECTORY_REFRESH_MAX_CONCURRENCY = positiveIntegerEnvironment(
+  'JSS_COMMUNITY_DIRECTORY_REFRESH_MAX_CONCURRENCY',
+  4
+)
+let communityDirectoryRefreshActiveRequests = 0
 const publicProfileReadRateLimiter = new RelationshipRateLimiter({
   maxRequests: Number(process.env.JSS_PUBLIC_PROFILE_RATE_LIMIT ?? 30),
   windowMs: Number(process.env.JSS_PUBLIC_PROFILE_RATE_WINDOW_MS ?? 60_000),
@@ -875,7 +901,15 @@ export async function handleHttpRequest(
   }
 
   if (req.method === 'GET' && url.pathname === '/health') {
-    sendJson(req, res, 200, {
+    let communityDirectoryReady = false
+    try {
+      await communityDirectory.probe()
+      communityDirectoryReady = true
+    } catch {
+      communityDirectoryReady = false
+    }
+    const healthReady = communityDirectoryReady && TRANSPORT_IDENTITY_READY
+    sendJson(req, res, healthReady ? 200 : 503, {
       ok: true,
       service: 'jss-provisioner',
       build: {
@@ -901,6 +935,17 @@ export async function handleHttpRequest(
       relationshipDelivery: {
         assertionKeyConfigured: !relationshipDeliveryAssertions.usesEphemeralKey,
         ready: RELATIONSHIP_ASSERTIONS_READY,
+      },
+      transportIdentity: {
+        assertionKeyConfigured: !transportIdentityAssertions.usesEphemeralKey,
+        ready: TRANSPORT_IDENTITY_READY,
+      },
+      communityDirectory: {
+        backend: COMMUNITY_DIRECTORY_TABLE_SAS_URL ? 'table' : 'file',
+        ready: communityDirectoryReady,
+      },
+      milestoneQ: {
+        flags: milestoneQControls.flags(),
       },
       browserSession: {
         enabled: BROWSER_SESSION_ENABLED,
@@ -963,6 +1008,13 @@ export async function handleHttpRequest(
   }
 
   if (req.method === 'GET' && url.pathname === '/v1/community-directory/index') {
+    const claims = verifyBearerSession(req)
+    if (!claims || !milestoneQControls.isEnabled('directory', claims.sub)) {
+      milestoneQControls.count('directory', claims ? 'cohort-denied' : 'unauthorized')
+      sendJson(req, res, 404, { error: 'Not found' })
+      return
+    }
+    await communityDirectory.reload()
     const rawLimit = Number(url.searchParams.get('limit') ?? '100')
     const limit = Number.isInteger(rawLimit) ? rawLimit : 100
     const page = communityDirectory.buildPublicPage({
@@ -970,14 +1022,19 @@ export async function handleHttpRequest(
       limit,
     })
     if (req.headers['if-none-match'] === page.etag) {
-      res.writeHead(304, { ...corsHeaders(req), etag: page.etag })
+      res.writeHead(304, {
+        ...corsHeaders(req),
+        etag: page.etag,
+        'cache-control': 'private, no-cache, must-revalidate',
+      })
       res.end()
       return
     }
     sendJson(req, res, 200, page, {
       etag: page.etag,
-      'cache-control': 'public, max-age=30, must-revalidate',
+      'cache-control': 'private, no-cache, must-revalidate',
     })
+    milestoneQControls.count('directory', 'page-served')
     return
   }
 
@@ -990,6 +1047,27 @@ export async function handleHttpRequest(
       })
       return
     }
+    if (!milestoneQControls.isEnabled('directory', claims.sub)) {
+      milestoneQControls.count('directory', 'cohort-denied')
+      sendJson(req, res, 404, { error: 'Not found' })
+      return
+    }
+    const refreshLimit = communityDirectoryRefreshRateLimiter.consume(claims.sub)
+    if (!refreshLimit.allowed) {
+      sendJson(req, res, 429, {
+        error: 'Community directory refresh rate limit exceeded.',
+        code: 'directory_refresh_rate_limited',
+      }, { 'retry-after': String(refreshLimit.retryAfterSeconds) })
+      return
+    }
+    if (communityDirectoryRefreshActiveRequests >= COMMUNITY_DIRECTORY_REFRESH_MAX_CONCURRENCY) {
+      sendJson(req, res, 429, {
+        error: 'Community directory refresh capacity reached.',
+        code: 'directory_refresh_concurrency_limited',
+      }, { 'retry-after': '1' })
+      return
+    }
+    communityDirectoryRefreshActiveRequests += 1
     try {
       const refresh = overrides.refreshCommunityDirectoryProjection ??
         refreshCommunityDirectoryProjection
@@ -1003,6 +1081,7 @@ export async function handleHttpRequest(
         listed: record.listed,
         record,
       })
+      milestoneQControls.count('directory', record.listed ? 'listed' : 'unlisted')
     } catch (error) {
       if (error instanceof CommunityDirectoryRefreshError) {
         const status = error.code === 'session_invalid' ? 401 : 403
@@ -1013,6 +1092,9 @@ export async function handleHttpRequest(
         error: 'Community directory refresh is temporarily unavailable.',
         code: 'directory_refresh_unavailable',
       })
+      milestoneQControls.count('directory', 'refresh-failed')
+    } finally {
+      communityDirectoryRefreshActiveRequests -= 1
     }
     return
   }
@@ -1024,6 +1106,11 @@ export async function handleHttpRequest(
         error: 'A valid NodeZero session is required.',
         code: 'session_invalid',
       })
+      return
+    }
+    if (!milestoneQControls.isEnabled('peer-profile', claims.sub)) {
+      milestoneQControls.count('peer-profile', 'cohort-denied')
+      sendJson(req, res, 404, { error: 'Not found' })
       return
     }
     const profileReadLimit = publicProfileReadRateLimiter.consume(claims.sub)
@@ -1056,6 +1143,7 @@ export async function handleHttpRequest(
         return
       }
       sendJson(req, res, 200, result, { 'cache-control': 'private, no-store' })
+      milestoneQControls.count('peer-profile', 'read')
     } catch (error) {
       if (error instanceof PublicPeerProfileError && error.code === 'invalid_webid') {
         sendJson(req, res, 400, { error: error.message, code: error.code })
@@ -1065,6 +1153,7 @@ export async function handleHttpRequest(
         error: 'Public profile is temporarily unavailable.',
         code: 'public_profile_unavailable',
       })
+      milestoneQControls.count('peer-profile', 'read-failed')
     } finally {
       const remaining = (publicProfileActiveRequests.get(claims.sub) ?? 1) - 1
       if (remaining <= 0) publicProfileActiveRequests.delete(claims.sub)
@@ -1089,6 +1178,11 @@ export async function handleHttpRequest(
       })
       return
     }
+    if (!milestoneQControls.isEnabled('transport', claims.sub)) {
+      milestoneQControls.count('transport', 'cohort-denied')
+      sendJson(req, res, 404, { error: 'Not found' })
+      return
+    }
     const body = await readBoundedJsonBody<{ audience?: unknown; subject?: unknown }>(req, 1024)
     if (!isTransportIdentityAudience(body.audience)) {
       sendJson(req, res, 400, { error: 'audience must be waku or relay.', code: 'invalid_audience' })
@@ -1106,6 +1200,7 @@ export async function handleHttpRequest(
         stellarPublicKey: claims.spk,
         audience: body.audience,
       }, { 'cache-control': 'private, no-store' })
+      milestoneQControls.count('transport', 'assertion-issued')
     } catch {
       sendJson(req, res, 403, {
         error: 'The session is not bound to a Stellar identity key.',
@@ -1121,6 +1216,11 @@ export async function handleHttpRequest(
         error: 'Transport identity assertions are not configured.',
         code: 'transport_identity_unavailable',
       })
+      return
+    }
+    if (!milestoneQControls.isConfigured('transport')) {
+      milestoneQControls.count('transport', 'disabled')
+      sendJson(req, res, 404, { error: 'Not found' })
       return
     }
     const verificationKey = req.socket.remoteAddress ?? 'unknown'
@@ -1150,11 +1250,14 @@ export async function handleHttpRequest(
       return
     }
     const identity = transportIdentityAssertions.readVerified(body.assertion, body.audience)
-    if (!identity) {
+    if (!identity || !milestoneQControls.isEnabled('transport', identity.accountWebId)) {
       sendJson(req, res, 401, { error: 'Transport identity assertion is invalid.', code: 'invalid_assertion' })
       return
     }
-    sendJson(req, res, 200, identity, { 'cache-control': 'no-store' })
+    const { accountWebId: _accountWebId, ...publicIdentity } = identity
+    void _accountWebId
+    sendJson(req, res, 200, publicIdentity, { 'cache-control': 'no-store' })
+    milestoneQControls.count('transport', 'verified')
     } finally {
       transportVerificationActiveRequests -= 1
     }
@@ -1175,6 +1278,11 @@ export async function handleHttpRequest(
         error: 'A valid NodeZero session is required.',
         code: 'session_invalid',
       })
+      return
+    }
+    if (!milestoneQControls.isEnabled('relationship', claims.sub)) {
+      milestoneQControls.count('relationship', 'cohort-denied')
+      sendJson(req, res, 404, { error: 'Not found' })
       return
     }
     const deliveryLimit = relationshipDeliveryRateLimiter.consume(claims.sub)
@@ -1241,6 +1349,11 @@ export async function handleHttpRequest(
         error: 'A valid NodeZero session is required.',
         code: 'session_invalid',
       })
+      return
+    }
+    if (!milestoneQControls.isEnabled('relationship', claims.sub)) {
+      milestoneQControls.count('relationship', 'cohort-denied')
+      sendJson(req, res, 404, { error: 'Not found' })
       return
     }
     const verificationLimit = relationshipVerificationRateLimiter.consume(claims.sub)
@@ -1586,11 +1699,19 @@ export async function handleHttpRequest(
         return
       }
 
-      communityDirectory.seedRecord({
-        webId: account.webId,
-        podUrl: account.podUrl,
-        issuer: ISSUER,
-      })
+      try {
+        await communityDirectory.reloadRecord(account.webId)
+        communityDirectory.seedRecord({
+          webId: account.webId,
+          podUrl: account.podUrl,
+          issuer: ISSUER,
+        })
+        await communityDirectory.flush()
+        await communityDirectory.reloadRecord(account.webId)
+      } catch (error) {
+        console.warn('[community-directory] onboarding seed deferred:',
+          error instanceof Error ? error.message : 'unknown error')
+      }
       rememberKnownSolidEmail(email)
 
       // P3: on MainNet there is no Friendbot, so the member's Stellar account

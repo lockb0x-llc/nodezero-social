@@ -1,0 +1,313 @@
+name: Staging Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Successful staging-deploy run containing the retained rollback bundle
+        required: true
+        type: string
+      expected_commit:
+        description: Exact commit SHA recorded in the retained bundle
+        required: true
+        type: string
+      source_run_attempt:
+        description: Exact successful staging-deploy run attempt that produced the bundle
+        required: true
+        type: string
+      confirm_staging_testnet:
+        description: Confirm this rollback targets staging-testnet only
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  actions: read
+  contents: read
+  id-token: write
+
+concurrency:
+  group: staging-testnet-deploy
+  cancel-in-progress: false
+
+jobs:
+  rollback-staging:
+    name: Roll back staging-testnet
+    if: ${{ inputs.confirm_staging_testnet == true }}
+    runs-on: ubuntu-latest
+    environment: staging-testnet
+
+    env:
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      AZURE_RESOURCE_GROUP: rg-nodezero-social-staging-testnet
+      STATIC_WEB_APP_NAME: nodezero-social-staging-testnet-web
+      JSS_PROVISIONER_APP_NAME: nodezero-social-staging-testnet-provisioner
+      RELAY_APP_NAME: nodezero-social-staging-testnet-relay
+
+    steps:
+      - name: Checkout rollback tooling
+        uses: actions/checkout@v4
+
+      - name: Download retained rollback bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: staging-rollback-${{ inputs.expected_commit }}-${{ inputs.source_run_attempt }}
+          path: rollback-bundle
+          run-id: ${{ inputs.source_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Authenticate source staging-deploy run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          EXPECTED_ATTEMPT: ${{ inputs.source_run_attempt }}
+        run: |
+          set -euo pipefail
+          run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}")"
+          workflow_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/$(jq -r '.workflow_id' <<<"$run_json")")"
+          [ "$(jq -r '.path' <<<"$workflow_json")" = ".github/workflows/staging-deploy.yml" ]
+          [ "$(jq -r '.name' <<<"$workflow_json")" = "Staging Deploy" ]
+          [ "$(jq -r '.conclusion' <<<"$run_json")" = "success" ]
+          [ "$(jq -r '.head_branch' <<<"$run_json")" = "testnet" ]
+          [ "$(jq -r '.head_sha' <<<"$run_json")" = "$EXPECTED_COMMIT" ]
+          [ "$(jq -r '.run_attempt' <<<"$run_json")" = "$EXPECTED_ATTEMPT" ]
+          event="$(jq -r '.event' <<<"$run_json")"
+          [ "$event" = "push" ] || [ "$event" = "workflow_dispatch" ]
+
+      - name: Validate rollback bundle provenance and digests
+        env:
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          EXPECTED_SOURCE_RUN: ${{ inputs.source_run_id }}
+          EXPECTED_SOURCE_ATTEMPT: ${{ inputs.source_run_attempt }}
+        run: |
+          set -euo pipefail
+          manifest=rollback-bundle/manifest.json
+          test -f "$manifest"
+          [ "$(jq -r '.version' "$manifest")" = "1" ]
+          [ "$(jq -r '.environment' "$manifest")" = "staging-testnet" ]
+          [ "$(jq -r '.commit' "$manifest")" = "$EXPECTED_COMMIT" ]
+          [ "$(jq -r '.sourceRunId' "$manifest")" = "$EXPECTED_SOURCE_RUN" ]
+          [ "$(jq -r '.sourceRunAttempt' "$manifest")" = "$EXPECTED_SOURCE_ATTEMPT" ]
+          for flag in directory peerProfile relationship transport; do
+            [ "$(jq -r ".qFlags.${flag}" "$manifest")" = "false" ]
+          done
+          [ "$(sha256sum rollback-bundle/provisioner.zip | awk '{print $1}')" = "$(jq -r '.sha256.provisionerZip' "$manifest")" ]
+          [ "$(sha256sum rollback-bundle/relay.zip | awk '{print $1}')" = "$(jq -r '.sha256.relayZip' "$manifest")" ]
+          (cd rollback-bundle/pwa-dist && sha256sum --check ../pwa-files.sha256)
+          pwa_sha="$(cd rollback-bundle/pwa-dist && find . -type f ! -name deploy-marker.json -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
+          [ "$pwa_sha" = "$(jq -r '.sha256.pwaTree' "$manifest")" ]
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Force Milestone Q flags off
+        id: force-dark
+        env:
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+        run: |
+          set -euo pipefail
+          provisioner_artifact_sha="$(sha256sum rollback-bundle/provisioner.zip | awk '{print $1}')"
+          az webapp config appsettings set \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$JSS_PROVISIONER_APP_NAME" \
+            --settings \
+              JSS_BUILD_COMMIT="$EXPECTED_COMMIT" \
+              JSS_BUILD_ARTIFACT_SHA256="$provisioner_artifact_sha" \
+              JSS_Q_DIRECTORY_ENABLED=false \
+              JSS_Q_PEER_PROFILE_ENABLED=false \
+              JSS_Q_RELATIONSHIP_ENABLED=false \
+              JSS_Q_TRANSPORT_ENABLED=false \
+            --output none
+
+      - name: Redeploy retained provisioner artifact
+        id: deploy-provisioner
+        run: |
+          set -euo pipefail
+          az webapp deploy \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$JSS_PROVISIONER_APP_NAME" \
+            --src-path rollback-bundle/provisioner.zip \
+            --type zip \
+            --clean true
+
+      - name: Verify retained provisioner provenance and dark state
+        id: verify-provisioner
+        env:
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+        run: |
+          set -euo pipefail
+          manifest=rollback-bundle/manifest.json
+          expected_payload="$(unzip -p rollback-bundle/provisioner.zip dist/build-info.json | jq -r '.payloadSha256')"
+          expected_artifact="$(jq -r '.sha256.provisionerZip' "$manifest")"
+          for attempt in {1..30}; do
+            health="$(curl -fsS --max-time 10 "https://${JSS_PROVISIONER_APP_NAME}.azurewebsites.net/health" || true)"
+            if [ "$(jq -r '.build.commit // empty' <<<"$health")" = "$EXPECTED_COMMIT" ] && \
+               [ "$(jq -r '.build.payloadSha256 // empty' <<<"$health")" = "$expected_payload" ] && \
+               [ "$(jq -r '.build.configuredArtifactSha256 // empty' <<<"$health")" = "$expected_artifact" ] && \
+               [ "$(jq -r '.communityDirectory.backend // empty' <<<"$health")" = "table" ] && \
+               [ "$(jq -r '.communityDirectory.ready // false' <<<"$health")" = "true" ] && \
+               [ "$(jq -r '.transportIdentity.ready // false' <<<"$health")" = "true" ] && \
+               [ "$(jq -r '.milestoneQ.flags.directory // true' <<<"$health")" = "false" ] && \
+               [ "$(jq -r '.milestoneQ.flags["peer-profile"] // true' <<<"$health")" = "false" ] && \
+               [ "$(jq -r '.milestoneQ.flags.relationship // true' <<<"$health")" = "false" ] && \
+               [ "$(jq -r '.milestoneQ.flags.transport // true' <<<"$health")" = "false" ]; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Retained provisioner provenance verification failed."
+          exit 1
+
+      - name: Redeploy retained relay artifact
+        id: deploy-relay
+        run: |
+          set -euo pipefail
+          az webapp deploy \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$RELAY_APP_NAME" \
+            --src-path rollback-bundle/relay.zip \
+            --type zip \
+            --clean true
+
+      - name: Verify retained relay provenance and dark state
+        id: verify-relay
+        env:
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+        run: |
+          set -euo pipefail
+          expected_payload="$(unzip -p rollback-bundle/relay.zip build-info.json | jq -r '.payloadSha256')"
+          for attempt in {1..30}; do
+            health="$(curl -fsS --max-time 10 "https://${RELAY_APP_NAME}.azurewebsites.net/health" || true)"
+            if [ "$(jq -r '.build.commit // empty' <<<"$health")" = "$EXPECTED_COMMIT" ] && \
+               [ "$(jq -r '.build.payloadSha256 // empty' <<<"$health")" = "$expected_payload" ] && \
+               [ "$(jq -r '.identityVerifierReachable // false' <<<"$health")" = "true" ] && \
+               [ "$(jq -r '.transportEnabled // true' <<<"$health")" = "false" ]; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Retained relay provenance verification failed."
+          exit 1
+
+      - name: Publish retained PWA artifact
+        id: swa-token
+        run: |
+          set -euo pipefail
+          token="$(az staticwebapp secrets list \
+            --name "$STATIC_WEB_APP_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --query properties.apiKey -o tsv)"
+          test -n "$token"
+          echo "::add-mask::$token"
+          echo "token=$token" >> "$GITHUB_OUTPUT"
+
+      - name: Stamp rollback PWA marker
+        env:
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ inputs.source_run_attempt }}
+        run: |
+          set -euo pipefail
+          pwa_content_sha="$(jq -r '.sha256.pwaTree' rollback-bundle/manifest.json)"
+          cat > rollback-bundle/pwa-dist/deploy-marker.json <<EOF
+          {
+            "environment": "staging-testnet",
+            "workflow": "staging-rollback",
+            "commit": "${EXPECTED_COMMIT}",
+            "sourceRunId": "${SOURCE_RUN_ID}",
+            "sourceRunAttempt": "${SOURCE_RUN_ATTEMPT}",
+            "pwaContentSha256": "${pwa_content_sha}",
+            "rollbackRunId": "${GITHUB_RUN_ID}",
+            "rollbackRunAttempt": "${GITHUB_RUN_ATTEMPT}",
+            "generatedAtUtc": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          }
+          EOF
+
+      - name: Upload retained PWA
+        id: deploy-pwa
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ steps.swa-token.outputs.token }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: upload
+          app_location: rollback-bundle/pwa-dist
+          api_location: ''
+          output_location: ''
+          skip_app_build: true
+
+      - name: Verify rollback provenance and dark rollout state
+        id: verify-rollback
+        env:
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ inputs.source_run_attempt }}
+        run: |
+          set -euo pipefail
+          manifest=rollback-bundle/manifest.json
+          expected_provisioner_payload="$(unzip -p rollback-bundle/provisioner.zip dist/build-info.json | jq -r '.payloadSha256')"
+          expected_relay_payload="$(unzip -p rollback-bundle/relay.zip build-info.json | jq -r '.payloadSha256')"
+          expected_artifact="$(jq -r '.sha256.provisionerZip' "$manifest")"
+          expected_pwa_sha="$(jq -r '.sha256.pwaTree' "$manifest")"
+          for attempt in {1..30}; do
+            provisioner_json="$(curl -fsS --max-time 10 "https://${JSS_PROVISIONER_APP_NAME}.azurewebsites.net/health" || true)"
+            relay_json="$(curl -fsS --max-time 10 "https://${RELAY_APP_NAME}.azurewebsites.net/health" || true)"
+            marker_json="$(curl -fsS --max-time 10 "https://staging.nodezero.social/deploy-marker.json" || true)"
+            if [ "$(jq -r '.build.commit // empty' <<<"$provisioner_json")" = "$EXPECTED_COMMIT" ] && \
+              [ "$(jq -r '.build.payloadSha256 // empty' <<<"$provisioner_json")" = "$expected_provisioner_payload" ] && \
+              [ "$(jq -r '.build.configuredArtifactSha256 // empty' <<<"$provisioner_json")" = "$expected_artifact" ] && \
+               [ "$(jq -r '.build.commit // empty' <<<"$relay_json")" = "$EXPECTED_COMMIT" ] && \
+              [ "$(jq -r '.build.payloadSha256 // empty' <<<"$relay_json")" = "$expected_relay_payload" ] && \
+              [ "$(jq -r '.identityVerifierReachable // false' <<<"$relay_json")" = "true" ] && \
+              [ "$(jq -r '.transportEnabled // true' <<<"$relay_json")" = "false" ] && \
+               [ "$(jq -r '.commit // empty' <<<"$marker_json")" = "$EXPECTED_COMMIT" ] && \
+              [ "$(jq -r '.environment // empty' <<<"$marker_json")" = "staging-testnet" ] && \
+              [ "$(jq -r '.workflow // empty' <<<"$marker_json")" = "staging-rollback" ] && \
+              [ "$(jq -r '.sourceRunId // empty' <<<"$marker_json")" = "$SOURCE_RUN_ID" ] && \
+              [ "$(jq -r '.sourceRunAttempt // empty' <<<"$marker_json")" = "$SOURCE_RUN_ATTEMPT" ] && \
+               [ "$(jq -r '.pwaContentSha256 // empty' <<<"$marker_json")" = "$expected_pwa_sha" ] && \
+               [ "$(jq -r '.milestoneQ.flags.directory // true' <<<"$provisioner_json")" = "false" ] && \
+               [ "$(jq -r '.milestoneQ.flags["peer-profile"] // true' <<<"$provisioner_json")" = "false" ] && \
+               [ "$(jq -r '.milestoneQ.flags.relationship // true' <<<"$provisioner_json")" = "false" ] && \
+               [ "$(jq -r '.milestoneQ.flags.transport // true' <<<"$provisioner_json")" = "false" ]; then
+              deployed_marker_sha="$(curl -fsS --max-time 10 https://staging.nodezero.social/deploy-marker.json | sha256sum | awk '{print $1}')"
+              local_marker_sha="$(sha256sum rollback-bundle/pwa-dist/deploy-marker.json | awk '{print $1}')"
+              [ "$deployed_marker_sha" = "$local_marker_sha" ]
+              while read -r expected_hash relative_path; do
+                asset_path="${relative_path#./}"
+                deployed_hash="$(curl -fsS --max-time 20 "https://staging.nodezero.social/${asset_path}" | sha256sum | awk '{print $1}')"
+                [ "$deployed_hash" = "$expected_hash" ]
+              done < rollback-bundle/pwa-files.sha256
+              [ "$(sha256sum rollback-bundle/pwa-files.sha256 | awk '{print $1}')" = "$expected_pwa_sha" ]
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Rollback provenance or dark rollout verification failed."
+          exit 1
+
+      - name: Report final rollback component state
+        if: ${{ always() }}
+        run: |
+          provisioner_health="$(curl -fsS --max-time 10 "https://${JSS_PROVISIONER_APP_NAME}.azurewebsites.net/health" || true)"
+          relay_health="$(curl -fsS --max-time 10 "https://${RELAY_APP_NAME}.azurewebsites.net/health" || true)"
+          cat <<EOF
+          Force dark flags:      ${{ steps.force-dark.outcome }}
+          Provisioner deploy:  ${{ steps.deploy-provisioner.outcome }}
+          Provisioner verify:  ${{ steps.verify-provisioner.outcome }}
+          Relay deploy:        ${{ steps.deploy-relay.outcome }}
+          Relay verify:        ${{ steps.verify-relay.outcome }}
+          PWA deploy:          ${{ steps.deploy-pwa.outcome }}
+          Final verification:  ${{ steps.verify-rollback.outcome }}
+          Live directory flag: $(jq -r '.milestoneQ.flags.directory // "unknown"' <<<"$provisioner_health")
+          Live peer flag:      $(jq -r '.milestoneQ.flags["peer-profile"] // "unknown"' <<<"$provisioner_health")
+          Live relationship:   $(jq -r '.milestoneQ.flags.relationship // "unknown"' <<<"$provisioner_health")
+          Live transport flag: $(jq -r '.milestoneQ.flags.transport // "unknown"' <<<"$provisioner_health")
+          Relay transport:     $(jq -r '.transportEnabled // "unknown"' <<<"$relay_health")
+          EOF

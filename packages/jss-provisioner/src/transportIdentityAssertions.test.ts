@@ -28,6 +28,7 @@ void test('binds transport assertion to WebID, Stellar key, audience, and expiry
   assert.equal(manager.verify({ assertion, audience: 'waku', webId, stellarPublicKey, now }), true)
   assert.deepEqual(manager.readVerified(assertion, 'waku', now), {
     webId,
+    accountWebId: webId,
     stellarPublicKey,
     audience: 'waku',
   })

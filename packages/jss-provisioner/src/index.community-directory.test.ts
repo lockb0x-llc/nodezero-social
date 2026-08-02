@@ -9,13 +9,28 @@ import { after, before, test } from 'node:test'
 import { SessionTokenManager } from './sessionTokens.js'
 import type { CommunityDirectoryRecord } from './communityDirectory.js'
 import type { PublicPeerProfileResult } from './publicPeerProfile.js'
+import { hashCohortIdentity } from './milestoneQControls.js'
 
 process.env.JSS_SOLID_CSS_BASE_URL = 'https://solid.nodezero.social'
 process.env.JSS_ISSUER_URL = 'https://staging.nodezero.social'
 process.env.JSS_INTERNAL_API_KEY = 'test-internal-key'
 process.env.JSS_SESSION_SIGNING_KEY = 'directory-route-test-session-key-32b!'
+process.env.JSS_Q_DIRECTORY_ENABLED = 'true'
+process.env.JSS_Q_PEER_PROFILE_ENABLED = 'true'
+process.env.JSS_Q_COHORT_KEY = 'directory-route-test-cohort-key'
+process.env.JSS_Q_COHORT_HASHES = hashCohortIdentity(
+  'https://solid.nodezero.social/alice/profile/card#me',
+  process.env.JSS_Q_COHORT_KEY
+)
 const tempDirectory = mkdtempSync(join(tmpdir(), 'nz-jss-index-community-directory-'))
 process.env.JSS_COMMUNITY_DIRECTORY_STORE_PATH = join(tempDirectory, 'community-directory.json')
+const directorySession = new SessionTokenManager({
+  signingKey: process.env.JSS_SESSION_SIGNING_KEY,
+  issuer: 'https://staging.nodezero.social',
+}).issue({
+  webId: 'https://solid.nodezero.social/alice/profile/card#me',
+  podUrl: 'https://solid.nodezero.social/alice/',
+})
 
 let createRequestHandler: (overrides?: Record<string, unknown>) =>
   (req: IncomingMessage, res: ServerResponse) => void
@@ -55,7 +70,10 @@ async function withServer<T>(
 void test('/v1/community-directory/index returns empty members initially', async () => {
   await withServer(async (baseUrl) => {
     const response = await fetch(`${baseUrl}/v1/community-directory/index`, {
-      headers: { accept: 'application/json' },
+      headers: {
+        accept: 'application/json',
+        authorization: `Bearer ${directorySession.accessToken}`,
+      },
     })
 
     const payload = (await response.json()) as { version?: number; members?: unknown[] }
@@ -63,19 +81,32 @@ void test('/v1/community-directory/index returns empty members initially', async
     assert.equal(payload.version, 1)
     assert.deepEqual(payload.members, [])
     assert.ok(response.headers.get('etag'))
+    assert.equal(
+      response.headers.get('cache-control'),
+      'private, no-cache, must-revalidate'
+    )
   })
 })
 
 void test('/v1/community-directory/index honors cache validators', async () => {
   await withServer(async (baseUrl) => {
-    const first = await fetch(`${baseUrl}/v1/community-directory/index?limit=1`)
+    const first = await fetch(`${baseUrl}/v1/community-directory/index?limit=1`, {
+      headers: { authorization: `Bearer ${directorySession.accessToken}` },
+    })
     const etag = first.headers.get('etag')
     assert.ok(etag)
     const cached = await fetch(`${baseUrl}/v1/community-directory/index?limit=1`, {
-      headers: { 'if-none-match': etag },
+      headers: {
+        'if-none-match': etag,
+        authorization: `Bearer ${directorySession.accessToken}`,
+      },
     })
     assert.equal(cached.status, 304)
     assert.equal(cached.headers.get('etag'), etag)
+    assert.equal(
+      cached.headers.get('cache-control'),
+      'private, no-cache, must-revalidate'
+    )
   })
 })
 
