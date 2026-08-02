@@ -71,6 +71,10 @@ if (!pnpmEntry) {
 }
 const groups = [
   {
+    label: 'Solid package build required by provisioner imports',
+    args: ['--filter', '@nodezero/solid-pod-sync', 'build'],
+  },
+  {
     label: 'Solid ACL, flood, replay, privacy, migration, and block vectors',
     args: [
       '--filter', '@nodezero/solid-pod-sync', 'exec', 'node',
