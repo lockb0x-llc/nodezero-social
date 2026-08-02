@@ -6,6 +6,7 @@ import { test } from 'node:test'
 import { CommunityDirectoryStore } from './communityDirectory.js'
 
 const seededWebId = 'https://solid.nodezero.social/lifecycle-user/profile/card#me'
+const now = new Date('2026-08-02T00:00:00.000Z')
 
 function withStore(run: (store: CommunityDirectoryStore, path: string) => void): void {
   const dir = mkdtempSync(join(tmpdir(), 'nz-community-directory-'))
@@ -28,6 +29,7 @@ void test('pre-opt-in records are absent from public index', () => {
     const index = store.buildPublicIndex()
     assert.equal(index.version, 1)
     assert.deepEqual(index.members, [])
+    assert.equal('tombstones' in store.buildPublicPage({ now }), false)
   })
 })
 
@@ -84,5 +86,154 @@ void test('store persists records across re-initialization', () => {
     assert.equal(index.members.length, 1)
     assert.equal(index.members[0]?.webId, seededWebId)
     assert.equal(index.members[0]?.listed, true)
+  })
+})
+
+void test('manifest projection publishes only allowlisted public fields and provenance', () => {
+  withStore((store) => {
+    const projected = store.refreshProjection({
+      webId: seededWebId,
+      podUrl: 'https://solid.nodezero.social/lifecycle-user/',
+      issuer: 'https://solid.nodezero.social',
+      publicListing: true,
+      publicIndexing: true,
+      consentUpdatedAt: '2026-08-01T12:00:00.000Z',
+      manifestUrl: 'https://solid.nodezero.social/lifecycle-user/public/discovery/manifest',
+      sourceRevision: '"manifest-v1"',
+      manifest: {
+        publishedAt: '2026-08-01T12:00:00.000Z',
+        expiresAt: '2026-08-08T12:00:00.000Z',
+        displayName: 'Alice',
+        publicInterests: ['solid'],
+        capabilities: ['relationship-requests'],
+        inboxUrl: 'https://solid.nodezero.social/lifecycle-user/social/inbox/',
+      },
+      now: new Date('2026-08-02T00:00:00.000Z'),
+    })
+
+    assert.equal(projected.listed, true)
+    assert.equal(projected.displayName, 'Alice')
+    assert.deepEqual(projected.publicInterests, ['solid'])
+    assert.equal(projected.sourceRevision, '"manifest-v1"')
+    assert.equal('privateInterests' in projected, false)
+    assert.equal('blockedWebIds' in projected, false)
+    assert.equal('trustCircleMembers' in projected, false)
+  })
+})
+
+void test('consent opt-out immediately removes the projection and clears public fields', () => {
+  withStore((store) => {
+    const base = {
+      webId: seededWebId,
+      podUrl: 'https://solid.nodezero.social/lifecycle-user/',
+      issuer: 'https://solid.nodezero.social',
+      publicListing: true,
+      publicIndexing: true,
+      consentUpdatedAt: '2026-08-01T12:00:00.000Z',
+      manifestUrl: 'https://solid.nodezero.social/lifecycle-user/public/discovery/manifest',
+      manifest: {
+        publishedAt: '2026-08-01T12:00:00.000Z',
+        expiresAt: '2026-08-08T12:00:00.000Z',
+        displayName: 'Alice',
+        publicInterests: ['solid'],
+      },
+      now: new Date('2026-08-02T00:00:00.000Z'),
+    }
+    store.refreshProjection(base)
+    const removed = store.refreshProjection({
+      ...base,
+      publicListing: false,
+      consentUpdatedAt: '2026-08-02T01:00:00.000Z',
+    })
+
+    assert.equal(removed.listed, false)
+    assert.equal(removed.displayName, undefined)
+    assert.equal(removed.publicInterests, undefined)
+    assert.deepEqual(store.buildPublicIndex().members, [])
+  })
+})
+
+void test('missing or expired manifests cannot remain publicly projected', () => {
+  withStore((store) => {
+    const base = {
+      webId: seededWebId,
+      podUrl: 'https://solid.nodezero.social/lifecycle-user/',
+      issuer: 'https://solid.nodezero.social',
+      publicListing: true,
+      publicIndexing: true,
+      consentUpdatedAt: '2026-08-01T12:00:00.000Z',
+      manifestUrl: 'https://solid.nodezero.social/lifecycle-user/public/discovery/manifest',
+      now: new Date('2026-08-02T00:00:00.000Z'),
+    }
+    assert.equal(store.refreshProjection({ ...base, manifest: null }).listed, false)
+    assert.equal(store.refreshProjection({
+      ...base,
+      manifest: {
+        publishedAt: '2026-07-01T00:00:00.000Z',
+        expiresAt: '2026-07-02T00:00:00.000Z',
+      },
+    }).listed, false)
+    assert.deepEqual(store.buildPublicIndex().members, [])
+  })
+})
+
+void test('public pages are bounded, cursor-stable, and emit deterministic validators', () => {
+  withStore((store) => {
+    for (const name of ['alice', 'bob', 'carol']) {
+      const webId = `https://solid.nodezero.social/${name}/profile/card#me`
+      store.seedRecord({
+        webId,
+        podUrl: `https://solid.nodezero.social/${name}/`,
+        issuer: 'https://solid.nodezero.social',
+      })
+      store.setListing(webId, true)
+    }
+    const first = store.buildPublicPage({ limit: 2, now })
+    const repeated = store.buildPublicPage({ limit: 2, now })
+    assert.equal(first.members.length, 2)
+    assert.equal(first.nextCursor, first.members[1]?.webId)
+    assert.equal(first.etag, repeated.etag)
+    const second = store.buildPublicPage({ cursor: first.nextCursor ?? undefined, limit: 2, now })
+    assert.equal(second.members.length, 1)
+    assert.equal(second.nextCursor, null)
+    assert.equal(new Set([...first.members, ...second.members].map((entry) => entry.webId)).size, 3)
+  })
+})
+
+void test('removal tombstones remain internal and never appear in public pages', () => {
+  withStore((store) => {
+    store.refreshProjection({
+      webId: seededWebId,
+      podUrl: 'https://solid.nodezero.social/lifecycle-user/',
+      issuer: 'https://solid.nodezero.social',
+      publicListing: true,
+      publicIndexing: true,
+      consentUpdatedAt: '2026-08-01T12:00:00.000Z',
+      manifestUrl: 'https://solid.nodezero.social/lifecycle-user/public/discovery/manifest',
+      manifest: {
+        publishedAt: '2026-08-01T12:00:00.000Z',
+        expiresAt: '2026-08-08T12:00:00.000Z',
+        displayName: 'Alice',
+        publicInterests: ['solid'],
+      },
+      now,
+    })
+    store.refreshProjection({
+      webId: seededWebId,
+      podUrl: 'https://solid.nodezero.social/lifecycle-user/',
+      issuer: 'https://solid.nodezero.social',
+      publicListing: false,
+      publicIndexing: false,
+      consentUpdatedAt: '2026-08-02T00:00:00.000Z',
+      manifestUrl: 'https://solid.nodezero.social/lifecycle-user/public/discovery/manifest',
+      manifest: null,
+      now: new Date('2026-08-02T00:00:00.000Z'),
+    })
+
+    const internal = store.getByWebId(seededWebId)
+    assert.equal(internal?.removedAt, '2026-08-02T00:00:00.000Z')
+    const page = store.buildPublicPage({ now })
+    assert.equal('tombstones' in page, false)
+    assert.deepEqual(page.members, [])
   })
 })

@@ -4,6 +4,12 @@ Format:
 [YYYY-MM-DD HH:MM UTC] [FROM->TO] [P0|P1|P2] [OPEN|NEEDS-INFO|DONE]
 Context:
 
+[2026-08-01 23:59 UTC] [PROJECT_MANAGER->AZURE_PLATFORM_AGENT,MOBILE_APP_AGENT,P2P_RELAY_AGENT,QA_RELEASE_AGENT] [P1] [DONE]
+Context: Q3A API/projection contract is complete locally. The provisioner now exposes an owner-session-only manifest refresh, retires internal-key listing mutation, clears stale projections on opt-out/invalid/expired manifests, stores only allowlisted public fields/provenance, and serves bounded cursor pages with ETags while keeping removal tombstones internal.
+Request: AZURE_PLATFORM_AGENT owns durable Azure storage, default-off flags, privacy-safe telemetry, slots/revisions, reconciliation, and rollback. MOBILE_APP_AGENT may begin Q3B against the stable refresh/index contract. P2P_RELAY_AGENT may begin Q3C transport enforcement. QA must not treat this as deployed readiness.
+Evidence: `communityDirectory.ts`, `communityDirectoryRefresh.ts`, authenticated route tests; focused 18/18; provisioner 113/113; Q1C 22-vector and environment policies PASS. No deployment performed.
+Due: Q3 specialist implementation start.
+
 [2026-08-01 23:59 UTC] [AUDIT_AGENT->PROJECT_MANAGER,QA_RELEASE_AGENT,SOLID_DATA_AGENT,SOLID_INTEGRATION_SPECIALIST,P2P_RELAY_AGENT] [P0] [DONE]
 Context: Milestone Q1C local security-vector gate is complete with independent AUDIT_AGENT GO. The gate covers append-only inbox ACLs, drainable flood handling, route rate limits, SSRF and embedded-private IPv6, external credential isolation, actor-bound ETag-fenced replay, sender assertions, runtime public-manifest sanitation, two-pass legacy migration, and block precedence. Release-stop findings discovered during audit were repaired and re-audited.
 Request: Treat `pnpm policy:validate-consentful-discovery` as a required Q3/Q4 pre-merge gate. Preserve `qa:smoke:auth` as identity-only. Do not treat this local GO as deployment or release certification; Q3 derived-index/transport work and Q4 zero-retry staging, rollback, scale-out rate-limit, real CSS ACL, and soak evidence remain required.

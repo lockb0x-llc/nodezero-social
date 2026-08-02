@@ -46,6 +46,10 @@ import {
 } from './relationshipDeliveryAssertions.js'
 import { RelationshipRateLimiter } from './relationshipRateLimiter.js'
 import { isRelationshipRecipientBlocked } from './relationshipBlockPolicy.js'
+import {
+  CommunityDirectoryRefreshError,
+  refreshCommunityDirectoryProjection,
+} from './communityDirectoryRefresh.js'
 // Stellar StrKey base32 decode + Ed25519 verify using Web Crypto API
 const _B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
 function _b32Decode(s: string): Uint8Array {
@@ -165,6 +169,7 @@ const RELATIONSHIP_ASSERTIONS_READY =
 
 export interface RequestHandlerOverrides {
   isRelationshipRecipientBlocked?: typeof isRelationshipRecipientBlocked
+  refreshCommunityDirectoryProjection?: typeof refreshCommunityDirectoryProjection
 }
 const knownSolidAccountEmails = new Set<string>()
 const notificationPublisher = createNotificationEventPublisherFromEnv()
@@ -908,7 +913,57 @@ export async function handleHttpRequest(
   }
 
   if (req.method === 'GET' && url.pathname === '/v1/community-directory/index') {
-    sendJson(req, res, 200, communityDirectory.buildPublicIndex())
+    const rawLimit = Number(url.searchParams.get('limit') ?? '100')
+    const limit = Number.isInteger(rawLimit) ? rawLimit : 100
+    const page = communityDirectory.buildPublicPage({
+      ...(url.searchParams.get('cursor') ? { cursor: url.searchParams.get('cursor')! } : {}),
+      limit,
+    })
+    if (req.headers['if-none-match'] === page.etag) {
+      res.writeHead(304, { ...corsHeaders(req), etag: page.etag })
+      res.end()
+      return
+    }
+    sendJson(req, res, 200, page, {
+      etag: page.etag,
+      'cache-control': 'public, max-age=30, must-revalidate',
+    })
+    return
+  }
+
+  if (req.method === 'POST' && url.pathname === '/v1/community-directory/refresh') {
+    const claims = verifyBearerSession(req)
+    if (!claims) {
+      sendJson(req, res, 401, {
+        error: 'A valid NodeZero session is required.',
+        code: 'session_invalid',
+      })
+      return
+    }
+    try {
+      const refresh = overrides.refreshCommunityDirectoryProjection ??
+        refreshCommunityDirectoryProjection
+      const record = await refresh(claims, {
+        credentialStore,
+        directoryStore: communityDirectory,
+        cssBaseUrl: SOLID_CSS_BASE_URL,
+      })
+      sendJson(req, res, 200, {
+        status: 'ok',
+        listed: record.listed,
+        record,
+      })
+    } catch (error) {
+      if (error instanceof CommunityDirectoryRefreshError) {
+        const status = error.code === 'session_invalid' ? 401 : 403
+        sendJson(req, res, status, { error: error.message, code: error.code })
+        return
+      }
+      sendJson(req, res, 503, {
+        error: 'Community directory refresh is temporarily unavailable.',
+        code: 'directory_refresh_unavailable',
+      })
+    }
     return
   }
 
@@ -1036,32 +1091,9 @@ export async function handleHttpRequest(
     req.method === 'POST' &&
     (url.pathname === '/v1/community-directory/opt-in' || url.pathname === '/v1/community-directory/opt-out')
   ) {
-    if (!INTERNAL_API_KEY) {
-      sendJson(req, res, 503, { error: 'Community directory mutation is not enabled (JSS_INTERNAL_API_KEY).' })
-      return
-    }
-    if (!hasValidInternalKey(req)) {
-      sendJson(req, res, 401, { error: 'A valid x-nz-internal-key header is required.' })
-      return
-    }
-
-    const body = await readJsonBody<{ webId?: string }>(req)
-    if (!isNonEmpty(body.webId)) {
-      sendJson(req, res, 400, { error: 'webId is required.' })
-      return
-    }
-
-    const listed = url.pathname.endsWith('/opt-in')
-    const updated = communityDirectory.setListing(body.webId.trim(), listed)
-    if (!updated) {
-      sendJson(req, res, 404, { error: 'No directory record exists for the provided webId.' })
-      return
-    }
-
-    sendJson(req, res, 200, {
-      status: 'ok',
-      listed,
-      record: updated,
+    sendJson(req, res, 410, {
+      error: 'Legacy directory mutation is retired. Use the authenticated refresh endpoint.',
+      code: 'directory_mutation_retired',
     })
     return
   }

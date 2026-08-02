@@ -37,8 +37,8 @@ retaining immediate disconnect, mute, block, and discovery-revocation controls.
 | Q1B | Solid Integration Specialist | Q0, shared Q1 contracts | LDN and WebID discovery adapters, credential-free remote fetch, Pod proxy constraints, and inbox delivery | Complete: Solid 20 suites/114 tests and provisioner 88/88 tests pass |
 | Q1C | Audit Agent | Q0 | Threat model and security test vectors for ACL, SSRF, replay, privacy, migration, and block precedence | Complete: 22 executable vectors across 10 categories pass; Audit Agent GO |
 | Q2 | Solid Data Agent | Q1A, Q1B | Relationship lifecycle, replay ledger, legacy migration, moderation, and `foaf:knows` projection | Complete: Solid 168, mobile 90, and provisioner 101 tests pass; strict staging PWA artifact passes |
-| Q3A | Azure Platform Agent | Q1 contracts, P6 | Durable derived index, feature flags, telemetry, slots/revisions, rollback assets, and staging deployment wiring | Not started |
-| Q3B | Mobile App Agent | Q2, Q3A API contract | Consent controls, public-interest selection, explainable recommendations, and unified Directory/Profile/Local actions | Not started |
+| Q3A | Azure Platform Agent | Q1 contracts, P6 | Durable derived index, feature flags, telemetry, slots/revisions, rollback assets, and staging deployment wiring | In progress: API/projection contract complete; Azure durability and deployment controls remain |
+| Q3B | Mobile App Agent | Q2, Q3A API contract | Consent controls, public-interest selection, explainable recommendations, and unified Directory/Profile/Local actions | Ready: Q3A API contract available |
 | Q3C | P2P Relay Agent | Q1 contracts | Presence, reveal, Waku, WebRTC, and relay consent/block enforcement plus abuse controls | Not started |
 | Q4 | QA Release Agent | Q1-Q3 | Package, integration, browser, device, deployment, rollback, and soak evidence | Not started |
 | Q5 | Docs Agent | Q4 and Audit GO | Validated Wiki/status updates and Milestone Q release evidence | Not started |
@@ -154,6 +154,23 @@ No staging deployment or release certification was performed in Q1C/Q2.
 
 Exit gate: default-off, own mutation, cross-user denial, removal latency, public/private
 interest separation, pagination, and recommendation-reason suites pass.
+
+### Q3A API contract evidence (2026-08-01)
+
+- `POST /v1/community-directory/refresh` derives the owner exclusively from a valid
+   NodeZero session and reads private Pod consent before any public manifest read.
+- Legacy internal-key `opt-in`/`opt-out` routes return `410`; callers cannot supply a
+   target WebID to the refresh route.
+- The derived record stores only allowlisted manifest fields plus consent timestamp,
+   manifest URL, expiry, and source revision. Invalid, missing, expired, or opted-out
+   manifests clear prior public fields immediately.
+- Public index pages are bounded to 100 records, use stable WebID cursors and weak
+   ETags, and never expose internal removal tombstones or always-private records.
+- Focused directory projection/refresh/route tests pass 18/18; full provisioner tests
+   pass 113/113; Q1C 22-vector and environment-isolation policies pass.
+- This is an API contract, not durable infrastructure or deployment evidence. Azure
+   storage, default-off cohort flags, privacy-safe telemetry, retained slots/revisions,
+   rollback, reconciliation, and staging provenance remain Q3A work.
 
 ## Phase 4: Integrated Social Experience
 

@@ -68,6 +68,68 @@
     "evidence": "policy:validate-consentful-discovery PASS: 22 vectors across 10 categories; Solid 168, mobile 90, provisioner 101; strict staging PWA artifact PASS; AUDIT_AGENT local GO; no deployment performed."
   },
   {
+    "id": "Q3A",
+    "agent": "AZURE_PLATFORM_AGENT",
+    "status": "in-progress",
+    "slug": "durable-derived-directory",
+    "title": "Q3A - Implement durable derived directory infrastructure",
+    "objective": "Implement durable Azure-backed projection storage, default-off flags, privacy-safe telemetry, retained slots/revisions, reconciliation, and rollback against the completed authenticated refresh API contract.",
+    "acceptanceCriteria": [
+      "POST /v1/community-directory/refresh and paginated GET /v1/community-directory/index preserve the local contract across restarts and scale-out.",
+      "Feature flags default off and rollback never restores opted-out listings or removes private consent/safety state.",
+      "Telemetry excludes raw WebIDs, interests, blocks, H3/reveal history, and relationship payloads.",
+      "Bicep, what-if, policy, restart, reconciliation, and rollback tests pass without deployment claims until the workflow succeeds."
+    ],
+    "sourceReferences": [
+      "packages/jss-provisioner/src/communityDirectory.ts",
+      "packages/jss-provisioner/src/communityDirectoryRefresh.ts",
+      "infrastructure/azure/",
+      ".github/workflows/staging-deploy.yml"
+    ],
+    "dependsOn": ["Q1C", "Q2", "P6"]
+  },
+  {
+    "id": "Q3B",
+    "agent": "MOBILE_APP_AGENT",
+    "status": "ready",
+    "slug": "discovery-consent-recommendations",
+    "title": "Q3B - Build discovery consent and recommendations UX",
+    "objective": "Consume the completed owner refresh and paginated index contract for default-off listing/indexing controls, explicitly selected public interests, reason-coded recommendations, and unified actions.",
+    "acceptanceCriteria": [
+      "Listing and indexing controls remain independent and default off.",
+      "Only explicitly selected public interests enter the manifest.",
+      "Directory pagination and ETag refresh work without exposing internal tombstones.",
+      "Recommendations expose stable reason codes and block precedence."
+    ],
+    "sourceReferences": [
+      "packages/mobile-app/app/directory.tsx",
+      "packages/mobile-app/app/profile.tsx",
+      "packages/jss-provisioner/src/communityDirectory.ts",
+      "packages/jss-provisioner/src/communityDirectoryRefresh.ts"
+    ],
+    "dependsOn": ["Q2", "Q3A-api-contract"]
+  },
+  {
+    "id": "Q3C",
+    "agent": "P2P_RELAY_AGENT",
+    "status": "ready",
+    "slug": "transport-consent-block-enforcement",
+    "title": "Q3C - Enforce consent and block policy across transports",
+    "objective": "Apply accepted-and-unblocked policy to Presence, Waku, WebRTC, and relay paths with abuse and lifecycle tests.",
+    "acceptanceCriteria": [
+      "Directory, Trust Circle, location permission, and unilateral FOAF state never grant transport delivery.",
+      "Block policy precedes reveal, subscription, message, WebRTC, and relay paths.",
+      "Replay, TTL, reconnect, rate, size, and connection-limit tests pass."
+    ],
+    "sourceReferences": [
+      "packages/mobile-app/src/contexts/PresenceContext.tsx",
+      "packages/waku-comms/src/",
+      "packages/p2p-comms/src/",
+      "packages/relay-service/src/"
+    ],
+    "dependsOn": ["Q1C", "Q2"]
+  },
+  {
     "id": "Q4D",
     "agent": "QA_RELEASE_AGENT",
     "slug": "consent-qa-design",

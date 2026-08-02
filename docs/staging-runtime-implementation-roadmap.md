@@ -288,7 +288,7 @@ primitives; they do not yet provide reciprocal contact consent.
 | Q-02 | Secure WebID/Type Index/LDN discovery and append-only inbox delivery | ✅ Done | HTTPS-only DNS-pinned GET/POST, safe redirect/size/media/timeout controls, credential-free WebID discovery, ActivityStreams adapter, authenticated actor-bound delivery route, and session-scoped Pod proxy; Solid 114 and provisioner 88 tests PASS |
 | Q-03 | Reciprocal relationship lifecycle, legacy migration, mute/block/report, and `foaf:knows` projection | ✅ Done locally | Signed recipient-bound delivery and verification, default-off consent, bounded inbox sync/quarantine/cleanup, actor-bound ETag-fenced replay, Follow/Accept/Reject/Undo, immutable retry, legacy import, accepted-only FOAF projection, Profile request UI, and compose block policy pass Solid 168, mobile 90, and provisioner 101 tests plus strict staging PWA artifact |
 | Q-03A | Consentful discovery security and abuse vectors | ✅ Done locally | `policy:validate-consentful-discovery` passes 22 vectors across 10 categories with AUDIT_AGENT GO; no deployed or multi-instance claim |
-| Q-04 | Owner-controlled public manifest and rebuildable derived directory | ⬜ To Do | All consent scopes default off; private interests and safety state excluded |
+| Q-04 | Owner-controlled public manifest and rebuildable derived directory | 🔄 In Progress | Owner-authenticated refresh, consent-first Pod reads, allowlisted projection/provenance, immediate stale removal, bounded cursors/ETags, internal-only tombstones, and retired internal-key mutation pass 18 focused and 113 provisioner tests; durable Azure storage/flags/telemetry/rollback remain |
 | Q-05 | Explainable recommendation engine and unified Directory/Profile/Local actions | ⬜ To Do | Stable reason codes and block precedence required |
 | Q-06 | Consent-aware Waku, WebRTC, compose, and in-app notification integration | ⬜ To Do | Directed audiences require accepted and unblocked relationships |
 | Q-07 | Policy, zero-retry E2E, staging rollout, rollback, and 24-hour soak | ⬜ To Do | New `qa:smoke:consentful-discovery`; identity gate remains separate |
@@ -308,7 +308,7 @@ primitives; they do not yet provide reciprocal contact consent.
 | G7 | B1/B2 (real feed/social graph from Solid) still placeholder | **Low (current milestone)** | Post-hackathon scope; document as known gap |
 | G8 | ZK artifact checksum verification not in CI | **Low** | Wire `pnpm verify:checksums:testnet` into CI gate (ZK-08) |
 | G9 | CSS recovery mail can be misconfigured if SMTP secrets are absent in GitHub environment | **High** | Ensure `SOLID_SMTP_USERNAME` and `SOLID_SMTP_PASSWORD` are populated before redeploy; verify forgot-password smoke after each Solid redeploy |
-| G10 | Directory listing is not yet controlled through an authenticated Pod-owner manifest | **High** | Complete Q-01, Q-02, and Q-04 before broad discovery rollout |
+| G10 | Directory API contract is owner-authenticated, but durable Azure projection infrastructure and rollout controls are not complete | **High** | Complete Q3A storage/flags/slots/telemetry/rollback before broad discovery rollout |
 | G11 | Unilateral `foaf:knows` and Trust Circle state can be mistaken for reciprocal contact consent | **High** | Complete Q-03 and require accepted/unblocked relationship state in compose and transports |
 | G12 | External WebID and inbox fetching could leak credentials or introduce SSRF if built on the Pod proxy | **High** | Implement the separate credential-free fetch boundary and security tests in Q-02 |
 
