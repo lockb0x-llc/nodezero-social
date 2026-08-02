@@ -116,7 +116,27 @@ jobs:
             unzip -t "$destination" >/dev/null
           }
           capture_app "$JSS_PROVISIONER_APP_NAME" baseline-bundle/provisioner.zip
+          relay_scm_host="$(az webapp show --resource-group "$AZURE_RESOURCE_GROUP" --name "$RELAY_APP_NAME" --query defaultHostName -o tsv | sed 's/\.azurewebsites\.net$/.scm.azurewebsites.net/')"
+          relay_deployment_before="$(timeout 30s az rest \
+            --method get \
+            --url "https://${relay_scm_host}/api/deployments/latest" \
+            --resource "https://management.azure.com/" \
+            --query '{id:id,status:status,active:active,complete:complete}' -o json)"
+          relay_deployment_id="$(jq -r '.id // empty' <<<"$relay_deployment_before")"
+          test -n "$relay_deployment_id"
+          [ "$(jq -r '.status' <<<"$relay_deployment_before")" = "4" ]
+          [ "$(jq -r '.active' <<<"$relay_deployment_before")" = "true" ]
+          [ "$(jq -r '.complete' <<<"$relay_deployment_before")" = "true" ]
           capture_app "$RELAY_APP_NAME" baseline-bundle/relay.zip
+          relay_deployment_after="$(timeout 30s az rest \
+            --method get \
+            --url "https://${relay_scm_host}/api/deployments/latest" \
+            --resource "https://management.azure.com/" \
+            --query '{id:id,status:status,active:active,complete:complete}' -o json)"
+          [ "$(jq -r '.id // empty' <<<"$relay_deployment_after")" = "$relay_deployment_id" ]
+          [ "$(jq -r '.status' <<<"$relay_deployment_after")" = "4" ]
+          [ "$(jq -r '.active' <<<"$relay_deployment_after")" = "true" ]
+          [ "$(jq -r '.complete' <<<"$relay_deployment_after")" = "true" ]
           rm -rf /tmp/provisioner-live /tmp/relay-live
           mkdir -p /tmp/provisioner-live /tmp/relay-live/deploy
           unzip -q baseline-bundle/provisioner.zip -d /tmp/provisioner-live
@@ -126,15 +146,24 @@ jobs:
           provisioner_commit="$(jq -r '.commit // empty' /tmp/provisioner-live/dist/build-info.json)"
           provisioner_payload="$(jq -r '.payloadSha256 // empty' /tmp/provisioner-live/dist/build-info.json)"
           computed_provisioner_payload="$(cd /tmp/provisioner-live && find dist -type f ! -name build-info.json -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
-          relay_commit="$(jq -r '.commit // empty' /tmp/relay-live/deploy/build-info.json)"
-          relay_payload="$(jq -r '.payloadSha256 // empty' /tmp/relay-live/deploy/build-info.json)"
-          computed_relay_payload="$(cd /tmp/relay-live && find deploy -type f ! -name build-info.json -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
           [ "$provisioner_commit" = "${{ steps.live.outputs.commit }}" ]
           [ "$provisioner_payload" = "$computed_provisioner_payload" ]
-          [ "$relay_commit" = "${{ steps.live.outputs.commit }}" ]
-          [ "$relay_payload" = "$computed_relay_payload" ]
+          if [ -f /tmp/relay-live/deploy/build-info.json ]; then
+            relay_provenance="embedded-build-info"
+            relay_commit="$(jq -r '.commit // empty' /tmp/relay-live/deploy/build-info.json)"
+            relay_payload="$(jq -r '.payloadSha256 // empty' /tmp/relay-live/deploy/build-info.json)"
+            computed_relay_payload="$(cd /tmp/relay-live && find deploy -type f ! -name build-info.json -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
+            [ "$relay_commit" = "${{ steps.live.outputs.commit }}" ]
+            [ "$relay_payload" = "$computed_relay_payload" ]
+          else
+            relay_provenance="kudu-deployment-tree"
+            relay_commit=""
+            relay_payload=""
+          fi
           echo "provisioner_commit=$provisioner_commit" >> "$GITHUB_OUTPUT"
           echo "provisioner_payload=$provisioner_payload" >> "$GITHUB_OUTPUT"
+          echo "relay_provenance=$relay_provenance" >> "$GITHUB_OUTPUT"
+          echo "relay_deployment_id=$relay_deployment_id" >> "$GITHUB_OUTPUT"
           echo "relay_commit=$relay_commit" >> "$GITHUB_OUTPUT"
           echo "relay_payload=$relay_payload" >> "$GITHUB_OUTPUT"
 
@@ -212,6 +241,8 @@ jobs:
                 "payloadSha256": "${{ steps.capture-apps.outputs.provisioner_payload }}"
               },
               "relay": {
+                "provenance": "${{ steps.capture-apps.outputs.relay_provenance }}",
+                "kuduDeploymentId": "${{ steps.capture-apps.outputs.relay_deployment_id }}",
                 "commit": "${{ steps.capture-apps.outputs.relay_commit }}",
                 "payloadSha256": "${{ steps.capture-apps.outputs.relay_payload }}"
               }

@@ -94,6 +94,9 @@ This runbook does not authorize Production Mainnet deployment.
 3. Record the capture run ID, capture run attempt, capture tooling SHA, and baseline
    commit. The first Q deployment must supply all four values and fails closed if the
    live marker, source workflow, attempt, tooling SHA, manifest, or digests differ.
+   A legacy relay without embedded build metadata is recorded separately as
+   `kudu-deployment-tree`: its stable active Kudu deployment ID and complete file tree
+   are authenticated without falsely assigning the PWA/provisioner marker commit to it.
 4. Do not use the candidate deployment's own rollback bundle as its N-1 artifact.
 
 ## Phase 4: Dark Staging Deployment

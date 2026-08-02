@@ -77,6 +77,25 @@ for (const path of [
   }
 }
 
+const rollbackWorkflow = sources.get('.github/workflows/staging-rollback.yml') ?? ''
+for (const [label, pattern] of [
+  [
+    'mandatory relay ZIP digest',
+    /expected_relay_sha[\s\S]*\[\[ "\$expected_relay_sha" =~ \^\[0-9a-f\]\{64\}\$ \]\]/,
+  ],
+  ['exact live relay tree comparison', /cmp --silent[\s\S]*relay-files\.sha256/],
+  [
+    'legacy relay health gate',
+    /Legacy retained relay bytes matched, but the service did not become healthy/,
+  ],
+  [
+    'relay verification provenance branch',
+    /relay_provenance=.*components\.relay\.provenance[\s\S]*if \[ "\$relay_provenance" = "kudu-deployment-tree" \]/,
+  ],
+]) {
+  if (!pattern.test(rollbackWorkflow)) failures.push(`rollback workflow: missing ${label}`)
+}
+
 const packageJson = JSON.parse(await readFile('package.json', 'utf8'))
 for (const script of [
   'policy:validate-consentful-discovery',

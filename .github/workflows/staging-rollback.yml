@@ -134,9 +134,33 @@ jobs:
           done
           [ "$(sha256sum rollback-bundle/provisioner.zip | awk '{print $1}')" = "$(jq -r '.sha256.provisionerZip' "$manifest")" ]
           expected_relay_sha="$(jq -r '.sha256.relayZip // empty' "$manifest")"
-          if [ -n "$expected_relay_sha" ]; then
-            test -f rollback-bundle/relay.zip
-            [ "$(sha256sum rollback-bundle/relay.zip | awk '{print $1}')" = "$expected_relay_sha" ]
+          expected_relay_tree="$(jq -r '.sha256.relayTree // empty' "$manifest")"
+          [[ "$expected_relay_sha" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$expected_relay_tree" =~ ^[0-9a-f]{64}$ ]]
+          test -f rollback-bundle/relay.zip
+          test -f rollback-bundle/relay-files.sha256
+          [ "$(sha256sum rollback-bundle/relay.zip | awk '{print $1}')" = "$expected_relay_sha" ]
+          [ "$(sha256sum rollback-bundle/relay-files.sha256 | awk '{print $1}')" = "$expected_relay_tree" ]
+          rm -rf /tmp/retained-relay
+          mkdir -p /tmp/retained-relay/deploy
+          unzip -q rollback-bundle/relay.zip -d /tmp/retained-relay/deploy
+          (cd /tmp/retained-relay/deploy && sha256sum --check "$GITHUB_WORKSPACE/rollback-bundle/relay-files.sha256")
+          relay_provenance="$(jq -r '.components.relay.provenance // empty' "$manifest")"
+          if [ "$SOURCE_KIND" = "baseline" ] && [ "$relay_provenance" = "kudu-deployment-tree" ]; then
+            test ! -f /tmp/retained-relay/deploy/build-info.json
+            test -n "$(jq -r '.components.relay.kuduDeploymentId // empty' "$manifest")"
+            [ -z "$(jq -r '.components.relay.commit // empty' "$manifest")" ]
+            [ -z "$(jq -r '.components.relay.payloadSha256 // empty' "$manifest")" ]
+          elif [ "$relay_provenance" = "embedded-build-info" ]; then
+            test -f /tmp/retained-relay/deploy/build-info.json
+            relay_payload="$(cd /tmp/retained-relay && find deploy -type f ! -name build-info.json -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
+            [ "$(jq -r '.commit' /tmp/retained-relay/deploy/build-info.json)" = "$EXPECTED_COMMIT" ]
+            [ "$(jq -r '.payloadSha256' /tmp/retained-relay/deploy/build-info.json)" = "$relay_payload" ]
+            [ "$(jq -r '.components.relay.commit' "$manifest")" = "$EXPECTED_COMMIT" ]
+            [ "$(jq -r '.components.relay.payloadSha256' "$manifest")" = "$relay_payload" ]
+          else
+            echo "Unsupported baseline relay provenance: $relay_provenance"
+            exit 1
           fi
           (cd rollback-bundle/pwa-dist && sha256sum --check ../pwa-files.sha256)
           pwa_sha="$(cd rollback-bundle/pwa-dist && find . -type f ! -name deploy-marker.json -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
@@ -214,7 +238,6 @@ jobs:
 
       - name: Redeploy retained relay artifact
         id: deploy-relay
-        if: ${{ hashFiles('rollback-bundle/relay.zip') != '' }}
         run: |
           set -euo pipefail
           az webapp deploy \
@@ -226,13 +249,14 @@ jobs:
 
       - name: Verify retained relay provenance and dark state
         id: verify-relay
-        if: ${{ hashFiles('rollback-bundle/relay.zip') != '' }}
         env:
           EXPECTED_COMMIT: ${{ inputs.expected_commit }}
           SOURCE_KIND: ${{ inputs.source_kind }}
         run: |
           set -euo pipefail
-          if [ "$SOURCE_KIND" = "baseline" ]; then
+          relay_provenance="$(jq -r '.components.relay.provenance // empty' rollback-bundle/manifest.json)"
+          if [ "$relay_provenance" = "kudu-deployment-tree" ]; then
+            [ "$SOURCE_KIND" = "baseline" ]
             test -f rollback-bundle/relay-files.sha256
             scm_host="$(az webapp show --resource-group "$AZURE_RESOURCE_GROUP" --name "$RELAY_APP_NAME" --query defaultHostName -o tsv | sed 's/\.azurewebsites\.net$/.scm.azurewebsites.net/')"
             timeout 120s az rest \
@@ -243,9 +267,20 @@ jobs:
             rm -rf /tmp/live-relay
             mkdir -p /tmp/live-relay
             unzip -q /tmp/live-relay.zip -d /tmp/live-relay
-            (cd /tmp/live-relay && sha256sum --check "$GITHUB_WORKSPACE/rollback-bundle/relay-files.sha256")
-            exit 0
+            (cd /tmp/live-relay && find . -type f -print0 | sort -z | xargs -0 sha256sum) > /tmp/live-relay-files.sha256
+            cmp --silent "$GITHUB_WORKSPACE/rollback-bundle/relay-files.sha256" /tmp/live-relay-files.sha256
+            for attempt in {1..30}; do
+              health="$(curl -fsS --max-time 10 "https://${RELAY_APP_NAME}.azurewebsites.net/health" || true)"
+              if [ "$(jq -r '.ok // false' <<<"$health")" = "true" ] && \
+                 [ "$(jq -r '.service // empty' <<<"$health")" = "relay-service" ]; then
+                exit 0
+              fi
+              sleep 10
+            done
+            echo "Legacy retained relay bytes matched, but the service did not become healthy."
+            exit 1
           fi
+          [ "$relay_provenance" = "embedded-build-info" ]
           expected_payload="$(unzip -p rollback-bundle/relay.zip build-info.json | jq -r '.payloadSha256')"
           for attempt in {1..30}; do
             health="$(curl -fsS --max-time 10 "https://${RELAY_APP_NAME}.azurewebsites.net/health" || true)"
@@ -318,8 +353,13 @@ jobs:
           manifest=rollback-bundle/manifest.json
           expected_provisioner_payload="$(unzip -p rollback-bundle/provisioner.zip dist/build-info.json | jq -r '.payloadSha256')"
           expected_relay_payload=""
-          if [ -f rollback-bundle/relay.zip ]; then
+          relay_provenance="$(jq -r '.components.relay.provenance // empty' "$manifest")"
+          test -f rollback-bundle/relay.zip
+          if [ "$relay_provenance" = "embedded-build-info" ]; then
             expected_relay_payload="$(unzip -p rollback-bundle/relay.zip build-info.json | jq -r '.payloadSha256')"
+          elif [ "$relay_provenance" != "kudu-deployment-tree" ]; then
+            echo "Unsupported relay provenance: $relay_provenance"
+            exit 1
           fi
           expected_artifact="$(jq -r '.sha256.provisionerZip' "$manifest")"
           expected_pwa_sha="$(jq -r '.sha256.pwaTree' "$manifest")"
@@ -328,15 +368,15 @@ jobs:
             relay_json="$(curl -fsS --max-time 10 "https://${RELAY_APP_NAME}.azurewebsites.net/health" || true)"
             marker_json="$(curl -fsS --max-time 10 "https://staging.nodezero.social/deploy-marker.json" || true)"
             relay_ok=true
-            if [ -n "$expected_relay_payload" ]; then
-              if [ "$SOURCE_KIND" = "baseline" ]; then
-                [ "${{ steps.verify-relay.outcome }}" = "success" ] || relay_ok=false
-              else
-                [ "$(jq -r '.build.commit // empty' <<<"$relay_json")" = "$EXPECTED_COMMIT" ] || relay_ok=false
-                [ "$(jq -r '.build.payloadSha256 // empty' <<<"$relay_json")" = "$expected_relay_payload" ] || relay_ok=false
-                [ "$(jq -r '.identityVerifierReachable // false' <<<"$relay_json")" = "true" ] || relay_ok=false
-                [ "$(jq -r '.transportEnabled // true' <<<"$relay_json")" = "false" ] || relay_ok=false
-              fi
+            if [ "$relay_provenance" = "kudu-deployment-tree" ]; then
+              [ "${{ steps.verify-relay.outcome }}" = "success" ] || relay_ok=false
+              [ "$(jq -r '.ok // false' <<<"$relay_json")" = "true" ] || relay_ok=false
+              [ "$(jq -r '.service // empty' <<<"$relay_json")" = "relay-service" ] || relay_ok=false
+            else
+              [ "$(jq -r '.build.commit // empty' <<<"$relay_json")" = "$EXPECTED_COMMIT" ] || relay_ok=false
+              [ "$(jq -r '.build.payloadSha256 // empty' <<<"$relay_json")" = "$expected_relay_payload" ] || relay_ok=false
+              [ "$(jq -r '.identityVerifierReachable // false' <<<"$relay_json")" = "true" ] || relay_ok=false
+              [ "$(jq -r '.transportEnabled // true' <<<"$relay_json")" = "false" ] || relay_ok=false
             fi
             q_health_ok=true
             if [ "$SOURCE_KIND" = "deployment" ]; then

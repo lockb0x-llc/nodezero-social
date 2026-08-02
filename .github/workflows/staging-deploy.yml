@@ -175,7 +175,6 @@ jobs:
           [ "$(jq -r '.capturedByRunId' "$manifest")" = "$BASELINE_RUN_ID" ]
           [ "$(jq -r '.capturedByRunAttempt' "$manifest")" = "$BASELINE_RUN_ATTEMPT" ]
           [ "$(jq -r '.components.provisioner.commit' "$manifest")" = "$BASELINE_COMMIT" ]
-          [ "$(jq -r '.components.relay.commit' "$manifest")" = "$BASELINE_COMMIT" ]
           [ "$(sha256sum /tmp/baseline-artifact/provisioner.zip | awk '{print $1}')" = "$(jq -r '.sha256.provisionerZip' "$manifest")" ]
           [ "$(sha256sum /tmp/baseline-artifact/relay.zip | awk '{print $1}')" = "$(jq -r '.sha256.relayZip' "$manifest")" ]
           [ "$(sha256sum /tmp/baseline-artifact/pwa-files.sha256 | awk '{print $1}')" = "$(jq -r '.sha256.pwaTree' "$manifest")" ]
@@ -192,9 +191,23 @@ jobs:
           [ "$(jq -r '.commit' /tmp/baseline-provisioner/dist/build-info.json)" = "$BASELINE_COMMIT" ]
           [ "$(jq -r '.payloadSha256' /tmp/baseline-provisioner/dist/build-info.json)" = "$provisioner_payload" ]
           [ "$(jq -r '.components.provisioner.payloadSha256' "$manifest")" = "$provisioner_payload" ]
-          [ "$(jq -r '.commit' /tmp/baseline-relay/deploy/build-info.json)" = "$BASELINE_COMMIT" ]
-          [ "$(jq -r '.payloadSha256' /tmp/baseline-relay/deploy/build-info.json)" = "$relay_payload" ]
-          [ "$(jq -r '.components.relay.payloadSha256' "$manifest")" = "$relay_payload" ]
+          relay_provenance="$(jq -r '.components.relay.provenance // empty' "$manifest")"
+          relay_deployment_id="$(jq -r '.components.relay.kuduDeploymentId // empty' "$manifest")"
+          test -n "$relay_deployment_id"
+          if [ "$relay_provenance" = "embedded-build-info" ]; then
+            relay_payload="$(cd /tmp/baseline-relay && find deploy -type f ! -name build-info.json -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
+            [ "$(jq -r '.commit' /tmp/baseline-relay/deploy/build-info.json)" = "$BASELINE_COMMIT" ]
+            [ "$(jq -r '.payloadSha256' /tmp/baseline-relay/deploy/build-info.json)" = "$relay_payload" ]
+            [ "$(jq -r '.components.relay.commit' "$manifest")" = "$BASELINE_COMMIT" ]
+            [ "$(jq -r '.components.relay.payloadSha256' "$manifest")" = "$relay_payload" ]
+          elif [ "$relay_provenance" = "kudu-deployment-tree" ]; then
+            test ! -f /tmp/baseline-relay/deploy/build-info.json
+            [ -z "$(jq -r '.components.relay.commit // empty' "$manifest")" ]
+            [ -z "$(jq -r '.components.relay.payloadSha256 // empty' "$manifest")" ]
+          else
+            echo "Unsupported baseline relay provenance: $relay_provenance"
+            exit 1
+          fi
           (cd /tmp/baseline-artifact/pwa-dist && sha256sum --check ../pwa-files.sha256)
 
       - name: Validate environment isolation policy
@@ -938,7 +951,9 @@ jobs:
           provisioner_sha="$(sha256sum packages/jss-provisioner/deploy.zip | awk '{print $1}')"
           relay_sha="$(sha256sum packages/relay-service/deploy.zip | awk '{print $1}')"
           (cd packages/mobile-app/dist && find . -type f ! -name deploy-marker.json -print0 | sort -z | xargs -0 sha256sum) > rollback-bundle/pwa-files.sha256
+          (cd packages/relay-service/deploy && find . -type f -print0 | sort -z | xargs -0 sha256sum) > rollback-bundle/relay-files.sha256
           pwa_sha="$(sha256sum rollback-bundle/pwa-files.sha256 | awk '{print $1}')"
+          relay_tree_sha="$(sha256sum rollback-bundle/relay-files.sha256 | awk '{print $1}')"
           cp packages/jss-provisioner/deploy.zip rollback-bundle/provisioner.zip
           cp packages/relay-service/deploy.zip rollback-bundle/relay.zip
           cp -r packages/mobile-app/dist rollback-bundle/pwa-dist
@@ -949,6 +964,13 @@ jobs:
             "commit": "${GITHUB_SHA}",
             "sourceRunId": "${GITHUB_RUN_ID}",
             "sourceRunAttempt": "${GITHUB_RUN_ATTEMPT}",
+            "components": {
+              "relay": {
+                "provenance": "embedded-build-info",
+                "commit": "${GITHUB_SHA}",
+                "payloadSha256": "${{ steps.package-relay.outputs.payload_sha256 }}"
+              }
+            },
             "qFlags": {
               "directory": false,
               "peerProfile": false,
@@ -958,6 +980,7 @@ jobs:
             "sha256": {
               "provisionerZip": "${provisioner_sha}",
               "relayZip": "${relay_sha}",
+              "relayTree": "${relay_tree_sha}",
               "pwaTree": "${pwa_sha}"
             }
           }
