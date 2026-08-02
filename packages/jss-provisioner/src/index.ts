@@ -172,9 +172,38 @@ const relationshipVerificationRateLimiter = new RelationshipRateLimiter({
   maxRequests: Number(process.env.JSS_RELATIONSHIP_VERIFY_RATE_LIMIT ?? 120),
   windowMs: Number(process.env.JSS_RELATIONSHIP_VERIFY_RATE_WINDOW_MS ?? 60_000),
 })
+const publicProfileReadRateLimiter = new RelationshipRateLimiter({
+  maxRequests: Number(process.env.JSS_PUBLIC_PROFILE_RATE_LIMIT ?? 30),
+  windowMs: Number(process.env.JSS_PUBLIC_PROFILE_RATE_WINDOW_MS ?? 60_000),
+})
+const PUBLIC_PROFILE_MAX_CONCURRENCY = positiveIntegerEnvironment(
+  'JSS_PUBLIC_PROFILE_MAX_CONCURRENCY',
+  4
+)
+const publicProfileActiveRequests = new Map<string, number>()
+const transportVerificationRateLimiter = new RelationshipRateLimiter({
+  maxRequests: Number(process.env.JSS_TRANSPORT_VERIFY_RATE_LIMIT ?? 600),
+  windowMs: Number(process.env.JSS_TRANSPORT_VERIFY_RATE_WINDOW_MS ?? 60_000),
+})
+const TRANSPORT_VERIFY_MAX_CONCURRENCY = positiveIntegerEnvironment(
+  'JSS_TRANSPORT_VERIFY_MAX_CONCURRENCY',
+  64
+)
+let transportVerificationActiveRequests = 0
 const RELATIONSHIP_ASSERTIONS_READY =
   (process.env.NZ_ENV_PROFILE ?? 'local') === 'local' ||
   !relationshipDeliveryAssertions.usesEphemeralKey
+const TRANSPORT_IDENTITY_READY =
+  (process.env.NZ_ENV_PROFILE ?? 'local') === 'local' ||
+  !transportIdentityAssertions.usesEphemeralKey
+
+function positiveIntegerEnvironment(name: string, fallback: number): number {
+  const value = Number(process.env[name] ?? fallback)
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error(`${name} must be a positive integer.`)
+  }
+  return value
+}
 
 export interface RequestHandlerOverrides {
   isRelationshipRecipientBlocked?: typeof isRelationshipRecipientBlocked
@@ -465,11 +494,22 @@ async function readBoundedJsonBody<T>(req: IncomingMessage, maxBytes: number): P
   if (declaredLength > maxBytes) throw new Error('Request body exceeds maximum size.')
   const chunks: Buffer[] = []
   let size = 0
-  for await (const chunk of req as AsyncIterable<Buffer | string>) {
-    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
-    size += buffer.length
-    if (size > maxBytes) throw new Error('Request body exceeds maximum size.')
-    chunks.push(buffer)
+  const timeoutMs = Number(process.env.JSS_REQUEST_BODY_TIMEOUT_MS ?? 5_000)
+  let timedOut = false
+  const timer = setTimeout(() => {
+    timedOut = true
+    req.destroy(new Error('Request body timed out.'))
+  }, timeoutMs)
+  try {
+    for await (const chunk of req as AsyncIterable<Buffer | string>) {
+      if (timedOut) throw new Error('Request body timed out.')
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+      size += buffer.length
+      if (size > maxBytes) throw new Error('Request body exceeds maximum size.')
+      chunks.push(buffer)
+    }
+  } finally {
+    clearTimeout(timer)
   }
   const raw = Buffer.concat(chunks).toString('utf8')
   if (!raw) throw new Error('Request body is required.')
@@ -986,6 +1026,23 @@ export async function handleHttpRequest(
       })
       return
     }
+    const profileReadLimit = publicProfileReadRateLimiter.consume(claims.sub)
+    if (!profileReadLimit.allowed) {
+      sendJson(req, res, 429, {
+        error: 'Public profile read rate limit exceeded.',
+        code: 'public_profile_rate_limited',
+      }, { 'retry-after': String(profileReadLimit.retryAfterSeconds) })
+      return
+    }
+    const activeRequests = publicProfileActiveRequests.get(claims.sub) ?? 0
+    if (activeRequests >= PUBLIC_PROFILE_MAX_CONCURRENCY) {
+      sendJson(req, res, 429, {
+        error: 'Too many concurrent public profile reads.',
+        code: 'public_profile_concurrency_limited',
+      }, { 'retry-after': '1' })
+      return
+    }
+    publicProfileActiveRequests.set(claims.sub, activeRequests + 1)
     try {
       const body = await readBoundedJsonBody<{ webId?: string }>(req, 4 * 1024)
       if (!isNonEmpty(body.webId)) {
@@ -1008,11 +1065,22 @@ export async function handleHttpRequest(
         error: 'Public profile is temporarily unavailable.',
         code: 'public_profile_unavailable',
       })
+    } finally {
+      const remaining = (publicProfileActiveRequests.get(claims.sub) ?? 1) - 1
+      if (remaining <= 0) publicProfileActiveRequests.delete(claims.sub)
+      else publicProfileActiveRequests.set(claims.sub, remaining)
     }
     return
   }
 
   if (req.method === 'POST' && url.pathname === '/v1/transport-identity/assertion') {
+    if (!TRANSPORT_IDENTITY_READY) {
+      sendJson(req, res, 503, {
+        error: 'Transport identity assertions are not configured.',
+        code: 'transport_identity_unavailable',
+      })
+      return
+    }
     const claims = verifyBearerSession(req)
     if (!claims) {
       sendJson(req, res, 401, {
@@ -1048,27 +1116,48 @@ export async function handleHttpRequest(
   }
 
   if (req.method === 'POST' && url.pathname === '/v1/transport-identity/verify') {
+    if (!TRANSPORT_IDENTITY_READY) {
+      sendJson(req, res, 503, {
+        error: 'Transport identity assertions are not configured.',
+        code: 'transport_identity_unavailable',
+      })
+      return
+    }
+    const verificationKey = req.socket.remoteAddress ?? 'unknown'
+    const verificationLimit = transportVerificationRateLimiter.consume(verificationKey)
+    if (!verificationLimit.allowed) {
+      sendJson(req, res, 429, {
+        error: 'Transport identity verification rate limit exceeded.',
+        code: 'transport_identity_rate_limited',
+      }, { 'retry-after': String(verificationLimit.retryAfterSeconds) })
+      return
+    }
+    if (transportVerificationActiveRequests >= TRANSPORT_VERIFY_MAX_CONCURRENCY) {
+      sendJson(req, res, 429, {
+        error: 'Transport identity verification capacity reached.',
+        code: 'transport_identity_concurrency_limited',
+      }, { 'retry-after': '1' })
+      return
+    }
+    transportVerificationActiveRequests += 1
+    try {
     const body = await readBoundedJsonBody<{
       assertion?: unknown
       audience?: unknown
-      accountWebId?: unknown
     }>(req, 8 * 1024)
     if (typeof body.assertion !== 'string' || !isTransportIdentityAudience(body.audience)) {
       sendJson(req, res, 400, { error: 'A valid assertion and audience are required.', code: 'invalid_assertion' })
       return
     }
     const identity = transportIdentityAssertions.readVerified(body.assertion, body.audience)
-    const accountMatches = typeof body.accountWebId !== 'string' ||
-      transportIdentityAssertions.isAccountBound(
-        body.assertion,
-        body.audience,
-        body.accountWebId
-      )
-    if (!identity || !accountMatches) {
+    if (!identity) {
       sendJson(req, res, 401, { error: 'Transport identity assertion is invalid.', code: 'invalid_assertion' })
       return
     }
     sendJson(req, res, 200, identity, { 'cache-control': 'no-store' })
+    } finally {
+      transportVerificationActiveRequests -= 1
+    }
     return
   }
 

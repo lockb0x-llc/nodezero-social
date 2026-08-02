@@ -37,6 +37,7 @@ export {
   PRESENCE_MAX_TTL_MS,
   presenceEpoch,
   presenceSenderId,
+  isPresenceSenderForCommitment,
   createPresenceBeaconBody,
   parsePresenceBeacon,
   PresenceTracker,

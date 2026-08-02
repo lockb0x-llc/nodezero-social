@@ -46,6 +46,12 @@ export default function ComposeScreen(): JSX.Element {
         if (wakuStatus !== 'connected' || !wakuTransport || !signer || !webId) {
           throw new Error('Local broadcast requires the local mesh connection.');
         }
+        const podRoot = `${webId.split('/profile/')[0]}/`;
+        const consent = await getSolidPodSyncManagers({ fetch: authFetch })
+          .discoveryConsentManager.readConsent(podRoot);
+        if (!consent.localBroadcasts) {
+          throw new Error('Enable Local broadcasts in Discovery settings before publishing.');
+        }
         const h3Indexes = [
           ...new Set(
             [currentNode?.h3Index, ...surroundingNodes.map((node) => node.h3Index)].filter(
@@ -78,8 +84,8 @@ export default function ComposeScreen(): JSX.Element {
         const podRoot = (webId ?? '').split('/profile/')[0] + '/';
         const { relationshipManager, moderationManager } = getSolidPodSyncManagers({ fetch: authFetch });
         const [relationships, moderation] = await Promise.all([
-          relationshipManager.listRelationships(podRoot).catch(() => []),
-          moderationManager.listModeration(podRoot).catch(() => []),
+          relationshipManager.listRelationships(podRoot),
+          moderationManager.listModeration(podRoot),
         ]);
         const acceptedRelationships = relationships
           .filter((relationship) => relationship.state === 'accepted')

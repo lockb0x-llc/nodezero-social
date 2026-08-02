@@ -1,4 +1,5 @@
 import { strict as assert } from 'node:assert'
+import { createHash } from 'node:crypto'
 import { test } from 'node:test'
 import { TransportIdentityAssertionManager } from './transportIdentityAssertions.js'
 import type { SessionClaims } from './sessionTokens.js'
@@ -35,7 +36,10 @@ void test('binds transport assertion to WebID, Stellar key, audience, and expiry
   assert.equal(manager.verify({ assertion, audience: 'waku', webId, stellarPublicKey: `G${'B'.repeat(55)}`, now }), false)
   assert.equal(manager.verify({ assertion, audience: 'waku', webId, stellarPublicKey, now: new Date(now.getTime() + 60_001) }), false)
   assert.equal(Buffer.from(assertion, 'base64url').toString('utf8').includes(webId), false)
-  const presenceSubject = `urn:nodezero:presence:${'a'.repeat(43)}`
+  const presenceCommitment = createHash('sha256')
+    .update(`${webId}:2026-08-01T12`)
+    .digest('base64url')
+  const presenceSubject = `urn:nodezero:presence:${presenceCommitment}`
   const presenceAssertion = manager.issue(claims, 'waku', now, presenceSubject)
   assert.equal(manager.verify({
     assertion: presenceAssertion,
@@ -44,12 +48,11 @@ void test('binds transport assertion to WebID, Stellar key, audience, and expiry
     stellarPublicKey,
     now,
   }), true)
-  assert.equal(manager.isAccountBound(presenceAssertion, 'waku', webId, now), true)
-  assert.equal(manager.isAccountBound(
-    presenceAssertion,
-    'waku',
-    'https://attacker.example/profile/card#me',
-    now
-  ), false)
   assert.throws(() => manager.issue(claims, 'relay', now, presenceSubject))
+  assert.throws(() => manager.issue(
+    claims,
+    'waku',
+    now,
+    `urn:nodezero:presence:${'a'.repeat(43)}`
+  ))
 })

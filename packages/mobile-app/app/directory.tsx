@@ -98,15 +98,19 @@ export default function CommunityDirectoryScreen(): JSX.Element {
     connections,
     relationships,
     blockedWebIds,
+    mutedWebIds,
+    reportedWebIds,
     connectionsLoading,
     connectionAuthorityReady,
     connectionBusyWebId,
     connectionStatus,
     loadConnections,
+    respondToIncomingRequest,
     addConnection,
     cancelConnectionRequest,
     removeConnection,
     setBlocked,
+    setModeration,
   } = useConnections({
     effectiveWebId,
     authFetch,
@@ -125,19 +129,20 @@ export default function CommunityDirectoryScreen(): JSX.Element {
     const managers = getSolidPodSyncManagers({ fetch: authFetch })
     if (effectiveWebId) {
       const podRoot = `${effectiveWebId.split('/profile/')[0]}/`
-      void managers.relationshipManager.listRelationships(podRoot)
-        .then((relationships) => setAcceptedRelationships(
-          relationships
-            .filter((relationship) => relationship.state === 'accepted')
-            .map((relationship) => relationship.peerWebId)
-        ))
-        .catch(() => setAcceptedRelationships([]))
       void managers.discoveryManifestManager.readManifest(podRoot)
         .then((manifest) => setPublicInterests(manifest?.publicInterests ?? []))
         .catch(() => setPublicInterests([]))
     }
     void loadConnections()
   }, [authFetch, effectiveWebId, isLoggedIn, loadConnections])
+
+  useEffect(() => {
+    setAcceptedRelationships(
+      relationships
+        .filter((relationship) => relationship.state === 'accepted')
+        .map((relationship) => relationship.peerWebId)
+    )
+  }, [relationships])
 
   useEffect(() => {
     if (!isLoggedIn || !effectiveWebId) {
@@ -179,7 +184,7 @@ export default function CommunityDirectoryScreen(): JSX.Element {
         <View style={styles.sectionCardHeader}>
           <Text style={styles.sectionCardTitle}>Community Directory</Text>
           <TouchableOpacity
-            onPress={() => void loadCommunityDirectory(connections)}
+            onPress={() => void loadConnections()}
             disabled={directoryLoading || connectionsLoading}
             activeOpacity={aesthetic.motion.pressOpacity}
             style={styles.inlineRefreshButton}
@@ -229,6 +234,8 @@ export default function CommunityDirectoryScreen(): JSX.Element {
               isSelf,
               relationshipState: relationship?.state ?? null,
               blocked: blockedWebIds.includes(entry.webId),
+              muted: mutedWebIds.includes(entry.webId),
+              reported: reportedWebIds.includes(entry.webId),
               inTrustCircle,
             })
             const badges = buildDirectoryBadges({
@@ -299,6 +306,30 @@ export default function CommunityDirectoryScreen(): JSX.Element {
                     </TouchableOpacity>
                   ) : null}
 
+                  {actionPolicy.canAcceptRequest ? (
+                    <TouchableOpacity
+                      style={styles.directoryConnectButton}
+                      onPress={() => void respondToIncomingRequest(entry.webId, 'accept')}
+                      disabled={connectionBusyWebId === entry.webId}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Accept request from ${entry.displayName}`}
+                    >
+                      <Text style={styles.directoryConnectButtonText}>Accept</Text>
+                    </TouchableOpacity>
+                  ) : null}
+
+                  {actionPolicy.canDeclineRequest ? (
+                    <TouchableOpacity
+                      style={styles.connectionActionButtonSecondary}
+                      onPress={() => void respondToIncomingRequest(entry.webId, 'reject')}
+                      disabled={connectionBusyWebId === entry.webId}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Decline request from ${entry.displayName}`}
+                    >
+                      <Text style={styles.directoryConnectButtonText}>Decline</Text>
+                    </TouchableOpacity>
+                  ) : null}
+
                   {actionPolicy.canMessage ? (
                     <TouchableOpacity
                       style={styles.messageButton}
@@ -357,6 +388,34 @@ export default function CommunityDirectoryScreen(): JSX.Element {
                       </Text>
                     </TouchableOpacity>
                   ) : null}
+                  {!isSelf && (actionPolicy.canMute || actionPolicy.canUnmute) ? (
+                    <TouchableOpacity
+                      style={styles.muteButton}
+                      onPress={() => void setModeration(
+                        entry.webId,
+                        'mute',
+                        actionPolicy.canMute
+                      )}
+                      disabled={connectionBusyWebId === entry.webId}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${actionPolicy.canUnmute ? 'Unmute' : 'Mute'} ${entry.displayName}`}
+                    >
+                      <Text style={styles.directoryConnectButtonText}>
+                        {actionPolicy.canUnmute ? 'Unmute' : 'Mute'}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
+                  {!isSelf && actionPolicy.canReport ? (
+                    <TouchableOpacity
+                      style={styles.reportButton}
+                      onPress={() => void setModeration(entry.webId, 'report', true)}
+                      disabled={connectionBusyWebId === entry.webId}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Report ${entry.displayName}`}
+                    >
+                      <Text style={styles.directoryConnectButtonText}>Report</Text>
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
               </View>
             )
@@ -376,6 +435,24 @@ export default function CommunityDirectoryScreen(): JSX.Element {
               <Text style={styles.directoryConnectButtonText}>Load more</Text>
             )}
           </TouchableOpacity>
+        ) : null}
+        {blockedWebIds.length > 0 ? (
+          <View style={styles.blockedRecoverySection}>
+            <Text style={styles.sectionCardTitle}>Blocked</Text>
+            {blockedWebIds.map((blockedWebId) => (
+              <View key={blockedWebId} style={styles.blockedRecoveryRow}>
+                <Text style={styles.directoryWebId} numberOfLines={2}>{blockedWebId}</Text>
+                <TouchableOpacity
+                  style={styles.unblockButton}
+                  onPress={() => void setBlocked(blockedWebId, false)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Unblock ${blockedWebId}`}
+                >
+                  <Text style={styles.directoryConnectButtonText}>Unblock</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
         ) : null}
       </View>
     </ScrollView>
@@ -559,6 +636,22 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     alignItems: 'center',
   },
+  muteButton: {
+    minWidth: 86,
+    backgroundColor: '#625A2E',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  reportButton: {
+    minWidth: 86,
+    backgroundColor: '#6A3A55',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
   loadMoreButton: {
     minHeight: 40,
     marginTop: 14,
@@ -566,6 +659,17 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  blockedRecoverySection: {
+    marginTop: 18,
+    gap: 8,
+  },
+  blockedRecoveryRow: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
   },
   recommendationReasonText: {
     color: aesthetic.color.accentSoft,

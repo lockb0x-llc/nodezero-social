@@ -57,3 +57,40 @@ void test('accepts only an assertion response matching the envelope identity', a
     }),
   }), false)
 })
+
+void test('does not share a successful verification with a mismatched concurrent envelope', async () => {
+  let resolveFirst: (response: Response) => void = () => undefined
+  let fetchCalls = 0
+  const fetch = (): Promise<Response> => {
+    fetchCalls += 1
+    if (fetchCalls === 1) {
+      return new Promise((resolve) => {
+        resolveFirst = resolve
+      })
+    }
+    return Promise.resolve(new Response(JSON.stringify({
+      audience: 'waku',
+      webId: envelope.senderWebId,
+      stellarPublicKey: envelope.senderStellarPublicKey,
+    }), { status: 200 }))
+  }
+  const first = verifyWakuEnvelopeIdentity({
+    provisionerUrl: 'https://api.nodezero.example',
+    envelope,
+    fetch,
+  })
+  const mismatched = verifyWakuEnvelopeIdentity({
+    provisionerUrl: 'https://api.nodezero.example',
+    envelope: { ...envelope, senderWebId: 'https://attacker.example/profile/card#me' },
+    fetch,
+  })
+  resolveFirst(new Response(JSON.stringify({
+    audience: 'waku',
+    webId: envelope.senderWebId,
+    stellarPublicKey: envelope.senderStellarPublicKey,
+  }), { status: 200 }))
+
+  assert.equal(await first, true)
+  assert.equal(await mismatched, false)
+  assert.equal(fetchCalls, 2)
+})

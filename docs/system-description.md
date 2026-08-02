@@ -45,10 +45,10 @@ claims must retain this distinction.
 | Pod provisioning and access | Implemented and release-gated | The provisioner creates the Pod and proxies all browser Pod traffic. |
 | V3 lockb0x ownership attestation | Implemented and release-gated | Browser-generated Groth16 proof, encrypted claim, per-user child contract, and fail-closed returning verification. |
 | Profile and DocuStream persistence | Implemented and mobile-validated | Data survives sign-out, browser closure, and returning sign-in. |
-| Community Directory | Baseline implemented | Combines self, Pod connections, and an operator-derived listing. User-controlled listing is not yet exposed. |
-| Social graph and chronological feed | Baseline implemented | Connections are unilateral `foaf:knows` records; there is no request and acceptance lifecycle yet. |
+| Community Directory | Implemented locally; deployment pending | Owner-controlled listing/indexing, selected public interests, paginated projections, explainable recommendations, and safety actions are implemented against the authenticated projection API. |
+| Social graph and chronological feed | Relationship lifecycle implemented locally | Durable request, accept, reject, cancel, disconnect, private moderation, and accepted-only FOAF compatibility projection are implemented. |
 | Trust Circle | Baseline implemented | Sender-curated Pod state used for explicit audience selection; it is not reciprocal trust. |
-| Local presence and messaging | Substantive Testnet prototype | H3 cells, rotating commitments, mutual encrypted reveal, signed Waku messages, encrypted DMs, and relay fallback. |
+| Local presence and messaging | Consent/security implementation complete locally | Default-off Pod consent, rotating commitments, identity-bound signed Waku envelopes, encrypted reveal/DMs, accepted-and-unblocked enforcement, and proof-of-possession relay fallback are implemented; staging certification remains. |
 | Broadcast | Partially implemented | Local Waku broadcast works; non-local compose does not yet provide complete recipient inbox delivery. |
 | Social notifications | Scaffolded | The notification orchestrator currently handles provisioning lifecycle events and digests, not relationship or message events. |
 | Production Mainnet | Not implemented | Separate contracts, resources, approvals, and release evidence are required. |

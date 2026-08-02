@@ -52,6 +52,7 @@ export class SignalRelay extends EventEmitter<SignalRelayEvents> {
   private readonly relayUrl: string
   private readonly localWebId: string
   private readonly identityAssertion: string
+  private readonly signIdentityChallenge: (challenge: string) => Promise<string>
   private ws: WebSocket | null = null
 
   constructor(options: SignalRelayOptions) {
@@ -59,6 +60,7 @@ export class SignalRelay extends EventEmitter<SignalRelayEvents> {
     this.relayUrl = options.relayUrl
     this.localWebId = options.localWebId
     this.identityAssertion = options.identityAssertion
+    this.signIdentityChallenge = options.signIdentityChallenge
   }
 
   /**
@@ -69,16 +71,32 @@ export class SignalRelay extends EventEmitter<SignalRelayEvents> {
   connect(): void {
     const url = new URL(this.relayUrl)
 
-    this.ws = new WebSocket(url.toString(), ['nz-relay-v1', this.identityAssertion])
+    const socket = new WebSocket(url.toString(), ['nz-relay-v1', this.identityAssertion])
+    this.ws = socket
 
-    this.ws.onopen = (): void => { this.emit('connected') }
-    this.ws.onclose = (): void => { this.emit('disconnected') }
-    this.ws.onerror = (): void => { this.emit('error', new Error('SignalRelay WebSocket error')) }
+    socket.onclose = (): void => { this.emit('disconnected') }
+    socket.onerror = (): void => { this.emit('error', new Error('SignalRelay WebSocket error')) }
 
-    this.ws.onmessage = ({ data }): void => {
+    socket.onmessage = ({ data }): void => {
       try {
-        const msg = JSON.parse(data as string) as SignalMessage
-        this.emit('signal', msg)
+        const payload = JSON.parse(data as string) as {
+          type?: string
+          challenge?: string
+          ok?: boolean
+        }
+        if (payload.type === 'auth-challenge' && typeof payload.challenge === 'string') {
+          void this.signIdentityChallenge(payload.challenge).then((signatureBase64) => {
+            if (this.ws === socket && socket.readyState === WebSocket.OPEN) {
+              socket.send(JSON.stringify({ type: 'auth-response', signatureBase64 }))
+            }
+          }).catch(() => socket.close(1008, 'Relay identity signing failed'))
+          return
+        }
+        if (payload.ok === true) {
+          this.emit('connected')
+          return
+        }
+        this.emit('signal', payload as SignalMessage)
       } catch {
         this.emit(
           'error',

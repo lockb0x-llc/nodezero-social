@@ -15,13 +15,17 @@ export async function verifyRelayIdentity(input: {
   assertion: string
   provisionerUrl: string
   fetch?: typeof globalThis.fetch
+  timeoutMs?: number
 }): Promise<RelayIdentity | null> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), input.timeoutMs ?? 5_000)
   try {
     const response = await (input.fetch ?? globalThis.fetch)(
       `${input.provisionerUrl.replace(/\/+$/, '')}/v1/transport-identity/verify`,
       {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({ assertion: input.assertion, audience: 'relay' }),
       }
     )
@@ -34,5 +38,7 @@ export async function verifyRelayIdentity(input: {
       : null
   } catch {
     return null
+  } finally {
+    clearTimeout(timer)
   }
 }

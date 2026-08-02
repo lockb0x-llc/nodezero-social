@@ -119,6 +119,19 @@ describe('PresenceTracker', () => {
     expect(t.peers()).toHaveLength(0)
   })
 
+  it('drops an envelope alias that does not match the beacon commitment', async () => {
+    const t = tracker()
+    const message = await presenceMessage()
+    expect(t.ingest({
+      ...message,
+      envelope: {
+        ...message.envelope,
+        senderWebId: presenceSenderId('different-commitment'),
+      },
+    })).toBeNull()
+    expect(t.peers()).toHaveLength(0)
+  })
+
   it('drops non-presence envelope kinds', async () => {
     const t = tracker()
     const message = await presenceMessage()

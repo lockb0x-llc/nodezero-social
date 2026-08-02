@@ -28,6 +28,12 @@ function setup(): {
       localBroadcasts: false,
       selectedPublicInterests: ['Privacy'],
     },
+    baselineConsent: {
+      publicListing: false,
+      publicIndexing: false,
+      nearbyPresence: false,
+      localBroadcasts: false,
+    },
     provisionerUrl: 'https://api.nodezero.example',
     authFetch: async (url) => {
       calls.push(`refresh:${String(url)}`)
@@ -55,9 +61,9 @@ function setup(): {
             ownerWebId: alice,
             publicListing: patch.publicListing ?? false,
             publicIndexing: patch.publicIndexing ?? false,
-            nearbyPresence: false,
+            nearbyPresence: patch.nearbyPresence ?? false,
             inboundContactRequests: false,
-            localBroadcasts: false,
+            localBroadcasts: patch.localBroadcasts ?? false,
             updatedAt: updatedAt ?? now.toISOString(),
           }
         },
@@ -111,6 +117,7 @@ void test('publishes only explicitly selected public interests and refreshes pro
   assert.equal(JSON.stringify(writtenManifest[0]).includes('Music'), false)
   assert.deepEqual(calls, [
     'consent:true:true',
+    'manifest:remove',
     'manifest:write',
     'type-index:register',
     'refresh:https://api.nodezero.example/v1/community-directory/refresh',
@@ -225,6 +232,12 @@ void test('rejects an interest present only in an unsaved editor draft', async (
 
 void test('preserves revocation and rolls back enablement when manifest publication fails', async () => {
   const { input, calls } = setup()
+  input.baselineConsent = {
+    publicListing: true,
+    publicIndexing: false,
+    nearbyPresence: false,
+    localBroadcasts: false,
+  }
   input.managers.discoveryConsentManager.readConsent = async () => ({
     version: 1,
     ownerWebId: alice,
@@ -258,4 +271,35 @@ void test('preserves revocation and rolls back enablement when manifest publicat
   )
   assert.equal(calls.includes('consent:false:false'), true)
   assert.equal(calls.at(-1), 'refresh:https://api.nodezero.example/v1/community-directory/refresh')
+})
+
+void test('does not resurrect a fresh cross-device opt-out from stale unchanged state', async () => {
+  const { input } = setup()
+  input.baselineConsent = {
+    publicListing: true,
+    publicIndexing: false,
+    nearbyPresence: false,
+    localBroadcasts: false,
+  }
+  input.preferences = {
+    publicListing: true,
+    publicIndexing: false,
+    nearbyPresence: true,
+    localBroadcasts: false,
+    selectedPublicInterests: [],
+  }
+  input.managers.discoveryConsentManager.readConsent = async () => ({
+    version: 1,
+    ownerWebId: alice,
+    publicListing: false,
+    publicIndexing: false,
+    nearbyPresence: false,
+    inboundContactRequests: false,
+    localBroadcasts: false,
+    updatedAt: '2026-08-01T12:01:00.000Z',
+  })
+
+  const result = await updateDiscoveryPreferences(input)
+  assert.equal(result.consent.publicListing, false)
+  assert.equal(result.consent.nearbyPresence, true)
 })

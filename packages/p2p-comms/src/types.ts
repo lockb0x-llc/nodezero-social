@@ -49,4 +49,6 @@ export interface SignalRelayOptions {
   localWebId: string
   /** Short-lived provisioner assertion binding the local WebID for relay use. */
   identityAssertion: string
+  /** Signs the relay's one-time authentication challenge with the bound Stellar key. */
+  signIdentityChallenge: (challenge: string) => Promise<string>
 }

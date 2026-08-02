@@ -265,6 +265,16 @@ authentication are not part of Milestone Q.
    and low-latency chat.
 - The WebRTC signaling relay remains a compatibility fallback until separately
    retired.
+- Relay admission is fail-closed and identity-bound. Clients obtain a short-lived
+   `relay`-audience assertion from the authenticated provisioner and send it in the
+   versioned WebSocket subprotocol. The relay verifies it through
+   `RELAY_PROVISIONER_URL` before registering a WebID; query parameters never
+   establish identity.
+- Waku envelopes carry an opaque, short-lived `waku`-audience identity assertion
+   inside the Stellar-signed envelope. Receivers require both signature validity
+   and provisioner verification of the exact wire subject and Stellar key. Nearby
+   presence and reveal assertions bind to the rotating commitment alias so the raw
+   WebID remains off the public presence plane.
 - The provisioner can validate, retry, and cache delivery but does not become the
    authoritative social graph.
 - Browser-owned Pod operations continue through `/v1/pod-proxy/*`. External WebID

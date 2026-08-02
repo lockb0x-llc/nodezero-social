@@ -20,6 +20,10 @@ export interface UpdateDiscoveryPreferencesInput {
   podRoot: string
   ownerWebId: string
   preferences: DiscoveryPreferences
+  baselineConsent: Pick<
+    DiscoveryConsent,
+    'publicListing' | 'publicIndexing' | 'nearbyPresence' | 'localBroadcasts'
+  >
   provisionerUrl: string
   authFetch: typeof globalThis.fetch
   managers: {
@@ -65,13 +69,18 @@ export async function updateDiscoveryPreferences(
     input.preferences.selectedPublicInterests
   )
   const now = input.now ?? new Date()
+  const mergedPreferences = mergeConsentChanges(
+    previousConsent,
+    input.baselineConsent,
+    input.preferences
+  )
   const consent = await input.managers.discoveryConsentManager.updateConsent(
     input.podRoot,
     {
-      publicListing: input.preferences.publicListing,
-      publicIndexing: input.preferences.publicIndexing,
-      nearbyPresence: input.preferences.nearbyPresence,
-      localBroadcasts: input.preferences.localBroadcasts,
+      publicListing: mergedPreferences.publicListing,
+      publicIndexing: mergedPreferences.publicIndexing,
+      nearbyPresence: mergedPreferences.nearbyPresence,
+      localBroadcasts: mergedPreferences.localBroadcasts,
     },
     now.toISOString()
   )
@@ -97,6 +106,7 @@ export async function updateDiscoveryPreferences(
   const profile = await input.managers.profileManager.readProfile(input.ownerWebId)
   const manifestUrl = `${input.podRoot.replace(/\/$/, '')}/public/discovery/manifest`
   try {
+    await input.managers.discoveryManifestManager.removeManifest(input.podRoot)
     await input.managers.discoveryManifestManager.writeManifest(input.podRoot, {
       version: 1,
       webId: input.ownerWebId,
@@ -141,6 +151,27 @@ export async function updateDiscoveryPreferences(
   }
   const listed = await refreshProjection(input.provisionerUrl, input.authFetch)
   return { consent, listed, selectedPublicInterests }
+}
+
+function mergeConsentChanges(
+  current: DiscoveryConsent,
+  baseline: UpdateDiscoveryPreferencesInput['baselineConsent'],
+  desired: DiscoveryPreferences
+): UpdateDiscoveryPreferencesInput['baselineConsent'] {
+  return {
+    publicListing: desired.publicListing === baseline.publicListing
+      ? current.publicListing
+      : desired.publicListing,
+    publicIndexing: desired.publicIndexing === baseline.publicIndexing
+      ? current.publicIndexing
+      : desired.publicIndexing,
+    nearbyPresence: desired.nearbyPresence === baseline.nearbyPresence
+      ? current.nearbyPresence
+      : desired.nearbyPresence,
+    localBroadcasts: desired.localBroadcasts === baseline.localBroadcasts
+      ? current.localBroadcasts
+      : desired.localBroadcasts,
+  }
 }
 
 function validateSelectedInterests(privateInterests: string[], selected: string[]): string[] {

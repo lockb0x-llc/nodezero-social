@@ -67,6 +67,7 @@ interface WakuContextValue {
 }
 
 const WakuContext = createContext<WakuContextValue | null>(null)
+const TRANSPORT_ASSERTION_REFRESH_MS = 5 * 60_000
 
 function readExtra(): { bootstrapPeers: string[]; clusterId: number; envProfile: string } {
   const extra = (Constants.expoConfig?.extra ?? {}) as Record<string, unknown>
@@ -114,17 +115,22 @@ export function WakuProvider({ children }: { children: ReactNode }): JSX.Element
       return
     }
     let cancelled = false
-    void issueTransportIdentityAssertion({
-      provisionerUrl: getProvisionerUrl(),
-      audience: 'waku',
-      authFetch,
-    }).then((assertion) => {
-      if (!cancelled) setWakuIdentityAssertion(assertion)
-    }).catch(() => {
-      if (!cancelled) setWakuIdentityAssertion(null)
-    })
+    const refresh = (): void => {
+      void issueTransportIdentityAssertion({
+        provisionerUrl: getProvisionerUrl(),
+        audience: 'waku',
+        authFetch,
+      }).then((assertion) => {
+        if (!cancelled) setWakuIdentityAssertion(assertion)
+      }).catch(() => {
+        if (!cancelled) setWakuIdentityAssertion(null)
+      })
+    }
+    refresh()
+    const interval = setInterval(refresh, TRANSPORT_ASSERTION_REFRESH_MS)
     return () => {
       cancelled = true
+      clearInterval(interval)
     }
   }, [authFetch, sessionStatus, walletPublicKey])
 

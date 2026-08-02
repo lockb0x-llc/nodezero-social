@@ -2,6 +2,10 @@ import { createServer } from 'node:http'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { readRelayIdentityAssertion, verifyRelayIdentity } from './relayIdentity.js'
+import {
+  createRelayIdentityChallenge,
+  verifyRelayIdentitySignature,
+} from './relayChallenge.js'
 
 type SignalType = 'offer' | 'answer' | 'ice-candidate'
 
@@ -15,6 +19,12 @@ interface SignalMessage {
 const PORT = Number(process.env.RELAY_PORT ?? 8080)
 const MAX_MESSAGE_BYTES = Number(process.env.RELAY_MAX_MESSAGE_BYTES ?? 32_768)
 const PING_INTERVAL_MS = Number(process.env.RELAY_PING_INTERVAL_MS ?? 30_000)
+const IDENTITY_REVERIFY_INTERVAL_MS = Number(
+  process.env.RELAY_IDENTITY_REVERIFY_INTERVAL_MS ?? 60_000
+)
+const AUTH_CHALLENGE_TIMEOUT_MS = Number(process.env.RELAY_AUTH_CHALLENGE_TIMEOUT_MS ?? 10_000)
+const MAX_PENDING_ADMISSIONS = Number(process.env.RELAY_MAX_PENDING_ADMISSIONS ?? 100)
+let pendingAdmissions = 0
 const PROVISIONER_URL = (process.env.RELAY_PROVISIONER_URL ?? '').trim().replace(/\/+$/, '')
 
 const server = createServer()
@@ -71,7 +81,7 @@ function handleHttpRequest(req: IncomingMessage, res: ServerResponse): void {
     sendHttpJson(res, 200, {
       ok: true,
       service: 'relay-service',
-      endpoints: ['/health', '/healthz', '?webId=...'],
+      endpoints: ['/health', '/healthz', 'WebSocket subprotocol nz-relay-v1'],
     })
     return
   }
@@ -91,7 +101,14 @@ function handleHttpRequest(req: IncomingMessage, res: ServerResponse): void {
 }
 
 wss.on('connection', (ws, req) => {
-  void admitConnection(ws, req)
+  if (pendingAdmissions >= MAX_PENDING_ADMISSIONS) {
+    ws.close(1013, 'Relay admission capacity reached')
+    return
+  }
+  pendingAdmissions += 1
+  void admitConnection(ws, req).finally(() => {
+    pendingAdmissions -= 1
+  })
 })
 
 async function admitConnection(ws: WebSocket, req: IncomingMessage): Promise<void> {
@@ -106,6 +123,23 @@ async function admitConnection(ws: WebSocket, req: IncomingMessage): Promise<voi
     return
   }
   const webId = identity.webId
+  const challenge = createRelayIdentityChallenge(webId, identity.stellarPublicKey)
+  sendJson(ws, { type: 'auth-challenge', challenge })
+  const authenticated = await waitForIdentityProof(
+    ws,
+    challenge,
+    identity.stellarPublicKey,
+    AUTH_CHALLENGE_TIMEOUT_MS
+  )
+  if (!authenticated || ws.readyState !== ws.OPEN) {
+    ws.close(1008, 'Invalid relay identity proof')
+    return
+  }
+  const identityTimer = setInterval(() => {
+    void verifyRelayIdentity({ assertion, provisionerUrl: PROVISIONER_URL }).then((verified) => {
+      if (!verified || verified.webId !== webId) ws.close(1008, 'Relay identity expired')
+    })
+  }, IDENTITY_REVERIFY_INTERVAL_MS)
 
   const existing = peers.get(webId)
   if (existing && existing !== ws) {
@@ -143,6 +177,7 @@ async function admitConnection(ws: WebSocket, req: IncomingMessage): Promise<voi
   })
 
   ws.on('close', () => {
+    clearInterval(identityTimer)
     const current = peers.get(webId)
     if (current === ws) {
       peers.delete(webId)
@@ -154,6 +189,46 @@ async function admitConnection(ws: WebSocket, req: IncomingMessage): Promise<voi
   })
 
   sendJson(ws, { ok: true, webId })
+}
+
+function waitForIdentityProof(
+  ws: WebSocket,
+  challenge: string,
+  stellarPublicKey: string,
+  timeoutMs: number
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    let settled = false
+    const finish = (result: boolean): void => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      ws.off('message', onMessage)
+      ws.off('close', onClose)
+      resolve(result)
+    }
+    const onMessage = (data: Parameters<Parameters<WebSocket['on']>[1]>[0]): void => {
+      try {
+        const payload = JSON.parse(String(data)) as Record<string, unknown>
+        if (payload.type !== 'auth-response' || typeof payload.signatureBase64 !== 'string') {
+          finish(false)
+          return
+        }
+        const verified = verifyRelayIdentitySignature(
+          challenge,
+          stellarPublicKey,
+          payload.signatureBase64
+        )
+        finish(verified)
+      } catch {
+        finish(false)
+      }
+    }
+    const onClose = (): void => finish(false)
+    const timer = setTimeout(() => finish(false), timeoutMs)
+    ws.on('message', onMessage)
+    ws.on('close', onClose)
+  })
 }
 
 const pingTimer = setInterval(() => {

@@ -91,7 +91,7 @@
   {
     "id": "Q3B",
     "agent": "MOBILE_APP_AGENT",
-    "status": "ready",
+    "status": "complete",
     "slug": "discovery-consent-recommendations",
     "title": "Q3B - Build discovery consent and recommendations UX",
     "objective": "Consume the completed owner refresh and paginated index contract for default-off listing/indexing controls, explicitly selected public interests, reason-coded recommendations, and unified actions.",
@@ -107,12 +107,13 @@
       "packages/jss-provisioner/src/communityDirectory.ts",
       "packages/jss-provisioner/src/communityDirectoryRefresh.ts"
     ],
-    "dependsOn": ["Q2", "Q3A-api-contract"]
+    "dependsOn": ["Q2", "Q3A-api-contract"],
+    "evidence": "Local GO: mobile 119/119; provisioner 119/119; Waku 55/55; relay 3/3; touched type/lint, consent 22/22, env/PWA policy, strict artifact, Mobile/Audit reviews PASS. Deployment remains Q3A/Q4."
   },
   {
     "id": "Q3C",
     "agent": "P2P_RELAY_AGENT",
-    "status": "ready",
+    "status": "complete",
     "slug": "transport-consent-block-enforcement",
     "title": "Q3C - Enforce consent and block policy across transports",
     "objective": "Apply accepted-and-unblocked policy to Presence, Waku, WebRTC, and relay paths with abuse and lifecycle tests.",
@@ -127,7 +128,8 @@
       "packages/p2p-comms/src/",
       "packages/relay-service/src/"
     ],
-    "dependsOn": ["Q1C", "Q2"]
+    "dependsOn": ["Q1C", "Q2"],
+    "evidence": "Local GO: opaque identity-bound Waku assertions, commitment-bound presence/reveal, accepted-and-unblocked message checks, block purge, relay Stellar nonce proof, verifier admission bounds; Mobile/Audit GO. Relay env configuration and deployed journeys remain Q3A/Q4."
   },
   {
     "id": "Q4D",

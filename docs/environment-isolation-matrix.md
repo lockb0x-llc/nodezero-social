@@ -34,6 +34,10 @@ All non-local builds must define these variables explicitly:
 - NZ_JSS_PROVISIONER_URL
 - NZ_APP_ORIGIN
 
+The relay runtime must also define `RELAY_PROVISIONER_URL` for the provisioner in
+the same environment profile. Missing or cross-environment verifier configuration
+fails relay WebSocket admission closed.
+
 When `NZ_BROWSER_SESSION_ENABLED=true`, strict builds additionally require:
 
 - NZ_JSS_PROVISIONER_URL=https://api.nodezero.social

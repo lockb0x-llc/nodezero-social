@@ -72,5 +72,7 @@ void test('incoming pending state must be answered rather than cancelled', () =>
     inTrustCircle: false,
   })
   assert.equal(policy.canCancelRequest, false)
+  assert.equal(policy.canAcceptRequest, true)
+  assert.equal(policy.canDeclineRequest, true)
   assert.equal(policy.canMessage, false)
 })

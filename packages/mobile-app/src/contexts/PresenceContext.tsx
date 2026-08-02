@@ -43,6 +43,7 @@ import {
   presenceCommitment,
   presenceEpoch,
   presenceSenderId,
+  isPresenceSenderForCommitment,
   presenceTopic,
   revealTopic,
   type DmPublicJwk,
@@ -58,9 +59,11 @@ import {
   issueTransportIdentityAssertion,
   verifyWakuEnvelopeIdentity,
 } from '../social/transportIdentityClient'
+import { subscribeBlockStateChanged } from '../social/moderationEvents'
 
 /** How often the live peer map is swept for expired beacons. */
 const SWEEP_INTERVAL_MS = 10_000
+const CONSENT_RECONCILE_INTERVAL_MS = 30_000
 
 /** Lifecycle of the presence layer. */
 export type PresenceStatus =
@@ -147,17 +150,35 @@ export function PresenceProvider({ children }: { children: ReactNode }): JSX.Ele
     }
     const unsubscribe = subscribeDiscoveryConsentChanged(applyConsent)
     const podRoot = `${webId.split('/profile/')[0]}/`
-    void getSolidPodSyncManagers({ fetch: authFetch }).discoveryConsentManager
-      .readConsent(podRoot)
-      .then(applyConsent)
-      .catch(() => {
-        if (!cancelled) {
-          setNearbyPresenceEnabled(false)
-          setLocalBroadcastsEnabled(false)
-        }
-      })
+    const reconcile = (): void => {
+      const managers = getSolidPodSyncManagers({ fetch: authFetch })
+      void Promise.all([
+        managers.discoveryConsentManager.readConsent(podRoot),
+        managers.moderationManager.listModeration(podRoot),
+      ])
+        .then(([consent, moderation]) => {
+          applyConsent(consent)
+          const blocked = new Set(
+            moderation
+              .filter((record) => record.action === 'block')
+              .map((record) => record.subjectWebId)
+          )
+          setRevealedPeers((existing) =>
+            existing.filter((peer) => !blocked.has(peer.webId))
+          )
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setNearbyPresenceEnabled(false)
+            setLocalBroadcastsEnabled(false)
+          }
+        })
+    }
+    reconcile()
+    const interval = setInterval(reconcile, CONSENT_RECONCILE_INTERVAL_MS)
     return () => {
       cancelled = true
+      clearInterval(interval)
       unsubscribe()
     }
   }, [authFetch, webId])
@@ -171,6 +192,13 @@ export function PresenceProvider({ children }: { children: ReactNode }): JSX.Ele
     setRevealedTo([])
     setOwnCommitments([])
   }, [nearbyPresenceEnabled])
+
+  useEffect(() => subscribeBlockStateChanged((event) => {
+    if (event.ownerWebId !== webId || !event.blocked) return
+    setRevealedPeers((existing) =>
+      existing.filter((peer) => peer.webId !== event.subjectWebId)
+    )
+  }), [webId])
 
   // Stable key for the surrounding cell set so the subscription effect only
   // re-runs when the actual set of cells changes.
@@ -335,16 +363,28 @@ export function PresenceProvider({ children }: { children: ReactNode }): JSX.Ele
           if (!payload) return
           const podRoot = webId ? `${webId.split('/profile/')[0]}/` : null
           if (!podRoot) return
+          const now = new Date()
           void Promise.all([
-            verifyWakuEnvelopeIdentity({
-              provisionerUrl: getProvisionerUrl(),
-              envelope: message.envelope,
-              accountWebId: payload.webId,
-            }),
+            presenceCommitment(payload.webId, presenceEpoch(now)),
+            presenceCommitment(
+              payload.webId,
+              presenceEpoch(new Date(now.getTime() - 60 * 60_000))
+            ),
             getSolidPodSyncManagers({ fetch: authFetch }).moderationManager
               .isBlocked(podRoot, payload.webId),
-          ]).then(([accountVerified, blocked]) => {
-            if (cancelled || !accountVerified || blocked) return
+          ]).then(([currentCommitment, previousCommitment, blocked]) => {
+            const commitmentMatches =
+              payload.senderCommitment === currentCommitment ||
+              payload.senderCommitment === previousCommitment
+            if (
+              cancelled ||
+              blocked ||
+              !commitmentMatches ||
+              !isPresenceSenderForCommitment(
+                message.envelope.senderWebId,
+                payload.senderCommitment
+              )
+            ) return
             const tracked = trackerRef.current
               .peers()
               .find((peer) => peer.webIdCommitment === payload.senderCommitment)

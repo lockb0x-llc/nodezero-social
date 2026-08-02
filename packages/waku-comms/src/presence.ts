@@ -58,6 +58,10 @@ export function presenceSenderId(webIdCommitment: string): string {
   return `${PRESENCE_SENDER_PREFIX}${webIdCommitment}`
 }
 
+export function isPresenceSenderForCommitment(senderWebId: string, commitment: string): boolean {
+  return senderWebId === presenceSenderId(commitment)
+}
+
 /** Serialize a beacon into an envelope body. */
 export function createPresenceBeaconBody(beacon: PresenceBeacon): string {
   return JSON.stringify(beacon)
@@ -159,7 +163,11 @@ export class PresenceTracker {
       return null
     }
     const beacon = parsePresenceBeacon(message.envelope.body)
-    if (!beacon || beacon.h3Index !== topicMatch[1]) {
+    if (
+      !beacon ||
+      beacon.h3Index !== topicMatch[1] ||
+      !isPresenceSenderForCommitment(message.envelope.senderWebId, beacon.webIdCommitment)
+    ) {
       return null
     }
     const nowMs = this.now().getTime()

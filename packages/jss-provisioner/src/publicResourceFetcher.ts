@@ -514,6 +514,14 @@ async function requestPinnedHttps(
         'timeout'
       ))
     })
+    const wallClockTimer = setTimeout(() => {
+      request.destroy(new PublicResourceFetchError(
+        'Public resource request exceeded its wall-clock deadline.',
+        504,
+        'timeout'
+      ))
+    }, input.timeoutMs)
+    request.once('close', () => clearTimeout(wallClockTimer))
     request.on('error', (error) => {
       if (error instanceof PublicResourceFetchError) reject(error)
       else reject(new PublicResourceFetchError(

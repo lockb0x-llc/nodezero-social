@@ -223,6 +223,9 @@ importers:
 
   packages/relay-service:
     dependencies:
+      '@stellar/stellar-sdk':
+        specifier: ^16.0.0
+        version: 16.0.1
       ws:
         specifier: ^8.18.0
         version: 8.21.0

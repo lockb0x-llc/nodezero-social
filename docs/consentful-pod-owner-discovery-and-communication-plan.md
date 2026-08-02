@@ -38,8 +38,8 @@ retaining immediate disconnect, mute, block, and discovery-revocation controls.
 | Q1C | Audit Agent | Q0 | Threat model and security test vectors for ACL, SSRF, replay, privacy, migration, and block precedence | Complete: 22 executable vectors across 10 categories pass; Audit Agent GO |
 | Q2 | Solid Data Agent | Q1A, Q1B | Relationship lifecycle, replay ledger, legacy migration, moderation, and `foaf:knows` projection | Complete: Solid 168, mobile 90, and provisioner 101 tests pass; strict staging PWA artifact passes |
 | Q3A | Azure Platform Agent | Q1 contracts, P6 | Durable derived index, feature flags, telemetry, slots/revisions, rollback assets, and staging deployment wiring | In progress: API/projection contract complete; Azure durability and deployment controls remain |
-| Q3B | Mobile App Agent | Q2, Q3A API contract | Consent controls, public-interest selection, explainable recommendations, and unified Directory/Profile/Local actions | Ready: Q3A API contract available |
-| Q3C | P2P Relay Agent | Q1 contracts | Presence, reveal, Waku, WebRTC, and relay consent/block enforcement plus abuse controls | Not started |
+| Q3B | Mobile App Agent | Q2, Q3A API contract | Consent controls, public-interest selection, explainable recommendations, and unified Directory/Profile/Local actions | Complete locally: independent Mobile and Audit GO; deployment validation pending Q3A/Q4 |
+| Q3C | P2P Relay Agent | Q1 contracts | Presence, reveal, Waku, WebRTC, and relay consent/block enforcement plus abuse controls | Complete locally: independent Mobile and Audit GO; deployment configuration and Q4 journeys pending |
 | Q4 | QA Release Agent | Q1-Q3 | Package, integration, browser, device, deployment, rollback, and soak evidence | Not started |
 | Q5 | Docs Agent | Q4 and Audit GO | Validated Wiki/status updates and Milestone Q release evidence | Not started |
 
@@ -171,6 +171,32 @@ interest separation, pagination, and recommendation-reason suites pass.
 - This is an API contract, not durable infrastructure or deployment evidence. Azure
    storage, default-off cohort flags, privacy-safe telemetry, retained slots/revisions,
    rollback, reconciliation, and staging provenance remain Q3A work.
+
+### Q3B/Q3C local implementation evidence (2026-08-01)
+
+- Discovery preferences persist independent listing, indexing, nearby-presence,
+   local-broadcast, and selected-interest choices. Three-way merging prevents a
+   stale device from restoring a fresher cross-device opt-out.
+- Directory, Profile, and Local share relationship, Trust Circle, mute, block,
+   and report policy. Incoming requests expose Accept/Decline, outgoing requests
+   expose Cancel, and only accepted/unblocked relationships can message.
+- Peer Profile reads use the authenticated provisioner route and a credential-free,
+   SSRF-resistant server fetch; NodeZero bearer credentials remain exact-origin.
+- Waku envelopes bind opaque provisioner assertions inside Stellar signatures.
+   Presence aliases are derived from the authenticated account and checked against
+   beacon commitments. Relay admission additionally requires a one-time nonce signed
+   by the assertion-bound Stellar key before registration or replacement.
+- Consent and relationship state reconcile from the Pod, block state purges rendered
+   messages/reveals immediately in-process, and local disconnect takes effect before
+   best-effort remote notification.
+- Local validation: mobile 119/119, provisioner 119/119, Waku 55/55, relay 3/3;
+   touched lint and five package type-checks pass; consent security 22/22, environment,
+   PWA policy, strict staging-profile build, artifact validation, and diff checks pass.
+   Mobile App Agent and Audit Agent issued local-code GO.
+- This is not deployment or release GO. Q3A Azure durability remains open. Staging
+   must configure `RELAY_PROVISIONER_URL` and a stable shared
+   `JSS_TRANSPORT_IDENTITY_SIGNING_KEY`, then obtain successful matching workflow
+   provenance, zero-retry two-account journeys, rollback evidence, and soak results.
 
 ## Phase 4: Integrated Social Experience
 

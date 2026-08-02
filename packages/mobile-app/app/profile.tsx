@@ -87,6 +87,12 @@ export default function ProfileScreen(): JSX.Element {
   const [publicIndexing, setPublicIndexing] = useState(false)
   const [nearbyPresence, setNearbyPresence] = useState(false)
   const [localBroadcasts, setLocalBroadcasts] = useState(false)
+  const [consentBaseline, setConsentBaseline] = useState({
+    publicListing: false,
+    publicIndexing: false,
+    nearbyPresence: false,
+    localBroadcasts: false,
+  })
   const [selectedPublicInterests, setSelectedPublicInterests] = useState<string[]>([])
   const [discoverySaving, setDiscoverySaving] = useState(false)
   const [discoveryStatus, setDiscoveryStatus] = useState<string | null>(null)
@@ -108,6 +114,8 @@ export default function ProfileScreen(): JSX.Element {
     connections,
     relationships,
     blockedWebIds,
+    mutedWebIds,
+    reportedWebIds,
     connectionBusyWebId,
     connectionStatus,
     incomingRequests,
@@ -121,6 +129,7 @@ export default function ProfileScreen(): JSX.Element {
     cancelConnectionRequest,
     removeConnection,
     setBlocked,
+    setModeration,
   } = useConnections({
     effectiveWebId: ownerWebId,
     authFetch,
@@ -128,12 +137,22 @@ export default function ProfileScreen(): JSX.Element {
   const viewedRelationship = viewedWebId
     ? relationships.find((record) => record.peerWebId === viewedWebId)
     : undefined
+  const peerBlocked = Boolean(viewedWebId && blockedWebIds.includes(viewedWebId))
   const peerActionPolicy = derivePersonActionPolicy({
     isSelf: !isPeerView,
     relationshipState: viewedRelationship?.state ?? null,
-    blocked: Boolean(viewedWebId && blockedWebIds.includes(viewedWebId)),
+    blocked: peerBlocked,
+    muted: Boolean(viewedWebId && mutedWebIds.includes(viewedWebId)),
+    reported: Boolean(viewedWebId && reportedWebIds.includes(viewedWebId)),
     inTrustCircle: peerInTrustCircle,
   })
+
+  useEffect(() => {
+    if (!isPeerView || !viewedWebId || !peerBlocked) return
+    setProfile(EMPTY_PROFILE)
+    setInterestsInput('')
+    setSharedThreads([])
+  }, [isPeerView, peerBlocked, viewedWebId])
 
   useEffect(() => {
     if (!isLoggedIn || !isPeerView || !ownerWebId || !viewedWebId) {
@@ -184,6 +203,12 @@ export default function ProfileScreen(): JSX.Element {
       setPublicIndexing(consent.publicIndexing)
       setNearbyPresence(consent.nearbyPresence)
       setLocalBroadcasts(consent.localBroadcasts)
+      setConsentBaseline({
+        publicListing: consent.publicListing,
+        publicIndexing: consent.publicIndexing,
+        nearbyPresence: consent.nearbyPresence,
+        localBroadcasts: consent.localBroadcasts,
+      })
       setSelectedPublicInterests(manifest?.publicInterests ?? [])
     }).catch(() => {
       setPublicListing(false)
@@ -218,11 +243,18 @@ export default function ProfileScreen(): JSX.Element {
           localBroadcasts,
           selectedPublicInterests,
         },
+        baselineConsent: consentBaseline,
         provisionerUrl: getProvisionerUrl(),
         authFetch,
         managers: getSolidPodSyncManagers({ fetch: authFetch }),
       })
       setSelectedPublicInterests(result.selectedPublicInterests)
+      setConsentBaseline({
+        publicListing: result.consent.publicListing,
+        publicIndexing: result.consent.publicIndexing,
+        nearbyPresence: result.consent.nearbyPresence,
+        localBroadcasts: result.consent.localBroadcasts,
+      })
       setDiscoveryStatus(
         result.listed
           ? 'Public directory projection updated.'
@@ -235,7 +267,7 @@ export default function ProfileScreen(): JSX.Element {
     } finally {
       setDiscoverySaving(false)
     }
-  }, [authFetch, localBroadcasts, nearbyPresence, ownerWebId, publicIndexing, publicListing, selectedPublicInterests])
+  }, [authFetch, consentBaseline, localBroadcasts, nearbyPresence, ownerWebId, publicIndexing, publicListing, selectedPublicInterests])
 
   // Load profile from Pod.
   useEffect(() => {
@@ -245,7 +277,17 @@ export default function ProfileScreen(): JSX.Element {
     }
 
     setLoading(true)
+    let cancelled = false
     if (isPeerView) {
+      setProfile(EMPTY_PROFILE)
+      setInterestsInput('')
+      setSharedThreads([])
+      if (peerBlocked) {
+        setLoading(false)
+        return (): void => {
+          cancelled = true
+        }
+      }
       const ownerProfileRead = ownerWebId
         ? managerRef.current.readProfile(ownerWebId)
         : Promise.resolve(null)
@@ -254,6 +296,7 @@ export default function ProfileScreen(): JSX.Element {
         ownerProfileRead,
       ])
         .then(([peerProfile, ownerProfile]) => {
+          if (cancelled) return
           if (peerProfile) {
             setProfile(peerProfile)
             setInterestsInput(interestsToInput(peerProfile.interests))
@@ -264,12 +307,14 @@ export default function ProfileScreen(): JSX.Element {
           }
         })
         .catch(() => {
-          setSharedThreads([])
+          if (!cancelled) setSharedThreads([])
         })
         .finally(() => {
-          setLoading(false)
+          if (!cancelled) setLoading(false)
         })
-      return
+      return (): void => {
+        cancelled = true
+      }
     }
 
     const viewedPodRoot = viewedWebId.split('/profile/')[0] + '/'
@@ -281,6 +326,7 @@ export default function ProfileScreen(): JSX.Element {
       preferenceRead,
     ])
       .then(([publicProfile, privatePreferences]) => {
+        if (cancelled) return
         if (publicProfile) {
           const mergedProfile = mergeProfileData(publicProfile, privatePreferences)
           setProfile(mergedProfile)
@@ -288,9 +334,12 @@ export default function ProfileScreen(): JSX.Element {
         }
       })
       .finally(() => {
-        setLoading(false)
+        if (!cancelled) setLoading(false)
       })
-  }, [authFetch, isPeerView, managersReady, ownerWebId, viewedWebId])
+    return (): void => {
+      cancelled = true
+    }
+  }, [authFetch, isPeerView, managersReady, ownerWebId, peerBlocked, viewedWebId])
 
   const saveProfile = useCallback(async () => {
     if (!managerRef.current || !preferencesManagerRef.current) {
@@ -368,6 +417,33 @@ export default function ProfileScreen(): JSX.Element {
     return (
       <View style={styles.centred}>
         <ActivityIndicator color="#6C63FF" size="large" />
+      </View>
+    )
+  }
+
+  if (
+    isPeerView &&
+    !connectionAuthorityReady
+  ) {
+    return (
+      <View style={styles.centred}>
+        <Text style={styles.infoText}>This profile is unavailable.</Text>
+      </View>
+    )
+  }
+
+  if (isPeerView && viewedWebId && peerBlocked) {
+    return (
+      <View style={styles.centred}>
+        <Text style={styles.infoText}>This profile is blocked.</Text>
+        <TouchableOpacity
+          style={styles.unblockActionButton}
+          onPress={() => void setBlocked(viewedWebId, false)}
+          accessibilityRole="button"
+          accessibilityLabel={`Unblock ${viewedWebId}`}
+        >
+          <Text style={styles.connectionActionButtonText}>Unblock</Text>
+        </TouchableOpacity>
       </View>
     )
   }
@@ -573,6 +649,28 @@ export default function ProfileScreen(): JSX.Element {
                 <Text style={styles.connectionActionButtonText}>Cancel</Text>
               </TouchableOpacity>
             ) : null}
+            {peerActionPolicy.canAcceptRequest ? (
+              <TouchableOpacity
+                style={styles.connectionActionButton}
+                onPress={() => void respondToIncomingRequest(viewedWebId, 'accept')}
+                disabled={connectionBusyWebId === viewedWebId}
+                accessibilityRole="button"
+                accessibilityLabel={`Accept relationship request from ${viewedWebId}`}
+              >
+                <Text style={styles.connectionActionButtonText}>Accept</Text>
+              </TouchableOpacity>
+            ) : null}
+            {peerActionPolicy.canDeclineRequest ? (
+              <TouchableOpacity
+                style={styles.secondaryActionButton}
+                onPress={() => void respondToIncomingRequest(viewedWebId, 'reject')}
+                disabled={connectionBusyWebId === viewedWebId}
+                accessibilityRole="button"
+                accessibilityLabel={`Decline relationship request from ${viewedWebId}`}
+              >
+                <Text style={styles.connectionActionButtonText}>Decline</Text>
+              </TouchableOpacity>
+            ) : null}
             {peerActionPolicy.canDisconnect ? (
               <TouchableOpacity
                 style={styles.connectionRemoveButtonWide}
@@ -629,6 +727,32 @@ export default function ProfileScreen(): JSX.Element {
                 accessibilityLabel={`Block ${viewedWebId}`}
               >
                 <Text style={styles.connectionActionButtonText}>Block</Text>
+              </TouchableOpacity>
+            ) : null}
+            {peerActionPolicy.canMute || peerActionPolicy.canUnmute ? (
+              <TouchableOpacity
+                style={styles.muteActionButton}
+                onPress={() => void setModeration(
+                  viewedWebId,
+                  'mute',
+                  peerActionPolicy.canMute
+                )}
+                accessibilityRole="button"
+                accessibilityLabel={`${peerActionPolicy.canUnmute ? 'Unmute' : 'Mute'} ${viewedWebId}`}
+              >
+                <Text style={styles.connectionActionButtonText}>
+                  {peerActionPolicy.canUnmute ? 'Unmute' : 'Mute'}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+            {peerActionPolicy.canReport ? (
+              <TouchableOpacity
+                style={styles.reportActionButton}
+                onPress={() => void setModeration(viewedWebId, 'report', true)}
+                accessibilityRole="button"
+                accessibilityLabel={`Report ${viewedWebId}`}
+              >
+                <Text style={styles.connectionActionButtonText}>Report</Text>
               </TouchableOpacity>
             ) : null}
           </View>
@@ -986,6 +1110,20 @@ const styles = StyleSheet.create({
   unblockActionButton: {
     minHeight: 38,
     backgroundColor: '#455A64',
+    borderRadius: 6,
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+  },
+  muteActionButton: {
+    minHeight: 38,
+    backgroundColor: '#625A2E',
+    borderRadius: 6,
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+  },
+  reportActionButton: {
+    minHeight: 38,
+    backgroundColor: '#6A3A55',
     borderRadius: 6,
     justifyContent: 'center',
     paddingHorizontal: 14,

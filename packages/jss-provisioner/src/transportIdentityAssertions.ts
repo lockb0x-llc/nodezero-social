@@ -26,6 +26,7 @@ export class TransportIdentityAssertionManager {
   private readonly key: Buffer
   private readonly issuer: string
   private readonly ttlMs: number
+  private readonly keyIsEphemeral: boolean
 
   constructor(options: TransportIdentityAssertionOptions = {}) {
     const rawKey = (
@@ -35,10 +36,15 @@ export class TransportIdentityAssertionManager {
       ''
     ).trim()
     this.key = rawKey ? Buffer.from(rawKey, 'utf8') : randomBytes(32)
+    this.keyIsEphemeral = !rawKey
     this.issuer = options.issuer ?? process.env.JSS_ISSUER_URL ?? 'https://staging.nodezero.social'
     this.ttlMs = options.ttlMs ?? Number(
       process.env.JSS_TRANSPORT_IDENTITY_ASSERTION_TTL_MS ?? DEFAULT_TTL_MS
     )
+  }
+
+  get usesEphemeralKey(): boolean {
+    return this.keyIsEphemeral
   }
 
   issue(
@@ -50,10 +56,9 @@ export class TransportIdentityAssertionManager {
     if (!claims.spk || !/^G[A-Z2-7]{55}$/.test(claims.spk)) {
       throw new Error('The authenticated session has no valid Stellar identity key.')
     }
-    if (
-      subject !== claims.sub &&
-      (audience !== 'waku' || !/^urn:nodezero:presence:[A-Za-z0-9_-]{20,128}$/.test(subject))
-    ) throw new Error('Transport identity subject is not allowed.')
+    if (subject !== claims.sub && !this.isCurrentPresenceSubject(claims.sub, audience, subject, now)) {
+      throw new Error('Transport identity subject is not allowed.')
+    }
     const payload: TransportIdentityClaims = {
       sub: subject,
       account: claims.sub,
@@ -111,26 +116,6 @@ export class TransportIdentityAssertionManager {
     }
   }
 
-  isAccountBound(
-    assertion: string,
-    audience: TransportIdentityAudience,
-    accountWebId: string,
-    now = new Date()
-  ): boolean {
-    try {
-      const claims = this.decrypt(assertion)
-      return claims.account === accountWebId && this.verify({
-        assertion,
-        audience,
-        webId: claims.sub,
-        stellarPublicKey: claims.spk,
-        now,
-      })
-    } catch {
-      return false
-    }
-  }
-
   private encrypt(claims: TransportIdentityClaims): string {
     const nonce = randomBytes(12)
     const cipher = createCipheriv('aes-256-gcm', this.encryptionKey(), nonce)
@@ -157,6 +142,20 @@ export class TransportIdentityAssertionManager {
 
   private encryptionKey(): Buffer {
     return createHash('sha256').update(this.key).digest()
+  }
+
+  private isCurrentPresenceSubject(
+    accountWebId: string,
+    audience: TransportIdentityAudience,
+    subject: string,
+    now: Date
+  ): boolean {
+    if (audience !== 'waku') return false
+    const epoch = now.toISOString().slice(0, 13)
+    const commitment = createHash('sha256')
+      .update(`${accountWebId}:${epoch}`)
+      .digest('base64url')
+    return subject === `urn:nodezero:presence:${commitment}`
   }
 }
 

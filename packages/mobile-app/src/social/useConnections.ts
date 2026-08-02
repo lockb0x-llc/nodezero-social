@@ -10,7 +10,12 @@ import {
 } from './relationshipRequestFlow'
 import { respondToRelationshipRequest } from './relationshipRequestFlow'
 import { syncRelationshipInbox } from './relationshipInboxSync'
-import type { ModerationRecord, RelationshipRecord } from '@nodezero/solid-pod-sync'
+import type {
+  ModerationAction,
+  ModerationRecord,
+  RelationshipRecord,
+} from '@nodezero/solid-pod-sync'
+import { publishBlockStateChanged } from './moderationEvents'
 
 export interface ConnectionStatus {
   type: 'info' | 'success' | 'error'
@@ -38,6 +43,8 @@ export function useConnections({
   connections: string[]
   relationships: RelationshipRecord[]
   blockedWebIds: string[]
+  mutedWebIds: string[]
+  reportedWebIds: string[]
   connectionBusyWebId: string | null
   connectionStatus: ConnectionStatus | null
   incomingRequests: RelationshipRecord[]
@@ -51,6 +58,11 @@ export function useConnections({
   cancelConnectionRequest: (targetWebId: string) => Promise<boolean>
   removeConnection: (targetWebId: string) => Promise<boolean>
   setBlocked: (targetWebId: string, blocked: boolean) => Promise<boolean>
+  setModeration: (
+    targetWebId: string,
+    action: Exclude<ModerationAction, 'block'>,
+    enabled: boolean
+  ) => Promise<boolean>
   setConnectionStatus: Dispatch<SetStateAction<ConnectionStatus | null>>
 } {
   const [connectionsLoading, setConnectionsLoading] = useState(false)
@@ -58,6 +70,8 @@ export function useConnections({
   const [connections, setConnections] = useState<string[]>([])
   const [relationships, setRelationships] = useState<RelationshipRecord[]>([])
   const [blockedWebIds, setBlockedWebIds] = useState<string[]>([])
+  const [mutedWebIds, setMutedWebIds] = useState<string[]>([])
+  const [reportedWebIds, setReportedWebIds] = useState<string[]>([])
   const [connectionBusyWebId, setConnectionBusyWebId] = useState<string | null>(null)
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus | null>(null)
   const [incomingRequests, setIncomingRequests] = useState<RelationshipRecord[]>([])
@@ -97,6 +111,8 @@ export function useConnections({
       setConnections([])
       setRelationships([])
       setBlockedWebIds([])
+      setMutedWebIds([])
+      setReportedWebIds([])
       setConnectionAuthorityReady(false)
       return
     }
@@ -114,6 +130,12 @@ export function useConnections({
       setBlockedWebIds(moderationRecords
         .filter((record: ModerationRecord) => record.action === 'block')
         .map((record) => record.subjectWebId))
+      setMutedWebIds(moderationRecords
+        .filter((record) => record.action === 'mute')
+        .map((record) => record.subjectWebId))
+      setReportedWebIds(moderationRecords
+        .filter((record) => record.action === 'report')
+        .map((record) => record.subjectWebId))
       setConnections(relationshipRecords
         .filter((relationship) =>
           relationship.state === 'accepted' || relationship.state === 'legacy-connected'
@@ -126,6 +148,8 @@ export function useConnections({
       setConnections([])
       setRelationships([])
       setBlockedWebIds([])
+      setMutedWebIds([])
+      setReportedWebIds([])
       setConnectionAuthorityReady(false)
     } finally {
       setConnectionsLoading(false)
@@ -310,6 +334,11 @@ export function useConnections({
         await moderationManager.removeModeration(podRoot, targetWebId, 'block')
       }
       await loadConnections()
+      publishBlockStateChanged({
+        ownerWebId: effectiveWebId,
+        subjectWebId: targetWebId,
+        blocked,
+      })
       await onConnectionsChanged?.()
       setConnectionStatus({
         type: 'success',
@@ -325,12 +354,51 @@ export function useConnections({
     }
   }, [authFetch, effectiveWebId, loadConnections, onConnectionsChanged])
 
+  const setModeration = useCallback(async (
+    targetWebId: string,
+    action: Exclude<ModerationAction, 'block'>,
+    enabled: boolean
+  ): Promise<boolean> => {
+    if (!effectiveWebId || targetWebId === effectiveWebId) return false
+    const podRoot = `${effectiveWebId.split('/profile/')[0]}/`
+    setConnectionBusyWebId(targetWebId)
+    setConnectionStatus(null)
+    try {
+      const { moderationManager } = getSolidPodSyncManagers({ fetch: authFetch })
+      if (enabled) {
+        await moderationManager.setModeration(podRoot, {
+          subjectWebId: targetWebId,
+          action,
+          reasonCode: action === 'mute' ? 'user-muted' : 'user-reported',
+        })
+      } else {
+        await moderationManager.removeModeration(podRoot, targetWebId, action)
+      }
+      await loadConnections()
+      setConnectionStatus({
+        type: 'success',
+        message: action === 'mute'
+          ? enabled ? 'Person muted.' : 'Person unmuted.'
+          : 'Report saved privately.',
+      })
+      return true
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to update moderation state.'
+      setConnectionStatus({ type: 'error', message })
+      return false
+    } finally {
+      setConnectionBusyWebId(null)
+    }
+  }, [authFetch, effectiveWebId, loadConnections])
+
   return useMemo(() => ({
     connectionsLoading,
     connectionAuthorityReady,
     connections,
     relationships,
     blockedWebIds,
+    mutedWebIds,
+    reportedWebIds,
     connectionBusyWebId,
     connectionStatus,
     incomingRequests,
@@ -344,6 +412,7 @@ export function useConnections({
     cancelConnectionRequest,
     removeConnection,
     setBlocked,
+    setModeration,
     setConnectionStatus,
   }), [
     connectionsLoading,
@@ -351,6 +420,8 @@ export function useConnections({
     connections,
     relationships,
     blockedWebIds,
+    mutedWebIds,
+    reportedWebIds,
     connectionBusyWebId,
     connectionStatus,
     incomingRequests,
@@ -364,5 +435,6 @@ export function useConnections({
     cancelConnectionRequest,
     removeConnection,
     setBlocked,
+    setModeration,
   ])
 }
