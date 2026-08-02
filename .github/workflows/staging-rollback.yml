@@ -15,6 +15,18 @@ on:
         description: Exact successful staging-deploy run attempt that produced the bundle
         required: true
         type: string
+      source_kind:
+        description: Artifact source workflow
+        required: true
+        default: baseline
+        type: choice
+        options:
+          - baseline
+          - deployment
+      source_tooling_commit:
+        description: Capture workflow head SHA for baseline sources; same as expected commit for deployment sources
+        required: true
+        type: string
       confirm_staging_testnet:
         description: Confirm this rollback targets staging-testnet only
         required: true
@@ -53,7 +65,7 @@ jobs:
       - name: Download retained rollback bundle
         uses: actions/download-artifact@v4
         with:
-          name: staging-rollback-${{ inputs.expected_commit }}-${{ inputs.source_run_attempt }}
+          name: ${{ inputs.source_kind == 'baseline' && format('staging-baseline-{0}', inputs.expected_commit) || format('staging-rollback-{0}-{1}', inputs.expected_commit, inputs.source_run_attempt) }}
           path: rollback-bundle
           run-id: ${{ inputs.source_run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -64,15 +76,25 @@ jobs:
           SOURCE_RUN_ID: ${{ inputs.source_run_id }}
           EXPECTED_COMMIT: ${{ inputs.expected_commit }}
           EXPECTED_ATTEMPT: ${{ inputs.source_run_attempt }}
+          SOURCE_KIND: ${{ inputs.source_kind }}
+          SOURCE_TOOLING_COMMIT: ${{ inputs.source_tooling_commit }}
         run: |
           set -euo pipefail
           run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}")"
           workflow_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/$(jq -r '.workflow_id' <<<"$run_json")")"
-          [ "$(jq -r '.path' <<<"$workflow_json")" = ".github/workflows/staging-deploy.yml" ]
-          [ "$(jq -r '.name' <<<"$workflow_json")" = "Staging Deploy" ]
+          if [ "$SOURCE_KIND" = "baseline" ]; then
+            [ "$(jq -r '.path' <<<"$workflow_json")" = ".github/workflows/staging-baseline-capture.yml" ]
+            [ "$(jq -r '.name' <<<"$workflow_json")" = "Capture Staging Baseline" ]
+          else
+            [ "$(jq -r '.path' <<<"$workflow_json")" = ".github/workflows/staging-deploy.yml" ]
+            [ "$(jq -r '.name' <<<"$workflow_json")" = "Staging Deploy" ]
+          fi
           [ "$(jq -r '.conclusion' <<<"$run_json")" = "success" ]
           [ "$(jq -r '.head_branch' <<<"$run_json")" = "testnet" ]
-          [ "$(jq -r '.head_sha' <<<"$run_json")" = "$EXPECTED_COMMIT" ]
+          [ "$(jq -r '.head_sha' <<<"$run_json")" = "$SOURCE_TOOLING_COMMIT" ]
+          if [ "$SOURCE_KIND" = "deployment" ]; then
+            [ "$SOURCE_TOOLING_COMMIT" = "$EXPECTED_COMMIT" ]
+          fi
           [ "$(jq -r '.run_attempt' <<<"$run_json")" = "$EXPECTED_ATTEMPT" ]
           event="$(jq -r '.event' <<<"$run_json")"
           [ "$event" = "push" ] || [ "$event" = "workflow_dispatch" ]
@@ -82,6 +104,8 @@ jobs:
           EXPECTED_COMMIT: ${{ inputs.expected_commit }}
           EXPECTED_SOURCE_RUN: ${{ inputs.source_run_id }}
           EXPECTED_SOURCE_ATTEMPT: ${{ inputs.source_run_attempt }}
+          SOURCE_KIND: ${{ inputs.source_kind }}
+          SOURCE_TOOLING_COMMIT: ${{ inputs.source_tooling_commit }}
         run: |
           set -euo pipefail
           manifest=rollback-bundle/manifest.json
@@ -89,13 +113,24 @@ jobs:
           [ "$(jq -r '.version' "$manifest")" = "1" ]
           [ "$(jq -r '.environment' "$manifest")" = "staging-testnet" ]
           [ "$(jq -r '.commit' "$manifest")" = "$EXPECTED_COMMIT" ]
-          [ "$(jq -r '.sourceRunId' "$manifest")" = "$EXPECTED_SOURCE_RUN" ]
-          [ "$(jq -r '.sourceRunAttempt' "$manifest")" = "$EXPECTED_SOURCE_ATTEMPT" ]
+          if [ "$SOURCE_KIND" = "baseline" ]; then
+            [ "$(jq -r '.kind' "$manifest")" = "staging-n-1-baseline" ]
+            [ "$(jq -r '.captureToolingCommit' "$manifest")" = "$SOURCE_TOOLING_COMMIT" ]
+            [ "$(jq -r '.capturedByRunId' "$manifest")" = "$EXPECTED_SOURCE_RUN" ]
+            [ "$(jq -r '.capturedByRunAttempt' "$manifest")" = "$EXPECTED_SOURCE_ATTEMPT" ]
+          else
+            [ "$(jq -r '.sourceRunId' "$manifest")" = "$EXPECTED_SOURCE_RUN" ]
+            [ "$(jq -r '.sourceRunAttempt' "$manifest")" = "$EXPECTED_SOURCE_ATTEMPT" ]
+          fi
           for flag in directory peerProfile relationship transport; do
             [ "$(jq -r ".qFlags.${flag}" "$manifest")" = "false" ]
           done
           [ "$(sha256sum rollback-bundle/provisioner.zip | awk '{print $1}')" = "$(jq -r '.sha256.provisionerZip' "$manifest")" ]
-          [ "$(sha256sum rollback-bundle/relay.zip | awk '{print $1}')" = "$(jq -r '.sha256.relayZip' "$manifest")" ]
+          expected_relay_sha="$(jq -r '.sha256.relayZip // empty' "$manifest")"
+          if [ -n "$expected_relay_sha" ]; then
+            test -f rollback-bundle/relay.zip
+            [ "$(sha256sum rollback-bundle/relay.zip | awk '{print $1}')" = "$expected_relay_sha" ]
+          fi
           (cd rollback-bundle/pwa-dist && sha256sum --check ../pwa-files.sha256)
           pwa_sha="$(cd rollback-bundle/pwa-dist && find . -type f ! -name deploy-marker.json -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
           [ "$pwa_sha" = "$(jq -r '.sha256.pwaTree' "$manifest")" ]
@@ -141,6 +176,7 @@ jobs:
         id: verify-provisioner
         env:
           EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          SOURCE_KIND: ${{ inputs.source_kind }}
         run: |
           set -euo pipefail
           manifest=rollback-bundle/manifest.json
@@ -148,16 +184,20 @@ jobs:
           expected_artifact="$(jq -r '.sha256.provisionerZip' "$manifest")"
           for attempt in {1..30}; do
             health="$(curl -fsS --max-time 10 "https://${JSS_PROVISIONER_APP_NAME}.azurewebsites.net/health" || true)"
+            q_health_ok=true
+            if [ "$SOURCE_KIND" = "deployment" ]; then
+              [ "$(jq -r '.communityDirectory.backend // empty' <<<"$health")" = "table" ] || q_health_ok=false
+              [ "$(jq -r '.communityDirectory.ready // false' <<<"$health")" = "true" ] || q_health_ok=false
+              [ "$(jq -r '.transportIdentity.ready // false' <<<"$health")" = "true" ] || q_health_ok=false
+              [ "$(jq -r '.milestoneQ.flags.directory // true' <<<"$health")" = "false" ] || q_health_ok=false
+              [ "$(jq -r '.milestoneQ.flags["peer-profile"] // true' <<<"$health")" = "false" ] || q_health_ok=false
+              [ "$(jq -r '.milestoneQ.flags.relationship // true' <<<"$health")" = "false" ] || q_health_ok=false
+              [ "$(jq -r '.milestoneQ.flags.transport // true' <<<"$health")" = "false" ] || q_health_ok=false
+            fi
             if [ "$(jq -r '.build.commit // empty' <<<"$health")" = "$EXPECTED_COMMIT" ] && \
                [ "$(jq -r '.build.payloadSha256 // empty' <<<"$health")" = "$expected_payload" ] && \
                [ "$(jq -r '.build.configuredArtifactSha256 // empty' <<<"$health")" = "$expected_artifact" ] && \
-               [ "$(jq -r '.communityDirectory.backend // empty' <<<"$health")" = "table" ] && \
-               [ "$(jq -r '.communityDirectory.ready // false' <<<"$health")" = "true" ] && \
-               [ "$(jq -r '.transportIdentity.ready // false' <<<"$health")" = "true" ] && \
-               [ "$(jq -r '.milestoneQ.flags.directory // true' <<<"$health")" = "false" ] && \
-               [ "$(jq -r '.milestoneQ.flags["peer-profile"] // true' <<<"$health")" = "false" ] && \
-               [ "$(jq -r '.milestoneQ.flags.relationship // true' <<<"$health")" = "false" ] && \
-               [ "$(jq -r '.milestoneQ.flags.transport // true' <<<"$health")" = "false" ]; then
+               [ "$q_health_ok" = "true" ]; then
               exit 0
             fi
             sleep 10
@@ -167,6 +207,7 @@ jobs:
 
       - name: Redeploy retained relay artifact
         id: deploy-relay
+        if: ${{ hashFiles('rollback-bundle/relay.zip') != '' }}
         run: |
           set -euo pipefail
           az webapp deploy \
@@ -178,10 +219,32 @@ jobs:
 
       - name: Verify retained relay provenance and dark state
         id: verify-relay
+        if: ${{ hashFiles('rollback-bundle/relay.zip') != '' }}
         env:
           EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          SOURCE_KIND: ${{ inputs.source_kind }}
         run: |
           set -euo pipefail
+          if [ "$SOURCE_KIND" = "baseline" ]; then
+            test -f rollback-bundle/relay-files.sha256
+            credentials="$(az webapp deployment list-publishing-credentials \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --name "$RELAY_APP_NAME" -o json)"
+            username="$(jq -r '.publishingUserName' <<<"$credentials")"
+            password="$(jq -r '.publishingPassword' <<<"$credentials")"
+            scm_host="$(az webapp show --resource-group "$AZURE_RESOURCE_GROUP" --name "$RELAY_APP_NAME" --query defaultHostName -o tsv | sed 's/\.azurewebsites\.net$/.scm.azurewebsites.net/')"
+            echo "::add-mask::$username"
+            echo "::add-mask::$password"
+            curl --fail --silent --show-error --max-time 120 \
+              --user "${username}:${password}" \
+              "https://${scm_host}/api/zip/site/wwwroot/" \
+              --output /tmp/live-relay.zip
+            rm -rf /tmp/live-relay
+            mkdir -p /tmp/live-relay
+            unzip -q /tmp/live-relay.zip -d /tmp/live-relay
+            (cd /tmp/live-relay && sha256sum --check "$GITHUB_WORKSPACE/rollback-bundle/relay-files.sha256")
+            exit 0
+          fi
           expected_payload="$(unzip -p rollback-bundle/relay.zip build-info.json | jq -r '.payloadSha256')"
           for attempt in {1..30}; do
             health="$(curl -fsS --max-time 10 "https://${RELAY_APP_NAME}.azurewebsites.net/health" || true)"
@@ -248,34 +311,56 @@ jobs:
           EXPECTED_COMMIT: ${{ inputs.expected_commit }}
           SOURCE_RUN_ID: ${{ inputs.source_run_id }}
           SOURCE_RUN_ATTEMPT: ${{ inputs.source_run_attempt }}
+          SOURCE_KIND: ${{ inputs.source_kind }}
         run: |
           set -euo pipefail
           manifest=rollback-bundle/manifest.json
           expected_provisioner_payload="$(unzip -p rollback-bundle/provisioner.zip dist/build-info.json | jq -r '.payloadSha256')"
-          expected_relay_payload="$(unzip -p rollback-bundle/relay.zip build-info.json | jq -r '.payloadSha256')"
+          expected_relay_payload=""
+          if [ -f rollback-bundle/relay.zip ]; then
+            expected_relay_payload="$(unzip -p rollback-bundle/relay.zip build-info.json | jq -r '.payloadSha256')"
+          fi
           expected_artifact="$(jq -r '.sha256.provisionerZip' "$manifest")"
           expected_pwa_sha="$(jq -r '.sha256.pwaTree' "$manifest")"
           for attempt in {1..30}; do
             provisioner_json="$(curl -fsS --max-time 10 "https://${JSS_PROVISIONER_APP_NAME}.azurewebsites.net/health" || true)"
             relay_json="$(curl -fsS --max-time 10 "https://${RELAY_APP_NAME}.azurewebsites.net/health" || true)"
             marker_json="$(curl -fsS --max-time 10 "https://staging.nodezero.social/deploy-marker.json" || true)"
+            relay_ok=true
+            if [ -n "$expected_relay_payload" ]; then
+              if [ "$SOURCE_KIND" = "baseline" ]; then
+                [ "${{ steps.verify-relay.outcome }}" = "success" ] || relay_ok=false
+              else
+                [ "$(jq -r '.build.commit // empty' <<<"$relay_json")" = "$EXPECTED_COMMIT" ] || relay_ok=false
+                [ "$(jq -r '.build.payloadSha256 // empty' <<<"$relay_json")" = "$expected_relay_payload" ] || relay_ok=false
+                [ "$(jq -r '.identityVerifierReachable // false' <<<"$relay_json")" = "true" ] || relay_ok=false
+                [ "$(jq -r '.transportEnabled // true' <<<"$relay_json")" = "false" ] || relay_ok=false
+              fi
+            fi
+            q_health_ok=true
+            if [ "$SOURCE_KIND" = "deployment" ]; then
+              [ "$(jq -r '.milestoneQ.flags.directory // true' <<<"$provisioner_json")" = "false" ] || q_health_ok=false
+              [ "$(jq -r '.milestoneQ.flags["peer-profile"] // true' <<<"$provisioner_json")" = "false" ] || q_health_ok=false
+              [ "$(jq -r '.milestoneQ.flags.relationship // true' <<<"$provisioner_json")" = "false" ] || q_health_ok=false
+              [ "$(jq -r '.milestoneQ.flags.transport // true' <<<"$provisioner_json")" = "false" ] || q_health_ok=false
+            fi
+            live_settings="$(az webapp config appsettings list --resource-group "$AZURE_RESOURCE_GROUP" --name "$JSS_PROVISIONER_APP_NAME" -o json)"
+            settings_dark=true
+            for setting in JSS_Q_DIRECTORY_ENABLED JSS_Q_PEER_PROFILE_ENABLED JSS_Q_RELATIONSHIP_ENABLED JSS_Q_TRANSPORT_ENABLED; do
+              [ "$(jq -r --arg setting "$setting" '.[] | select(.name == $setting) | .value' <<<"$live_settings")" = "false" ] || settings_dark=false
+            done
             if [ "$(jq -r '.build.commit // empty' <<<"$provisioner_json")" = "$EXPECTED_COMMIT" ] && \
               [ "$(jq -r '.build.payloadSha256 // empty' <<<"$provisioner_json")" = "$expected_provisioner_payload" ] && \
               [ "$(jq -r '.build.configuredArtifactSha256 // empty' <<<"$provisioner_json")" = "$expected_artifact" ] && \
-               [ "$(jq -r '.build.commit // empty' <<<"$relay_json")" = "$EXPECTED_COMMIT" ] && \
-              [ "$(jq -r '.build.payloadSha256 // empty' <<<"$relay_json")" = "$expected_relay_payload" ] && \
-              [ "$(jq -r '.identityVerifierReachable // false' <<<"$relay_json")" = "true" ] && \
-              [ "$(jq -r '.transportEnabled // true' <<<"$relay_json")" = "false" ] && \
+              [ "$relay_ok" = "true" ] && \
+              [ "$q_health_ok" = "true" ] && \
+              [ "$settings_dark" = "true" ] && \
                [ "$(jq -r '.commit // empty' <<<"$marker_json")" = "$EXPECTED_COMMIT" ] && \
               [ "$(jq -r '.environment // empty' <<<"$marker_json")" = "staging-testnet" ] && \
               [ "$(jq -r '.workflow // empty' <<<"$marker_json")" = "staging-rollback" ] && \
               [ "$(jq -r '.sourceRunId // empty' <<<"$marker_json")" = "$SOURCE_RUN_ID" ] && \
-              [ "$(jq -r '.sourceRunAttempt // empty' <<<"$marker_json")" = "$SOURCE_RUN_ATTEMPT" ] && \
-               [ "$(jq -r '.pwaContentSha256 // empty' <<<"$marker_json")" = "$expected_pwa_sha" ] && \
-               [ "$(jq -r '.milestoneQ.flags.directory // true' <<<"$provisioner_json")" = "false" ] && \
-               [ "$(jq -r '.milestoneQ.flags["peer-profile"] // true' <<<"$provisioner_json")" = "false" ] && \
-               [ "$(jq -r '.milestoneQ.flags.relationship // true' <<<"$provisioner_json")" = "false" ] && \
-               [ "$(jq -r '.milestoneQ.flags.transport // true' <<<"$provisioner_json")" = "false" ]; then
+               [ "$(jq -r '.sourceRunAttempt // empty' <<<"$marker_json")" = "$SOURCE_RUN_ATTEMPT" ] && \
+               [ "$(jq -r '.pwaContentSha256 // empty' <<<"$marker_json")" = "$expected_pwa_sha" ]; then
               deployed_marker_sha="$(curl -fsS --max-time 10 https://staging.nodezero.social/deploy-marker.json | sha256sum | awk '{print $1}')"
               local_marker_sha="$(sha256sum rollback-bundle/pwa-dist/deploy-marker.json | awk '{print $1}')"
               [ "$deployed_marker_sha" = "$local_marker_sha" ]

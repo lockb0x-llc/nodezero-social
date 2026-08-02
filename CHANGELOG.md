@@ -8,7 +8,53 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-No entries yet.
+### Added
+
+- Pod-authoritative discovery consent, public manifest, relationship, moderation,
+  replay, receipt, quarantine, and Type Index contracts.
+- Owner-controlled Community Directory listing/indexing with explicitly selected
+  public interests, bounded cursor pages, ETags, explainable recommendations, and
+  unified Directory/Profile/Local actions.
+- Durable Azure Table Directory projection with ETag-fenced, consent-monotonic
+  updates, immediate opt-out suppression, bounded scans, active readiness probes,
+  default-off keyed cohorts, and aggregate-only telemetry.
+- Signed relationship request/accept/reject/cancel/disconnect lifecycle with
+  accepted-only `foaf:knows` compatibility projection and private mute/block/report
+  controls.
+- Identity-bound Waku envelopes, rotating commitment presence/reveal, accepted and
+  unblocked DM enforcement, and proof-of-possession WebRTC relay admission.
+- Exact-SHA provisioner/relay/PWA deployment provenance, 90-day retained rollback
+  bundles, and guarded retained-artifact rollback with live per-file PWA validation.
+- Q4 release preflight commands and a physical iOS/Android two-account manual test
+  runbook.
+
+### Changed
+
+- NodeZero bearer credentials are attached only to the exact provisioner origin.
+  Peer Profile reads now use an authenticated provisioner endpoint whose outbound
+  public WebID fetch is credential-free and SSRF-resistant.
+- Directory, peer Profile, relationship, and transport features deploy dark and
+  require keyed cohort membership before use.
+- Local disconnect and block decisions take effect before best-effort remote
+  notification; same-runtime state is purged immediately and cross-device state is
+  reconciled from the Pod.
+
+### Security
+
+- Added the 22-vector consentful discovery policy gate covering append-only inbox
+  ACLs, replay races, SSRF/address bypasses, sender assertions, migration, manifest
+  sanitation, and block precedence.
+- Added bounded public-resource requests, request-body deadlines, per-identity route
+  limits, verifier concurrency limits, Azure Table request deadlines, and relay
+  admission limits.
+- Rollback never enables Milestone Q flags and cannot recreate an opted-out listing
+  through stale in-memory or out-of-order persisted state.
+
+### Release Status
+
+- Local implementation has Azure Platform, Mobile App, and Audit GO.
+- Staging deployment, rollback rehearsal, zero-retry physical-device journeys, and
+  soak remain Q4 gates. No release version or tag is assigned yet.
 
 ---
 

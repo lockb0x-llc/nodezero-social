@@ -12,11 +12,25 @@ on:
         description: Sanitized iOS/Android installed-PWA evidence JSON
         required: false
         type: string
-  push:
-    branches:
-      - testnet
+      baseline_capture_run_id:
+        description: Successful Capture Staging Baseline run containing the current N-1 artifact
+        required: true
+        type: string
+      baseline_commit:
+        description: Exact currently deployed commit captured as the N-1 baseline
+        required: true
+        type: string
+      baseline_capture_run_attempt:
+        description: Exact successful Capture Staging Baseline run attempt
+        required: true
+        type: string
+      baseline_tooling_commit:
+        description: Exact candidate SHA that executed the baseline capture workflow
+        required: true
+        type: string
 
 permissions:
+  actions: read
   contents: read
   id-token: write
 
@@ -58,11 +72,71 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Authenticate retained N-1 baseline
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BASELINE_RUN_ID: ${{ inputs.baseline_capture_run_id }}
+          BASELINE_COMMIT: ${{ inputs.baseline_commit }}
+          BASELINE_RUN_ATTEMPT: ${{ inputs.baseline_capture_run_attempt }}
+          BASELINE_TOOLING_COMMIT: ${{ inputs.baseline_tooling_commit }}
+        run: |
+          set -euo pipefail
+          run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${BASELINE_RUN_ID}")"
+          workflow_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/$(jq -r '.workflow_id' <<<"$run_json")")"
+          [ "$(jq -r '.path' <<<"$workflow_json")" = ".github/workflows/staging-baseline-capture.yml" ]
+          [ "$(jq -r '.name' <<<"$workflow_json")" = "Capture Staging Baseline" ]
+          [ "$(jq -r '.conclusion' <<<"$run_json")" = "success" ]
+          [ "$(jq -r '.head_branch' <<<"$run_json")" = "testnet" ]
+          [ "$(jq -r '.head_sha' <<<"$run_json")" = "$BASELINE_TOOLING_COMMIT" ]
+          [ "$(jq -r '.run_attempt' <<<"$run_json")" = "$BASELINE_RUN_ATTEMPT" ]
+          [ "$BASELINE_TOOLING_COMMIT" = "$GITHUB_SHA" ]
+          marker="$(curl -fsS --max-time 20 https://staging.nodezero.social/deploy-marker.json)"
+          [ "$(jq -r '.commit // empty' <<<"$marker")" = "$BASELINE_COMMIT" ]
+          artifact_id="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${BASELINE_RUN_ID}/artifacts" \
+            --jq ".artifacts[] | select(.name == \"staging-baseline-${BASELINE_COMMIT}\" and .expired == false) | .id" \
+            | head -n1)"
+          [[ "$artifact_id" =~ ^[0-9]+$ ]]
+          gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip" > /tmp/baseline-artifact.zip
+          rm -rf /tmp/baseline-artifact
+          mkdir -p /tmp/baseline-artifact
+          unzip -q /tmp/baseline-artifact.zip -d /tmp/baseline-artifact
+          manifest=/tmp/baseline-artifact/manifest.json
+          [ "$(jq -r '.kind' "$manifest")" = "staging-n-1-baseline" ]
+          [ "$(jq -r '.commit' "$manifest")" = "$BASELINE_COMMIT" ]
+          [ "$(jq -r '.captureToolingCommit' "$manifest")" = "$BASELINE_TOOLING_COMMIT" ]
+          [ "$(jq -r '.capturedByRunId' "$manifest")" = "$BASELINE_RUN_ID" ]
+          [ "$(jq -r '.capturedByRunAttempt' "$manifest")" = "$BASELINE_RUN_ATTEMPT" ]
+          [ "$(jq -r '.components.provisioner.commit' "$manifest")" = "$BASELINE_COMMIT" ]
+          [ "$(jq -r '.components.relay.commit' "$manifest")" = "$BASELINE_COMMIT" ]
+          [ "$(sha256sum /tmp/baseline-artifact/provisioner.zip | awk '{print $1}')" = "$(jq -r '.sha256.provisionerZip' "$manifest")" ]
+          [ "$(sha256sum /tmp/baseline-artifact/relay.zip | awk '{print $1}')" = "$(jq -r '.sha256.relayZip' "$manifest")" ]
+          [ "$(sha256sum /tmp/baseline-artifact/pwa-files.sha256 | awk '{print $1}')" = "$(jq -r '.sha256.pwaTree' "$manifest")" ]
+          [ "$(sha256sum /tmp/baseline-artifact/provisioner-files.sha256 | awk '{print $1}')" = "$(jq -r '.sha256.provisionerTree' "$manifest")" ]
+          [ "$(sha256sum /tmp/baseline-artifact/relay-files.sha256 | awk '{print $1}')" = "$(jq -r '.sha256.relayTree' "$manifest")" ]
+          rm -rf /tmp/baseline-provisioner /tmp/baseline-relay
+          mkdir -p /tmp/baseline-provisioner /tmp/baseline-relay/deploy
+          unzip -q /tmp/baseline-artifact/provisioner.zip -d /tmp/baseline-provisioner
+          unzip -q /tmp/baseline-artifact/relay.zip -d /tmp/baseline-relay/deploy
+          (cd /tmp/baseline-provisioner && sha256sum --check /tmp/baseline-artifact/provisioner-files.sha256)
+          (cd /tmp/baseline-relay/deploy && sha256sum --check /tmp/baseline-artifact/relay-files.sha256)
+          provisioner_payload="$(cd /tmp/baseline-provisioner && find dist -type f ! -name build-info.json -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
+          relay_payload="$(cd /tmp/baseline-relay && find deploy -type f ! -name build-info.json -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
+          [ "$(jq -r '.commit' /tmp/baseline-provisioner/dist/build-info.json)" = "$BASELINE_COMMIT" ]
+          [ "$(jq -r '.payloadSha256' /tmp/baseline-provisioner/dist/build-info.json)" = "$provisioner_payload" ]
+          [ "$(jq -r '.components.provisioner.payloadSha256' "$manifest")" = "$provisioner_payload" ]
+          [ "$(jq -r '.commit' /tmp/baseline-relay/deploy/build-info.json)" = "$BASELINE_COMMIT" ]
+          [ "$(jq -r '.payloadSha256' /tmp/baseline-relay/deploy/build-info.json)" = "$relay_payload" ]
+          [ "$(jq -r '.components.relay.payloadSha256' "$manifest")" = "$relay_payload" ]
+          (cd /tmp/baseline-artifact/pwa-dist && sha256sum --check ../pwa-files.sha256)
+
       - name: Validate environment isolation policy
         run: pnpm policy:validate-env
 
       - name: Validate consentful discovery security policy
         run: pnpm policy:validate-consentful-discovery
+
+      - name: Validate consentful discovery implementation boundaries
+        run: pnpm qa:smoke:consentful-discovery
 
       - name: Validate attestation fail-closed policy
         run: pnpm policy:validate-attestation-fail-closed
@@ -646,6 +720,8 @@ jobs:
       - name: Verify deployed marker provenance
         env:
           EXPECTED_COMMIT: ${{ github.sha }}
+          EXPECTED_RUN_ID: ${{ github.run_id }}
+          EXPECTED_RUN_ATTEMPT: ${{ github.run_attempt }}
         run: |
           set -euo pipefail
           marker_url="https://${{ steps.hostname.outputs.hostname }}/deploy-marker.json"
@@ -658,10 +734,14 @@ jobs:
             marker_env="$(jq -r '.environment // empty' /tmp/deploy-marker.json 2>/dev/null || true)"
             marker_workflow="$(jq -r '.workflow // empty' /tmp/deploy-marker.json 2>/dev/null || true)"
             marker_commit="$(jq -r '.commit // empty' /tmp/deploy-marker.json 2>/dev/null || true)"
+            marker_run_id="$(jq -r '.runId // empty' /tmp/deploy-marker.json 2>/dev/null || true)"
+            marker_run_attempt="$(jq -r '.runAttempt // empty' /tmp/deploy-marker.json 2>/dev/null || true)"
 
             if [ "$marker_env" = "staging-testnet" ] && \
                [ "$marker_workflow" = "staging-deploy" ] && \
-               [ "$marker_commit" = "$EXPECTED_COMMIT" ]; then
+              [ "$marker_commit" = "$EXPECTED_COMMIT" ] && \
+              [ "$marker_run_id" = "$EXPECTED_RUN_ID" ] && \
+              [ "$marker_run_attempt" = "$EXPECTED_RUN_ATTEMPT" ]; then
               echo "Marker provenance check passed on attempt ${attempt}."
               exit 0
             fi
@@ -684,6 +764,8 @@ jobs:
       - name: Verify public apex marker convergence for auth gate
         env:
           EXPECTED_COMMIT: ${{ github.sha }}
+          EXPECTED_RUN_ID: ${{ github.run_id }}
+          EXPECTED_RUN_ATTEMPT: ${{ github.run_attempt }}
         run: |
           set -euo pipefail
           marker_url="https://nodezero.social/deploy-marker.json"
@@ -696,10 +778,14 @@ jobs:
             marker_env="$(jq -r '.environment // empty' /tmp/staging-domain-marker.json 2>/dev/null || true)"
             marker_workflow="$(jq -r '.workflow // empty' /tmp/staging-domain-marker.json 2>/dev/null || true)"
             marker_commit="$(jq -r '.commit // empty' /tmp/staging-domain-marker.json 2>/dev/null || true)"
+            marker_run_id="$(jq -r '.runId // empty' /tmp/staging-domain-marker.json 2>/dev/null || true)"
+            marker_run_attempt="$(jq -r '.runAttempt // empty' /tmp/staging-domain-marker.json 2>/dev/null || true)"
 
             if [ "$marker_env" = "staging-testnet" ] && \
                [ "$marker_workflow" = "staging-deploy" ] && \
-               [ "$marker_commit" = "$EXPECTED_COMMIT" ]; then
+               [ "$marker_commit" = "$EXPECTED_COMMIT" ] && \
+               [ "$marker_run_id" = "$EXPECTED_RUN_ID" ] && \
+               [ "$marker_run_attempt" = "$EXPECTED_RUN_ATTEMPT" ]; then
               echo "Public apex marker converged on attempt ${attempt}."
               exit 0
             fi
@@ -838,10 +924,14 @@ jobs:
           set -euo pipefail
           curl --fail --silent --show-error https://staging.nodezero.social/deploy-marker.json > /tmp/deploy-marker.json
           live_sha="$(jq -r '.commit // empty' /tmp/deploy-marker.json)"
+          live_run_id="$(jq -r '.runId // empty' /tmp/deploy-marker.json)"
+          live_run_attempt="$(jq -r '.runAttempt // empty' /tmp/deploy-marker.json)"
           if [ "$live_sha" != "$GITHUB_SHA" ]; then
             echo "Live marker ${live_sha} does not match candidate ${GITHUB_SHA}."
             exit 1
           fi
+          [ "$live_run_id" = "${{ github.run_id }}" ]
+          [ "$live_run_attempt" = "${{ github.run_attempt }}" ]
 
       - name: Require physical-device runner and installed evidence
         env:

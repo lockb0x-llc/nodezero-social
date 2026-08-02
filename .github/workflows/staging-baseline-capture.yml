@@ -1,0 +1,254 @@
+name: Capture Staging Baseline
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_deployed_commit:
+        description: Exact commit currently recorded by the live staging marker
+        required: true
+        type: string
+      confirm_staging_testnet:
+        description: Confirm this captures the current staging-testnet N-1 baseline
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  actions: read
+  contents: read
+  id-token: write
+
+concurrency:
+  group: staging-testnet-deploy
+  cancel-in-progress: false
+
+jobs:
+  capture-baseline:
+    name: Capture current staging-testnet N-1
+    if: ${{ inputs.confirm_staging_testnet == true }}
+    runs-on: ubuntu-latest
+    environment: staging-testnet
+
+    env:
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      AZURE_RESOURCE_GROUP: rg-nodezero-social-staging-testnet
+      JSS_PROVISIONER_APP_NAME: nodezero-social-staging-testnet-provisioner
+      RELAY_APP_NAME: nodezero-social-staging-testnet-relay
+      STAGING_BASE_URL: https://staging.nodezero.social
+
+    steps:
+      - name: Checkout release tooling
+        uses: actions/checkout@v4
+
+      - name: Verify requested SHA matches live staging provenance
+        id: live
+        env:
+          EXPECTED_COMMIT: ${{ inputs.expected_deployed_commit }}
+        run: |
+          set -euo pipefail
+          marker="$(curl -fsS --max-time 20 "${STAGING_BASE_URL}/deploy-marker.json")"
+          [ "$(jq -r '.environment // empty' <<<"$marker")" = "staging-testnet" ]
+          [ "$(jq -r '.workflow // empty' <<<"$marker")" = "staging-deploy" ]
+          live_commit="$(jq -r '.commit // empty' <<<"$marker")"
+          [ "$live_commit" = "$EXPECTED_COMMIT" ]
+          [ "${#live_commit}" -eq 40 ]
+          echo "commit=$live_commit" >> "$GITHUB_OUTPUT"
+          echo "run_id=$(jq -r '.runId' <<<"$marker")" >> "$GITHUB_OUTPUT"
+          echo "run_attempt=$(jq -r '.runAttempt' <<<"$marker")" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$marker" > /tmp/live-marker.json
+
+      - name: Authenticate live marker deployment run and attempt
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LIVE_COMMIT: ${{ steps.live.outputs.commit }}
+          LIVE_RUN_ID: ${{ steps.live.outputs.run_id }}
+          LIVE_RUN_ATTEMPT: ${{ steps.live.outputs.run_attempt }}
+        run: |
+          set -euo pipefail
+          run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${LIVE_RUN_ID}/attempts/${LIVE_RUN_ATTEMPT}")"
+          [ "$(jq -r '.status' <<<"$run_json")" = "completed" ]
+          [ "$(jq -r '.conclusion' <<<"$run_json")" = "success" ]
+          [ "$(jq -r '.head_sha' <<<"$run_json")" = "$LIVE_COMMIT" ]
+          [ "$(jq -r '.head_branch' <<<"$run_json")" = "testnet" ]
+          [ "$(jq -r '.run_attempt' <<<"$run_json")" = "$LIVE_RUN_ATTEMPT" ]
+          [[ "$(jq -r '.path' <<<"$run_json")" == */staging-deploy.yml ]]
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install exact source dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Reconfirm live marker before capture
+        env:
+          EXPECTED_COMMIT: ${{ steps.live.outputs.commit }}
+        run: |
+          set -euo pipefail
+          marker="$(curl -fsS --max-time 20 "${STAGING_BASE_URL}/deploy-marker.json")"
+          [ "$(jq -r '.commit // empty' <<<"$marker")" = "$EXPECTED_COMMIT" ]
+
+      - name: Capture exact deployed App Service bytes
+        id: capture-apps
+        run: |
+          set -euo pipefail
+          mkdir -p baseline-bundle
+          capture_app() {
+            local app="$1" destination="$2"
+            local credentials username password scm_host
+            credentials="$(az webapp deployment list-publishing-credentials \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --name "$app" -o json)"
+            username="$(jq -r '.publishingUserName' <<<"$credentials")"
+            password="$(jq -r '.publishingPassword' <<<"$credentials")"
+            scm_host="$(az webapp show --resource-group "$AZURE_RESOURCE_GROUP" --name "$app" --query defaultHostName -o tsv | sed 's/\.azurewebsites\.net$/.scm.azurewebsites.net/')"
+            test -n "$username"
+            test -n "$password"
+            echo "::add-mask::$username"
+            echo "::add-mask::$password"
+            curl --fail --silent --show-error --max-time 120 \
+              --user "${username}:${password}" \
+              "https://${scm_host}/api/zip/site/wwwroot/" \
+              --output "$destination"
+            unzip -t "$destination" >/dev/null
+          }
+          capture_app "$JSS_PROVISIONER_APP_NAME" baseline-bundle/provisioner.zip
+          capture_app "$RELAY_APP_NAME" baseline-bundle/relay.zip
+          rm -rf /tmp/provisioner-live /tmp/relay-live
+          mkdir -p /tmp/provisioner-live /tmp/relay-live/deploy
+          unzip -q baseline-bundle/provisioner.zip -d /tmp/provisioner-live
+          unzip -q baseline-bundle/relay.zip -d /tmp/relay-live/deploy
+          (cd /tmp/provisioner-live && find . -type f -print0 | sort -z | xargs -0 sha256sum) > baseline-bundle/provisioner-files.sha256
+          (cd /tmp/relay-live/deploy && find . -type f -print0 | sort -z | xargs -0 sha256sum) > baseline-bundle/relay-files.sha256
+          provisioner_commit="$(jq -r '.commit // empty' /tmp/provisioner-live/dist/build-info.json)"
+          provisioner_payload="$(jq -r '.payloadSha256 // empty' /tmp/provisioner-live/dist/build-info.json)"
+          computed_provisioner_payload="$(cd /tmp/provisioner-live && find dist -type f ! -name build-info.json -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
+          relay_commit="$(jq -r '.commit // empty' /tmp/relay-live/deploy/build-info.json)"
+          relay_payload="$(jq -r '.payloadSha256 // empty' /tmp/relay-live/deploy/build-info.json)"
+          computed_relay_payload="$(cd /tmp/relay-live && find deploy -type f ! -name build-info.json -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
+          [ "$provisioner_commit" = "${{ steps.live.outputs.commit }}" ]
+          [ "$provisioner_payload" = "$computed_provisioner_payload" ]
+          [ "$relay_commit" = "${{ steps.live.outputs.commit }}" ]
+          [ "$relay_payload" = "$computed_relay_payload" ]
+          echo "provisioner_commit=$provisioner_commit" >> "$GITHUB_OUTPUT"
+          echo "provisioner_payload=$provisioner_payload" >> "$GITHUB_OUTPUT"
+          echo "relay_commit=$relay_commit" >> "$GITHUB_OUTPUT"
+          echo "relay_payload=$relay_payload" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout exact deployed source for PWA reconstruction
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.live.outputs.commit }}
+          fetch-depth: 1
+
+      - name: Install exact deployed source dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build strict staging PWA baseline
+        env:
+          NZ_ENV_PROFILE: staging-testnet
+          NZ_RELAY_URL: wss://nodezero-social-staging-testnet-relay.azurewebsites.net
+          NZ_IDENTITY_CONTRACT_ID: CCHFYOKLGVTXEYYHWEFPI22FR26VRGG2CBBUTP6XPW3ZSIWIKEVQQ44K
+          NZ_LOCKBOX_CONTRACT_ID: CB36LY5WZLJNMY4DHRXQER6LU3L4E5MGFYT2XSJG7ZJZV5SIIOKODT2H
+          NZ_LOCKBOX_FACTORY_CONTRACT_ID: CDFHCQA3YJCITWEMNLCSRGQVVFEXGTONWSQJTD5VIZO7YV4IOKZUPCGT
+          NZ_LOCKBOX_FACTORY_VERSION: '3'
+          NZ_ZK_ARTIFACTS_URL: https://stki7yquyjmnskg.blob.core.windows.net/zk-artifacts/
+          NZ_ZK_MANIFEST_URL: https://stki7yquyjmnskg.blob.core.windows.net/zk-artifacts/lockb0x-bridge-v3/zk-testnet-lockbox-bridge-v3-artifacts.json
+          NZ_NODEZERO_ISSUER_URL: https://solid.nodezero.social/
+          NZ_NODEZERO_DIRECTORY_URL: https://api.nodezero.social/v1/community-directory/index
+          NZ_APP_ORIGIN: https://staging.nodezero.social
+          NZ_SEAMLESS_ONBOARDING_ENABLED: 'true'
+          NZ_JSS_PROVISIONER_URL: https://api.nodezero.social
+          NZ_BROWSER_SESSION_ENABLED: 'true'
+          NZ_SOLID_BOOTSTRAP_ENABLED: 'true'
+          NZ_MASHLIB_EXPLORER_ENABLED: 'true'
+          NZ_MASHLIB_MODULE_ID: nodezero:mashlib-pane-provider
+        run: |
+          pnpm --filter @nodezero/mobile-app build:web
+          pnpm pwa:validate:artifact
+
+      - name: Verify rebuilt PWA matches every live staging asset
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' file; do
+            relative="${file#packages/mobile-app/dist/}"
+            if [ "$relative" = "deploy-marker.json" ]; then continue; fi
+            local_hash="$(sha256sum "$file" | awk '{print $1}')"
+            live_hash="$(curl -fsS --max-time 30 "${STAGING_BASE_URL}/${relative}" | sha256sum | awk '{print $1}')"
+            if [ "$local_hash" != "$live_hash" ]; then
+              echo "Baseline PWA mismatch for ${relative}."
+              exit 1
+            fi
+          done < <(find packages/mobile-app/dist -type f -print0)
+
+      - name: Build authenticated N-1 baseline manifest
+        env:
+          BASELINE_COMMIT: ${{ steps.live.outputs.commit }}
+        run: |
+          set -euo pipefail
+          mkdir -p baseline-bundle
+          cp -r packages/mobile-app/dist baseline-bundle/pwa-dist
+          (cd packages/mobile-app/dist && find . -type f ! -name deploy-marker.json -print0 | sort -z | xargs -0 sha256sum) > baseline-bundle/pwa-files.sha256
+          provisioner_sha="$(sha256sum baseline-bundle/provisioner.zip | awk '{print $1}')"
+          pwa_sha="$(sha256sum baseline-bundle/pwa-files.sha256 | awk '{print $1}')"
+          relay_sha="$(sha256sum baseline-bundle/relay.zip | awk '{print $1}')"
+          cat > baseline-bundle/manifest.json <<EOF
+          {
+            "version": 1,
+            "kind": "staging-n-1-baseline",
+            "environment": "staging-testnet",
+            "commit": "${BASELINE_COMMIT}",
+            "captureToolingCommit": "${GITHUB_SHA}",
+            "capturedByRunId": "${GITHUB_RUN_ID}",
+            "capturedByRunAttempt": "${GITHUB_RUN_ATTEMPT}",
+            "liveMarkerRunId": "$(jq -r '.runId' /tmp/live-marker.json)",
+            "liveMarkerRunAttempt": "$(jq -r '.runAttempt' /tmp/live-marker.json)",
+            "components": {
+              "provisioner": {
+                "commit": "${{ steps.capture-apps.outputs.provisioner_commit }}",
+                "payloadSha256": "${{ steps.capture-apps.outputs.provisioner_payload }}"
+              },
+              "relay": {
+                "commit": "${{ steps.capture-apps.outputs.relay_commit }}",
+                "payloadSha256": "${{ steps.capture-apps.outputs.relay_payload }}"
+              }
+            },
+            "qFlags": {
+              "directory": false,
+              "peerProfile": false,
+              "relationship": false,
+              "transport": false
+            },
+            "sha256": {
+              "provisionerZip": "${provisioner_sha}",
+              "relayZip": "${relay_sha}",
+              "pwaTree": "${pwa_sha}",
+              "provisionerTree": "$(sha256sum baseline-bundle/provisioner-files.sha256 | awk '{print $1}')",
+              "relayTree": "$(sha256sum baseline-bundle/relay-files.sha256 | awk '{print $1}')"
+            }
+          }
+          EOF
+
+      - name: Upload authenticated N-1 baseline bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-baseline-${{ steps.live.outputs.commit }}
+          path: baseline-bundle
+          retention-days: 90
+          if-no-files-found: error
