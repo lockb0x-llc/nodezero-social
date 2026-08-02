@@ -78,6 +78,30 @@ for (const path of [
 }
 
 const rollbackWorkflow = sources.get('.github/workflows/staging-rollback.yml') ?? ''
+const retainedUploadChecks = [
+  [
+    '.github/workflows/staging-baseline-capture.yml',
+    /name: staging-baseline-\$\{\{ steps\.live\.outputs\.commit \}\}[\s\S]{0,300}include-hidden-files: true/,
+  ],
+  [
+    '.github/workflows/staging-deploy.yml',
+    /name: staging-rollback-\$\{\{ github\.sha \}\}-\$\{\{ github\.run_attempt \}\}[\s\S]{0,300}include-hidden-files: true/,
+  ],
+]
+for (const [path, uploadPattern] of retainedUploadChecks) {
+  const workflow = sources.get(path) ?? (await readFile(path, 'utf8'))
+  if (!uploadPattern.test(workflow)) {
+    failures.push(`${path}: retained upload does not preserve hidden runtime assets`)
+  }
+}
+const deployWorkflow = sources.get('.github/workflows/staging-deploy.yml') ?? ''
+if (!/Baseline artifact is missing checksummed PWA file/.test(deployWorkflow)) {
+  failures.push('deploy workflow: missing baseline PWA artifact completeness check')
+}
+if (!/Rollback artifact is missing checksummed PWA file/.test(rollbackWorkflow)) {
+  failures.push('rollback workflow: missing retained PWA completeness check')
+}
+
 for (const [label, pattern] of [
   [
     'mandatory provisioner tree identity',

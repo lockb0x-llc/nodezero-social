@@ -193,6 +193,12 @@ jobs:
             echo "Unsupported baseline relay provenance: $relay_provenance"
             exit 1
           fi
+          while read -r _ relative_path; do
+            test -f "rollback-bundle/pwa-dist/${relative_path#./}" || {
+              echo "Rollback artifact is missing checksummed PWA file: ${relative_path}"
+              exit 1
+            }
+          done < rollback-bundle/pwa-files.sha256
           (cd rollback-bundle/pwa-dist && sha256sum --check ../pwa-files.sha256)
           pwa_sha="$(cd rollback-bundle/pwa-dist && find . -type f ! -name deploy-marker.json ! -name staticwebapp.config.json -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
           [ "$pwa_sha" = "$(jq -r '.sha256.pwaTree' "$manifest")" ]

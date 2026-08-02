@@ -210,6 +210,12 @@ jobs:
             echo "Unsupported baseline relay provenance: $relay_provenance"
             exit 1
           fi
+          while read -r _ relative_path; do
+            test -f "/tmp/baseline-artifact/pwa-dist/${relative_path#./}" || {
+              echo "Baseline artifact is missing checksummed PWA file: ${relative_path}"
+              exit 1
+            }
+          done < /tmp/baseline-artifact/pwa-files.sha256
           (cd /tmp/baseline-artifact/pwa-dist && sha256sum --check ../pwa-files.sha256)
 
       - name: Validate environment isolation policy
@@ -1010,6 +1016,7 @@ jobs:
         with:
           name: staging-rollback-${{ github.sha }}-${{ github.run_attempt }}
           path: rollback-bundle
+          include-hidden-files: true
           retention-days: 90
           if-no-files-found: error
 

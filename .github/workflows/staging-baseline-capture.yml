@@ -395,5 +395,6 @@ jobs:
         with:
           name: staging-baseline-${{ steps.live.outputs.commit }}
           path: baseline-bundle
+          include-hidden-files: true
           retention-days: 90
           if-no-files-found: error

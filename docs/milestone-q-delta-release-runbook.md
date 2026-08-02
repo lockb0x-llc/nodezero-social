@@ -110,6 +110,9 @@ This runbook does not authorize Production Mainnet deployment.
    `staticwebapp.config.json` remains in the deployable rollback artifact but is excluded
    from the public HTTP checksum manifest because Static Web Apps consumes rather than
    serves that file.
+   Retained baseline and rollback uploads include hidden path segments because Expo
+   runtime assets can live under `.pnpm`; consumers reject any artifact missing a path
+   listed in the PWA checksum manifest.
 4. Do not use the candidate deployment's own rollback bundle as its N-1 artifact.
 
 ## Phase 4: Dark Staging Deployment
