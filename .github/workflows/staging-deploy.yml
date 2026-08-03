@@ -677,58 +677,112 @@ jobs:
           health_url="https://${JSS_PROVISIONER_APP_NAME}.azurewebsites.net/health"
           echo "Waiting for provisioner health: ${health_url}"
           consecutive_healthy=0
+          health_deadline=$((SECONDS + 600))
+          attempt=0
+          expected_artifact_sha="$(sha256sum packages/jss-provisioner/deploy.zip | awk '{print $1}')"
 
-          for attempt in {1..30}; do
+          health_contract_matches() {
+            jq -e \
+              --arg commit "$EXPECTED_COMMIT" \
+              --arg payload "$EXPECTED_PAYLOAD_SHA256" \
+              --arg artifact "$expected_artifact_sha" \
+              '.build.commit == $commit and
+               .build.payloadSha256 == $payload and
+               .build.configuredArtifactSha256 == $artifact and
+               .communityDirectory.backend == "table" and
+               .communityDirectory.ready == true and
+               .transportIdentity.ready == true and
+               .session.signingKeyConfigured == true and
+               .milestoneQ.flags.directory == false and
+               .milestoneQ.flags["peer-profile"] == false and
+               .milestoneQ.flags.relationship == false and
+               .milestoneQ.flags.transport == false' \
+              "$1" >/dev/null
+          }
+
+          print_health_diagnostics() {
+            local health_file="$1"
+            if [ -f "$health_file" ]; then
+              echo "Final sanitized provisioner health document:"
+              cat "$health_file"
+            fi
+          }
+
+          while (( SECONDS < health_deadline )); do
+            attempt=$((attempt + 1))
+            remaining_seconds=$((health_deadline - SECONDS))
+            if (( remaining_seconds <= 0 )); then
+              break
+            fi
+            fetch_timeout_ms=$((remaining_seconds * 1000))
+            if (( fetch_timeout_ms > 10000 )); then
+              fetch_timeout_ms=10000
+            fi
             rm -f /tmp/provisioner-health.json
-            if NZ_FETCH_TIMEOUT_MS=10000 node ./scripts/qa/fetch-exact.mjs "$health_url" /tmp/provisioner-health.json; then
+            if NZ_FETCH_TIMEOUT_MS="$fetch_timeout_ms" node ./scripts/qa/fetch-exact.mjs "$health_url" /tmp/provisioner-health.json; then
               deployed_commit="$(jq -r '.build.commit // empty' /tmp/provisioner-health.json)"
               payload_sha="$(jq -r '.build.payloadSha256 // empty' /tmp/provisioner-health.json)"
               configured_artifact_sha="$(jq -r '.build.configuredArtifactSha256 // empty' /tmp/provisioner-health.json)"
-                directory_backend="$(jq -r '.communityDirectory.backend // empty' /tmp/provisioner-health.json)"
-                directory_ready="$(jq -r '.communityDirectory.ready // false' /tmp/provisioner-health.json)"
-                transport_ready="$(jq -r '.transportIdentity.ready // false' /tmp/provisioner-health.json)"
-                q_directory_enabled="$(jq -r '.milestoneQ.flags.directory // true' /tmp/provisioner-health.json)"
-                q_peer_profile_enabled="$(jq -r '.milestoneQ.flags["peer-profile"] // true' /tmp/provisioner-health.json)"
-                q_relationship_enabled="$(jq -r '.milestoneQ.flags.relationship // true' /tmp/provisioner-health.json)"
-                q_transport_enabled="$(jq -r '.milestoneQ.flags.transport // true' /tmp/provisioner-health.json)"
-              expected_artifact_sha="$(sha256sum packages/jss-provisioner/deploy.zip | awk '{print $1}')"
-              if [ "$deployed_commit" = "$EXPECTED_COMMIT" ] && \
-                  [ "$payload_sha" = "$EXPECTED_PAYLOAD_SHA256" ] && \
-                  [ "$configured_artifact_sha" = "$expected_artifact_sha" ] && \
-                  [ "$directory_backend" = "table" ] && \
-                  [ "$directory_ready" = "true" ] && \
-                  [ "$transport_ready" = "true" ] && \
-                  [ "$(jq -r '.session.signingKeyConfigured // false' /tmp/provisioner-health.json)" = "true" ] && \
-                  [ "$q_directory_enabled" = "false" ] && \
-                  [ "$q_peer_profile_enabled" = "false" ] && \
-                  [ "$q_relationship_enabled" = "false" ] && \
-                  [ "$q_transport_enabled" = "false" ]; then
+              directory_backend="$(jq -r '.communityDirectory.backend // empty' /tmp/provisioner-health.json)"
+              directory_ready="$(jq -r '.communityDirectory.ready // false' /tmp/provisioner-health.json)"
+              transport_ready="$(jq -r '.transportIdentity.ready // false' /tmp/provisioner-health.json)"
+              signing_key_ready="$(jq -r '.session.signingKeyConfigured // false' /tmp/provisioner-health.json)"
+              q_directory_enabled="$(jq -r '.milestoneQ.flags.directory // true' /tmp/provisioner-health.json)"
+              q_peer_profile_enabled="$(jq -r '.milestoneQ.flags["peer-profile"] // true' /tmp/provisioner-health.json)"
+              q_relationship_enabled="$(jq -r '.milestoneQ.flags.relationship // true' /tmp/provisioner-health.json)"
+              q_transport_enabled="$(jq -r '.milestoneQ.flags.transport // true' /tmp/provisioner-health.json)"
+              if health_contract_matches /tmp/provisioner-health.json; then
                 consecutive_healthy=$((consecutive_healthy + 1))
                 echo "Provisioner health and provenance passed on attempt ${attempt} (${consecutive_healthy}/3 consecutive)."
                 if [ "$consecutive_healthy" -eq 3 ]; then
+                  remaining_seconds=$((health_deadline - SECONDS))
+                  if (( remaining_seconds < 40 )); then
+                    echo "Provisioner became ready without enough deadline budget for the 30-second stability hold."
+                    break
+                  fi
                   echo "Holding exact provenance for 30 seconds before mutating staging checks."
                   sleep 30
-                  stable_commit="$(NZ_FETCH_TIMEOUT_MS=10000 node ./scripts/qa/fetch-exact.mjs "$health_url" | jq -r '.build.commit // empty')"
-                  if [ "$stable_commit" != "$EXPECTED_COMMIT" ]; then
-                    echo "Provisioner provenance changed during stabilization (${stable_commit})."
+                  remaining_seconds=$((health_deadline - SECONDS))
+                  rm -f /tmp/provisioner-stable-health.json
+                  if (( remaining_seconds <= 0 )) || \
+                    ! timeout "${remaining_seconds}s" env NZ_FETCH_TIMEOUT_MS=10000 \
+                      node ./scripts/qa/fetch-exact.mjs "$health_url" /tmp/provisioner-stable-health.json || \
+                    ! health_contract_matches /tmp/provisioner-stable-health.json || \
+                    (( SECONDS > health_deadline )); then
+                    if [ -f /tmp/provisioner-stable-health.json ]; then
+                      print_health_diagnostics /tmp/provisioner-stable-health.json
+                    else
+                      print_health_diagnostics /tmp/provisioner-health.json
+                    fi
+                    echo "Provisioner readiness contract changed during stabilization."
                     exit 1
                   fi
+                  mv /tmp/provisioner-stable-health.json /tmp/provisioner-health.json
                   cat /tmp/provisioner-health.json
                   exit 0
                 fi
               else
                 consecutive_healthy=0
-                echo "Attempt ${attempt}/30: provenance mismatch (commit='${deployed_commit}', payload='${payload_sha}', artifact='${configured_artifact_sha}')."
+                echo "Attempt ${attempt}: health mismatch (commit='${deployed_commit}', payload='${payload_sha}', artifact='${configured_artifact_sha}', directoryBackend='${directory_backend}', directoryReady='${directory_ready}', transportReady='${transport_ready}', signingKeyReady='${signing_key_ready}', qDirectory='${q_directory_enabled}', qPeerProfile='${q_peer_profile_enabled}', qRelationship='${q_relationship_enabled}', qTransport='${q_transport_enabled}')."
               fi
             else
               consecutive_healthy=0
             fi
 
-            echo "Attempt ${attempt}/30: exact health fetch or provenance check failed. Retrying in 10s..."
-            sleep 10
+            remaining_seconds=$((health_deadline - SECONDS))
+            if (( remaining_seconds <= 0 )); then
+              break
+            fi
+            sleep_seconds=10
+            if (( remaining_seconds < sleep_seconds )); then
+              sleep_seconds=$remaining_seconds
+            fi
+            echo "Attempt ${attempt}: exact health fetch or readiness check failed. Retrying in ${sleep_seconds}s..."
+            sleep "$sleep_seconds"
           done
 
-          echo "Provisioner failed health check after 30 attempts."
+          print_health_diagnostics /tmp/provisioner-health.json
+          echo "Provisioner failed health check within the 600-second deadline."
           exit 1
 
       - name: Warm JSS provisioner onboarding endpoint

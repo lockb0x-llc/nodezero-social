@@ -64,6 +64,9 @@ This runbook does not authorize Production Mainnet deployment.
    producing the single intended application restart. Transient SCM status
    failures are retried within the bounded polling window, and terminal failure or
    timeout emits the distinct Kudu deployment record and log before failing closed.
+   After provenance activation, allow up to ten minutes for App Service startup and
+   dependent readiness, while still requiring three consecutive all-dark health
+   samples and a final 30-second exact-commit hold before later components mutate.
    The workspace production audit must report zero high and zero critical advisories;
    patched overrides are accepted only with package tests and a strict staging PWA build.
 3. Review the complete delta from the last deployed tag through the final candidate

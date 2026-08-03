@@ -126,6 +126,15 @@ if (
     'deploy workflow: provisioner bytes and provenance are not activated in a restart-safe order'
   )
 }
+if (
+  !/Verify JSS provisioner health[\s\S]*health_deadline=\$\(\(SECONDS \+ 600\)\)[\s\S]*health_contract_matches\(\)[\s\S]*\.build\.commit == \$commit[\s\S]*\.build\.payloadSha256 == \$payload[\s\S]*\.build\.configuredArtifactSha256 == \$artifact[\s\S]*\.communityDirectory\.backend == "table"[\s\S]*\.communityDirectory\.ready == true[\s\S]*\.transportIdentity\.ready == true[\s\S]*\.session\.signingKeyConfigured == true[\s\S]*\.milestoneQ\.flags\.directory == false[\s\S]*\.milestoneQ\.flags\["peer-profile"\] == false[\s\S]*\.milestoneQ\.flags\.relationship == false[\s\S]*\.milestoneQ\.flags\.transport == false[\s\S]*while \(\( SECONDS < health_deadline \)\)[\s\S]*fetch_timeout_ms=\$\(\(remaining_seconds \* 1000\)\)[\s\S]*fetch_timeout_ms > 10000[\s\S]*NZ_FETCH_TIMEOUT_MS="\$fetch_timeout_ms"[\s\S]*if health_contract_matches \/tmp\/provisioner-health\.json[\s\S]*consecutive_healthy=\$\(\(consecutive_healthy \+ 1\)\)[\s\S]*"\$consecutive_healthy" -eq 3[\s\S]*remaining_seconds < 40[\s\S]*sleep 30[\s\S]*! health_contract_matches \/tmp\/provisioner-stable-health\.json[\s\S]*SECONDS > health_deadline[\s\S]*print_health_diagnostics \/tmp\/provisioner-stable-health\.json[\s\S]*600-second deadline/.test(
+    deployWorkflow
+  )
+) {
+  failures.push(
+    'deploy workflow: provisioner readiness is not bounded by the guarded ten-minute stability contract'
+  )
+}
 if (!/Rollback artifact is missing checksummed PWA file/.test(rollbackWorkflow)) {
   failures.push('rollback workflow: missing retained PWA completeness check')
 }
