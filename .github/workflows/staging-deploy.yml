@@ -994,7 +994,7 @@ jobs:
             if NZ_FETCH_TIMEOUT_MS=10000 node ./scripts/qa/fetch-exact.mjs "$relay_health_url" /tmp/relay-health.json && \
               [ "$(jq -r '.identityVerifierConfigured // false' /tmp/relay-health.json)" = "true" ] && \
               [ "$(jq -r '.identityVerifierReachable // false' /tmp/relay-health.json)" = "true" ] && \
-              [ "$(jq -r '.transportEnabled // true' /tmp/relay-health.json)" = "false" ] && \
+              jq -e '.transportEnabled == false' /tmp/relay-health.json >/dev/null && \
               [ "$(jq -r '.build.commit // empty' /tmp/relay-health.json)" = "$EXPECTED_COMMIT" ] && \
               [ "$(jq -r '.build.payloadSha256 // empty' /tmp/relay-health.json)" = "$EXPECTED_PAYLOAD_SHA256" ]; then
               cat /tmp/relay-health.json

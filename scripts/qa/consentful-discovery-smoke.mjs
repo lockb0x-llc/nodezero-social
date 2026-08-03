@@ -176,7 +176,7 @@ const relayHealthLines = new Set((relayHealthBlock ?? '').split('\n').map((line)
 for (const predicate of [
   `[ "$(jq -r '.identityVerifierConfigured // false' /tmp/relay-health.json)" = "true" ] && \\`,
   `[ "$(jq -r '.identityVerifierReachable // false' /tmp/relay-health.json)" = "true" ] && \\`,
-  `[ "$(jq -r '.transportEnabled // true' /tmp/relay-health.json)" = "false" ] && \\`,
+  `jq -e '.transportEnabled == false' /tmp/relay-health.json >/dev/null && \\`,
   `[ "$(jq -r '.build.commit // empty' /tmp/relay-health.json)" = "$EXPECTED_COMMIT" ] && \\`,
   `[ "$(jq -r '.build.payloadSha256 // empty' /tmp/relay-health.json)" = "$EXPECTED_PAYLOAD_SHA256" ]; then`,
 ]) {
