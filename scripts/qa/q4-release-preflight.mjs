@@ -165,6 +165,8 @@ const gates = [
       '.github/workflows/staging-deploy.yml',
       '.github/workflows/staging-rollback.yml',
       '.github/workflows/staging-baseline-capture.yml',
+      'packages/jss-provisioner/runtime/package.json',
+      'scripts/qa/validate-provisioner-runtime.mjs',
     ],
   ],
 ]

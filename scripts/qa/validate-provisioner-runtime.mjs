@@ -4,15 +4,18 @@ import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import {
   chmodSync,
+  cpSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 
 const root = resolve(import.meta.dirname, '../..')
 const isWindows = process.platform === 'win32'
@@ -22,6 +25,12 @@ const pnpmCli = isWindows
 if (isWindows && !existsSync(pnpmCli)) throw new Error(`Unable to resolve pnpm CLI at ${pnpmCli}.`)
 const pnpm = isWindows ? process.execPath : 'pnpm'
 const pnpmPrefix = isWindows ? [pnpmCli] : []
+const npmCli = isWindows
+  ? join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js')
+  : null
+if (isWindows && !existsSync(npmCli)) throw new Error(`Unable to resolve npm CLI at ${npmCli}.`)
+const npm = isWindows ? process.execPath : 'npm'
+const npmPrefix = isWindows ? [npmCli] : []
 const target = mkdtempSync(join(tmpdir(), 'nodezero-provisioner-runtime-'))
 
 function run(label, args, options = {}) {
@@ -45,14 +54,56 @@ try {
   rmSync(join(root, 'packages', 'jss-provisioner', 'dist'), { recursive: true, force: true })
   rmSync(join(root, 'packages', 'solid-pod-sync', 'dist'), { recursive: true, force: true })
   run('clean package build', ['--filter', '@nodezero/jss-provisioner', 'build'])
-  run('frozen runtime deployment', [
-    '--config.inject-workspace-packages=true',
-    '--filter',
-    '@nodezero/jss-provisioner',
-    'deploy',
-    '--prod',
-    target,
-  ])
+  mkdirSync(join(target, 'dist'), { recursive: true })
+  cpSync(join(root, 'packages', 'jss-provisioner', 'dist'), join(target, 'dist'), {
+    recursive: true,
+  })
+  for (const name of ['startup.sh', 'install-stellar-cli.sh']) {
+    cpSync(join(root, 'packages', 'jss-provisioner', name), join(target, name))
+  }
+  for (const name of ['package.json', 'package-lock.json']) {
+    cpSync(join(root, 'packages', 'jss-provisioner', 'runtime', name), join(target, 'dist', name))
+  }
+  console.log('[qa:provisioner-runtime] RUN npm ci runtime deployment')
+  const npmInstall = spawnSync(
+    npm,
+    [
+      ...npmPrefix,
+      'ci',
+      '--prefix',
+      join(target, 'dist'),
+      '--omit=dev',
+      '--ignore-scripts',
+      '--bin-links=false',
+    ],
+    { cwd: root, stdio: 'inherit', shell: false }
+  )
+  if (npmInstall.error || npmInstall.status !== 0) {
+    throw npmInstall.error ?? new Error('npm ci runtime deployment failed.')
+  }
+  console.log('[qa:provisioner-runtime] PASS npm ci runtime deployment')
+  const solidTarget = join(target, 'dist', 'node_modules', '@nodezero', 'solid-pod-sync')
+  mkdirSync(solidTarget, { recursive: true })
+  cpSync(join(root, 'packages', 'solid-pod-sync', 'dist'), solidTarget, { recursive: true })
+  writeFileSync(
+    join(solidTarget, 'package.json'),
+    `${JSON.stringify({
+      name: '@nodezero/solid-pod-sync',
+      version: '0.0.1',
+      type: 'commonjs',
+      main: './index.js',
+      exports: { '.': './index.js' },
+    })}\n`
+  )
+  function assertNoLinks(directory) {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const path = join(directory, entry.name)
+      const stat = lstatSync(path)
+      if (stat.isSymbolicLink()) throw new Error(`Provisioner artifact contains link: ${path}`)
+      if (stat.isDirectory()) assertNoLinks(path)
+    }
+  }
+  assertNoLinks(target)
 
   const runtimeChecks = [
     ['snarkjs', '0.7.5'],
@@ -67,7 +118,7 @@ try {
       [
         '-e',
         `const fs=require('fs'),path=require('path');const root=process.argv[1];const direct=['snarkjs','@stellar/stellar-sdk','@nodezero/solid-pod-sync'];const entries=Object.fromEntries(direct.map(name=>[name,require.resolve(name,{paths:[root]})]));const bases=[root,...Object.values(entries).map(path.dirname)];function version(name){let entry;for(const base of bases){try{entry=require.resolve(name,{paths:[base]});break}catch{}}if(!entry)throw new Error('Unable to resolve '+name);let dir=path.dirname(entry);for(;;){const manifest=path.join(dir,'package.json');if(fs.existsSync(manifest)){const json=require(manifest);if(json.name===name)return json.version}const parent=path.dirname(dir);if(parent===dir)break;dir=parent}throw new Error('Unable to locate manifest for '+name)}const out={};for(const [name] of ${JSON.stringify(runtimeChecks)})out[name]=version(name);out.solidExports=Object.keys(require(entries['@nodezero/solid-pod-sync'])).length;console.log(JSON.stringify(out))`,
-        target,
+        join(target, 'dist'),
       ],
       { cwd: root, encoding: 'utf8' }
     )
@@ -80,11 +131,12 @@ try {
   if (!Number.isInteger(result.solidExports) || result.solidExports <= 0) {
     throw new Error('Vendored Solid package did not expose its runtime API.')
   }
-
-  const auditJson = run('production vulnerability audit', ['audit', '--prod', '--json'], {
-    cwd: target,
+  const npmAudit = spawnSync(npm, [...npmPrefix, 'audit', '--omit=dev', '--json'], {
+    cwd: join(target, 'dist'),
     encoding: 'utf8',
+    shell: false,
   })
+  const auditJson = npmAudit.stdout
   const audit = JSON.parse(auditJson)
   const vulnerabilities = audit.metadata?.vulnerabilities
   for (const severity of ['info', 'low', 'moderate', 'high', 'critical']) {
@@ -96,6 +148,11 @@ try {
   }
   if (!readFileSync(join(target, 'dist', 'index.js'), 'utf8').includes('use strict')) {
     throw new Error('Provisioner runtime is missing the compiled entrypoint.')
+  }
+  if (existsSync(join(target, 'package.json')) || existsSync(join(target, 'node_modules'))) {
+    throw new Error(
+      'Provisioner artifact exposes a root Node project that can trigger Kudu optimization.'
+    )
   }
   const startup = readFileSync(join(target, 'startup.sh'), 'utf8')
   const installer = readFileSync(join(target, 'install-stellar-cli.sh'), 'utf8')

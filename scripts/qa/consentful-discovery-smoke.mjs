@@ -109,12 +109,12 @@ if (!/Baseline artifact is missing checksummed PWA file/.test(deployWorkflow)) {
   failures.push('deploy workflow: missing baseline PWA artifact completeness check')
 }
 if (
-  !/inject-workspace-packages=true[\s\S]*@nodezero\/jss-provisioner deploy --prod[\s\S]*require\.resolve\('@nodezero\/solid-pod-sync'/.test(
+  !/runtime\/package-lock\.json[\s\S]*npm ci --prefix flat-runtime\/dist[\s\S]*dist\/node_modules\/@nodezero\/solid-pod-sync[\s\S]*--ignore-stack true/.test(
     deployWorkflow
   )
 ) {
   failures.push(
-    'deploy workflow: standalone provisioner artifact is not built from the frozen workspace graph'
+    'deploy workflow: standalone provisioner artifact is not optimizer-safe and lockfile-backed'
   )
 }
 if (!/Rollback artifact is missing checksummed PWA file/.test(rollbackWorkflow)) {

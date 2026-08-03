@@ -414,14 +414,31 @@ jobs:
         working-directory: packages/jss-provisioner
         run: |
           set -euo pipefail
-          rm -rf runtime-package deploy.zip
-          pnpm --config.inject-workspace-packages=true \
-            --filter @nodezero/jss-provisioner deploy --prod "$(pwd)/runtime-package"
-          node -e "const root=process.argv[1];console.log(require.resolve('snarkjs',{paths:[root]}));const solid=require.resolve('@nodezero/solid-pod-sync',{paths:[root]});console.log(solid);require(solid)" "$(pwd)/runtime-package"
-          payload_sha256="$(cd runtime-package && find . -type f ! -path './dist/build-info.json' -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
-          printf '{"commit":"%s","payloadSha256":"%s"}\n' "$GITHUB_SHA" "$payload_sha256" > runtime-package/dist/build-info.json
+          rm -rf flat-runtime deploy.zip
+          mkdir -p flat-runtime/dist
+          cp -r dist/. flat-runtime/dist/
+          cp startup.sh install-stellar-cli.sh flat-runtime/
+          cp runtime/package.json runtime/package-lock.json flat-runtime/dist/
+          npm ci --prefix flat-runtime/dist --omit=dev --ignore-scripts --bin-links=false
+          mkdir -p flat-runtime/dist/node_modules/@nodezero/solid-pod-sync
+          cp -r ../solid-pod-sync/dist/. flat-runtime/dist/node_modules/@nodezero/solid-pod-sync/
+          cat > flat-runtime/dist/node_modules/@nodezero/solid-pod-sync/package.json <<'EOF'
+          {
+            "name": "@nodezero/solid-pod-sync",
+            "version": "0.0.1",
+            "type": "commonjs",
+            "main": "./index.js",
+            "exports": {
+              ".": "./index.js"
+            }
+          }
+          EOF
+          node -e "const root=process.argv[1];console.log(require.resolve('snarkjs',{paths:[root]}));const solid=require.resolve('@nodezero/solid-pod-sync',{paths:[root]});console.log(solid);require(solid)" "$(pwd)/flat-runtime/dist"
+          test -z "$(find flat-runtime -type l -print -quit)"
+          payload_sha256="$(cd flat-runtime && find . -type f ! -path './dist/build-info.json' -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
+          printf '{"commit":"%s","payloadSha256":"%s"}\n' "$GITHUB_SHA" "$payload_sha256" > flat-runtime/dist/build-info.json
           echo "payload_sha256=${payload_sha256}" >> "$GITHUB_OUTPUT"
-          (cd runtime-package && zip -r ../deploy.zip .)
+          (cd flat-runtime && zip -r ../deploy.zip .)
 
       - name: Configure JSS provisioner runtime
         run: |
@@ -454,6 +471,8 @@ jobs:
               JSS_Q_PEER_PROFILE_ENABLED="false" \
               JSS_Q_RELATIONSHIP_ENABLED="false" \
               JSS_Q_TRANSPORT_ENABLED="false" \
+              SCM_DO_BUILD_DURING_DEPLOYMENT="false" \
+              ENABLE_ORYX_BUILD="false" \
               JSS_LOCKBOX_FACTORY_MODE="soroban" \
               JSS_LOCKBOX_FACTORY_VERSION="v3" \
               JSS_LOCKBOX_FACTORY_CONTRACT_ID="CDFHCQA3YJCITWEMNLCSRGQVVFEXGTONWSQJTD5VIZO7YV4IOKZUPCGT" \
@@ -542,7 +561,8 @@ jobs:
             --name "$JSS_PROVISIONER_APP_NAME" \
             --src-path packages/jss-provisioner/deploy.zip \
             --type zip \
-            --clean true
+            --clean true \
+            --ignore-stack true
 
       - name: Verify JSS provisioner health
         env:

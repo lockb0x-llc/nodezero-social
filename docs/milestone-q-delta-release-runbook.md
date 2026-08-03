@@ -55,6 +55,9 @@ This runbook does not authorize Production Mainnet deployment.
    locally instead of shipping the full proof-generation workspace. The packaged
    startup script also pins and verifies the official Stellar CLI archive SHA-256 before
    extracting or executing it.
+   The App Service ZIP is assembled from a committed npm runtime lock into real files
+   under `dist/node_modules`, exposes no root Node project, and deploys with
+   `--ignore-stack true` so Kudu does not run NodeProjectOptimizer on ready-to-run bytes.
    The workspace production audit must report zero high and zero critical advisories;
    patched overrides are accepted only with package tests and a strict staging PWA build.
 3. Review the complete delta from the last deployed tag through the final candidate
