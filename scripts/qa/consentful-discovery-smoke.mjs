@@ -54,6 +54,14 @@ const baselineWorkflow = sources.get('.github/workflows/staging-baseline-capture
 if (/^\s*concurrency:/m.test(baselineWorkflow)) {
   failures.push('reusable baseline capture must rely on the registered caller concurrency lock')
 }
+const deployWorkflow = sources.get('.github/workflows/staging-deploy.yml') ?? ''
+if (
+  !/clean-deploy[\s\S]*\[ -z "\$BASELINE_RUN_ID" \][\s\S]*inputs\.release_action == 'deploy' \|\| inputs\.release_action == 'clean-deploy'[\s\S]*Authenticate retained N-1 baseline[\s\S]*inputs\.release_action == 'deploy'[\s\S]*Confirm disposable staging clean cutover/.test(
+    deployWorkflow
+  )
+) {
+  failures.push('deploy workflow: staging clean cutover does not skip only N-1 authentication')
+}
 if (/^\s*workflow_dispatch:/m.test(baselineWorkflow)) {
   failures.push(
     'reusable baseline capture must not expose an unregistered standalone dispatch path'
@@ -104,7 +112,6 @@ for (const [path, uploadPattern] of retainedUploadChecks) {
     failures.push(`${path}: retained upload does not preserve hidden runtime assets`)
   }
 }
-const deployWorkflow = sources.get('.github/workflows/staging-deploy.yml') ?? ''
 if (!/Baseline artifact is missing checksummed PWA file/.test(deployWorkflow)) {
   failures.push('deploy workflow: missing baseline PWA artifact completeness check')
 }

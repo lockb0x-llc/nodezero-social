@@ -147,6 +147,11 @@ This runbook does not authorize Production Mainnet deployment.
 1. Manually dispatch `staging-deploy.yml` for the exact candidate SHA with
    `release_action=deploy`, explicit staging-testnet confirmation, and the successful
    baseline-capture run ID/attempt, baseline commit, and baseline tooling commit.
+   For a disposable, never-production staging environment that cannot provide a coherent
+   N-1 capture, use `release_action=clean-deploy` with explicit staging-testnet
+   confirmation and no baseline inputs. This skips only N-1 authentication; every
+   forward policy, build, infrastructure, dark-flag, health, marker, smoke, auth, and
+   lockbox gate remains mandatory.
 2. Require successful blocking jobs:
    - environment isolation;
    - consentful discovery policy;
