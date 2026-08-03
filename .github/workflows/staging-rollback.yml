@@ -184,7 +184,7 @@ jobs:
             [ -z "$(jq -r '.components.relay.payloadSha256 // empty' "$manifest")" ]
           elif [ "$relay_provenance" = "embedded-build-info" ]; then
             test -f /tmp/retained-relay/deploy/build-info.json
-            relay_payload="$(cd /tmp/retained-relay && find deploy -type f ! -name build-info.json -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
+            relay_payload="$(node ./scripts/qa/hash-relay-payload.mjs /tmp/retained-relay/deploy)"
             [ "$(jq -r '.commit' /tmp/retained-relay/deploy/build-info.json)" = "$EXPECTED_COMMIT" ]
             [ "$(jq -r '.payloadSha256' /tmp/retained-relay/deploy/build-info.json)" = "$relay_payload" ]
             [ "$(jq -r '.components.relay.commit' "$manifest")" = "$EXPECTED_COMMIT" ]

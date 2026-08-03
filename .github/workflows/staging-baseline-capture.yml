@@ -164,7 +164,7 @@ jobs:
             relay_provenance="embedded-build-info"
             relay_commit="$(jq -r '.commit // empty' /tmp/relay-live/deploy/build-info.json)"
             relay_payload="$(jq -r '.payloadSha256 // empty' /tmp/relay-live/deploy/build-info.json)"
-            computed_relay_payload="$(cd /tmp/relay-live && find deploy -type f ! -name build-info.json -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
+            computed_relay_payload="$(node ./scripts/qa/hash-relay-payload.mjs /tmp/relay-live/deploy)"
             [ "$relay_commit" = "${{ steps.live.outputs.commit }}" ]
             [ "$relay_payload" = "$computed_relay_payload" ]
           else

@@ -155,6 +155,7 @@ const gates = [
   ['DocuStream enabled policy', ['policy:validate-docustream-enabled']],
   ['PWA policy', ['policy:validate-pwa']],
   ['provisioner runtime closure', ['qa:validate:provisioner-runtime']],
+  ['relay runtime closure', ['qa:validate:relay-runtime']],
   ['workspace production audit', ['qa:validate:production-audit']],
   [
     'workflow formatting',
@@ -166,7 +167,10 @@ const gates = [
       '.github/workflows/staging-rollback.yml',
       '.github/workflows/staging-baseline-capture.yml',
       'packages/jss-provisioner/runtime/package.json',
+      'packages/relay-service/runtime/package.json',
+      'scripts/qa/hash-relay-payload.mjs',
       'scripts/qa/validate-provisioner-runtime.mjs',
+      'scripts/qa/validate-relay-runtime.mjs',
     ],
   ],
 ]

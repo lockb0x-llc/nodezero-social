@@ -118,6 +118,15 @@ if (
   )
 }
 if (
+  !/Build and package relay service[\s\S]*runtime\/package-lock\.json[\s\S]*npm ci --prefix flat-runtime\/dist[\s\S]*@stellar\/stellar-sdk[\s\S]*smol-toml[\s\S]*test -z[\s\S]*hash-relay-payload\.mjs[\s\S]*flat-runtime\/build-info\.json[\s\S]*healthCheckPath.*\/healthz[\s\S]*packages\/relay-service\/flat-runtime[\s\S]*relay-files\.sha256/.test(
+    deployWorkflow
+  )
+) {
+  failures.push(
+    'deploy workflow: standalone relay artifact is not optimizer-inert and lockfile-backed'
+  )
+}
+if (
   !/Wait for provisioner SCM stabilization[\s\S]*consecutive_ready=0[\s\S]*\/api\/deployments[\s\S]*consecutive_ready=\$\(\(consecutive_ready \+ 1\)\)[\s\S]*"\$consecutive_ready" -eq 3[\s\S]*consecutive_ready=0[\s\S]*Final provisioner SCM probe error[\s\S]*stability threshold was not reached[\s\S]*--async true[\s\S]*--restart false[\s\S]*if deployments="\$\(timeout 20s az rest[\s\S]*"\$status" = "4" \] && \[ "\$complete" = "true"[\s\S]*Kudu deployment status polling failed; retrying[\s\S]*print_deployment_diagnostics[\s\S]*Provisioner Kudu deployment did not reach terminal success[\s\S]*Activate JSS provisioner artifact provenance/.test(
     deployWorkflow
   )

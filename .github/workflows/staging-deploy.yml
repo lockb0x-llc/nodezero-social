@@ -197,7 +197,7 @@ jobs:
           relay_deployment_id="$(jq -r '.components.relay.kuduDeploymentId // empty' "$manifest")"
           test -n "$relay_deployment_id"
           if [ "$relay_provenance" = "embedded-build-info" ]; then
-            relay_payload="$(cd /tmp/baseline-relay && find deploy -type f ! -name build-info.json -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
+            relay_payload="$(node ./scripts/qa/hash-relay-payload.mjs /tmp/baseline-relay/deploy)"
             [ "$(jq -r '.commit' /tmp/baseline-relay/deploy/build-info.json)" = "$BASELINE_COMMIT" ]
             [ "$(jq -r '.payloadSha256' /tmp/baseline-relay/deploy/build-info.json)" = "$relay_payload" ]
             [ "$(jq -r '.components.relay.commit' "$manifest")" = "$BASELINE_COMMIT" ]
@@ -816,15 +816,17 @@ jobs:
         run: |
           set -euo pipefail
           pnpm build
-          rm -rf deploy
-          pnpm --config.inject-workspace-packages=true \
-            --filter @nodezero/relay-service deploy --prod "$(pwd)/deploy"
-          payload_sha256="$(find deploy -type f ! -name build-info.json -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
-          printf '{"commit":"%s","payloadSha256":"%s"}\n' "$GITHUB_SHA" "$payload_sha256" > deploy/build-info.json
+          rm -rf flat-runtime deploy.zip
+          mkdir -p flat-runtime/dist
+          cp -r dist/. flat-runtime/dist/
+          cp runtime/package.json runtime/package-lock.json flat-runtime/dist/
+          npm ci --prefix flat-runtime/dist --omit=dev --ignore-scripts --bin-links=false
+          node -e "const path=require('path'),root=process.argv[1];const stellar=require.resolve('@stellar/stellar-sdk',{paths:[root]});const smol=require.resolve('smol-toml',{paths:[path.dirname(stellar),root]});const ws=require.resolve('ws',{paths:[root]});for(const entry of [stellar,smol,ws]){console.log(entry);require(entry)};require('./flat-runtime/dist/relayChallenge.js')" "$(pwd)/flat-runtime/dist"
+          test -z "$(find flat-runtime -type l -print -quit)"
+          payload_sha256="$(node "$GITHUB_WORKSPACE/scripts/qa/hash-relay-payload.mjs" flat-runtime)"
+          printf '{"commit":"%s","payloadSha256":"%s"}\n' "$GITHUB_SHA" "$payload_sha256" > flat-runtime/build-info.json
           echo "payload_sha256=${payload_sha256}" >> "$GITHUB_OUTPUT"
-          rm -f deploy.zip
-          cd deploy
-          zip -r ../deploy.zip .
+          (cd flat-runtime && zip -r ../deploy.zip .)
 
       - name: Configure relay service runtime
         run: |
@@ -834,7 +836,7 @@ jobs:
             --name "$RELAY_APP_NAME" \
             --linux-fx-version "NODE|22-lts" \
             --always-on true \
-            --generic-configurations '{"healthCheckPath":"/health"}' \
+            --generic-configurations '{"healthCheckPath":"/healthz"}' \
             --startup-file "node dist/index.js"
 
           az webapp config appsettings set \
@@ -1233,7 +1235,7 @@ jobs:
           mkdir -p /tmp/rollback-provisioner
           unzip -q packages/jss-provisioner/deploy.zip -d /tmp/rollback-provisioner
           (cd /tmp/rollback-provisioner && find . -type f -print0 | sort -z | xargs -0 sha256sum) > rollback-bundle/provisioner-files.sha256
-          (cd packages/relay-service/deploy && find . -type f -print0 | sort -z | xargs -0 sha256sum) > rollback-bundle/relay-files.sha256
+          (cd packages/relay-service/flat-runtime && find . -type f -print0 | sort -z | xargs -0 sha256sum) > rollback-bundle/relay-files.sha256
           pwa_sha="$(sha256sum rollback-bundle/pwa-files.sha256 | awk '{print $1}')"
           provisioner_tree_sha="$(sha256sum rollback-bundle/provisioner-files.sha256 | awk '{print $1}')"
           relay_tree_sha="$(sha256sum rollback-bundle/relay-files.sha256 | awk '{print $1}')"
