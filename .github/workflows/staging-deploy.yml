@@ -442,7 +442,6 @@ jobs:
 
       - name: Configure JSS provisioner runtime
         run: |
-          provisioner_artifact_sha256="$(sha256sum packages/jss-provisioner/deploy.zip | awk '{print $1}')"
           az webapp config set \
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --name "$JSS_PROVISIONER_APP_NAME" \
@@ -457,8 +456,6 @@ jobs:
             --settings \
               NZ_ENV_PROFILE="staging-testnet" \
               JSS_STELLAR_NETWORK_PASSPHRASE="Test SDF Network ; September 2015" \
-              JSS_BUILD_COMMIT="${GITHUB_SHA}" \
-              JSS_BUILD_ARTIFACT_SHA256="${provisioner_artifact_sha256}" \
               JSS_ISSUER_URL="https://solid.nodezero.social" \
               JSS_PUBLIC_PROVISIONER_BASE_URL="https://api.nodezero.social" \
               JSS_APP_ORIGIN="https://staging.nodezero.social" \
@@ -552,17 +549,116 @@ jobs:
             fi
           done
 
+      - name: Wait for provisioner SCM stabilization
+        run: |
+          set -euo pipefail
+          scm_host="$(az webapp show \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$JSS_PROVISIONER_APP_NAME" \
+            --query defaultHostName -o tsv | sed 's/\.azurewebsites\.net$/.scm.azurewebsites.net/')"
+          consecutive_ready=0
+          for attempt in {1..30}; do
+            if timeout 20s az rest \
+              --method get \
+              --url "https://${scm_host}/api/environment" \
+              --resource "https://management.azure.com/" \
+              --output none 2>/dev/null; then
+              consecutive_ready=$((consecutive_ready + 1))
+              if [ "$consecutive_ready" -eq 3 ]; then
+                echo "Provisioner SCM is stable after configuration changes."
+                break
+              fi
+            else
+              consecutive_ready=0
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              echo "Provisioner SCM did not stabilize before deployment."
+              exit 1
+            fi
+            sleep 10
+          done
+
       - name: Deploy JSS provisioner to App Service
         id: deploy-provisioner
-        continue-on-error: true
         run: |
+          set -euo pipefail
+          scm_host="$(az webapp show \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$JSS_PROVISIONER_APP_NAME" \
+            --query defaultHostName -o tsv | sed 's/\.azurewebsites\.net$/.scm.azurewebsites.net/')"
+          before_id="$(az rest \
+            --method get \
+            --url "https://${scm_host}/api/deployments" \
+            --resource "https://management.azure.com/" \
+            --query '[0].id' -o tsv)"
           az webapp deploy \
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --name "$JSS_PROVISIONER_APP_NAME" \
             --src-path packages/jss-provisioner/deploy.zip \
             --type zip \
             --clean true \
-            --ignore-stack true
+            --ignore-stack true \
+            --async true \
+            --restart false \
+            --track-status false
+
+          deployment_id=""
+          print_deployment_diagnostics() {
+            if [ -z "$deployment_id" ]; then
+              echo "No distinct provisioner Kudu deployment was observed."
+              return
+            fi
+            az rest \
+              --method get \
+              --url "https://${scm_host}/api/deployments/${deployment_id}" \
+              --resource "https://management.azure.com/" -o json || true
+            az rest \
+              --method get \
+              --url "https://${scm_host}/api/deployments/${deployment_id}/log" \
+              --resource "https://management.azure.com/" -o json || true
+          }
+          for attempt in {1..120}; do
+            if deployments="$(timeout 20s az rest \
+              --method get \
+              --url "https://${scm_host}/api/deployments" \
+              --resource "https://management.azure.com/" -o json 2>&1)"; then
+              latest_id="$(jq -r '.[0].id // empty' <<<"$deployments")"
+              if [ -n "$latest_id" ] && [ "$latest_id" != "$before_id" ]; then
+                deployment_id="$latest_id"
+                status="$(jq -r '.[0].status // 0' <<<"$deployments")"
+                complete="$(jq -r '.[0].complete // false' <<<"$deployments")"
+                if [ "$status" = "4" ] && [ "$complete" = "true" ]; then
+                  echo "Provisioner Kudu deployment ${deployment_id} completed successfully."
+                  break
+                fi
+                if [ "$status" = "3" ]; then
+                  print_deployment_diagnostics
+                  echo "Provisioner Kudu deployment ${deployment_id} failed."
+                  exit 1
+                fi
+              fi
+            else
+              echo "Kudu deployment status polling failed; retrying: ${deployments}" >&2
+            fi
+            if [ "$attempt" -eq 120 ]; then
+              print_deployment_diagnostics
+              echo "Provisioner Kudu deployment did not reach terminal success."
+              exit 1
+            fi
+            sleep 10
+          done
+
+      - name: Activate JSS provisioner artifact provenance
+        run: |
+          set -euo pipefail
+          provisioner_artifact_sha256="$(sha256sum packages/jss-provisioner/deploy.zip | awk '{print $1}')"
+          az webapp config appsettings set \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$JSS_PROVISIONER_APP_NAME" \
+            --settings \
+              JSS_BUILD_COMMIT="${GITHUB_SHA}" \
+              JSS_BUILD_ARTIFACT_SHA256="${provisioner_artifact_sha256}" \
+            --output none
 
       - name: Verify JSS provisioner health
         env:
@@ -570,9 +666,6 @@ jobs:
           EXPECTED_PAYLOAD_SHA256: ${{ steps.package-provisioner.outputs.payload_sha256 }}
         run: |
           set -euo pipefail
-          if [ "${{ steps.deploy-provisioner.outcome }}" != "success" ]; then
-            echo "ZipDeploy transport reported '${{ steps.deploy-provisioner.outcome }}'; exact live provenance must prove whether deployment completed."
-          fi
           health_url="https://${JSS_PROVISIONER_APP_NAME}.azurewebsites.net/health"
           echo "Waiting for provisioner health: ${health_url}"
           consecutive_healthy=0

@@ -117,6 +117,15 @@ if (
     'deploy workflow: standalone provisioner artifact is not optimizer-safe and lockfile-backed'
   )
 }
+if (
+  !/Wait for provisioner SCM stabilization[\s\S]*--async true[\s\S]*--restart false[\s\S]*if deployments="\$\(timeout 20s az rest[\s\S]*"\$status" = "4" \] && \[ "\$complete" = "true"[\s\S]*Kudu deployment status polling failed; retrying[\s\S]*print_deployment_diagnostics[\s\S]*Provisioner Kudu deployment did not reach terminal success[\s\S]*Activate JSS provisioner artifact provenance/.test(
+    deployWorkflow
+  )
+) {
+  failures.push(
+    'deploy workflow: provisioner bytes and provenance are not activated in a restart-safe order'
+  )
+}
 if (!/Rollback artifact is missing checksummed PWA file/.test(rollbackWorkflow)) {
   failures.push('rollback workflow: missing retained PWA completeness check')
 }

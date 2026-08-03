@@ -58,6 +58,11 @@ This runbook does not authorize Production Mainnet deployment.
    The App Service ZIP is assembled from a committed npm runtime lock into real files
    under `dist/node_modules`, exposes no root Node project, and deploys with
    `--ignore-stack true` so Kudu does not run NodeProjectOptimizer on ready-to-run bytes.
+   Provisioner configuration must stabilize before an asynchronous, no-restart Kudu
+   copy; candidate provenance settings are activated only after Kudu reports terminal
+   success, producing the single intended application restart. Transient SCM status
+   failures are retried within the bounded polling window, and terminal failure or
+   timeout emits the distinct Kudu deployment record and log before failing closed.
    The workspace production audit must report zero high and zero critical advisories;
    patched overrides are accepted only with package tests and a strict staging PWA build.
 3. Review the complete delta from the last deployed tag through the final candidate
