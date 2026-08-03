@@ -6,37 +6,32 @@ log() {
 }
 
 APP_ROOT="${APP_ROOT:-/home/site/wwwroot}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STATE_SCOPE="${JSS_LOCKBOX_FACTORY_BOOTSTRAP_ALIAS:-default}"
 STATE_DIR="${HOME:-/home}/.nodezero-provisioner-${STATE_SCOPE}"
 STATE_FILE="$STATE_DIR/soroban-bootstrap.env"
 TOOLS_DIR="$STATE_DIR/tools"
-STELLAR_ARCHIVE="$TOOLS_DIR/stellar-cli.tar.gz"
-STELLAR_URL="${JSS_STELLAR_CLI_URL:-https://github.com/stellar/stellar-cli/releases/download/v27.0.0/stellar-cli-27.0.0-x86_64-unknown-linux-gnu.tar.gz}"
+STELLAR_BIN="$TOOLS_DIR/stellar"
+STELLAR_URL="https://github.com/stellar/stellar-cli/releases/download/v27.0.0/stellar-cli-27.0.0-x86_64-unknown-linux-gnu.tar.gz"
+STELLAR_ARCHIVE_SHA256="357bf712f6353c28cd33c794402a3c87231757a5b305e6ef1604365af4fdd556"
+STELLAR_BINARY_SHA256="14a71be83c2f31686b2b32a2d302fd226e6872c1b46a9c23daaa693a9bf98d80"
+
+. "$SCRIPT_DIR/install-stellar-cli.sh"
 
 mkdir -p "$STATE_DIR" "$TOOLS_DIR"
 
-if ! command -v stellar >/dev/null 2>&1; then
-  if [[ ! -f "$STELLAR_ARCHIVE" ]]; then
-    log "Downloading Stellar CLI archive"
-    curl -fsSL "$STELLAR_URL" -o "$STELLAR_ARCHIVE"
-  fi
-
-  if [[ ! -x "$TOOLS_DIR/stellar" ]]; then
-    log "Extracting Stellar CLI"
-    tar -xzf "$STELLAR_ARCHIVE" -C "$TOOLS_DIR"
-    STELLAR_BIN="$(find "$TOOLS_DIR" -type f -name stellar | head -n1 || true)"
-    if [[ -z "$STELLAR_BIN" ]]; then
-      log "Failed to locate stellar binary after extraction"
-      exit 1
-    fi
-    if [[ "$STELLAR_BIN" != "$TOOLS_DIR/stellar" ]]; then
-      cp "$STELLAR_BIN" "$TOOLS_DIR/stellar"
-    fi
-    chmod +x "$TOOLS_DIR/stellar"
-  fi
-
-  export PATH="$TOOLS_DIR:$PATH"
+if ! STELLAR_BIN="$(install_stellar_cli \
+  "$TOOLS_DIR" \
+  "$STELLAR_URL" \
+  "$STELLAR_ARCHIVE_SHA256" \
+  "$STELLAR_BINARY_SHA256")"; then
+  log "Stellar CLI installation integrity verification failed"
+  exit 1
 fi
+
+stellar() {
+  "$STELLAR_BIN" "$@"
+}
 
 log "Stellar CLI: $(stellar --version | head -n1)"
 

@@ -36,11 +36,8 @@ import { CommunityDirectoryStore } from './communityDirectory.js'
 import { AzureTableCommunityDirectoryPersistence } from './communityDirectoryPersistence.js'
 import type { BridgeProofPayload } from './lockboxFactory.js'
 import { verifyBridgeProof } from './bridgeProofVerifier.js'
-import { buildPodOwnershipClaim } from '@nodezero/zk-crypto/pod-claim'
-import {
-  RelationshipDeliveryError,
-  deliverRelationshipActivity,
-} from './relationshipDelivery.js'
+import { buildPodOwnershipClaim } from './podOwnershipClaim.js'
+import { RelationshipDeliveryError, deliverRelationshipActivity } from './relationshipDelivery.js'
 import {
   readRelationshipDeliveryAssertion,
   RelationshipDeliveryAssertionManager,
@@ -51,10 +48,7 @@ import {
   CommunityDirectoryRefreshError,
   refreshCommunityDirectoryProjection,
 } from './communityDirectoryRefresh.js'
-import {
-  PublicPeerProfileError,
-  readPublicPeerProfile,
-} from './publicPeerProfile.js'
+import { PublicPeerProfileError, readPublicPeerProfile } from './publicPeerProfile.js'
 import {
   isTransportIdentityAudience,
   TransportIdentityAssertionManager,
@@ -64,17 +58,26 @@ import { createMilestoneQControlsFromEnv } from './milestoneQControls.js'
 const _B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
 function _b32Decode(s: string): Uint8Array {
   const out: number[] = []
-  let bits = 0, val = 0
+  let bits = 0,
+    val = 0
   for (const c of s.toUpperCase()) {
     if (c === '=') break
     const i = _B32.indexOf(c)
     if (i < 0) throw new Error('Invalid base32 char: ' + c)
-    val = (val << 5) | i; bits += 5
-    if (bits >= 8) { out.push((val >>> (bits - 8)) & 0xff); bits -= 8 }
+    val = (val << 5) | i
+    bits += 5
+    if (bits >= 8) {
+      out.push((val >>> (bits - 8)) & 0xff)
+      bits -= 8
+    }
   }
   return new Uint8Array(out)
 }
-async function verifyStellarEd25519(pubKeyStrKey: string, message: string, signatureBase64: string): Promise<boolean> {
+async function verifyStellarEd25519(
+  pubKeyStrKey: string,
+  message: string,
+  signatureBase64: string
+): Promise<boolean> {
   try {
     const decoded = _b32Decode(pubKeyStrKey)
     if (decoded.length < 33) return false
@@ -84,7 +87,9 @@ async function verifyStellarEd25519(pubKeyStrKey: string, message: string, signa
     const msgBytes = Buffer.from(message, 'utf8')
     const key = await subtle.importKey('raw', rawKey, { name: 'Ed25519' }, false, ['verify'])
     return await subtle.verify({ name: 'Ed25519' }, key, sig, msgBytes)
-  } catch { return false }
+  } catch {
+    return false
+  }
 }
 import type {
   BootstrapChallengeRequest,
@@ -102,15 +107,25 @@ const SOLID_CSS_BASE_URL = (process.env.JSS_SOLID_CSS_BASE_URL ?? '').trim().rep
 const LOCKBOX_FACTORY_CONTRACT_ID =
   process.env.JSS_LOCKBOX_FACTORY_CONTRACT_ID ?? process.env.NZ_LOCKBOX_FACTORY_CONTRACT_ID ?? ''
 const LOCKBOX_FACTORY_MODE = (process.env.JSS_LOCKBOX_FACTORY_MODE ?? 'mock').toLowerCase()
-const LOCKBOX_FACTORY_VERSION = (process.env.JSS_LOCKBOX_FACTORY_VERSION ?? 'v2').trim().toLowerCase()
+const LOCKBOX_FACTORY_VERSION = (process.env.JSS_LOCKBOX_FACTORY_VERSION ?? 'v2')
+  .trim()
+  .toLowerCase()
 const LOCKBOX_BRIDGE_V3_VK_URL = (process.env.JSS_LOCKBOX_BRIDGE_V3_VK_URL ?? '').trim()
 const LOCKBOX_BRIDGE_V3_MANIFEST_URL = (process.env.JSS_LOCKBOX_BRIDGE_V3_MANIFEST_URL ?? '').trim()
-const LOCKBOX_BRIDGE_V3_MANIFEST_SHA256 = (process.env.JSS_LOCKBOX_BRIDGE_V3_MANIFEST_SHA256 ?? '').trim().toLowerCase()
+const LOCKBOX_BRIDGE_V3_MANIFEST_SHA256 = (process.env.JSS_LOCKBOX_BRIDGE_V3_MANIFEST_SHA256 ?? '')
+  .trim()
+  .toLowerCase()
 const LOCKBOX_BRIDGE_V3_WASM_URL = (process.env.JSS_LOCKBOX_BRIDGE_V3_WASM_URL ?? '').trim()
-const LOCKBOX_BRIDGE_V3_WASM_SHA256 = (process.env.JSS_LOCKBOX_BRIDGE_V3_WASM_SHA256 ?? '').trim().toLowerCase()
+const LOCKBOX_BRIDGE_V3_WASM_SHA256 = (process.env.JSS_LOCKBOX_BRIDGE_V3_WASM_SHA256 ?? '')
+  .trim()
+  .toLowerCase()
 const LOCKBOX_BRIDGE_V3_ZKEY_URL = (process.env.JSS_LOCKBOX_BRIDGE_V3_ZKEY_URL ?? '').trim()
-const LOCKBOX_BRIDGE_V3_ZKEY_SHA256 = (process.env.JSS_LOCKBOX_BRIDGE_V3_ZKEY_SHA256 ?? '').trim().toLowerCase()
-const LOCKBOX_BRIDGE_V3_VK_SHA256 = (process.env.JSS_LOCKBOX_BRIDGE_V3_VK_SHA256 ?? '').trim().toLowerCase()
+const LOCKBOX_BRIDGE_V3_ZKEY_SHA256 = (process.env.JSS_LOCKBOX_BRIDGE_V3_ZKEY_SHA256 ?? '')
+  .trim()
+  .toLowerCase()
+const LOCKBOX_BRIDGE_V3_VK_SHA256 = (process.env.JSS_LOCKBOX_BRIDGE_V3_VK_SHA256 ?? '')
+  .trim()
+  .toLowerCase()
 interface EmbeddedBuildInfo {
   commit: string
   payloadSha256: string
@@ -118,10 +133,14 @@ interface EmbeddedBuildInfo {
 
 function readEmbeddedBuildInfo(): EmbeddedBuildInfo {
   try {
-    const parsed = JSON.parse(readFileSync(join(__dirname, 'build-info.json'), 'utf8')) as Partial<EmbeddedBuildInfo>
+    const parsed = JSON.parse(
+      readFileSync(join(__dirname, 'build-info.json'), 'utf8')
+    ) as Partial<EmbeddedBuildInfo>
     if (
-      typeof parsed.commit === 'string' && parsed.commit.trim() &&
-      typeof parsed.payloadSha256 === 'string' && /^[0-9a-f]{64}$/i.test(parsed.payloadSha256)
+      typeof parsed.commit === 'string' &&
+      parsed.commit.trim() &&
+      typeof parsed.payloadSha256 === 'string' &&
+      /^[0-9a-f]{64}$/i.test(parsed.payloadSha256)
     ) {
       return { commit: parsed.commit.trim(), payloadSha256: parsed.payloadSha256.toLowerCase() }
     }
@@ -135,11 +154,20 @@ function readEmbeddedBuildInfo(): EmbeddedBuildInfo {
 }
 
 const EMBEDDED_BUILD = readEmbeddedBuildInfo()
-const CONFIGURED_ARTIFACT_SHA256 = (process.env.JSS_BUILD_ARTIFACT_SHA256 ?? 'unknown').trim().toLowerCase()
-const BN254_SCALAR_FIELD_SIZE = 21888242871839275222246405745257275088548364400416034343698204186575808495617n
-const BROWSER_SESSION_ENABLED = /^(1|true|yes)$/i.test((process.env.JSS_BROWSER_SESSION_ENABLED ?? '').trim())
-const BROWSER_SESSION_COOKIE_NAME = (process.env.JSS_BROWSER_SESSION_COOKIE_NAME ?? '__Host-nz_browser_session').trim()
-const BROWSER_SESSION_TTL_MS = Number(process.env.JSS_BROWSER_SESSION_TTL_MS ?? 30 * 24 * 60 * 60_000)
+const CONFIGURED_ARTIFACT_SHA256 = (process.env.JSS_BUILD_ARTIFACT_SHA256 ?? 'unknown')
+  .trim()
+  .toLowerCase()
+const BN254_SCALAR_FIELD_SIZE =
+  21888242871839275222246405745257275088548364400416034343698204186575808495617n
+const BROWSER_SESSION_ENABLED = /^(1|true|yes)$/i.test(
+  (process.env.JSS_BROWSER_SESSION_ENABLED ?? '').trim()
+)
+const BROWSER_SESSION_COOKIE_NAME = (
+  process.env.JSS_BROWSER_SESSION_COOKIE_NAME ?? '__Host-nz_browser_session'
+).trim()
+const BROWSER_SESSION_TTL_MS = Number(
+  process.env.JSS_BROWSER_SESSION_TTL_MS ?? 30 * 24 * 60 * 60_000
+)
 // P3: Treasury-sponsored member account creation is a privileged, funds-moving
 // operation. It is disabled unless an internal API key is configured, and every
 // request must present it (fail-closed). This prevents an open endpoint from
@@ -149,7 +177,9 @@ const INTERNAL_API_KEY = (process.env.JSS_INTERNAL_API_KEY ?? '').trim()
 // Treasury during onboarding (replacing testnet Friendbot on MainNet, where no
 // faucet exists). Off by default to preserve the testnet Friendbot self-funding
 // path; enable via JSS_TREASURY_FUND_MEMBERS=1 for MainNet readiness.
-const TREASURY_FUND_MEMBERS = /^(1|true|yes)$/i.test((process.env.JSS_TREASURY_FUND_MEMBERS ?? '').trim())
+const TREASURY_FUND_MEMBERS = /^(1|true|yes)$/i.test(
+  (process.env.JSS_TREASURY_FUND_MEMBERS ?? '').trim()
+)
 const COMMUNITY_DIRECTORY_STORE_PATH =
   (process.env.JSS_COMMUNITY_DIRECTORY_STORE_PATH ?? '').trim() ||
   join(tmpdir(), `nz-community-directory-${process.pid}.json`)
@@ -158,7 +188,10 @@ const COMMUNITY_DIRECTORY_TABLE_SAS_URL = (
   process.env.JSS_CREDENTIALS_TABLE_SAS_URL ??
   ''
 ).trim()
-const ALLOWED_ORIGINS = (process.env.JSS_ALLOWED_ORIGINS ?? 'https://staging.nodezero.social,https://nodezero.social,https://www.nodezero.social,https://solid.nodezero.social,http://localhost:19006,http://localhost:8081')
+const ALLOWED_ORIGINS = (
+  process.env.JSS_ALLOWED_ORIGINS ??
+  'https://staging.nodezero.social,https://nodezero.social,https://www.nodezero.social,https://solid.nodezero.social,http://localhost:19006,http://localhost:8081'
+)
   .split(',')
   .map((origin) => origin.trim())
   .filter((origin) => origin.length > 0)
@@ -167,9 +200,7 @@ const communityDirectory = new CommunityDirectoryStore({
   persistenceFilePath: COMMUNITY_DIRECTORY_STORE_PATH,
   ...(COMMUNITY_DIRECTORY_TABLE_SAS_URL
     ? {
-        persistence: new AzureTableCommunityDirectoryPersistence(
-          COMMUNITY_DIRECTORY_TABLE_SAS_URL
-        ),
+        persistence: new AzureTableCommunityDirectoryPersistence(COMMUNITY_DIRECTORY_TABLE_SAS_URL),
       }
     : {}),
 })
@@ -189,15 +220,11 @@ const relationshipVerificationRateLimiter = new RelationshipRateLimiter({
 })
 const communityDirectoryRefreshRateLimiter = new RelationshipRateLimiter({
   maxRequests: Number(process.env.JSS_COMMUNITY_DIRECTORY_REFRESH_RATE_LIMIT ?? 12),
-  windowMs: Number(
-    process.env.JSS_COMMUNITY_DIRECTORY_REFRESH_RATE_WINDOW_MS ?? 60_000
-  ),
+  windowMs: Number(process.env.JSS_COMMUNITY_DIRECTORY_REFRESH_RATE_WINDOW_MS ?? 60_000),
 })
 const communityDirectoryIndexRateLimiter = new RelationshipRateLimiter({
   maxRequests: Number(process.env.JSS_COMMUNITY_DIRECTORY_INDEX_RATE_LIMIT ?? 60),
-  windowMs: Number(
-    process.env.JSS_COMMUNITY_DIRECTORY_INDEX_RATE_WINDOW_MS ?? 60_000
-  ),
+  windowMs: Number(process.env.JSS_COMMUNITY_DIRECTORY_INDEX_RATE_WINDOW_MS ?? 60_000),
 })
 const COMMUNITY_DIRECTORY_REFRESH_MAX_CONCURRENCY = positiveIntegerEnvironment(
   'JSS_COMMUNITY_DIRECTORY_REFRESH_MAX_CONCURRENCY',
@@ -244,7 +271,9 @@ export interface RequestHandlerOverrides {
 }
 const knownSolidAccountEmails = new Set<string>()
 const notificationPublisher = createNotificationEventPublisherFromEnv()
-const DOCUSTREAM_RSS_FETCH_TIMEOUT_MS = Number(process.env.JSS_DOCUSTREAM_RSS_FETCH_TIMEOUT_MS ?? 12000)
+const DOCUSTREAM_RSS_FETCH_TIMEOUT_MS = Number(
+  process.env.JSS_DOCUSTREAM_RSS_FETCH_TIMEOUT_MS ?? 12000
+)
 const DOCUSTREAM_RSS_MAX_BYTES = Number(process.env.JSS_DOCUSTREAM_RSS_MAX_BYTES ?? 1_000_000)
 const DOCUSTREAM_RSS_MAX_REDIRECTS = Number(process.env.JSS_DOCUSTREAM_RSS_MAX_REDIRECTS ?? 3)
 const DOCUSTREAM_ALLOWED_CONTENT_TYPES = [
@@ -258,10 +287,12 @@ const PROVISIONING_LEASE_TTL_MS = Number(process.env.JSS_PROVISIONING_LEASE_TTL_
 
 interface SolidAccountResumeMaterial {
   password?: string
-  account?: CreateSolidAccountResult | {
-    webId: string
-    podUrl: string
-  }
+  account?:
+    | CreateSolidAccountResult
+    | {
+        webId: string
+        podUrl: string
+      }
   lockbox?: LockboxProvisioning
   attestation?: { accountCommitmentHex: string; ciphertextSha256Hex: string } | null
   accountDocumentUrl?: string | null
@@ -272,7 +303,7 @@ class DocustreamRssFetchError extends Error {
   constructor(
     message: string,
     readonly statusCode: number,
-    readonly errorCode: string,
+    readonly errorCode: string
   ) {
     super(message)
   }
@@ -333,7 +364,7 @@ function isDuplicateEmailProvisioningMessage(message: string): boolean {
 function corsHeaders(req: IncomingMessage): Record<string, string> {
   const origin = req.headers.origin
   const isAllowedOrigin = isAllowedBrowserOrigin(req)
-  const allowOrigin = isAllowedOrigin ? origin! : ALLOWED_ORIGINS[0] ?? '*'
+  const allowOrigin = isAllowedOrigin ? origin! : (ALLOWED_ORIGINS[0] ?? '*')
 
   return {
     'access-control-allow-origin': allowOrigin,
@@ -356,7 +387,7 @@ function sendJson(
   res: ServerResponse,
   statusCode: number,
   payload: unknown,
-  extraHeaders: Record<string, string | string[]> = {},
+  extraHeaders: Record<string, string | string[]> = {}
 ): void {
   res.writeHead(statusCode, {
     ...corsHeaders(req),
@@ -397,9 +428,13 @@ function buildOnboardingConfigDescriptor(): OnboardingConfigDescriptor {
     'Test SDF Network ; September 2015'
   ).trim()
   const identityContractId = (
-    process.env.JSS_IDENTITY_CONTRACT_ID ?? process.env.NZ_IDENTITY_CONTRACT_ID ?? ''
+    process.env.JSS_IDENTITY_CONTRACT_ID ??
+    process.env.NZ_IDENTITY_CONTRACT_ID ??
+    ''
   ).trim()
-  const provisionerOrigin = (process.env.JSS_PUBLIC_PROVISIONER_BASE_URL ?? '').trim().replace(/\/+$/, '')
+  const provisionerOrigin = (process.env.JSS_PUBLIC_PROVISIONER_BASE_URL ?? '')
+    .trim()
+    .replace(/\/+$/, '')
   const appOrigin = (process.env.JSS_APP_ORIGIN ?? '').trim().replace(/\/+$/, '')
   const fingerprintInput = {
     schemaVersion: 1,
@@ -480,7 +515,11 @@ async function issueBrowserSessionCookie(input: {
   webId: string
   podUrl: string
   stellarPublicKey: string | null
-  lockbox: { userLockboxContractId: string | null; factoryContractId: string | null; proofRootHex: string | null }
+  lockbox: {
+    userLockboxContractId: string | null
+    factoryContractId: string | null
+    proofRootHex: string | null
+  }
 }): Promise<Record<string, string | string[]>> {
   if (!BROWSER_SESSION_ENABLED) return {}
   if (!BROWSER_SESSION_COOKIE_NAME.startsWith('__Host-')) {
@@ -585,9 +624,13 @@ function parseBridgeProof(
     circuitVersion?: string
   },
   accountCommitmentHex: string,
-  ciphertextHex: string,
+  ciphertextHex: string
 ): BridgeProofPayload {
-  if (!isNonEmpty(body.proofHex) || !isNonEmpty(body.proofHashHex) || !isNonEmpty(body.publicSignals)) {
+  if (
+    !isNonEmpty(body.proofHex) ||
+    !isNonEmpty(body.proofHashHex) ||
+    !isNonEmpty(body.publicSignals)
+  ) {
     throw new Error('Lockb0x Bridge Factory v3 requires proofHex, proofHashHex, and publicSignals.')
   }
   const proofHex = body.proofHex.trim().toLowerCase().replace(/^0x/, '')
@@ -596,7 +639,12 @@ function parseBridgeProof(
   }
   const proofHashHex = normalizeHex32(body.proofHashHex, 'proofHashHex')
   const ciphertext = ciphertextHex.trim().toLowerCase().replace(/^0x/, '')
-  if (!/^[0-9a-f]+$/.test(ciphertext) || ciphertext.length === 0 || ciphertext.length % 2 !== 0 || ciphertext.length > 8192) {
+  if (
+    !/^[0-9a-f]+$/.test(ciphertext) ||
+    ciphertext.length === 0 ||
+    ciphertext.length % 2 !== 0 ||
+    ciphertext.length > 8192
+  ) {
     throw new Error('ciphertextHex must encode no more than 4096 encrypted bytes.')
   }
   const circuitVersion = Number(body.circuitVersion ?? '1')
@@ -610,7 +658,11 @@ function parseBridgeProof(
   } catch {
     throw new Error('publicSignals must be JSON encoded.')
   }
-  if (!Array.isArray(publicSignals) || publicSignals.length !== 3 || !publicSignals.every((item) => typeof item === 'string')) {
+  if (
+    !Array.isArray(publicSignals) ||
+    publicSignals.length !== 3 ||
+    !publicSignals.every((item) => typeof item === 'string')
+  ) {
     throw new Error('publicSignals must contain claimHash, accountCommitment, and podBinding.')
   }
   const claimHashHex = decimalFieldToHex32(publicSignals[0], 'claimHash')
@@ -620,12 +672,14 @@ function parseBridgeProof(
     throw new Error('accountCommitmentHex does not match the bridge proof public signal.')
   }
   const computedProofHash = createHash('sha256')
-    .update(Buffer.concat([
-      Buffer.from(proofHex, 'hex'),
-      Buffer.from(claimHashHex, 'hex'),
-      Buffer.from(signalAccountCommitmentHex, 'hex'),
-      Buffer.from(podBindingHex, 'hex'),
-    ]))
+    .update(
+      Buffer.concat([
+        Buffer.from(proofHex, 'hex'),
+        Buffer.from(claimHashHex, 'hex'),
+        Buffer.from(signalAccountCommitmentHex, 'hex'),
+        Buffer.from(podBindingHex, 'hex'),
+      ])
+    )
     .digest('hex')
   if (computedProofHash !== proofHashHex) {
     throw new Error('proofHashHex does not match the serialized bridge proof and public signals.')
@@ -650,9 +704,15 @@ async function verifyCanonicalBridgeClaim(input: {
   factoryContractId: string
   configFingerprint: string
 }): Promise<void> {
-  const identityContractId = (process.env.JSS_IDENTITY_CONTRACT_ID ?? process.env.NZ_IDENTITY_CONTRACT_ID ?? '').trim()
+  const identityContractId = (
+    process.env.JSS_IDENTITY_CONTRACT_ID ??
+    process.env.NZ_IDENTITY_CONTRACT_ID ??
+    ''
+  ).trim()
   if (!identityContractId) {
-    throw new Error('JSS_IDENTITY_CONTRACT_ID is required for Factory V3 bridge claim verification.')
+    throw new Error(
+      'JSS_IDENTITY_CONTRACT_ID is required for Factory V3 bridge claim verification.'
+    )
   }
   const networkPassphrase = (
     process.env.JSS_STELLAR_NETWORK_PASSPHRASE ??
@@ -674,10 +734,15 @@ async function verifyCanonicalBridgeClaim(input: {
     configFingerprint: input.configFingerprint,
   })
   const expectedClaimHash = (
-    BigInt(`0x${createHash('sha256').update(canonicalClaim, 'utf8').digest('hex')}`) % BN254_SCALAR_FIELD_SIZE
-  ).toString(16).padStart(64, '0')
+    BigInt(`0x${createHash('sha256').update(canonicalClaim, 'utf8').digest('hex')}`) %
+    BN254_SCALAR_FIELD_SIZE
+  )
+    .toString(16)
+    .padStart(64, '0')
   if (expectedClaimHash !== input.bridgeProof.claimHashHex) {
-    throw new Error('Bridge proof claimHash does not match the provisioned Pod, Stellar identity, and Factory V3 binding.')
+    throw new Error(
+      'Bridge proof claimHash does not match the provisioned Pod, Stellar identity, and Factory V3 binding.'
+    )
   }
   await verifyBridgeProof({
     proofHex: input.bridgeProof.proofHex,
@@ -727,7 +792,11 @@ async function validateDocustreamRssUrl(rawUrl: string): Promise<URL> {
   }
 
   if (parsed.username || parsed.password) {
-    throw new DocustreamRssFetchError('Feed URL credentials are not allowed.', 400, 'invalid_credentials')
+    throw new DocustreamRssFetchError(
+      'Feed URL credentials are not allowed.',
+      400,
+      'invalid_credentials'
+    )
   }
 
   const host = parsed.hostname.trim().toLowerCase()
@@ -745,7 +814,11 @@ async function validateDocustreamRssUrl(rawUrl: string): Promise<URL> {
   }
 
   if (resolved.some((entry) => isLoopbackOrPrivateAddress(entry.address))) {
-    throw new DocustreamRssFetchError('Feed host resolves to a blocked address.', 400, 'blocked_host')
+    throw new DocustreamRssFetchError(
+      'Feed host resolves to a blocked address.',
+      400,
+      'blocked_host'
+    )
   }
 
   return parsed
@@ -754,7 +827,11 @@ async function validateDocustreamRssUrl(rawUrl: string): Promise<URL> {
 function ensureAllowedContentType(contentTypeHeader: string | null): void {
   const normalized = (contentTypeHeader ?? '').toLowerCase().split(';')[0].trim()
   if (!normalized || !DOCUSTREAM_ALLOWED_CONTENT_TYPES.includes(normalized)) {
-    throw new DocustreamRssFetchError('Feed content type is not supported.', 415, 'unsupported_content_type')
+    throw new DocustreamRssFetchError(
+      'Feed content type is not supported.',
+      415,
+      'unsupported_content_type'
+    )
   }
 }
 
@@ -768,7 +845,8 @@ async function fetchDocustreamRssXml(feedUrl: URL): Promise<string> {
       const response = await fetch(currentUrl, {
         method: 'GET',
         headers: {
-          accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.5',
+          accept:
+            'application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.5',
         },
         redirect: 'manual',
         signal: controller.signal,
@@ -777,30 +855,50 @@ async function fetchDocustreamRssXml(feedUrl: URL): Promise<string> {
       if (response.status >= 300 && response.status < 400) {
         const location = response.headers.get('location')
         if (!location) {
-          throw new DocustreamRssFetchError('Feed redirect location is missing.', 502, 'redirect_missing_location')
+          throw new DocustreamRssFetchError(
+            'Feed redirect location is missing.',
+            502,
+            'redirect_missing_location'
+          )
         }
         if (redirect === DOCUSTREAM_RSS_MAX_REDIRECTS) {
-          throw new DocustreamRssFetchError('Feed has too many redirects.', 502, 'too_many_redirects')
+          throw new DocustreamRssFetchError(
+            'Feed has too many redirects.',
+            502,
+            'too_many_redirects'
+          )
         }
         currentUrl = await validateDocustreamRssUrl(new URL(location, currentUrl).toString())
         continue
       }
 
       if (!response.ok) {
-        throw new DocustreamRssFetchError(`Feed responded with HTTP ${response.status}.`, 502, 'upstream_http_error')
+        throw new DocustreamRssFetchError(
+          `Feed responded with HTTP ${response.status}.`,
+          502,
+          'upstream_http_error'
+        )
       }
 
       ensureAllowedContentType(response.headers.get('content-type'))
 
       const declaredLength = Number(response.headers.get('content-length') ?? '0')
       if (declaredLength > DOCUSTREAM_RSS_MAX_BYTES) {
-        throw new DocustreamRssFetchError('Feed payload exceeds maximum size.', 413, 'payload_too_large')
+        throw new DocustreamRssFetchError(
+          'Feed payload exceeds maximum size.',
+          413,
+          'payload_too_large'
+        )
       }
 
       const xml = await response.text()
       const xmlBytes = Buffer.byteLength(xml, 'utf8')
       if (xmlBytes > DOCUSTREAM_RSS_MAX_BYTES) {
-        throw new DocustreamRssFetchError('Feed payload exceeds maximum size.', 413, 'payload_too_large')
+        throw new DocustreamRssFetchError(
+          'Feed payload exceeds maximum size.',
+          413,
+          'payload_too_large'
+        )
       }
       if (!xml.trim()) {
         throw new DocustreamRssFetchError('Feed payload is empty.', 502, 'empty_payload')
@@ -809,7 +907,11 @@ async function fetchDocustreamRssXml(feedUrl: URL): Promise<string> {
       return xml
     }
 
-    throw new DocustreamRssFetchError('Feed retrieval exceeded redirect limit.', 502, 'too_many_redirects')
+    throw new DocustreamRssFetchError(
+      'Feed retrieval exceeded redirect limit.',
+      502,
+      'too_many_redirects'
+    )
   } catch (error) {
     if (error instanceof DocustreamRssFetchError) {
       throw error
@@ -828,7 +930,7 @@ async function fetchDocustreamRssXml(feedUrl: URL): Promise<string> {
 function hasValidInternalKey(req: IncomingMessage): boolean {
   if (!INTERNAL_API_KEY) return false
   const provided = req.headers['x-nz-internal-key']
-  const value = Array.isArray(provided) ? provided[0] ?? '' : provided ?? ''
+  const value = Array.isArray(provided) ? (provided[0] ?? '') : (provided ?? '')
   const a = new TextEncoder().encode(value)
   const b = new TextEncoder().encode(INTERNAL_API_KEY)
   if (a.length !== b.length) return false
@@ -848,7 +950,8 @@ function validateProvisionRequest(body: ProvisionRequest): void {
   if (!isNonEmpty(body.podUrl)) throw new Error('podUrl is required.')
   if (!isNonEmpty(body.stellarPublicKey)) throw new Error('stellarPublicKey is required.')
   if (!isNonEmpty(body.identityContractId)) throw new Error('identityContractId is required.')
-  if (!isNonEmpty(body.lockboxFactoryContractId)) throw new Error('lockboxFactoryContractId is required.')
+  if (!isNonEmpty(body.lockboxFactoryContractId))
+    throw new Error('lockboxFactoryContractId is required.')
   if (!isNonEmpty(body.challengeId)) throw new Error('challengeId is required.')
   if (!isNonEmpty(body.signatureBase64)) throw new Error('signatureBase64 is required.')
   if (body.proofVersion !== 1) throw new Error('proofVersion=1 is required.')
@@ -914,8 +1017,8 @@ export async function handleHttpRequest(
     } catch {
       communityDirectoryReady = false
     }
-    const sessionReady = (process.env.NZ_ENV_PROFILE ?? 'local') === 'local' ||
-      !sessions.usesEphemeralKey
+    const sessionReady =
+      (process.env.NZ_ENV_PROFILE ?? 'local') === 'local' || !sessions.usesEphemeralKey
     const healthReady = communityDirectoryReady && TRANSPORT_IDENTITY_READY && sessionReady
     sendJson(req, res, healthReady ? 200 : 503, {
       ok: healthReady,
@@ -991,7 +1094,9 @@ export async function handleHttpRequest(
 
   if (req.method === 'POST' && url.pathname === '/v1/solid-account/check-email') {
     if (!SOLID_CSS_BASE_URL) {
-      sendJson(req, res, 503, { error: 'Solid account provisioning is not configured (JSS_SOLID_CSS_BASE_URL).' })
+      sendJson(req, res, 503, {
+        error: 'Solid account provisioning is not configured (JSS_SOLID_CSS_BASE_URL).',
+      })
       return
     }
 
@@ -1008,7 +1113,8 @@ export async function handleHttpRequest(
     }
 
     sendJson(req, res, 200, {
-      exists: knownSolidAccountEmails.has(email) || await provisioningStore.isEmailReserved(email),
+      exists:
+        knownSolidAccountEmails.has(email) || (await provisioningStore.isEmailReserved(email)),
       source: 'provisioner-reservations',
       checkedAt: new Date().toISOString(),
     })
@@ -1024,13 +1130,19 @@ export async function handleHttpRequest(
     }
     const indexLimit = communityDirectoryIndexRateLimiter.consume(claims.sub)
     if (!indexLimit.allowed) {
-      sendJson(req, res, 429, {
-        error: 'Community directory index rate limit exceeded.',
-        code: 'directory_index_rate_limited',
-      }, {
-        'retry-after': String(indexLimit.retryAfterSeconds),
-        'cache-control': 'private, no-store',
-      })
+      sendJson(
+        req,
+        res,
+        429,
+        {
+          error: 'Community directory index rate limit exceeded.',
+          code: 'directory_index_rate_limited',
+        },
+        {
+          'retry-after': String(indexLimit.retryAfterSeconds),
+          'cache-control': 'private, no-store',
+        }
+      )
       return
     }
     await communityDirectory.reload()
@@ -1073,23 +1185,35 @@ export async function handleHttpRequest(
     }
     const refreshLimit = communityDirectoryRefreshRateLimiter.consume(claims.sub)
     if (!refreshLimit.allowed) {
-      sendJson(req, res, 429, {
-        error: 'Community directory refresh rate limit exceeded.',
-        code: 'directory_refresh_rate_limited',
-      }, { 'retry-after': String(refreshLimit.retryAfterSeconds) })
+      sendJson(
+        req,
+        res,
+        429,
+        {
+          error: 'Community directory refresh rate limit exceeded.',
+          code: 'directory_refresh_rate_limited',
+        },
+        { 'retry-after': String(refreshLimit.retryAfterSeconds) }
+      )
       return
     }
     if (communityDirectoryRefreshActiveRequests >= COMMUNITY_DIRECTORY_REFRESH_MAX_CONCURRENCY) {
-      sendJson(req, res, 429, {
-        error: 'Community directory refresh capacity reached.',
-        code: 'directory_refresh_concurrency_limited',
-      }, { 'retry-after': '1' })
+      sendJson(
+        req,
+        res,
+        429,
+        {
+          error: 'Community directory refresh capacity reached.',
+          code: 'directory_refresh_concurrency_limited',
+        },
+        { 'retry-after': '1' }
+      )
       return
     }
     communityDirectoryRefreshActiveRequests += 1
     try {
-      const refresh = overrides.refreshCommunityDirectoryProjection ??
-        refreshCommunityDirectoryProjection
+      const refresh =
+        overrides.refreshCommunityDirectoryProjection ?? refreshCommunityDirectoryProjection
       const record = await refresh(claims, {
         credentialStore,
         directoryStore: communityDirectory,
@@ -1134,18 +1258,30 @@ export async function handleHttpRequest(
     }
     const profileReadLimit = publicProfileReadRateLimiter.consume(claims.sub)
     if (!profileReadLimit.allowed) {
-      sendJson(req, res, 429, {
-        error: 'Public profile read rate limit exceeded.',
-        code: 'public_profile_rate_limited',
-      }, { 'retry-after': String(profileReadLimit.retryAfterSeconds) })
+      sendJson(
+        req,
+        res,
+        429,
+        {
+          error: 'Public profile read rate limit exceeded.',
+          code: 'public_profile_rate_limited',
+        },
+        { 'retry-after': String(profileReadLimit.retryAfterSeconds) }
+      )
       return
     }
     const activeRequests = publicProfileActiveRequests.get(claims.sub) ?? 0
     if (activeRequests >= PUBLIC_PROFILE_MAX_CONCURRENCY) {
-      sendJson(req, res, 429, {
-        error: 'Too many concurrent public profile reads.',
-        code: 'public_profile_concurrency_limited',
-      }, { 'retry-after': '1' })
+      sendJson(
+        req,
+        res,
+        429,
+        {
+          error: 'Too many concurrent public profile reads.',
+          code: 'public_profile_concurrency_limited',
+        },
+        { 'retry-after': '1' }
+      )
       return
     }
     publicProfileActiveRequests.set(claims.sub, activeRequests + 1)
@@ -1204,21 +1340,30 @@ export async function handleHttpRequest(
     }
     const body = await readBoundedJsonBody<{ audience?: unknown; subject?: unknown }>(req, 1024)
     if (!isTransportIdentityAudience(body.audience)) {
-      sendJson(req, res, 400, { error: 'audience must be waku or relay.', code: 'invalid_audience' })
+      sendJson(req, res, 400, {
+        error: 'audience must be waku or relay.',
+        code: 'invalid_audience',
+      })
       return
     }
     try {
-      sendJson(req, res, 200, {
-        assertion: transportIdentityAssertions.issue(
-          claims,
-          body.audience,
-          new Date(),
-          typeof body.subject === 'string' ? body.subject : claims.sub
-        ),
-        webId: claims.sub,
-        stellarPublicKey: claims.spk,
-        audience: body.audience,
-      }, { 'cache-control': 'private, no-store' })
+      sendJson(
+        req,
+        res,
+        200,
+        {
+          assertion: transportIdentityAssertions.issue(
+            claims,
+            body.audience,
+            new Date(),
+            typeof body.subject === 'string' ? body.subject : claims.sub
+          ),
+          webId: claims.sub,
+          stellarPublicKey: claims.spk,
+          audience: body.audience,
+        },
+        { 'cache-control': 'private, no-store' }
+      )
       milestoneQControls.count('transport', 'assertion-issued')
     } catch {
       sendJson(req, res, 403, {
@@ -1245,38 +1390,56 @@ export async function handleHttpRequest(
     const verificationKey = req.socket.remoteAddress ?? 'unknown'
     const verificationLimit = transportVerificationRateLimiter.consume(verificationKey)
     if (!verificationLimit.allowed) {
-      sendJson(req, res, 429, {
-        error: 'Transport identity verification rate limit exceeded.',
-        code: 'transport_identity_rate_limited',
-      }, { 'retry-after': String(verificationLimit.retryAfterSeconds) })
+      sendJson(
+        req,
+        res,
+        429,
+        {
+          error: 'Transport identity verification rate limit exceeded.',
+          code: 'transport_identity_rate_limited',
+        },
+        { 'retry-after': String(verificationLimit.retryAfterSeconds) }
+      )
       return
     }
     if (transportVerificationActiveRequests >= TRANSPORT_VERIFY_MAX_CONCURRENCY) {
-      sendJson(req, res, 429, {
-        error: 'Transport identity verification capacity reached.',
-        code: 'transport_identity_concurrency_limited',
-      }, { 'retry-after': '1' })
+      sendJson(
+        req,
+        res,
+        429,
+        {
+          error: 'Transport identity verification capacity reached.',
+          code: 'transport_identity_concurrency_limited',
+        },
+        { 'retry-after': '1' }
+      )
       return
     }
     transportVerificationActiveRequests += 1
     try {
-    const body = await readBoundedJsonBody<{
-      assertion?: unknown
-      audience?: unknown
-    }>(req, 8 * 1024)
-    if (typeof body.assertion !== 'string' || !isTransportIdentityAudience(body.audience)) {
-      sendJson(req, res, 400, { error: 'A valid assertion and audience are required.', code: 'invalid_assertion' })
-      return
-    }
-    const identity = transportIdentityAssertions.readVerified(body.assertion, body.audience)
-    if (!identity || !milestoneQControls.isEnabled('transport', identity.accountWebId)) {
-      sendJson(req, res, 401, { error: 'Transport identity assertion is invalid.', code: 'invalid_assertion' })
-      return
-    }
-    const { accountWebId: _accountWebId, ...publicIdentity } = identity
-    void _accountWebId
-    sendJson(req, res, 200, publicIdentity, { 'cache-control': 'no-store' })
-    milestoneQControls.count('transport', 'verified')
+      const body = await readBoundedJsonBody<{
+        assertion?: unknown
+        audience?: unknown
+      }>(req, 8 * 1024)
+      if (typeof body.assertion !== 'string' || !isTransportIdentityAudience(body.audience)) {
+        sendJson(req, res, 400, {
+          error: 'A valid assertion and audience are required.',
+          code: 'invalid_assertion',
+        })
+        return
+      }
+      const identity = transportIdentityAssertions.readVerified(body.assertion, body.audience)
+      if (!identity || !milestoneQControls.isEnabled('transport', identity.accountWebId)) {
+        sendJson(req, res, 401, {
+          error: 'Transport identity assertion is invalid.',
+          code: 'invalid_assertion',
+        })
+        return
+      }
+      const { accountWebId: _accountWebId, ...publicIdentity } = identity
+      void _accountWebId
+      sendJson(req, res, 200, publicIdentity, { 'cache-control': 'no-store' })
+      milestoneQControls.count('transport', 'verified')
     } finally {
       transportVerificationActiveRequests -= 1
     }
@@ -1306,10 +1469,16 @@ export async function handleHttpRequest(
     }
     const deliveryLimit = relationshipDeliveryRateLimiter.consume(claims.sub)
     if (!deliveryLimit.allowed) {
-      sendJson(req, res, 429, {
-        error: 'Relationship delivery rate limit exceeded.',
-        code: 'relationship_delivery_rate_limited',
-      }, { 'retry-after': String(deliveryLimit.retryAfterSeconds) })
+      sendJson(
+        req,
+        res,
+        429,
+        {
+          error: 'Relationship delivery rate limit exceeded.',
+          code: 'relationship_delivery_rate_limited',
+        },
+        { 'retry-after': String(deliveryLimit.retryAfterSeconds) }
+      )
       return
     }
 
@@ -1325,18 +1494,22 @@ export async function handleHttpRequest(
         })
         return
       }
-      const result = await deliverRelationshipActivity(claims, {
-        recipientWebId: body.recipientWebId,
-        activity: body.activity,
-      }, {
-        assertionManager: relationshipDeliveryAssertions,
-        isRecipientBlocked: (sessionClaims, recipientWebId) =>
-          (overrides.isRelationshipRecipientBlocked ?? isRelationshipRecipientBlocked)(
-            sessionClaims,
-            recipientWebId,
-            { cssBaseUrl: SOLID_CSS_BASE_URL, credentialStore }
-          ),
-      })
+      const result = await deliverRelationshipActivity(
+        claims,
+        {
+          recipientWebId: body.recipientWebId,
+          activity: body.activity,
+        },
+        {
+          assertionManager: relationshipDeliveryAssertions,
+          isRecipientBlocked: (sessionClaims, recipientWebId) =>
+            (overrides.isRelationshipRecipientBlocked ?? isRelationshipRecipientBlocked)(
+              sessionClaims,
+              recipientWebId,
+              { cssBaseUrl: SOLID_CSS_BASE_URL, credentialStore }
+            ),
+        }
+      )
       sendJson(req, res, 200, result)
     } catch (error) {
       if (error instanceof RelationshipDeliveryError) {
@@ -1377,10 +1550,16 @@ export async function handleHttpRequest(
     }
     const verificationLimit = relationshipVerificationRateLimiter.consume(claims.sub)
     if (!verificationLimit.allowed) {
-      sendJson(req, res, 429, {
-        error: 'Relationship verification rate limit exceeded.',
-        code: 'relationship_verification_rate_limited',
-      }, { 'retry-after': String(verificationLimit.retryAfterSeconds) })
+      sendJson(
+        req,
+        res,
+        429,
+        {
+          error: 'Relationship verification rate limit exceeded.',
+          code: 'relationship_verification_rate_limited',
+        },
+        { 'retry-after': String(verificationLimit.retryAfterSeconds) }
+      )
       return
     }
     try {
@@ -1452,7 +1631,9 @@ export async function handleHttpRequest(
 
   if (req.method === 'POST' && url.pathname === '/v1/solid-account') {
     if (!SOLID_CSS_BASE_URL) {
-      sendJson(req, res, 503, { error: 'Solid account provisioning is not configured (JSS_SOLID_CSS_BASE_URL).' })
+      sendJson(req, res, 503, {
+        error: 'Solid account provisioning is not configured (JSS_SOLID_CSS_BASE_URL).',
+      })
       return
     }
 
@@ -1487,11 +1668,16 @@ export async function handleHttpRequest(
 
     const stellarPublicKey = body.stellarPublicKey.trim()
     if (!/^G[A-Z2-7]{55}$/.test(stellarPublicKey)) {
-      sendJson(req, res, 400, { error: 'stellarPublicKey must be a valid Stellar public key (G...).' })
+      sendJson(req, res, 400, {
+        error: 'stellarPublicKey must be a valid Stellar public key (G...).',
+      })
       return
     }
 
-    const normalizedName = body.name.trim().toLowerCase().replace(/[^a-z0-9-]/g, '')
+    const normalizedName = body.name
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, '')
     if (!normalizedName) {
       sendJson(req, res, 400, { error: 'name must contain alphanumeric characters.' })
       return
@@ -1526,11 +1712,13 @@ export async function handleHttpRequest(
       // Validate every deterministic V3 proof input before creating anything
       // in CSS. The provisioned Pod/WebID paths are derived from the same
       // normalized handle, so a stale or malformed proof cannot orphan a Pod.
-      const accountCommitmentHex = typeof body.accountCommitmentHex === 'string' ? body.accountCommitmentHex.trim() : ''
+      const accountCommitmentHex =
+        typeof body.accountCommitmentHex === 'string' ? body.accountCommitmentHex.trim() : ''
       const ciphertextHex = typeof body.ciphertextHex === 'string' ? body.ciphertextHex.trim() : ''
-      const bridgeProof = LOCKBOX_FACTORY_VERSION === 'v3'
-        ? parseBridgeProof(body, accountCommitmentHex, ciphertextHex)
-        : undefined
+      const bridgeProof =
+        LOCKBOX_FACTORY_VERSION === 'v3'
+          ? parseBridgeProof(body, accountCommitmentHex, ciphertextHex)
+          : undefined
       const expectedPodUrl = `${SOLID_CSS_BASE_URL}/${normalizedName}/`
       const expectedWebId = `${expectedPodUrl}profile/card#me`
       const requestDigest = computeProvisioningRequestDigest({
@@ -1588,7 +1776,7 @@ export async function handleHttpRequest(
       const acquired = await provisioningStore.acquireLease(
         sagaOperation,
         `http-${process.pid}-${randomBytes(8).toString('hex')}`,
-        PROVISIONING_LEASE_TTL_MS,
+        PROVISIONING_LEASE_TTL_MS
       )
       sagaOperation = acquired.operation
       sagaLease = acquired.lease
@@ -1609,21 +1797,19 @@ export async function handleHttpRequest(
           sagaOperation = await provisioningStore.transition(
             sagaOperation,
             sagaLease,
-            'proof_verified',
+            'proof_verified'
           )
         } catch (proofError) {
-          const terminalOperation = await provisioningStore.transition(
-            sagaOperation,
-            sagaLease,
-            'failed_terminal',
-            { errorCode: 'proof_verification_failed' },
-          ).catch(() => null)
+          const terminalOperation = await provisioningStore
+            .transition(sagaOperation, sagaLease, 'failed_terminal', {
+              errorCode: 'proof_verification_failed',
+            })
+            .catch(() => null)
           if (terminalOperation) {
             sagaOperation = terminalOperation
-            const releasedOperation = await provisioningStore.releaseLease(
-              terminalOperation,
-              sagaLease,
-            ).catch(() => null)
+            const releasedOperation = await provisioningStore
+              .releaseLease(terminalOperation, sagaLease)
+              .catch(() => null)
             if (releasedOperation) sagaOperation = releasedOperation
           }
           throw proofError
@@ -1631,13 +1817,13 @@ export async function handleHttpRequest(
       }
 
       let resumeMaterial = provisioningStore.decryptResumeMaterial<SolidAccountResumeMaterial>(
-        sagaOperation.operation,
+        sagaOperation.operation
       )
       if (sagaOperation.operation.state === 'proof_verified') {
         sagaOperation = await provisioningStore.transition(
           sagaOperation,
           sagaLease,
-          'css_account_pending',
+          'css_account_pending'
         )
       }
 
@@ -1646,7 +1832,7 @@ export async function handleHttpRequest(
           const renewed = await provisioningStore.renewLease(
             sagaOperation,
             sagaLease,
-            PROVISIONING_LEASE_TTL_MS,
+            PROVISIONING_LEASE_TTL_MS
           )
           sagaOperation = renewed.operation
           sagaLease = renewed.lease
@@ -1663,17 +1849,20 @@ export async function handleHttpRequest(
             sagaOperation,
             sagaLease,
             'css_account_created',
-            { resumeMaterial },
+            { resumeMaterial }
           )
         } catch (cssError) {
-          sagaOperation = await provisioningStore.markManualReview(
-            sagaOperation,
-            'css_account_result_unknown',
-          ).catch(() => sagaOperation)
+          sagaOperation = await provisioningStore
+            .markManualReview(sagaOperation, 'css_account_result_unknown')
+            .catch(() => sagaOperation)
           throw cssError
         }
       }
-      for (const nextState of ['css_login_created', 'pod_created', 'client_credentials_created'] as const) {
+      for (const nextState of [
+        'css_login_created',
+        'pod_created',
+        'client_credentials_created',
+      ] as const) {
         const currentState = sagaOperation.operation.state
         const eligible =
           (nextState === 'css_login_created' && currentState === 'css_account_created') ||
@@ -1684,16 +1873,13 @@ export async function handleHttpRequest(
         }
       }
       resumeMaterial = provisioningStore.decryptResumeMaterial<SolidAccountResumeMaterial>(
-        sagaOperation.operation,
+        sagaOperation.operation
       )
       if (!resumeMaterial.account) {
         throw new Error('Provisioning checkpoint is missing the CSS account result.')
       }
       let account = resumeMaterial.account
-      if (
-        !('clientCredentialsId' in account) ||
-        !('clientCredentialsSecret' in account)
-      ) {
+      if (!('clientCredentialsId' in account) || !('clientCredentialsSecret' in account)) {
         const storedCredentials = await credentialStore.findByWebId(expectedWebId)
         if (!storedCredentials) {
           throw new Error('Completed provisioning credentials are unavailable.')
@@ -1709,7 +1895,7 @@ export async function handleHttpRequest(
       if (account.webId !== expectedWebId || account.podUrl !== expectedPodUrl) {
         sagaOperation = await provisioningStore.markManualReview(
           sagaOperation,
-          'css_account_identity_mismatch',
+          'css_account_identity_mismatch'
         )
         sendJson(req, res, 409, {
           error: 'The CSS account result did not match the reserved identity.',
@@ -1725,8 +1911,10 @@ export async function handleHttpRequest(
         issuer: ISSUER,
       })
       void communityDirectory.flush().catch((error) => {
-        console.warn('[community-directory] onboarding seed deferred:',
-          error instanceof Error ? error.message : 'unknown error')
+        console.warn(
+          '[community-directory] onboarding seed deferred:',
+          error instanceof Error ? error.message : 'unknown error'
+        )
       })
       rememberKnownSolidEmail(email)
 
@@ -1742,10 +1930,11 @@ export async function handleHttpRequest(
           sagaOperation = await provisioningStore.checkpointResumeMaterial(
             sagaOperation,
             sagaLease,
-            resumeMaterial,
+            resumeMaterial
           )
         } catch (fundErr) {
-          const message = fundErr instanceof Error ? fundErr.message : 'Treasury member funding failed.'
+          const message =
+            fundErr instanceof Error ? fundErr.message : 'Treasury member funding failed.'
           sagaOperation = await provisioningStore.releaseLease(sagaOperation, sagaLease)
           sendJson(req, res, 502, { error: message, webId: account.webId, podUrl: account.podUrl })
           emitLifecycleEvent('account.treasury-funding.failed', {
@@ -1769,7 +1958,7 @@ export async function handleHttpRequest(
           const renewed = await provisioningStore.renewLease(
             sagaOperation,
             sagaLease,
-            PROVISIONING_LEASE_TTL_MS,
+            PROVISIONING_LEASE_TTL_MS
           )
           sagaOperation = renewed.operation
           sagaLease = renewed.lease
@@ -1796,7 +1985,11 @@ export async function handleHttpRequest(
           // produces these on-device from a verified `pod_ownership` proof.
           if (accountCommitmentHex && ciphertextHex) {
             if (LOCKBOX_FACTORY_VERSION !== 'v3') {
-              await anchorAttestation(lockbox.userLockboxContractId, accountCommitmentHex, ciphertextHex)
+              await anchorAttestation(
+                lockbox.userLockboxContractId,
+                accountCommitmentHex,
+                ciphertextHex
+              )
             }
             attestation = {
               accountCommitmentHex: accountCommitmentHex.toLowerCase().replace(/^0x/, ''),
@@ -1810,13 +2003,12 @@ export async function handleHttpRequest(
             sagaOperation,
             sagaLease,
             'lockbox_ready',
-            { resumeMaterial },
+            { resumeMaterial }
           )
         } catch (lockboxError) {
-          sagaOperation = await provisioningStore.markManualReview(
-            sagaOperation,
-            'lockbox_result_unknown',
-          ).catch(() => sagaOperation)
+          sagaOperation = await provisioningStore
+            .markManualReview(sagaOperation, 'lockbox_result_unknown')
+            .catch(() => sagaOperation)
           throw lockboxError
         }
       }
@@ -1848,10 +2040,10 @@ export async function handleHttpRequest(
               attestation,
               treasuryFunded: resumeMaterial.treasuryFunded ?? treasuryFunded,
             } satisfies SolidAccountResumeMaterial,
-          },
+          }
         )
         resumeMaterial = provisioningStore.decryptResumeMaterial<SolidAccountResumeMaterial>(
-          sagaOperation.operation,
+          sagaOperation.operation
         )
       }
 
@@ -1884,7 +2076,7 @@ export async function handleHttpRequest(
             SOLID_CSS_BASE_URL,
             { id: account.clientCredentialsId, secret: account.clientCredentialsSecret },
             account.podUrl,
-            accountRecord,
+            accountRecord
           )
         } catch (writeErr) {
           // Surface in logs but do not fail onboarding; the lockb0x is authoritative.
@@ -1894,7 +2086,7 @@ export async function handleHttpRequest(
         sagaOperation = await provisioningStore.checkpointResumeMaterial(
           sagaOperation,
           sagaLease,
-          resumeMaterial,
+          resumeMaterial
         )
       }
 
@@ -1912,7 +2104,7 @@ export async function handleHttpRequest(
               lockboxContractId: lockbox.userLockboxContractId,
               stellarPublicKey,
               accountCommitmentHex: attestation.accountCommitmentHex,
-            },
+            }
           )
         } catch (patchErr) {
           console.warn('[solid-account] Pod profile-card anchor PATCH failed:', patchErr)
@@ -1928,7 +2120,7 @@ export async function handleHttpRequest(
         const renewed = await provisioningStore.renewLease(
           sagaOperation,
           sagaLease,
-          PROVISIONING_LEASE_TTL_MS,
+          PROVISIONING_LEASE_TTL_MS
         )
         sagaOperation = renewed.operation
         sagaLease = renewed.lease
@@ -1939,7 +2131,8 @@ export async function handleHttpRequest(
           credentials: { id: account.clientCredentialsId, secret: account.clientCredentialsSecret },
         })
       } catch (sessionErr) {
-        const message = sessionErr instanceof Error ? sessionErr.message : 'Session issuance failed.'
+        const message =
+          sessionErr instanceof Error ? sessionErr.message : 'Session issuance failed.'
         sagaOperation = await provisioningStore.releaseLease(sagaOperation, sagaLease)
         sendJson(req, res, 502, {
           error: `Account was created but Solid access could not be verified: ${message}`,
@@ -1952,7 +2145,7 @@ export async function handleHttpRequest(
         sagaOperation = await provisioningStore.transition(
           sagaOperation,
           sagaLease,
-          'session_verified',
+          'session_verified'
         )
       }
 
@@ -1969,23 +2162,25 @@ export async function handleHttpRequest(
       })
       if (sagaOperation.operation.state === 'session_verified') {
         await provisioningStore.commitReservations(sagaOperation, sagaLease)
-        sagaOperation = await provisioningStore.transition(
-          sagaOperation,
-          sagaLease,
-          'completed',
-        )
+        sagaOperation = await provisioningStore.transition(sagaOperation, sagaLease, 'completed')
       }
       sagaOperation = await provisioningStore.releaseLease(sagaOperation, sagaLease)
-      sendJson(req, res, 200, {
-        status: 'ready',
-        webId: account.webId,
-        podUrl: account.podUrl,
-        stellarPublicKey: stellarPublicKey || null,
-        accountDocumentUrl,
-        session,
-        lockbox: lockbox ?? null,
-        attestation,
-      }, browserSessionHeaders)
+      sendJson(
+        req,
+        res,
+        200,
+        {
+          status: 'ready',
+          webId: account.webId,
+          podUrl: account.podUrl,
+          stellarPublicKey: stellarPublicKey || null,
+          accountDocumentUrl,
+          session,
+          lockbox: lockbox ?? null,
+          attestation,
+        },
+        browserSessionHeaders
+      )
 
       if (!replayingCompletedOperation) {
         emitLifecycleEvent('account.created', {
@@ -2051,7 +2246,9 @@ export async function handleHttpRequest(
     // Validate G-key format (Stellar public key: 56 chars, starts with G).
     const pk = body.stellarPublicKey.trim()
     if (pk.length !== 56 || !pk.startsWith('G')) {
-      sendJson(req, res, 400, { error: 'stellarPublicKey must be a valid Stellar G-key (56 chars).' })
+      sendJson(req, res, 400, {
+        error: 'stellarPublicKey must be a valid Stellar G-key (56 chars).',
+      })
       return
     }
     // The Stellar keypair is the sole user credential: no webId is required.
@@ -2098,7 +2295,7 @@ export async function handleHttpRequest(
     const signatureValid = await verifyStellarEd25519(
       challenge.stellarPublicKey,
       signedPayload,
-      body.signatureBase64.trim(),
+      body.signatureBase64.trim()
     )
     if (!signatureValid) {
       sendJson(req, res, 401, { error: 'Stellar signature verification failed.' })
@@ -2122,7 +2319,9 @@ export async function handleHttpRequest(
     let credentials = candidateCredentials[0]
     if (isNonEmpty(body.webId)) {
       const requestedWebId = body.webId.trim()
-      const matchedCredentials = candidateCredentials.find((candidate) => candidate.webId === requestedWebId)
+      const matchedCredentials = candidateCredentials.find(
+        (candidate) => candidate.webId === requestedWebId
+      )
       if (!matchedCredentials) {
         sendJson(req, res, 404, {
           error: 'Selected account was not found for this Stellar identity.',
@@ -2133,7 +2332,8 @@ export async function handleHttpRequest(
       credentials = matchedCredentials
     } else if (candidateCredentials.length > 1) {
       sendJson(req, res, 409, {
-        error: 'Multiple NodeZero accounts found for this Stellar identity. Choose an account to continue.',
+        error:
+          'Multiple NodeZero accounts found for this Stellar identity. Choose an account to continue.',
         code: 'account_selection_required',
         accounts: candidateCredentials.map((candidate) => ({
           webId: candidate.webId,
@@ -2148,7 +2348,10 @@ export async function handleHttpRequest(
         webId: credentials.webId,
         podUrl: credentials.podUrl,
         stellarPublicKey: challenge.stellarPublicKey,
-        credentials: { id: credentials.clientCredentialsId, secret: credentials.clientCredentialsSecret },
+        credentials: {
+          id: credentials.clientCredentialsId,
+          secret: credentials.clientCredentialsSecret,
+        },
       })
       const lockbox = {
         userLockboxContractId: credentials.userLockboxContractId,
@@ -2161,12 +2364,18 @@ export async function handleHttpRequest(
         stellarPublicKey: challenge.stellarPublicKey,
         lockbox,
       })
-      sendJson(req, res, 200, {
-        session,
-        webId: credentials.webId,
-        podUrl: credentials.podUrl,
-        lockbox,
-      }, browserSessionHeaders)
+      sendJson(
+        req,
+        res,
+        200,
+        {
+          session,
+          webId: credentials.webId,
+          podUrl: credentials.podUrl,
+          lockbox,
+        },
+        browserSessionHeaders
+      )
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Solid access verification failed.'
       console.warn('[auth:stellar-token] session issuance failed:', message)
@@ -2187,7 +2396,10 @@ export async function handleHttpRequest(
 
     const identity = sessions.consumeRefreshToken(body.refreshToken.trim())
     if (!identity) {
-      sendJson(req, res, 401, { error: 'Refresh token is invalid or expired.', code: 'session_invalid' })
+      sendJson(req, res, 401, {
+        error: 'Refresh token is invalid or expired.',
+        code: 'session_invalid',
+      })
       return
     }
 
@@ -2204,7 +2416,10 @@ export async function handleHttpRequest(
         webId: credentials.webId,
         podUrl: credentials.podUrl,
         stellarPublicKey: identity.stellarPublicKey,
-        credentials: { id: credentials.clientCredentialsId, secret: credentials.clientCredentialsSecret },
+        credentials: {
+          id: credentials.clientCredentialsId,
+          secret: credentials.clientCredentialsSecret,
+        },
       })
       const lockbox = {
         userLockboxContractId: credentials.userLockboxContractId,
@@ -2217,12 +2432,18 @@ export async function handleHttpRequest(
         stellarPublicKey: identity.stellarPublicKey,
         lockbox,
       })
-      sendJson(req, res, 200, {
-        session,
-        webId: credentials.webId,
-        podUrl: credentials.podUrl,
-        lockbox,
-      }, browserSessionHeaders)
+      sendJson(
+        req,
+        res,
+        200,
+        {
+          session,
+          webId: credentials.webId,
+          podUrl: credentials.podUrl,
+          lockbox,
+        },
+        browserSessionHeaders
+      )
     } catch {
       sendJson(req, res, 401, {
         error: 'Solid access could not be verified for this account.',
@@ -2238,23 +2459,43 @@ export async function handleHttpRequest(
       return
     }
     if (!isAllowedBrowserOrigin(req)) {
-      sendJson(req, res, 403, { error: 'Browser session bootstrap requires an allowed first-party origin.' })
+      sendJson(req, res, 403, {
+        error: 'Browser session bootstrap requires an allowed first-party origin.',
+      })
       return
     }
     const token = readCookie(req, BROWSER_SESSION_COOKIE_NAME)
     if (!token) {
-      sendJson(req, res, 401, { error: 'Browser session is missing.', code: 'session_invalid' }, clearBrowserSessionCookie())
+      sendJson(
+        req,
+        res,
+        401,
+        { error: 'Browser session is missing.', code: 'session_invalid' },
+        clearBrowserSessionCookie()
+      )
       return
     }
     const browserSession = await credentialStore.findBrowserSession(token).catch(() => null)
     if (!browserSession) {
-      sendJson(req, res, 401, { error: 'Browser session is invalid or expired.', code: 'session_invalid' }, clearBrowserSessionCookie())
+      sendJson(
+        req,
+        res,
+        401,
+        { error: 'Browser session is invalid or expired.', code: 'session_invalid' },
+        clearBrowserSessionCookie()
+      )
       return
     }
     const credentials = await credentialStore.findByWebId(browserSession.webId).catch(() => null)
     if (!credentials) {
       await credentialStore.revokeBrowserSession(token)
-      sendJson(req, res, 401, { error: 'Browser session has been revoked.', code: 'session_invalid' }, clearBrowserSessionCookie())
+      sendJson(
+        req,
+        res,
+        401,
+        { error: 'Browser session has been revoked.', code: 'session_invalid' },
+        clearBrowserSessionCookie()
+      )
       return
     }
     try {
@@ -2262,7 +2503,10 @@ export async function handleHttpRequest(
         webId: credentials.webId,
         podUrl: credentials.podUrl,
         stellarPublicKey: credentials.stellarPublicKey,
-        credentials: { id: credentials.clientCredentialsId, secret: credentials.clientCredentialsSecret },
+        credentials: {
+          id: credentials.clientCredentialsId,
+          secret: credentials.clientCredentialsSecret,
+        },
       })
       await credentialStore.revokeBrowserSession(token)
       const lockbox = {
@@ -2276,15 +2520,29 @@ export async function handleHttpRequest(
         stellarPublicKey: credentials.stellarPublicKey,
         lockbox,
       })
-      sendJson(req, res, 200, { session, webId: credentials.webId, podUrl: credentials.podUrl, lockbox }, browserSessionHeaders)
+      sendJson(
+        req,
+        res,
+        200,
+        { session, webId: credentials.webId, podUrl: credentials.podUrl, lockbox },
+        browserSessionHeaders
+      )
     } catch {
-      sendJson(req, res, 401, { error: 'Solid access could not be verified for this account.', code: 'session_invalid' }, clearBrowserSessionCookie())
+      sendJson(
+        req,
+        res,
+        401,
+        { error: 'Solid access could not be verified for this account.', code: 'session_invalid' },
+        clearBrowserSessionCookie()
+      )
     }
     return
   }
 
   if (req.method === 'POST' && url.pathname === '/v1/auth/logout') {
-    const body = await readJsonBody<{ refreshToken?: string; webId?: string }>(req).catch(() => ({}) as { refreshToken?: string; webId?: string })
+    const body = await readJsonBody<{ refreshToken?: string; webId?: string }>(req).catch(
+      () => ({}) as { refreshToken?: string; webId?: string }
+    )
     if (isNonEmpty(body.refreshToken)) {
       sessions.consumeRefreshToken(body.refreshToken.trim())
     }
@@ -2303,7 +2561,9 @@ export async function handleHttpRequest(
     // client credentials so every live and future session for the WebID fails
     // closed at the proxy / refresh / login. Internal-key protected.
     if (!INTERNAL_API_KEY) {
-      sendJson(req, res, 503, { error: 'Session revocation is not enabled (JSS_INTERNAL_API_KEY).' })
+      sendJson(req, res, 503, {
+        error: 'Session revocation is not enabled (JSS_INTERNAL_API_KEY).',
+      })
       return
     }
     if (!hasValidInternalKey(req)) {
@@ -2329,7 +2589,9 @@ export async function handleHttpRequest(
     // P3: Treasury-sponsored member account creation. Privileged, funds-moving,
     // and disabled unless an internal API key is configured (fail-closed).
     if (!INTERNAL_API_KEY) {
-      sendJson(req, res, 503, { error: 'Treasury account creation is not enabled (JSS_INTERNAL_API_KEY).' })
+      sendJson(req, res, 503, {
+        error: 'Treasury account creation is not enabled (JSS_INTERNAL_API_KEY).',
+      })
       return
     }
     if (!hasValidInternalKey(req)) {
@@ -2344,7 +2606,9 @@ export async function handleHttpRequest(
     }
     const destination = body.stellarPublicKey.trim()
     if (!/^G[A-Z2-7]{55}$/.test(destination)) {
-      sendJson(req, res, 400, { error: 'stellarPublicKey must be a valid Stellar public key (G...).' })
+      sendJson(req, res, 400, {
+        error: 'stellarPublicKey must be a valid Stellar public key (G...).',
+      })
       return
     }
 

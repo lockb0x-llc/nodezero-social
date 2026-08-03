@@ -5,6 +5,11 @@
   "license": "MIT",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "install-stellar-cli.sh",
+    "startup.sh"
+  ],
   "scripts": {
     "build": "pnpm --filter @nodezero/solid-pod-sync build && tsc --project tsconfig.json",
     "start": "node dist/index.js",
@@ -16,7 +21,6 @@
   },
   "dependencies": {
     "@nodezero/solid-pod-sync": "workspace:*",
-    "@nodezero/zk-crypto": "workspace:*",
     "@stellar/stellar-sdk": "^16.0.0",
     "snarkjs": "0.7.5"
   },

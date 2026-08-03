@@ -60,6 +60,16 @@ if (/^\s*workflow_dispatch:/m.test(baselineWorkflow)) {
   )
 }
 
+const podProxySource = await readFile('packages/jss-provisioner/src/podProxy.ts', 'utf8')
+for (const auditCall of podProxySource.matchAll(/auditLog\?\.\([\s\S]*?\}\)/g)) {
+  if (/\b(webId|target|message)\s*:/.test(auditCall[0])) {
+    failures.push('Pod proxy audit events must not emit raw identity, resource, or error fields')
+  }
+}
+if (!/identityDigest[\s\S]*resourceDigest/.test(podProxySource)) {
+  failures.push('Pod proxy audit events are missing irreversible identity/resource digests')
+}
+
 for (const path of [
   '.github/workflows/staging-baseline-capture.yml',
   '.github/workflows/staging-rollback.yml',
@@ -97,6 +107,15 @@ for (const [path, uploadPattern] of retainedUploadChecks) {
 const deployWorkflow = sources.get('.github/workflows/staging-deploy.yml') ?? ''
 if (!/Baseline artifact is missing checksummed PWA file/.test(deployWorkflow)) {
   failures.push('deploy workflow: missing baseline PWA artifact completeness check')
+}
+if (
+  !/inject-workspace-packages=true[\s\S]*@nodezero\/jss-provisioner deploy --prod[\s\S]*require\.resolve\('@nodezero\/solid-pod-sync'/.test(
+    deployWorkflow
+  )
+) {
+  failures.push(
+    'deploy workflow: standalone provisioner artifact is not built from the frozen workspace graph'
+  )
 }
 if (!/Rollback artifact is missing checksummed PWA file/.test(rollbackWorkflow)) {
   failures.push('rollback workflow: missing retained PWA completeness check')
@@ -187,6 +206,8 @@ for (const script of [
   'qa:q4:candidate',
   'qa:q4:published',
   'qa:q4:deployed',
+  'qa:validate:provisioner-runtime',
+  'qa:validate:production-audit',
 ]) {
   if (typeof packageJson.scripts?.[script] !== 'string')
     failures.push(`missing root script '${script}'`)

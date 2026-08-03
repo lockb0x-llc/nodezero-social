@@ -49,6 +49,14 @@ This runbook does not authorize Production Mainnet deployment.
    ```powershell
    pnpm qa:q4:preflight
    ```
+   This includes a clean, lockfile-driven provisioner `pnpm deploy` build, exact
+   runtime-version checks, Solid package loading, and a zero-vulnerability production
+   closure audit. The server keeps only its dependency-free canonical claim serializer
+   locally instead of shipping the full proof-generation workspace. The packaged
+   startup script also pins and verifies the official Stellar CLI archive SHA-256 before
+   extracting or executing it.
+   The workspace production audit must report zero high and zero critical advisories;
+   patched overrides are accepted only with package tests and a strict staging PWA build.
 3. Review the complete delta from the last deployed tag through the final candidate
    SHA, including the release-preparation commit:
    ```powershell

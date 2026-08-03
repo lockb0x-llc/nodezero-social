@@ -19,6 +19,7 @@
  */
 
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { createHash } from 'node:crypto'
 import type { CredentialStore } from './credentialStore.js'
 import type { SessionTokenManager, SessionClaims } from './sessionTokens.js'
 import { mintPodAccessToken, type PodAccessToken } from './solidAccount.js'
@@ -90,8 +91,18 @@ export function evictPodTokenCache(webId: string): void {
   tokenCache.delete(webId.trim())
 }
 
+export function podProxyAuditDigest(
+  kind: 'identity' | 'resource' | 'error',
+  value: string
+): string {
+  return createHash('sha256').update(`NZ_POD_PROXY_AUDIT_V1|${kind}|${value}`, 'utf8').digest('hex')
+}
+
 export class PodProxyTargetError extends Error {
-  constructor(message: string, readonly code: string) {
+  constructor(
+    message: string,
+    readonly code: string
+  ) {
     super(message)
     this.name = 'PodProxyTargetError'
   }
@@ -108,7 +119,10 @@ export function buildPodProxyTarget(
     cssBase = new URL(cssBaseUrl.endsWith('/') ? cssBaseUrl : `${cssBaseUrl}/`)
     sessionPod = new URL(sessionPodUrl.endsWith('/') ? sessionPodUrl : `${sessionPodUrl}/`)
   } catch {
-    throw new PodProxyTargetError('Pod proxy target configuration is invalid.', 'pod_target_invalid')
+    throw new PodProxyTargetError(
+      'Pod proxy target configuration is invalid.',
+      'pod_target_invalid'
+    )
   }
 
   if (cssBase.origin !== sessionPod.origin) {
@@ -136,7 +150,9 @@ export function buildPodProxyTarget(
     throw new PodProxyTargetError('Pod proxy path is malformed.', 'pod_path_invalid')
   }
 
-  const podPath = sessionPod.pathname.endsWith('/') ? sessionPod.pathname : `${sessionPod.pathname}/`
+  const podPath = sessionPod.pathname.endsWith('/')
+    ? sessionPod.pathname
+    : `${sessionPod.pathname}/`
   const targetPath = target.pathname
   if (targetPath !== podPath.slice(0, -1) && !targetPath.startsWith(podPath)) {
     throw new PodProxyTargetError(
@@ -153,7 +169,7 @@ function sendProxyJson(
   res: ServerResponse,
   cors: (req: IncomingMessage) => Record<string, string>,
   statusCode: number,
-  payload: unknown,
+  payload: unknown
 ): void {
   res.writeHead(statusCode, {
     ...cors(req),
@@ -179,7 +195,7 @@ async function readRawBody(req: IncomingMessage): Promise<Buffer> {
 async function resolveAccessToken(
   deps: PodProxyDeps,
   claims: SessionClaims,
-  forceFresh: boolean,
+  forceFresh: boolean
 ): Promise<PodAccessToken | null> {
   const cacheKey = claims.sub
   if (!forceFresh) {
@@ -201,7 +217,10 @@ async function resolveAccessToken(
     secret: credentials.clientCredentialsSecret,
   })
   tokenCache.set(cacheKey, { token, webId: claims.sub })
-  deps.auditLog?.('pod-token.minted', { webId: claims.sub, expiresAtMs: token.expiresAtMs })
+  deps.auditLog?.('pod-token.minted', {
+    identityDigest: podProxyAuditDigest('identity', claims.sub),
+    expiresAtMs: token.expiresAtMs,
+  })
   return token
 }
 
@@ -212,14 +231,17 @@ async function resolveAccessToken(
 export async function handlePodProxyRequest(
   req: IncomingMessage,
   res: ServerResponse,
-  deps: PodProxyDeps,
+  deps: PodProxyDeps
 ): Promise<boolean> {
   const rawUrl = req.url ?? '/'
   if (!rawUrl.startsWith(POD_PROXY_PREFIX)) return false
 
   const method = (req.method ?? 'GET').toUpperCase()
   if (!ALLOWED_METHODS.has(method)) {
-    sendProxyJson(req, res, deps.corsHeaders, 405, { error: 'Method not allowed.', code: 'method_not_allowed' })
+    sendProxyJson(req, res, deps.corsHeaders, 405, {
+      error: 'Method not allowed.',
+      code: 'method_not_allowed',
+    })
     return true
   }
 
@@ -264,7 +286,10 @@ export async function handlePodProxyRequest(
       token = await resolveAccessToken(deps, claims, attemptedFresh)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Solid token mint failed.'
-      deps.auditLog?.('pod-token.mint-failed', { webId: claims.sub, message })
+      deps.auditLog?.('pod-token.mint-failed', {
+        identityDigest: podProxyAuditDigest('identity', claims.sub),
+        errorDigest: podProxyAuditDigest('error', message),
+      })
       sendProxyJson(req, res, deps.corsHeaders, 401, {
         error: 'Solid access could not be established for this session.',
         code: 'session_invalid',
@@ -299,7 +324,10 @@ export async function handlePodProxyRequest(
       })
     } catch (err) {
       const message = err instanceof Error ? err.message : 'CSS request failed.'
-      sendProxyJson(req, res, deps.corsHeaders, 502, { error: message, code: 'upstream_unreachable' })
+      sendProxyJson(req, res, deps.corsHeaders, 502, {
+        error: message,
+        code: 'upstream_unreachable',
+      })
       return true
     }
 
@@ -312,7 +340,10 @@ export async function handlePodProxyRequest(
     }
 
     if (upstream.status === 401) {
-      deps.auditLog?.('pod-proxy.session-invalid', { webId: claims.sub, target: targetUrl })
+      deps.auditLog?.('pod-proxy.session-invalid', {
+        identityDigest: podProxyAuditDigest('identity', claims.sub),
+        resourceDigest: podProxyAuditDigest('resource', targetUrl),
+      })
       sendProxyJson(req, res, deps.corsHeaders, 401, {
         error: 'Solid access was rejected for this session.',
         code: 'session_invalid',

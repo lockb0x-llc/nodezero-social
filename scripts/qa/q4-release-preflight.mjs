@@ -154,6 +154,8 @@ const gates = [
   ['attestation fail-closed policy', ['policy:validate-attestation-fail-closed']],
   ['DocuStream enabled policy', ['policy:validate-docustream-enabled']],
   ['PWA policy', ['policy:validate-pwa']],
+  ['provisioner runtime closure', ['qa:validate:provisioner-runtime']],
+  ['workspace production audit', ['qa:validate:production-audit']],
   [
     'workflow formatting',
     [

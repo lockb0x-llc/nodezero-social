@@ -405,46 +405,23 @@ jobs:
           fi
 
       - name: Build JSS provisioner
-        run: pnpm --filter @nodezero/jss-provisioner build
+        run: |
+          rm -rf packages/jss-provisioner/dist packages/solid-pod-sync/dist
+          pnpm --filter @nodezero/jss-provisioner build
 
       - name: Package JSS provisioner artifact
         id: package-provisioner
         working-directory: packages/jss-provisioner
         run: |
           set -euo pipefail
-          # App Service removes root node_modules during startup. Keep runtime
-          # dependencies next to dist/index.js so Node can resolve snarkjs for
-          # the V3 bridge proof verifier after deployment.
-          node -e "const fs=require('fs');const p=require('./package.json');delete p.dependencies['@nodezero/zk-crypto'];fs.writeFileSync('dist/package.json',JSON.stringify(p,null,2)+'\n')"
-          npm install --prefix dist --omit=dev --ignore-scripts --no-package-lock
-          # The provisioner shares canonical claim serialization with the app,
-          # but the standalone ZIP cannot install a workspace:* dependency.
-          # Compile and vendor only that dependency-free module into the ZIP.
-          mkdir -p dist/node_modules/@nodezero/zk-crypto
-          pnpm exec tsc ../zk-crypto/src/pod-ownership-claim.ts \
-            --target ES2022 \
-            --module commonjs \
-            --moduleResolution node \
-            --outDir dist/node_modules/@nodezero/zk-crypto \
-            --declaration false \
-            --sourceMap false
-          cat > dist/node_modules/@nodezero/zk-crypto/package.json <<'EOF'
-          {
-            "name": "@nodezero/zk-crypto",
-            "version": "0.0.1",
-            "type": "commonjs",
-            "exports": {
-              "./pod-claim": "./pod-ownership-claim.js"
-            }
-          }
-          EOF
-          node -e "console.log(require.resolve('snarkjs', { paths: ['dist'] }))"
-          node -e "console.log(require.resolve('@nodezero/zk-crypto/pod-claim', { paths: ['dist'] }))"
-          payload_sha256="$(find dist -type f ! -name build-info.json -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
-          printf '{"commit":"%s","payloadSha256":"%s"}\n' "$GITHUB_SHA" "$payload_sha256" > dist/build-info.json
+          rm -rf runtime-package deploy.zip
+          pnpm --config.inject-workspace-packages=true \
+            --filter @nodezero/jss-provisioner deploy --prod "$(pwd)/runtime-package"
+          node -e "const root=process.argv[1];console.log(require.resolve('snarkjs',{paths:[root]}));const solid=require.resolve('@nodezero/solid-pod-sync',{paths:[root]});console.log(solid);require(solid)" "$(pwd)/runtime-package"
+          payload_sha256="$(cd runtime-package && find . -type f ! -path './dist/build-info.json' -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
+          printf '{"commit":"%s","payloadSha256":"%s"}\n' "$GITHUB_SHA" "$payload_sha256" > runtime-package/dist/build-info.json
           echo "payload_sha256=${payload_sha256}" >> "$GITHUB_OUTPUT"
-          rm -f deploy.zip
-          zip -r deploy.zip dist startup.sh
+          (cd runtime-package && zip -r ../deploy.zip .)
 
       - name: Configure JSS provisioner runtime
         run: |
