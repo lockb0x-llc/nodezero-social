@@ -29,6 +29,8 @@ if ! STELLAR_BIN="$(install_stellar_cli \
   exit 1
 fi
 
+export PATH="$TOOLS_DIR:$PATH"
+
 stellar() {
   "$STELLAR_BIN" "$@"
 }

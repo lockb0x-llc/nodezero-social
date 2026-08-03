@@ -167,6 +167,7 @@ try {
   if (
     !/sha256sum --check --status/.test(installer) ||
     !/verify_sha256 "\$binary_sha256" "\$binary"/.test(installer) ||
+    !/export PATH="\$TOOLS_DIR:\$PATH"/.test(startup) ||
     !/stellar\(\) \{[\s\S]*"\$STELLAR_BIN" "\$@"/.test(startup) ||
     /command -v stellar/.test(startup) ||
     /JSS_STELLAR_CLI_(URL|SHA256)/.test(startup)
