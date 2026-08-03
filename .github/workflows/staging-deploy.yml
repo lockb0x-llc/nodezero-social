@@ -826,7 +826,7 @@ jobs:
           cd deploy
           zip -r ../deploy.zip .
 
-      - name: Configure and deploy relay service
+      - name: Configure relay service runtime
         run: |
           set -euo pipefail
           az webapp config set \
@@ -845,12 +845,125 @@ jobs:
               RELAY_PORT="8080" \
               WEBSITES_PORT="8080"
 
+      - name: Wait for relay SCM stabilization
+        run: |
+          set -euo pipefail
+          scm_host="$(az webapp show \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$RELAY_APP_NAME" \
+            --query defaultHostName -o tsv | sed 's/\.azurewebsites\.net$/.scm.azurewebsites.net/')"
+          consecutive_ready=0
+          last_probe_error=""
+          for attempt in {1..30}; do
+            if probe_output="$(timeout 20s az rest \
+              --method get \
+              --url "https://${scm_host}/api/deployments" \
+              --resource "https://management.azure.com/" \
+              --output none 2>&1)"; then
+              last_probe_error=""
+              consecutive_ready=$((consecutive_ready + 1))
+              if [ "$consecutive_ready" -eq 3 ]; then
+                echo "Relay SCM is stable after configuration changes."
+                break
+              fi
+            else
+              consecutive_ready=0
+              last_probe_error="$probe_output"
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              if [ -n "$last_probe_error" ]; then
+                echo "Final relay SCM probe error: ${last_probe_error}" >&2
+              else
+                echo "Final relay SCM probe succeeded, but the stability threshold was not reached." >&2
+              fi
+              echo "Relay SCM did not stabilize before deployment."
+              exit 1
+            fi
+            sleep 10
+          done
+
+      - name: Deploy relay service bytes
+        run: |
+          set -euo pipefail
+          scm_host="$(az webapp show \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$RELAY_APP_NAME" \
+            --query defaultHostName -o tsv | sed 's/\.azurewebsites\.net$/.scm.azurewebsites.net/')"
+          before_id="$(az rest \
+            --method get \
+            --url "https://${scm_host}/api/deployments" \
+            --resource "https://management.azure.com/" \
+            --query '[0].id' -o tsv)"
           az webapp deploy \
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --name "$RELAY_APP_NAME" \
             --src-path packages/relay-service/deploy.zip \
             --type zip \
-            --clean true
+            --clean true \
+            --ignore-stack true \
+            --async true \
+            --restart false \
+            --track-status false
+
+          deployment_id=""
+          print_deployment_diagnostics() {
+            if [ -z "$deployment_id" ]; then
+              echo "No distinct relay Kudu deployment was observed."
+              return
+            fi
+            az rest \
+              --method get \
+              --url "https://${scm_host}/api/deployments/${deployment_id}" \
+              --resource "https://management.azure.com/" -o json || true
+            az rest \
+              --method get \
+              --url "https://${scm_host}/api/deployments/${deployment_id}/log" \
+              --resource "https://management.azure.com/" -o json || true
+          }
+          for attempt in {1..120}; do
+            deployment_url="https://${scm_host}/api/deployments"
+            if [ -n "$deployment_id" ]; then
+              deployment_url="${deployment_url}/${deployment_id}"
+            fi
+            if deployment_json="$(timeout 20s az rest \
+              --method get \
+              --url "$deployment_url" \
+              --resource "https://management.azure.com/" -o json 2>&1)"; then
+              if [ -z "$deployment_id" ]; then
+                latest_id="$(jq -r '.[0].id // empty' <<<"$deployment_json")"
+                if [ -n "$latest_id" ] && [ "$latest_id" != "$before_id" ]; then
+                  deployment_id="$latest_id"
+                fi
+              else
+                status="$(jq -r '.status // 0' <<<"$deployment_json")"
+                complete="$(jq -r '.complete // false' <<<"$deployment_json")"
+                if [ "$status" = "4" ] && [ "$complete" = "true" ]; then
+                  echo "Relay Kudu deployment ${deployment_id} completed successfully."
+                  break
+                fi
+                if [ "$status" = "3" ]; then
+                  print_deployment_diagnostics
+                  echo "Relay Kudu deployment ${deployment_id} failed."
+                  exit 1
+                fi
+              fi
+            else
+              echo "Relay Kudu deployment status polling failed; retrying: ${deployment_json}" >&2
+            fi
+            if [ "$attempt" -eq 120 ]; then
+              print_deployment_diagnostics
+              echo "Relay Kudu deployment did not reach terminal success."
+              exit 1
+            fi
+            sleep 10
+          done
+
+      - name: Activate relay service bytes
+        run: |
+          set -euo pipefail
+          az webapp restart \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$RELAY_APP_NAME"
 
       - name: Verify relay health and identity verifier configuration
         env:

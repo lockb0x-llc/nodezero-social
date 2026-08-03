@@ -135,6 +135,13 @@ if (
     'deploy workflow: provisioner readiness is not bounded by the guarded ten-minute stability contract'
   )
 }
+if (
+  !/Configure relay service runtime[\s\S]*Wait for relay SCM stabilization[\s\S]*consecutive_ready=0[\s\S]*\/api\/deployments[\s\S]*"\$consecutive_ready" -eq 3[\s\S]*Deploy relay service bytes[\s\S]*before_id=[\s\S]*--ignore-stack true[\s\S]*--async true[\s\S]*--restart false[\s\S]*--track-status false[\s\S]*deployment_url="\$\{deployment_url\}\/\$\{deployment_id\}"[\s\S]*"\$latest_id" != "\$before_id"[\s\S]*"\$status" = "4" \] && \[ "\$complete" = "true"[\s\S]*"\$status" = "3"[\s\S]*print_deployment_diagnostics[\s\S]*Relay Kudu deployment status polling failed; retrying[\s\S]*Relay Kudu deployment did not reach terminal success[\s\S]*Activate relay service bytes[\s\S]*az webapp restart[\s\S]*Verify relay health and identity verifier configuration/.test(
+    deployWorkflow
+  )
+) {
+  failures.push('deploy workflow: relay bytes are not copied and activated in a restart-safe order')
+}
 if (!/Rollback artifact is missing checksummed PWA file/.test(rollbackWorkflow)) {
   failures.push('rollback workflow: missing retained PWA completeness check')
 }

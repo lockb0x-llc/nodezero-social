@@ -67,6 +67,9 @@ This runbook does not authorize Production Mainnet deployment.
    After provenance activation, allow up to ten minutes for App Service startup and
    dependent readiness, while still requiring three consecutive all-dark health
    samples and a final 30-second exact-commit hold before later components mutate.
+   Relay configuration follows the same restart-safe boundary: three authenticated
+   Kudu deployment-API reads, asynchronous no-restart byte copy, terminal Kudu
+   success, one explicit activation restart, then exact relay health and provenance.
    The workspace production audit must report zero high and zero critical advisories;
    patched overrides are accepted only with package tests and a strict staging PWA build.
 3. Review the complete delta from the last deployed tag through the final candidate
