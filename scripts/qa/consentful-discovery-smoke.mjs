@@ -142,6 +142,32 @@ if (
 ) {
   failures.push('deploy workflow: relay bytes are not copied and activated in a restart-safe order')
 }
+const relayDeploymentBlock = deployWorkflow.match(
+  /- name: Deploy relay service bytes[\s\S]*?- name: Activate relay service bytes/
+)?.[0]
+const relayDeploymentAssignments = relayDeploymentBlock?.match(/^\s*deployment_id\s*=/gm) ?? []
+if (
+  relayDeploymentAssignments.length !== 2 ||
+  !/^\s*deployment_id=""$/m.test(relayDeploymentBlock ?? '') ||
+  !/^\s*deployment_id="\$latest_id"$/m.test(relayDeploymentBlock ?? '')
+) {
+  failures.push('deploy workflow: relay Kudu deployment ID is not assigned exactly once')
+}
+const relayHealthBlock = deployWorkflow.match(
+  /- name: Verify relay health and identity verifier configuration[\s\S]*?(?=\n\s{6}- name:)/
+)?.[0]
+const relayHealthLines = new Set((relayHealthBlock ?? '').split('\n').map((line) => line.trim()))
+for (const predicate of [
+  `[ "$(jq -r '.identityVerifierConfigured // false' /tmp/relay-health.json)" = "true" ] && \\`,
+  `[ "$(jq -r '.identityVerifierReachable // false' /tmp/relay-health.json)" = "true" ] && \\`,
+  `[ "$(jq -r '.transportEnabled // true' /tmp/relay-health.json)" = "false" ] && \\`,
+  `[ "$(jq -r '.build.commit // empty' /tmp/relay-health.json)" = "$EXPECTED_COMMIT" ] && \\`,
+  `[ "$(jq -r '.build.payloadSha256 // empty' /tmp/relay-health.json)" = "$EXPECTED_PAYLOAD_SHA256" ]; then`,
+]) {
+  if (!relayHealthLines.has(predicate)) {
+    failures.push(`deploy workflow: missing exact relay health predicate: ${predicate}`)
+  }
+}
 if (!/Rollback artifact is missing checksummed PWA file/.test(rollbackWorkflow)) {
   failures.push('rollback workflow: missing retained PWA completeness check')
 }
