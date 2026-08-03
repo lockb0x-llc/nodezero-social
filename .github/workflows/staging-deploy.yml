@@ -557,12 +557,14 @@ jobs:
             --name "$JSS_PROVISIONER_APP_NAME" \
             --query defaultHostName -o tsv | sed 's/\.azurewebsites\.net$/.scm.azurewebsites.net/')"
           consecutive_ready=0
+          last_probe_error=""
           for attempt in {1..30}; do
-            if timeout 20s az rest \
+            if probe_output="$(timeout 20s az rest \
               --method get \
-              --url "https://${scm_host}/api/environment" \
+              --url "https://${scm_host}/api/deployments" \
               --resource "https://management.azure.com/" \
-              --output none 2>/dev/null; then
+              --output none 2>&1)"; then
+              last_probe_error=""
               consecutive_ready=$((consecutive_ready + 1))
               if [ "$consecutive_ready" -eq 3 ]; then
                 echo "Provisioner SCM is stable after configuration changes."
@@ -570,8 +572,14 @@ jobs:
               fi
             else
               consecutive_ready=0
+              last_probe_error="$probe_output"
             fi
             if [ "$attempt" -eq 30 ]; then
+              if [ -n "$last_probe_error" ]; then
+                echo "Final provisioner SCM probe error: ${last_probe_error}" >&2
+              else
+                echo "Final provisioner SCM probe succeeded, but the stability threshold was not reached." >&2
+              fi
               echo "Provisioner SCM did not stabilize before deployment."
               exit 1
             fi
