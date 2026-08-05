@@ -1,7 +1,4 @@
-import {
-  DISCOVERY_MANIFEST_CLASS,
-  PublicTypeIndexManager,
-} from '../PublicTypeIndexManager.js'
+import { DISCOVERY_MANIFEST_CLASS, PublicTypeIndexManager } from '../PublicTypeIndexManager.js'
 
 const jestGlobal = import.meta.jest
 const webId = 'https://alice.example/profile/card#me'
@@ -23,9 +20,9 @@ describe('PublicTypeIndexManager', () => {
       @prefix solid: <http://www.w3.org/ns/solid/terms#> .
       <${webId}> solid:publicTypeIndex <${indexUrl}> .
     `
-    const fetch = jestGlobal.fn().mockResolvedValue(
-      responseWithUrl(profile, 'https://alice.example/profile/card')
-    )
+    const fetch = jestGlobal
+      .fn()
+      .mockResolvedValue(responseWithUrl(profile, 'https://alice.example/profile/card'))
     const manager = new PublicTypeIndexManager({ fetch })
 
     await expect(manager.discoverPublicTypeIndex(webId)).resolves.toBe(indexUrl)
@@ -38,9 +35,9 @@ describe('PublicTypeIndexManager', () => {
       .mockResolvedValueOnce(new Response('', { status: 201 }))
     const manager = new PublicTypeIndexManager({ fetch })
 
-    await expect(manager.ensureDiscoveryManifestRegistration(
-      'https://alice.example/', indexUrl, manifestUrl
-    )).resolves.toBe(`${indexUrl}#nodezero-discovery-manifest`)
+    await expect(
+      manager.ensureDiscoveryManifestRegistration('https://alice.example/', indexUrl, manifestUrl)
+    ).resolves.toBe(`${indexUrl}#nodezero-discovery-manifest`)
 
     const body = String(fetch.mock.calls[1]?.[1]?.body ?? '')
     expect(body).toContain(DISCOVERY_MANIFEST_CLASS)
@@ -67,7 +64,11 @@ describe('PublicTypeIndexManager', () => {
       .mockResolvedValueOnce(new Response('', { status: 200 }))
     const manager = new PublicTypeIndexManager({ fetch })
 
-    await manager.ensureDiscoveryManifestRegistration('https://alice.example/', indexUrl, manifestUrl)
+    await manager.ensureDiscoveryManifestRegistration(
+      'https://alice.example/',
+      indexUrl,
+      manifestUrl
+    )
 
     const patch = String(fetch.mock.calls[1]?.[1]?.body ?? '')
     expect(patch).not.toContain('https://example.test/ns#Bookmark')
@@ -80,17 +81,57 @@ describe('PublicTypeIndexManager', () => {
     const fetch = jestGlobal.fn()
     const manager = new PublicTypeIndexManager({ fetch })
 
-    await expect(manager.ensureDiscoveryManifestRegistration(
-      'https://alice.example/',
-      'https://mallory.example/publicTypeIndex.ttl',
-      manifestUrl
-    )).rejects.toThrow('publicTypeIndexUrl must remain inside the owner Pod namespace')
-    await expect(manager.ensureDiscoveryManifestRegistration(
-      'https://alice.example/',
-      indexUrl,
-      'https://mallory.example/manifest'
-    )).rejects.toThrow('discoveryManifestUrl must remain inside the owner Pod namespace')
+    await expect(
+      manager.ensureDiscoveryManifestRegistration(
+        'https://alice.example/',
+        'https://mallory.example/publicTypeIndex.ttl',
+        manifestUrl
+      )
+    ).rejects.toThrow('publicTypeIndexUrl must remain inside the owner Pod namespace')
+    await expect(
+      manager.ensureDiscoveryManifestRegistration(
+        'https://alice.example/',
+        indexUrl,
+        'https://mallory.example/manifest'
+      )
+    ).rejects.toThrow('discoveryManifestUrl must remain inside the owner Pod namespace')
     expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('removes only the NodeZero discovery registration and is idempotent', async () => {
+    const existing = `
+      @prefix solid: <http://www.w3.org/ns/solid/terms#> .
+      <${indexUrl}#bookmarks> a solid:TypeRegistration ;
+        solid:forClass <https://example.test/ns#Bookmark> ;
+        solid:instance <https://alice.example/public/bookmarks> .
+      <${indexUrl}#nodezero-discovery-manifest> a solid:TypeRegistration ;
+        solid:forClass <${DISCOVERY_MANIFEST_CLASS}> ;
+        solid:instance <${manifestUrl}> .
+    `
+    const fetch = jestGlobal
+      .fn()
+      .mockResolvedValueOnce(responseWithUrl(existing, indexUrl))
+      .mockResolvedValueOnce(new Response('', { status: 200 }))
+      .mockResolvedValueOnce(
+        responseWithUrl(
+          `
+        @prefix solid: <http://www.w3.org/ns/solid/terms#> .
+        <${indexUrl}#bookmarks> a solid:TypeRegistration ;
+          solid:forClass <https://example.test/ns#Bookmark> ;
+          solid:instance <https://alice.example/public/bookmarks> .
+      `,
+          indexUrl
+        )
+      )
+    const manager = new PublicTypeIndexManager({ fetch })
+
+    await manager.removeDiscoveryManifestRegistration('https://alice.example/', indexUrl)
+    await manager.removeDiscoveryManifestRegistration('https://alice.example/', indexUrl)
+
+    const patch = String(fetch.mock.calls[1]?.[1]?.body ?? '')
+    expect(patch).toContain('nodezero-discovery-manifest')
+    expect(patch).not.toContain('Bookmark')
+    expect(fetch).toHaveBeenCalledTimes(3)
   })
 
   it('lists valid registrations in stable class order', async () => {
@@ -106,7 +147,10 @@ describe('PublicTypeIndexManager', () => {
     const manager = new PublicTypeIndexManager({ fetch })
 
     await expect(manager.listRegistrations(indexUrl)).resolves.toEqual([
-      { forClass: 'https://example.test/ns#Bookmark', instance: 'https://alice.example/public/bookmarks' },
+      {
+        forClass: 'https://example.test/ns#Bookmark',
+        instance: 'https://alice.example/public/bookmarks',
+      },
       { forClass: DISCOVERY_MANIFEST_CLASS, instance: manifestUrl },
     ])
   })

@@ -1,7 +1,4 @@
-import {
-  DiscoveryConsentManager,
-  DiscoveryManifestManager,
-} from '@nodezero/solid-pod-sync'
+import { DiscoveryConsentManager, DiscoveryManifestManager } from '@nodezero/solid-pod-sync'
 import type { CommunityDirectoryRecord, CommunityDirectoryStore } from './communityDirectory.js'
 import type { CredentialStore } from './credentialStore.js'
 import type { SessionClaims } from './sessionTokens.js'
@@ -16,10 +13,14 @@ export interface CommunityDirectoryRefreshOptions {
   cssBaseUrl: string
   mintToken?: typeof mintPodAccessToken
   now?: Date
+  allowListing?: boolean
 }
 
 export class CommunityDirectoryRefreshError extends Error {
-  constructor(message: string, readonly code: string) {
+  constructor(
+    message: string,
+    readonly code: string
+  ) {
     super(message)
     this.name = 'CommunityDirectoryRefreshError'
   }
@@ -75,9 +76,10 @@ export async function refreshCommunityDirectoryProjection(
     webId: claims.sub,
     podUrl: podRoot.toString(),
     issuer: podRoot.origin,
-    publicListing: consent.publicListing,
+    publicListing: consent.publicListing && options.allowListing !== false,
     publicIndexing: consent.publicIndexing,
     consentUpdatedAt: consent.updatedAt,
+    ...(typeof consent.revision === 'number' ? { consentRevision: consent.revision } : {}),
     manifest,
     manifestUrl,
     ...(sourceRevision ? { sourceRevision } : {}),
@@ -94,9 +96,10 @@ export async function refreshCommunityDirectoryProjection(
 }
 
 function isManifestValidationError(error: unknown): boolean {
-  return error instanceof Error && (
-    error.message.includes('Discovery manifest contract validation failed') ||
-    error.message.includes('Discovery manifest owner mismatch')
+  return (
+    error instanceof Error &&
+    (error.message.includes('Discovery manifest contract validation failed') ||
+      error.message.includes('Discovery manifest owner mismatch'))
   )
 }
 
@@ -127,7 +130,9 @@ function createOwnerPodReadFetch(
   observe: (url: string, response: Response) => void
 ): typeof globalThis.fetch {
   return async (input, init) => {
-    const target = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url)
+    const target = new URL(
+      typeof input === 'string' ? input : input instanceof URL ? input : input.url
+    )
     if (target.origin !== podRoot.origin || !target.pathname.startsWith(podRoot.pathname)) {
       throw new CommunityDirectoryRefreshError(
         'Directory refresh escaped the authenticated Pod namespace.',

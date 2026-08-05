@@ -12,6 +12,14 @@ on:
           - capture-baseline
           - deploy
           - clean-deploy
+      directory_rollout:
+        description: Directory feature rollout for this staging deployment
+        required: true
+        default: off
+        type: choice
+        options:
+          - off
+          - cohort
       expected_deployed_commit:
         description: Exact live staging commit required for baseline capture
         required: false
@@ -70,20 +78,24 @@ jobs:
           BASELINE_COMMIT: ${{ inputs.baseline_commit }}
           BASELINE_RUN_ATTEMPT: ${{ inputs.baseline_capture_run_attempt }}
           BASELINE_TOOLING_COMMIT: ${{ inputs.baseline_tooling_commit }}
+          DIRECTORY_ROLLOUT: ${{ inputs.directory_rollout }}
         run: |
           set -euo pipefail
           [ "$CONFIRM_STAGING_TESTNET" = "true" ]
           case "$RELEASE_ACTION" in
             capture-baseline)
+              [ "$DIRECTORY_ROLLOUT" = "off" ]
               [[ "$EXPECTED_DEPLOYED_COMMIT" =~ ^[0-9a-f]{40}$ ]]
               ;;
             deploy)
+              [ "$DIRECTORY_ROLLOUT" = "off" ]
               [[ "$BASELINE_RUN_ID" =~ ^[0-9]+$ ]]
               [[ "$BASELINE_RUN_ATTEMPT" =~ ^[0-9]+$ ]]
               [[ "$BASELINE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
               [[ "$BASELINE_TOOLING_COMMIT" =~ ^[0-9a-f]{40}$ ]]
               ;;
             clean-deploy)
+              [[ "$DIRECTORY_ROLLOUT" =~ ^(off|cohort)$ ]]
               [ -z "$BASELINE_RUN_ID" ]
               [ -z "$BASELINE_RUN_ATTEMPT" ]
               [ -z "$BASELINE_COMMIT" ]
@@ -139,6 +151,45 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Validate Directory cohort rollout
+        if: ${{ inputs.directory_rollout == 'cohort' }}
+        env:
+          COHORT_KEY: ${{ secrets.JSS_Q_COHORT_KEY }}
+          COHORT_HASHES: ${{ secrets.JSS_Q_COHORT_HASHES }}
+          ACCOUNT_A_STORAGE_STATE: ${{ secrets.NZ_DIRECTORY_ACCOUNT_A_STORAGE_STATE }}
+          ACCOUNT_B_STORAGE_STATE: ${{ secrets.NZ_DIRECTORY_ACCOUNT_B_STORAGE_STATE }}
+          DIRECTORY_ACCOUNT_A_STORAGE_STATE: ${{ secrets.NZ_DIRECTORY_ACCOUNT_A_STORAGE_STATE }}
+          DIRECTORY_ACCOUNT_B_STORAGE_STATE: ${{ secrets.NZ_DIRECTORY_ACCOUNT_B_STORAGE_STATE }}
+          DIRECTORY_NON_COHORT_STORAGE_STATE: ${{ secrets.NZ_DIRECTORY_NON_COHORT_STORAGE_STATE }}
+          JSS_Q_COHORT_KEY: ${{ secrets.JSS_Q_COHORT_KEY }}
+          JSS_Q_COHORT_HASHES: ${{ secrets.JSS_Q_COHORT_HASHES }}
+        run: |
+          set -euo pipefail
+          test -n "$COHORT_KEY"
+          [[ "$COHORT_HASHES" =~ ^[0-9a-f]{64},[0-9a-f]{64}$ ]]
+          IFS=, read -r cohort_a cohort_b <<<"$COHORT_HASHES"
+          [ "$cohort_a" != "$cohort_b" ]
+          test -n "$ACCOUNT_A_STORAGE_STATE"
+          test -n "$ACCOUNT_B_STORAGE_STATE"
+          jq -e '
+            .cookies | type == "array" and length > 0 and
+            all(.[];
+              (.name | type == "string" and length > 0) and
+              (.value | type == "string" and length > 0) and
+              (.domain | type == "string" and length > 0)
+            )
+          ' <<<"$ACCOUNT_A_STORAGE_STATE" >/dev/null
+          jq -e '
+            .cookies | type == "array" and length > 0 and
+            all(.[];
+              (.name | type == "string" and length > 0) and
+              (.value | type == "string" and length > 0) and
+              (.domain | type == "string" and length > 0)
+            )
+          ' <<<"$ACCOUNT_B_STORAGE_STATE" >/dev/null
+          [ "$(jq -cS . <<<"$ACCOUNT_A_STORAGE_STATE")" != "$(jq -cS . <<<"$ACCOUNT_B_STORAGE_STATE")" ]
+          node ./scripts/qa/validate-directory-cohort-states.mjs
 
       - name: Authenticate retained N-1 baseline
         if: ${{ inputs.release_action == 'deploy' }}
@@ -456,14 +507,22 @@ jobs:
           (cd flat-runtime && zip -r ../deploy.zip .)
 
       - name: Configure JSS provisioner runtime
+        env:
+          COHORT_KEY: ${{ secrets.JSS_Q_COHORT_KEY }}
+          COHORT_HASHES: ${{ secrets.JSS_Q_COHORT_HASHES }}
         run: |
+          directory_enabled=false
+          if [ "${{ inputs.directory_rollout }}" = "cohort" ]; then
+            directory_enabled=true
+          fi
           az webapp config set \
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --name "$JSS_PROVISIONER_APP_NAME" \
             --linux-fx-version "NODE|22-lts" \
             --always-on true \
             --generic-configurations '{"healthCheckPath":"/health"}' \
-            --startup-file "bash startup.sh"
+            --startup-file "bash startup.sh" \
+            --output none
 
           az webapp config appsettings set \
             --resource-group "$AZURE_RESOURCE_GROUP" \
@@ -479,7 +538,7 @@ jobs:
               JSS_SOLID_CSS_POD_LOCK_RETRY_BASE_DELAY_MS="1000" \
               JSS_ALLOWED_ORIGINS="https://staging.nodezero.social,https://nodezero.social,https://www.nodezero.social,https://solid.nodezero.social,http://localhost:19006,http://localhost:8081" \
               JSS_BROWSER_SESSION_ENABLED="true" \
-              JSS_Q_DIRECTORY_ENABLED="false" \
+              JSS_Q_DIRECTORY_ENABLED="$directory_enabled" \
               JSS_Q_PEER_PROFILE_ENABLED="false" \
               JSS_Q_RELATIONSHIP_ENABLED="false" \
               JSS_Q_TRANSPORT_ENABLED="false" \
@@ -500,7 +559,8 @@ jobs:
               JSS_IDENTITY_CONTRACT_ID="CCHFYOKLGVTXEYYHWEFPI22FR26VRGG2CBBUTP6XPW3ZSIWIKEVQQ44K" \
               JSS_TREASURY_SOURCE_ACCOUNT="nodezero-testnet-treasury" \
               JSS_DEPLOYER_SOURCE_ACCOUNT="nodezero-testnet-lockbox-deployer" \
-              JSS_TREASURY_FUND_MEMBERS="true"
+              JSS_TREASURY_FUND_MEMBERS="true" \
+            --output none
 
           # Session/credential secrets: only overwrite when the GitHub secret is
           # configured, so values managed directly on the App Service (e.g. set
@@ -525,17 +585,18 @@ jobs:
           if [ -n "${{ secrets.JSS_COMMUNITY_DIRECTORY_TABLE_SAS_URL }}" ]; then
             extra_settings+=(JSS_COMMUNITY_DIRECTORY_TABLE_SAS_URL="${{ secrets.JSS_COMMUNITY_DIRECTORY_TABLE_SAS_URL }}")
           fi
-          if [ -n "${{ secrets.JSS_Q_COHORT_KEY }}" ]; then
-            extra_settings+=(JSS_Q_COHORT_KEY="${{ secrets.JSS_Q_COHORT_KEY }}")
+          if [ -n "$COHORT_KEY" ]; then
+            extra_settings+=(JSS_Q_COHORT_KEY="$COHORT_KEY")
           fi
-          if [ -n "${{ secrets.JSS_Q_COHORT_HASHES }}" ]; then
-            extra_settings+=(JSS_Q_COHORT_HASHES="${{ secrets.JSS_Q_COHORT_HASHES }}")
+          if [ -n "$COHORT_HASHES" ]; then
+            extra_settings+=(JSS_Q_COHORT_HASHES="$COHORT_HASHES")
           fi
           if [ "${#extra_settings[@]}" -gt 0 ]; then
             az webapp config appsettings set \
               --resource-group "$AZURE_RESOURCE_GROUP" \
               --name "$JSS_PROVISIONER_APP_NAME" \
-              --settings "${extra_settings[@]}"
+              --settings "${extra_settings[@]}" \
+              --output none
           fi
 
           relationship_key_count="$(az webapp config appsettings list \
@@ -687,6 +748,7 @@ jobs:
         env:
           EXPECTED_COMMIT: ${{ github.sha }}
           EXPECTED_PAYLOAD_SHA256: ${{ steps.package-provisioner.outputs.payload_sha256 }}
+          EXPECTED_DIRECTORY_ENABLED: ${{ inputs.directory_rollout == 'cohort' && 'true' || 'false' }}
         run: |
           set -euo pipefail
           health_url="https://${JSS_PROVISIONER_APP_NAME}.azurewebsites.net/health"
@@ -701,6 +763,7 @@ jobs:
               --arg commit "$EXPECTED_COMMIT" \
               --arg payload "$EXPECTED_PAYLOAD_SHA256" \
               --arg artifact "$expected_artifact_sha" \
+              --argjson directory "$EXPECTED_DIRECTORY_ENABLED" \
               '.build.commit == $commit and
                .build.payloadSha256 == $payload and
                .build.configuredArtifactSha256 == $artifact and
@@ -708,7 +771,7 @@ jobs:
                .communityDirectory.ready == true and
                .transportIdentity.ready == true and
                .session.signingKeyConfigured == true and
-               .milestoneQ.flags.directory == false and
+               .milestoneQ.flags.directory == $directory and
                .milestoneQ.flags["peer-profile"] == false and
                .milestoneQ.flags.relationship == false and
                .milestoneQ.flags.transport == false' \
@@ -1046,6 +1109,8 @@ jobs:
             "commit": "${GITHUB_SHA}",
             "runId": "${GITHUB_RUN_ID}",
             "runAttempt": "${GITHUB_RUN_ATTEMPT}",
+            "releaseAction": "${{ inputs.release_action }}",
+            "directoryRollout": "${{ inputs.directory_rollout }}",
             "generatedAtUtc": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
           }
           EOF
@@ -1196,6 +1261,38 @@ jobs:
           NZ_LOCKBOX_AUDIT_REQUIRE_EVENTS: 'true'
           NZ_LOCKBOX_AUDIT_EXPECTED_CHILD_IDS: ${{ steps.auth-e2e.outputs.lockbox_contract_id }}
         run: pnpm qa:audit:lockbox
+
+      - name: Run Directory publication E2E gate
+        id: directory-e2e
+        if: ${{ inputs.directory_rollout == 'cohort' }}
+        env:
+          STAGING_BASE_URL: https://staging.nodezero.social
+          ACCOUNT_A_STORAGE_STATE: ${{ secrets.NZ_DIRECTORY_ACCOUNT_A_STORAGE_STATE }}
+          ACCOUNT_B_STORAGE_STATE: ${{ secrets.NZ_DIRECTORY_ACCOUNT_B_STORAGE_STATE }}
+          NON_COHORT_STORAGE_STATE: ${{ secrets.NZ_DIRECTORY_NON_COHORT_STORAGE_STATE }}
+          JSS_Q_COHORT_KEY: ${{ secrets.JSS_Q_COHORT_KEY }}
+          JSS_Q_COHORT_HASHES: ${{ secrets.JSS_Q_COHORT_HASHES }}
+          DIRECTORY_E2E_EVIDENCE_PATH: ${{ github.workspace }}/directory-publication-evidence.json
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/nodezero-directory-e2e
+          trap 'rm -rf /tmp/nodezero-directory-e2e' EXIT
+          printf '%s' "$ACCOUNT_A_STORAGE_STATE" > /tmp/nodezero-directory-e2e/account-a.json
+          printf '%s' "$ACCOUNT_B_STORAGE_STATE" > /tmp/nodezero-directory-e2e/account-b.json
+          printf '%s' "$NON_COHORT_STORAGE_STATE" > /tmp/nodezero-directory-e2e/non-cohort.json
+          DIRECTORY_ACCOUNT_A_STORAGE_STATE=/tmp/nodezero-directory-e2e/account-a.json \
+          DIRECTORY_ACCOUNT_B_STORAGE_STATE=/tmp/nodezero-directory-e2e/account-b.json \
+          DIRECTORY_NON_COHORT_STORAGE_STATE=/tmp/nodezero-directory-e2e/non-cohort.json \
+            pnpm qa:smoke:directory-publication
+
+      - name: Retain Directory publication evidence
+        if: ${{ inputs.directory_rollout == 'cohort' && steps.directory-e2e.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: directory-publication-${{ github.sha }}-${{ github.run_attempt }}
+          path: directory-publication-evidence.json
+          if-no-files-found: error
+          retention-days: 90
 
       # Application-feature proofs (DocuStream/mashlib). NOT part of the auth
       # release gate — failures surface for triage without blocking identity.

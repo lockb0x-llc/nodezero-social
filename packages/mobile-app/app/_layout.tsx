@@ -24,6 +24,7 @@ import { Buffer } from 'buffer'
 import { aesthetic } from '../src/theme/aesthetic'
 import { registerPwa } from '../src/pwa/registerPwa'
 import * as mashlibPaneProvider from '../src/solid/mashlibPaneProvider'
+import { DirectoryPublicationMaintenance } from '../src/directory/DirectoryPublicationMaintenance'
 
 const globalWithBuffer = globalThis as typeof globalThis & { Buffer?: typeof Buffer }
 if (typeof globalWithBuffer.Buffer === 'undefined') {
@@ -137,7 +138,8 @@ function WebNavBar(): JSX.Element | null {
   const pathname = usePathname()
 
   // Only render on web and only when the user is authenticated.
-  if (Platform.OS !== 'web' || status !== 'authenticated' || attestationStatus !== 'verified') return null
+  if (Platform.OS !== 'web' || status !== 'authenticated' || attestationStatus !== 'verified')
+    return null
 
   // Settings is intentionally excluded: it is accessed via the gear icon
   // on the Profile screen, keeping the nav bar to 6 items and ensuring
@@ -161,7 +163,11 @@ function WebNavBar(): JSX.Element | null {
         contentContainerStyle={styles.navBar}
       >
         {links.map(({ href, label }) => (
-          <Link key={href} href={href} style={[styles.navLink, pathname === href && styles.navLinkActive]}>
+          <Link
+            key={href}
+            href={href}
+            style={[styles.navLink, pathname === href && styles.navLinkActive]}
+          >
             <Text style={[styles.navLinkText, pathname === href && styles.navLinkTextActive]}>
               {label}
             </Text>
@@ -172,7 +178,15 @@ function WebNavBar(): JSX.Element | null {
           Uses a react-native-web CSS passthrough for backgroundImage — this
           component is web-only (Platform.OS !== 'web' guard above). The cast
           to any is necessary because backgroundImage is not in RN ViewStyle. */}
-      <View pointerEvents="none" style={[styles.navBarFadeRight, { backgroundImage: `linear-gradient(to right, transparent, ${aesthetic.color.surface})` } as ViewStyle]} />
+      <View
+        pointerEvents="none"
+        style={[
+          styles.navBarFadeRight,
+          {
+            backgroundImage: `linear-gradient(to right, transparent, ${aesthetic.color.surface})`,
+          } as ViewStyle,
+        ]}
+      />
     </View>
   )
 }
@@ -257,6 +271,7 @@ export default function RootLayout(): JSX.Element {
           <WakuProvider>
             <PresenceProvider>
               <RouteGuard />
+              <DirectoryPublicationMaintenance />
               <StatusBar style="light" />
               <Stack
                 screenOptions={{
@@ -284,4 +299,3 @@ export default function RootLayout(): JSX.Element {
     </NodeZeroSessionProvider>
   )
 }
-

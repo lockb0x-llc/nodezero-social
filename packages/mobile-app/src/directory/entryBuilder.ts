@@ -30,20 +30,27 @@ export function buildDirectoryEntry(args: {
   const hasSharedPublicInterest = publicInterests.some((value) =>
     localInterestSet.has(value.trim().toLowerCase())
   )
-  const recommendationReasons = candidateWebId === effectiveWebId
-    ? ['self' as const]
-    : acceptedRelationships.includes(candidateWebId)
-      ? ['accepted-relationship' as const]
-      : connections.includes(candidateWebId) && !directoryRecord
-        ? ['legacy-contact' as const]
-        : hasSharedPublicInterest
-          ? ['shared-public-interest' as const]
-          : ['public-directory' as const]
+  const recommendationReasons =
+    candidateWebId === effectiveWebId
+      ? ['self' as const]
+      : acceptedRelationships.includes(candidateWebId)
+        ? ['accepted-relationship' as const]
+        : connections.includes(candidateWebId) && !directoryRecord
+          ? ['legacy-contact' as const]
+          : hasSharedPublicInterest
+            ? ['shared-public-interest' as const]
+            : ['public-directory' as const]
 
   return {
     webId: candidateWebId,
     displayName,
-    source: candidateWebId === effectiveWebId ? 'self' : connections.includes(candidateWebId) ? 'connection' : 'directory',
+    ...(directoryRecord?.avatarUrl ? { avatarUrl: directoryRecord.avatarUrl } : {}),
+    source:
+      candidateWebId === effectiveWebId
+        ? 'self'
+        : connections.includes(candidateWebId)
+          ? 'connection'
+          : 'directory',
     verified: directoryRecord?.trustSignals?.verified === true,
     publicInterests,
     recommendationReasons,

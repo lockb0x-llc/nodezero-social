@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import {
+  sanitizeCommunityDirectoryRecord,
   shouldReplaceDirectoryRecord,
   type CommunityDirectoryPersistence,
 } from './communityDirectoryPersistence.js'
@@ -22,6 +23,7 @@ export interface CommunityDirectoryRecord {
   manifestPublishedAt?: string
   manifestExpiresAt?: string
   consentUpdatedAt?: string
+  consentRevision?: number
   sourceRevision?: string
   removedAt?: string
 }
@@ -33,6 +35,7 @@ export interface CommunityDirectoryProjectionInput {
   publicListing: boolean
   publicIndexing: boolean
   consentUpdatedAt: string
+  consentRevision?: number
   manifest: {
     publishedAt: string
     expiresAt: string
@@ -66,6 +69,9 @@ interface PersistedCommunityDirectory {
   records: CommunityDirectoryRecord[]
 }
 
+const MAX_MANIFEST_TTL_MS = 7 * 24 * 60 * 60_000
+const MAX_MANIFEST_CLOCK_SKEW_MS = 5 * 60_000
+
 export class CommunityDirectoryStore {
   private readonly records = new Map<string, CommunityDirectoryRecord>()
   private readonly committedRecords = new Map<string, CommunityDirectoryRecord>()
@@ -94,15 +100,18 @@ export class CommunityDirectoryStore {
     if (!this.persistence) return
     if (!force && Date.now() - this.lastReloadAtMs < this.reloadTtlMs) return
     if (this.reloadInFlight) return this.reloadInFlight
-    this.reloadInFlight = this.persistence.loadRecords().then((records) => {
-      for (const record of records) {
-        this.mergeRecord(this.records, record)
-        this.mergeRecord(this.committedRecords, record)
-      }
-      this.lastReloadAtMs = Date.now()
-    }).finally(() => {
-      this.reloadInFlight = null
-    })
+    this.reloadInFlight = this.persistence
+      .loadRecords()
+      .then((records) => {
+        for (const record of records) {
+          this.mergeRecord(this.records, record)
+          this.mergeRecord(this.committedRecords, record)
+        }
+        this.lastReloadAtMs = Date.now()
+      })
+      .finally(() => {
+        this.reloadInFlight = null
+      })
     return this.reloadInFlight
   }
 
@@ -126,11 +135,14 @@ export class CommunityDirectoryStore {
     if (!this.persistence) return
     if (Date.now() - this.lastProbeAtMs < this.probeTtlMs) return
     if (this.probeInFlight) return this.probeInFlight
-    this.probeInFlight = this.persistence.probe().then(() => {
-      this.lastProbeAtMs = Date.now()
-    }).finally(() => {
-      this.probeInFlight = null
-    })
+    this.probeInFlight = this.persistence
+      .probe()
+      .then(() => {
+        this.lastProbeAtMs = Date.now()
+      })
+      .finally(() => {
+        this.probeInFlight = null
+      })
     return this.probeInFlight
   }
 
@@ -139,18 +151,11 @@ export class CommunityDirectoryStore {
       const raw = readFileSync(this.persistenceFilePath, 'utf8')
       const parsed = JSON.parse(raw) as Partial<PersistedCommunityDirectory>
       const records = Array.isArray(parsed.records) ? parsed.records : []
-      for (const record of records) {
-        if (
-          record &&
-          typeof record.webId === 'string' &&
-          typeof record.podUrl === 'string' &&
-          typeof record.issuer === 'string' &&
-          typeof record.listed === 'boolean' &&
-          typeof record.updatedAt === 'string'
-        ) {
-          this.records.set(record.webId, { ...record })
-          this.committedRecords.set(record.webId, { ...record })
-        }
+      for (const candidate of records) {
+        const record = sanitizeCommunityDirectoryRecord(candidate)
+        if (!record) continue
+        this.records.set(record.webId, record)
+        this.committedRecords.set(record.webId, { ...record })
       }
     } catch {
       // Missing or malformed file should not block provisioning startup.
@@ -193,9 +198,9 @@ export class CommunityDirectoryStore {
       return
     }
     const snapshot = { ...record }
-    this.pendingPersistence = this.pendingPersistence.catch(() => undefined).then(() =>
-      this.persistence!.upsertRecord(snapshot)
-    )
+    this.pendingPersistence = this.pendingPersistence
+      .catch(() => undefined)
+      .then(() => this.persistence!.upsertRecord(snapshot))
   }
 
   private mergeRecord(
@@ -250,6 +255,7 @@ export class CommunityDirectoryStore {
     }
 
     this.records.set(webId, record)
+    if (!listed) this.committedRecords.set(webId, { ...record })
     this.persistRecord(record)
     return record
   }
@@ -257,9 +263,7 @@ export class CommunityDirectoryStore {
   refreshProjection(input: CommunityDirectoryProjectionInput): CommunityDirectoryRecord {
     const now = input.now ?? new Date()
     const existing = this.records.get(input.webId)
-    const manifestIsCurrent = Boolean(
-      input.manifest && Date.parse(input.manifest.expiresAt) > now.getTime()
-    )
+    const manifestIsCurrent = isBoundedCurrentManifest(input.manifest, now.getTime())
     const listed = input.publicListing && manifestIsCurrent
     const record: CommunityDirectoryRecord = {
       webId: input.webId,
@@ -268,6 +272,9 @@ export class CommunityDirectoryStore {
       listed,
       updatedAt: now.toISOString(),
       consentUpdatedAt: input.consentUpdatedAt,
+      ...(typeof input.consentRevision === 'number'
+        ? { consentRevision: input.consentRevision }
+        : {}),
       manifestUrl: input.manifestUrl,
       ...(input.sourceRevision ? { sourceRevision: input.sourceRevision } : {}),
     }
@@ -279,13 +286,6 @@ export class CommunityDirectoryStore {
       record.manifestExpiresAt = input.manifest.expiresAt
       if (input.manifest.displayName) record.displayName = input.manifest.displayName
       if (input.manifest.avatarUrl) record.avatarUrl = input.manifest.avatarUrl
-      if (input.publicIndexing && input.manifest.publicInterests) {
-        record.publicInterests = [...input.manifest.publicInterests]
-      }
-      if (input.publicIndexing && input.manifest.capabilities) {
-        record.capabilities = [...input.manifest.capabilities]
-      }
-      if (input.publicIndexing && input.manifest.inboxUrl) record.inboxUrl = input.manifest.inboxUrl
     } else {
       delete record.listedAt
       if (existing?.listed) record.removedAt = now.toISOString()
@@ -311,24 +311,25 @@ export class CommunityDirectoryStore {
     }
   }
 
-  buildPublicPage(input: {
-    cursor?: string
-    limit?: number
-    now?: Date
-  } = {}): CommunityDirectoryPage {
+  buildPublicPage(
+    input: {
+      cursor?: string
+      limit?: number
+      now?: Date
+      include?: (record: CommunityDirectoryRecord) => boolean
+    } = {}
+  ): CommunityDirectoryPage {
     const limit = Math.min(100, Math.max(1, input.limit ?? 100))
     const now = input.now ?? new Date()
     const listed = Array.from(this.committedRecords.values())
       .filter((entry) => isPubliclyCurrent(entry, now.getTime()))
+      .filter((entry) => input.include?.(entry) ?? true)
       .sort((left, right) => left.webId.localeCompare(right.webId))
-    const start = input.cursor
-      ? listed.findIndex((entry) => entry.webId > input.cursor!)
-      : 0
+    const start = input.cursor ? listed.findIndex((entry) => entry.webId > input.cursor!) : 0
     const offset = start < 0 ? listed.length : start
     const members = listed.slice(offset, offset + limit)
-    const nextCursor = offset + limit < listed.length
-      ? members[members.length - 1]?.webId ?? null
-      : null
+    const nextCursor =
+      offset + limit < listed.length ? (members[members.length - 1]?.webId ?? null) : null
     const generatedAt = now.toISOString()
     const publicPayload = { version: 1 as const, members, nextCursor }
     const digest = createHash('sha256').update(JSON.stringify(publicPayload)).digest('hex')
@@ -342,9 +343,32 @@ export class CommunityDirectoryStore {
   getByWebId(webId: string): CommunityDirectoryRecord | null {
     return this.records.get(webId) ?? null
   }
+
+  getCommittedByWebId(webId: string): CommunityDirectoryRecord | null {
+    return this.committedRecords.get(webId) ?? null
+  }
 }
 
 function isPubliclyCurrent(record: CommunityDirectoryRecord, nowMs: number): boolean {
-  return record.listed &&
-    (!record.manifestExpiresAt || Date.parse(record.manifestExpiresAt) > nowMs)
+  return (
+    record.listed &&
+    Boolean(record.manifestExpiresAt) &&
+    Date.parse(record.manifestExpiresAt!) > nowMs
+  )
+}
+
+function isBoundedCurrentManifest(
+  manifest: CommunityDirectoryProjectionInput['manifest'],
+  nowMs: number
+): boolean {
+  if (!manifest) return false
+  const publishedAt = Date.parse(manifest.publishedAt)
+  const expiresAt = Date.parse(manifest.expiresAt)
+  return (
+    Number.isFinite(publishedAt) &&
+    Number.isFinite(expiresAt) &&
+    publishedAt <= nowMs + MAX_MANIFEST_CLOCK_SKEW_MS &&
+    expiresAt > nowMs &&
+    expiresAt - publishedAt <= MAX_MANIFEST_TTL_MS
+  )
 }

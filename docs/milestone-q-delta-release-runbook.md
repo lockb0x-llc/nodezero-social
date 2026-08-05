@@ -152,6 +152,10 @@ This runbook does not authorize Production Mainnet deployment.
    confirmation and no baseline inputs. This skips only N-1 authentication; every
    forward policy, build, infrastructure, dark-flag, health, marker, smoke, auth, and
    lockbox gate remains mandatory.
+   Set `directory_rollout=cohort` only after the staging environment contains a non-empty
+   `JSS_Q_COHORT_KEY` and at least two comma-separated HMAC values in
+   `JSS_Q_COHORT_HASHES`. Cohort mode enables Directory only; peer Profile,
+   relationship, and transport remain off.
 2. Require successful blocking jobs:
    - environment isolation;
    - consentful discovery policy;
@@ -161,7 +165,8 @@ This runbook does not authorize Production Mainnet deployment.
    - staging smoke;
    - identity-only `qa:smoke:auth`;
    - lockb0x state audit.
-3. Verify all Q flags remain false in provisioner health.
+3. Verify the Directory flag matches `directory_rollout`; peer-profile, relationship,
+   and transport must remain false.
 4. Verify the live marker and successful workflow:
    ```powershell
    pnpm qa:q4:deployed

@@ -6,6 +6,7 @@ import {
   getThing,
   getThingAll,
   getUrl,
+  removeThing,
   saveSolidDatasetAt,
   setThing,
   type SolidDataset,
@@ -56,7 +57,8 @@ export class PublicTypeIndexManager {
       dataset = createSolidDataset()
     }
 
-    const indexThing = getThing(dataset, publicTypeIndexUrl) ?? createThing({ url: publicTypeIndexUrl })
+    const indexThing =
+      getThing(dataset, publicTypeIndexUrl) ?? createThing({ url: publicTypeIndexUrl })
     const registrationUrl = `${publicTypeIndexUrl}#nodezero-discovery-manifest`
     const existingRegistration =
       getThing(dataset, registrationUrl) ?? createThing({ url: registrationUrl })
@@ -79,6 +81,25 @@ export class PublicTypeIndexManager {
     await saveSolidDatasetAt(publicTypeIndexUrl, updated, { fetch: this.session.fetch })
 
     return registrationUrl
+  }
+
+  async removeDiscoveryManifestRegistration(
+    podRoot: string,
+    publicTypeIndexUrl: string
+  ): Promise<void> {
+    assertOwnedResource(publicTypeIndexUrl, podRoot, 'publicTypeIndexUrl')
+    let dataset: SolidDataset & Partial<WithServerResourceInfo>
+    try {
+      dataset = await getSolidDataset(publicTypeIndexUrl, { fetch: this.session.fetch })
+    } catch (error) {
+      if (isNotFoundError(error)) return
+      throw error
+    }
+    const registrationUrl = `${publicTypeIndexUrl}#nodezero-discovery-manifest`
+    if (!getThing(dataset, registrationUrl)) return
+    await saveSolidDatasetAt(publicTypeIndexUrl, removeThing(dataset, registrationUrl), {
+      fetch: this.session.fetch,
+    })
   }
 
   async listRegistrations(publicTypeIndexUrl: string): Promise<PublicTypeRegistration[]> {
@@ -104,6 +125,12 @@ function assertOwnedResource(resourceUrl: string, podRoot: string, field: string
 
 function isNotFoundError(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false
-  const candidate = error as { statusCode?: unknown; status?: unknown; response?: { status?: unknown } }
-  return candidate.statusCode === 404 || candidate.status === 404 || candidate.response?.status === 404
+  const candidate = error as {
+    statusCode?: unknown
+    status?: unknown
+    response?: { status?: unknown }
+  }
+  return (
+    candidate.statusCode === 404 || candidate.status === 404 || candidate.response?.status === 404
+  )
 }

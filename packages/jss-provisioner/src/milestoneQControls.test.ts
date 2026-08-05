@@ -27,6 +27,18 @@ void test('hashed cohort restricts an enabled feature without storing WebIDs', (
     false
   )
   assert.equal(JSON.stringify(controls).includes(alice), false)
+  assert.deepEqual(controls.availability(alice), {
+    directory: true,
+    peerProfile: false,
+    relationship: false,
+    transport: false,
+  })
+  assert.deepEqual(controls.availability('https://solid.nodezero.social/bob/profile/card#me'), {
+    directory: false,
+    peerProfile: false,
+    relationship: false,
+    transport: false,
+  })
 })
 
 void test('telemetry snapshots contain aggregate feature outcomes only', () => {
@@ -50,12 +62,18 @@ void test('telemetry snapshots contain aggregate feature outcomes only', () => {
 
 void test('enabled features fail closed when cohort hashes or key are missing', () => {
   assert.equal(new MilestoneQControls({ directoryEnabled: true }).isEnabled('directory'), false)
-  assert.equal(new MilestoneQControls({
-    directoryEnabled: true,
-    cohortKey: 'key',
-  }).isEnabled('directory'), false)
-  assert.equal(new MilestoneQControls({
-    directoryEnabled: true,
-    cohortHashes: ['hash'],
-  }).isEnabled('directory'), false)
+  assert.equal(
+    new MilestoneQControls({
+      directoryEnabled: true,
+      cohortKey: 'key',
+    }).isEnabled('directory'),
+    false
+  )
+  assert.equal(
+    new MilestoneQControls({
+      directoryEnabled: true,
+      cohortHashes: ['hash'],
+    }).isEnabled('directory'),
+    false
+  )
 })

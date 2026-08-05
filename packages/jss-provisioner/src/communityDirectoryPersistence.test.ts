@@ -2,6 +2,7 @@ import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 import {
   AzureTableCommunityDirectoryPersistence,
+  sanitizeCommunityDirectoryRecord,
   shouldReplaceDirectoryRecord,
 } from './communityDirectoryPersistence.js'
 
@@ -20,9 +21,14 @@ void test('loads only the Community Directory partition', async () => {
     sasUrl,
     (input): Promise<Response> => {
       requestUrl = String(input)
-      return Promise.resolve(new Response(JSON.stringify({
-        value: [{ recordJson: JSON.stringify(record) }],
-      }), { status: 200 }))
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            value: [{ recordJson: JSON.stringify(record) }],
+          }),
+          { status: 200 }
+        )
+      )
     }
   )
 
@@ -71,17 +77,51 @@ void test('stale opt-in cannot replace a newer opt-out', () => {
   }
   assert.equal(shouldReplaceDirectoryRecord(newerOptOut, staleOptIn), false)
   assert.equal(shouldReplaceDirectoryRecord(staleOptIn, newerOptOut), true)
-  assert.equal(shouldReplaceDirectoryRecord(
-    { ...record, listed: true, consentUpdatedAt: newerOptOut.consentUpdatedAt },
-    newerOptOut
-  ), true)
+  assert.equal(
+    shouldReplaceDirectoryRecord(
+      { ...record, listed: true, consentUpdatedAt: newerOptOut.consentUpdatedAt },
+      newerOptOut
+    ),
+    true
+  )
+})
+
+void test('consent revision wins even when a device clock moves backwards', () => {
+  const optIn = { ...record, consentRevision: 4, consentUpdatedAt: '2030-01-01T00:00:00.000Z' }
+  const optOut = {
+    ...record,
+    listed: false,
+    consentRevision: 5,
+    consentUpdatedAt: '2020-01-01T00:00:00.000Z',
+  }
+  assert.equal(shouldReplaceDirectoryRecord(optIn, optOut), true)
+  assert.equal(shouldReplaceDirectoryRecord(optOut, optIn), false)
+})
+
+void test('persisted rows are rebuilt from the explicit Directory allowlist', () => {
+  const sanitized = sanitizeCommunityDirectoryRecord({
+    ...record,
+    displayName: 'Alice',
+    bio: 'must not escape',
+    publicInterests: ['must not escape'],
+    capabilities: ['must not escape'],
+    inboxUrl: 'https://solid.nodezero.social/alice/social/inbox/',
+    clientCredentialsSecret: 'must not escape',
+  })
+  assert.equal(sanitized?.displayName, 'Alice')
+  assert.equal('bio' in (sanitized ?? {}), false)
+  assert.equal('publicInterests' in (sanitized ?? {}), false)
+  assert.equal('capabilities' in (sanitized ?? {}), false)
+  assert.equal('inboxUrl' in (sanitized ?? {}), false)
+  assert.equal('clientCredentialsSecret' in (sanitized ?? {}), false)
 })
 
 void test('rejects a Directory SAS without read/add/update/delete permissions', () => {
   assert.throws(
-    () => new AzureTableCommunityDirectoryPersistence(
-      'https://storage.example/nzcredentials?sv=1&sp=r&sig=signed'
-    ),
+    () =>
+      new AzureTableCommunityDirectoryPersistence(
+        'https://storage.example/nzcredentials?sv=1&sp=r&sig=signed'
+      ),
     /read, add, update, and delete/
   )
 })
@@ -104,9 +144,14 @@ void test('retries an ETag conflict and preserves the newer stored opt-out', asy
       requestCount += 1
       if (!init?.method) {
         const current = requestCount === 1 ? storedOptIn : incomingOptOut
-        return Promise.resolve(new Response(JSON.stringify({
-          recordJson: JSON.stringify(current),
-        }), { status: 200, headers: { etag: `"etag-${requestCount}"` } }))
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              recordJson: JSON.stringify(current),
+            }),
+            { status: 200, headers: { etag: `"etag-${requestCount}"` } }
+          )
+        )
       }
       return Promise.resolve(new Response(null, { status: 412 }))
     }
@@ -125,19 +170,29 @@ void test('follows Azure Table continuation tokens until the partition is exhaus
       const requestUrl = String(input)
       requestUrls.push(requestUrl)
       if (requestUrls.length === 1) {
-        return Promise.resolve(new Response(JSON.stringify({
-          value: [{ recordJson: JSON.stringify(record) }],
-        }), {
-          status: 200,
-          headers: {
-            'x-ms-continuation-nextpartitionkey': 'nz-community-directory',
-            'x-ms-continuation-nextrowkey': 'next-row',
-          },
-        }))
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              value: [{ recordJson: JSON.stringify(record) }],
+            }),
+            {
+              status: 200,
+              headers: {
+                'x-ms-continuation-nextpartitionkey': 'nz-community-directory',
+                'x-ms-continuation-nextrowkey': 'next-row',
+              },
+            }
+          )
+        )
       }
-      return Promise.resolve(new Response(JSON.stringify({
-        value: [{ recordJson: JSON.stringify(secondRecord) }],
-      }), { status: 200 }))
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            value: [{ recordJson: JSON.stringify(secondRecord) }],
+          }),
+          { status: 200 }
+        )
+      )
     }
   )
 
@@ -156,9 +211,11 @@ void test('readiness probe proves create, read, and delete capability', async ()
       methods.push(method)
       if (method === 'POST') return Promise.resolve(new Response(null, { status: 201 }))
       if (method === 'DELETE') return Promise.resolve(new Response(null, { status: 204 }))
-      return Promise.resolve(new Response(JSON.stringify({ readinessProbe: true }), {
-        status: 200,
-      }))
+      return Promise.resolve(
+        new Response(JSON.stringify({ readinessProbe: true }), {
+          status: 200,
+        })
+      )
     }
   )
 

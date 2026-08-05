@@ -17,6 +17,19 @@ void test('buildDirectoryEntry sets verified from trust signal', () => {
   assert.equal(entry.source, 'directory')
 })
 
+void test('buildDirectoryEntry carries the published avatar URL', () => {
+  const entry = buildDirectoryEntry({
+    candidateWebId: 'https://solid.nodezero.social/alice/profile/card#me',
+    effectiveWebId: 'https://solid.nodezero.social/bob/profile/card#me',
+    connections: [],
+    directoryRecord: {
+      webId: 'https://solid.nodezero.social/alice/profile/card#me',
+      avatarUrl: 'https://solid.nodezero.social/alice/public/avatar.png',
+    },
+  })
+  assert.equal(entry.avatarUrl, 'https://solid.nodezero.social/alice/public/avatar.png')
+})
+
 void test('buildDirectoryEntry prioritizes profile display name over directory and fallback', () => {
   const entry = buildDirectoryEntry({
     candidateWebId: 'https://solid.nodezero.social/alice/profile/card#me',

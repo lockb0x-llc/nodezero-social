@@ -1,6 +1,7 @@
 export interface DirectoryRecord {
   webId: string
   displayName?: string
+  avatarUrl?: string
   podUrl?: string
   issuer?: string
   listed?: boolean
@@ -19,6 +20,7 @@ export interface DirectoryRecord {
 export interface DirectoryEntry {
   webId: string
   displayName: string
+  avatarUrl?: string
   source: 'self' | 'connection' | 'directory'
   verified: boolean
   publicInterests: string[]

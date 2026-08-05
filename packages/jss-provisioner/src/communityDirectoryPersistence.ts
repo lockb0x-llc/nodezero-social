@@ -24,9 +24,7 @@ export class AzureTableCommunityDirectoryPersistence implements CommunityDirecto
   ) {
     const parsed = new URL(sasUrl)
     if (parsed.protocol !== 'https:' || !parsed.searchParams.has('sig')) {
-      throw new Error(
-        'JSS_COMMUNITY_DIRECTORY_TABLE_SAS_URL must be an HTTPS table SAS URL.'
-      )
+      throw new Error('JSS_COMMUNITY_DIRECTORY_TABLE_SAS_URL must be an HTTPS table SAS URL.')
     }
     const permissions = parsed.searchParams.get('sp') ?? ''
     for (const requiredPermission of ['r', 'a', 'u', 'd']) {
@@ -53,9 +51,7 @@ export class AzureTableCommunityDirectoryPersistence implements CommunityDirecto
         throw new Error('Community Directory table scan exceeded its page limit.')
       }
       const continuation: string = [
-        ...(nextPartitionKey
-          ? [`NextPartitionKey=${encodeURIComponent(nextPartitionKey)}`]
-          : []),
+        ...(nextPartitionKey ? [`NextPartitionKey=${encodeURIComponent(nextPartitionKey)}`] : []),
         ...(nextRowKey ? [`NextRowKey=${encodeURIComponent(nextRowKey)}`] : []),
       ].join('&')
       const response: Response = await this.fetchWithTimeout(
@@ -186,7 +182,8 @@ export class AzureTableCommunityDirectoryPersistence implements CommunityDirecto
     }
     const entity = (await response.json()) as Record<string, unknown>
     const records = parseRecordEntity(entity)
-    const etag = response.headers.get('etag') ??
+    const etag =
+      response.headers.get('etag') ??
       (typeof entity['odata.etag'] === 'string' ? entity['odata.etag'] : null)
     if (records.length !== 1 || !etag) {
       throw new Error('Community Directory table row is malformed or missing an ETag.')
@@ -196,10 +193,7 @@ export class AzureTableCommunityDirectoryPersistence implements CommunityDirecto
     return { record, etag }
   }
 
-  private async fetchWithTimeout(
-    input: string,
-    init: RequestInit = {}
-  ): Promise<Response> {
+  private async fetchWithTimeout(input: string, init: RequestInit = {}): Promise<Response> {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), TABLE_REQUEST_TIMEOUT_MS)
     try {
@@ -214,6 +208,15 @@ export function shouldReplaceDirectoryRecord(
   current: CommunityDirectoryRecord,
   incoming: CommunityDirectoryRecord
 ): boolean {
+  const currentRevision = current.consentRevision
+  const incomingRevision = incoming.consentRevision
+  if (typeof incomingRevision === 'number') {
+    if (typeof currentRevision !== 'number') return true
+    if (incomingRevision < currentRevision) return false
+    if (incomingRevision > currentRevision) return true
+  } else if (typeof currentRevision === 'number') {
+    return false
+  }
   const currentConsent = Date.parse(current.consentUpdatedAt ?? current.updatedAt)
   const incomingConsent = Date.parse(incoming.consentUpdatedAt ?? incoming.updatedAt)
   if (incomingConsent < currentConsent) return false
@@ -228,8 +231,8 @@ function parseRecordEntity(entity: unknown): CommunityDirectoryRecord[] {
   const recordJson = (entity as Record<string, unknown>).recordJson
   if (typeof recordJson !== 'string') return []
   try {
-    const record = JSON.parse(recordJson) as CommunityDirectoryRecord
-    return isCommunityDirectoryRecord(record) ? [record] : []
+    const record = sanitizeCommunityDirectoryRecord(JSON.parse(recordJson))
+    return record ? [record] : []
   } catch {
     return []
   }
@@ -242,12 +245,41 @@ function tableHeaders(): Record<string, string> {
   }
 }
 
-function isCommunityDirectoryRecord(value: unknown): value is CommunityDirectoryRecord {
-  if (!value || typeof value !== 'object') return false
+export function sanitizeCommunityDirectoryRecord(value: unknown): CommunityDirectoryRecord | null {
+  if (!value || typeof value !== 'object') return null
   const record = value as Partial<CommunityDirectoryRecord>
-  return typeof record.webId === 'string' &&
-    typeof record.podUrl === 'string' &&
-    typeof record.issuer === 'string' &&
-    typeof record.listed === 'boolean' &&
-    typeof record.updatedAt === 'string'
+  if (
+    typeof record.webId !== 'string' ||
+    typeof record.podUrl !== 'string' ||
+    typeof record.issuer !== 'string' ||
+    typeof record.listed !== 'boolean' ||
+    typeof record.updatedAt !== 'string'
+  ) {
+    return null
+  }
+  const sanitized: CommunityDirectoryRecord = {
+    webId: record.webId,
+    podUrl: record.podUrl,
+    issuer: record.issuer,
+    listed: record.listed,
+    updatedAt: record.updatedAt,
+  }
+  for (const key of [
+    'listedAt',
+    'displayName',
+    'avatarUrl',
+    'manifestUrl',
+    'manifestPublishedAt',
+    'manifestExpiresAt',
+    'consentUpdatedAt',
+    'sourceRevision',
+    'removedAt',
+  ] as const) {
+    if (typeof record[key] === 'string') sanitized[key] = record[key]
+  }
+  const consentRevision = record.consentRevision
+  if (Number.isSafeInteger(consentRevision) && consentRevision! >= 0) {
+    sanitized.consentRevision = consentRevision!
+  }
+  return sanitized
 }

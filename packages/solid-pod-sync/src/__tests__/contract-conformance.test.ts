@@ -141,61 +141,81 @@ describe('Consentful discovery contract conformance', () => {
   })
 
   it('accepts a minimal public discovery manifest and rejects private-looking duplicates', () => {
-    expect(validateDiscoveryManifest({
-      version: 1,
-      webId: alice,
-      publishedAt,
-      expiresAt,
-      displayName: 'Alice',
-      publicInterests: ['solid', 'privacy'],
-      capabilities: ['relationship-requests'],
-      inboxUrl: 'https://solid.example/alice/social/inbox/',
-    })).toEqual([])
+    expect(
+      validateDiscoveryManifest({
+        version: 1,
+        webId: alice,
+        publishedAt,
+        expiresAt,
+        displayName: 'Alice',
+        publicInterests: ['solid', 'privacy'],
+        capabilities: ['relationship-requests'],
+        inboxUrl: 'https://solid.example/alice/social/inbox/',
+      })
+    ).toEqual([])
 
-    expect(validateDiscoveryManifest({
-      version: 1,
-      webId: alice,
-      publishedAt,
-      expiresAt: publishedAt,
-      publicInterests: ['solid', 'solid'],
-    }).map((issue) => issue.field)).toEqual(expect.arrayContaining(['expiresAt', 'publicInterests']))
+    expect(
+      validateDiscoveryManifest({
+        version: 1,
+        webId: alice,
+        publishedAt,
+        expiresAt: publishedAt,
+        publicInterests: ['solid', 'solid'],
+      }).map((issue) => issue.field)
+    ).toEqual(expect.arrayContaining(['expiresAt', 'publicInterests']))
 
-    expect(validateDiscoveryManifest({
-      version: 1,
-      webId: alice,
-      publishedAt,
-      expiresAt,
-      privateInterests: ['medical'],
-      trustCircleMembers: [bob],
-      blockedWebIds: [bob],
-      locationHistory: ['8928308280fffff'],
-    } as unknown as Parameters<typeof validateDiscoveryManifest>[0]).map((issue) => issue.field))
-      .toEqual(expect.arrayContaining([
+    expect(
+      validateDiscoveryManifest({
+        version: 1,
+        webId: alice,
+        publishedAt,
+        expiresAt: new Date(Date.parse(publishedAt) + 8 * 24 * 60 * 60_000).toISOString(),
+      }).map((issue) => issue.field)
+    ).toContain('expiresAt')
+
+    expect(
+      validateDiscoveryManifest({
+        version: 1,
+        webId: alice,
+        publishedAt,
+        expiresAt,
+        privateInterests: ['medical'],
+        trustCircleMembers: [bob],
+        blockedWebIds: [bob],
+        locationHistory: ['8928308280fffff'],
+      } as unknown as Parameters<typeof validateDiscoveryManifest>[0]).map((issue) => issue.field)
+    ).toEqual(
+      expect.arrayContaining([
         'privateInterests',
         'trustCircleMembers',
         'blockedWebIds',
         'locationHistory',
-      ]))
+      ])
+    )
   })
 
   it('requires answer activities to reference the original activity', () => {
-    expect(validateRelationshipActivity({
-      version: 1,
-      id: activityId,
-      type: 'Follow',
-      actor: alice,
-      object: bob,
-      publishedAt,
-    })).toEqual([])
+    expect(
+      validateRelationshipActivity({
+        version: 1,
+        id: activityId,
+        type: 'Follow',
+        actor: alice,
+        object: bob,
+        publishedAt,
+      })
+    ).toEqual([])
 
-    expect(validateRelationshipActivity({
-      version: 1,
-      id: 'https://solid.example/bob/social/outbox/accept-alice',
-      type: 'Accept',
-      actor: bob,
-      object: activityId,
-      publishedAt,
-    }).map((issue) => issue.field)).toContain('inReplyTo')
+    expect(
+      validateRelationshipActivity({
+        version: 1,
+        id: 'https://solid.example/bob/social/outbox/accept-alice',
+        type: 'Accept',
+        actor: bob,
+        object: activityId,
+        publishedAt,
+      }).map((issue) => issue.field)
+    ).toContain('inReplyTo')
   })
 
   it('defines conservative relationship transitions', () => {
@@ -207,52 +227,64 @@ describe('Consentful discovery contract conformance', () => {
   })
 
   it('validates private relationship, moderation, delivery, and replay records', () => {
-    expect(validateRelationshipRecord({
-      version: 1,
-      ownerWebId: alice,
-      peerWebId: bob,
-      state: 'outgoing-pending',
-      updatedAt: publishedAt,
-      activityId,
-    })).toEqual([])
-    expect(validateModerationRecord({
-      version: 1,
-      ownerWebId: alice,
-      subjectWebId: bob,
-      action: 'block',
-      createdAt: publishedAt,
-    })).toEqual([])
-    expect(validateDeliveryReceipt({
-      version: 1,
-      activityId,
-      senderWebId: alice,
-      recipientWebId: bob,
-      status: 'delivered',
-      updatedAt: publishedAt,
-    })).toEqual([])
-    expect(validateProcessedActivityRecord({
-      version: 1,
-      activityId,
-      actorWebId: alice,
-      processedAt: publishedAt,
-      expiresAt,
-    })).toEqual([])
+    expect(
+      validateRelationshipRecord({
+        version: 1,
+        ownerWebId: alice,
+        peerWebId: bob,
+        state: 'outgoing-pending',
+        updatedAt: publishedAt,
+        activityId,
+      })
+    ).toEqual([])
+    expect(
+      validateModerationRecord({
+        version: 1,
+        ownerWebId: alice,
+        subjectWebId: bob,
+        action: 'block',
+        createdAt: publishedAt,
+      })
+    ).toEqual([])
+    expect(
+      validateDeliveryReceipt({
+        version: 1,
+        activityId,
+        senderWebId: alice,
+        recipientWebId: bob,
+        status: 'delivered',
+        updatedAt: publishedAt,
+      })
+    ).toEqual([])
+    expect(
+      validateProcessedActivityRecord({
+        version: 1,
+        activityId,
+        actorWebId: alice,
+        processedAt: publishedAt,
+        expiresAt,
+      })
+    ).toEqual([])
   })
 
   it('rejects self-relationships and invalid replay expiry', () => {
-    expect(validateRelationshipRecord({
-      version: 1,
-      ownerWebId: alice,
-      peerWebId: alice,
-      state: 'accepted',
-      updatedAt: publishedAt,
-    }).map((issue) => issue.field)).toContain('peerWebId')
-    expect(validateProcessedActivityRecord({
-      version: 1,
-      activityId,
-      actorWebId: alice,
-      processedAt: publishedAt,
-      expiresAt: publishedAt,
-    }).map((issue) => issue.field)).toContain('expiresAt')
+    expect(
+      validateRelationshipRecord({
+        version: 1,
+        ownerWebId: alice,
+        peerWebId: alice,
+        state: 'accepted',
+        updatedAt: publishedAt,
+      }).map((issue) => issue.field)
+    ).toContain('peerWebId')
+    expect(
+      validateProcessedActivityRecord({
+        version: 1,
+        activityId,
+        actorWebId: alice,
+        processedAt: publishedAt,
+        expiresAt: publishedAt,
+      }).map((issue) => issue.field)
+    ).toContain('expiresAt')
   })
 })

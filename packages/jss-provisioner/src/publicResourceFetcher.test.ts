@@ -15,13 +15,17 @@ const publicResolver = (): Promise<Array<{ address: string; family: 4 }>> =>
 void test('parsePublicUrl rejects unsafe protocols, credentials, ports, and direct private hosts', () => {
   assert.throws(
     () => parsePublicUrl('http://example.com/profile'),
-    (error: unknown) => error instanceof PublicResourceFetchError && error.code === 'invalid_protocol'
+    (error: unknown) =>
+      error instanceof PublicResourceFetchError && error.code === 'invalid_protocol'
   )
   assert.throws(() => parsePublicUrl('https://user:pass@example.com/profile'))
   assert.throws(() => parsePublicUrl('https://example.com:8443/profile'))
   assert.throws(() => parsePublicUrl('https://127.0.0.1/profile'))
   assert.throws(() => parsePublicUrl('https://169.254.169.254/latest/meta-data'))
-  assert.equal(parsePublicUrl('https://example.com/profile#me').toString(), 'https://example.com/profile')
+  assert.equal(
+    parsePublicUrl('https://example.com/profile#me').toString(),
+    'https://example.com/profile'
+  )
 })
 
 void test('isBlockedAddress covers private, carrier-grade NAT, mapped IPv4, and local IPv6', () => {
@@ -69,7 +73,9 @@ void test('fetchPublicResource pins validated DNS addresses into each request', 
           etag: '"profile-1"',
           link: '<https://example.com/inbox/>; rel="http://www.w3.org/ns/ldp#inbox"',
         },
-        body: Buffer.from('<https://example.com/profile/card#me> a <http://xmlns.com/foaf/0.1/Person> .'),
+        body: Buffer.from(
+          '<https://example.com/profile/card#me> a <http://xmlns.com/foaf/0.1/Person> .'
+        ),
       })
     },
   })
@@ -84,7 +90,8 @@ void test('fetchPublicResource pins validated DNS addresses into each request', 
 void test('fetchPublicResource revalidates redirect targets and blocks private DNS answers', async () => {
   let requests = 0
   const resolver = (hostname: string): Promise<Array<{ address: string; family: 4 }>> => {
-    if (hostname === 'example.com') return Promise.resolve([{ address: '93.184.216.34', family: 4 }])
+    if (hostname === 'example.com')
+      return Promise.resolve([{ address: '93.184.216.34', family: 4 }])
     return Promise.resolve([{ address: '127.0.0.1', family: 4 }])
   }
 
@@ -110,22 +117,25 @@ void test('fetchPublicResource rejects unsupported, empty, oversized, and excess
   await assert.rejects(
     fetchPublicResource('https://example.com/profile', {
       ...baseOptions,
-      requestOnce: () => Promise.resolve({
-        status: 200,
-        headers: { 'content-type': 'text/html' },
-        body: Buffer.from('<html></html>'),
-      }),
+      requestOnce: () =>
+        Promise.resolve({
+          status: 200,
+          headers: { 'content-type': 'text/html' },
+          body: Buffer.from('<html></html>'),
+        }),
     }),
-    (error: unknown) => error instanceof PublicResourceFetchError && error.code === 'unsupported_content_type'
+    (error: unknown) =>
+      error instanceof PublicResourceFetchError && error.code === 'unsupported_content_type'
   )
   await assert.rejects(
     fetchPublicResource('https://example.com/profile', {
       ...baseOptions,
-      requestOnce: () => Promise.resolve({
-        status: 200,
-        headers: { 'content-type': 'text/turtle' },
-        body: Buffer.alloc(0),
-      }),
+      requestOnce: () =>
+        Promise.resolve({
+          status: 200,
+          headers: { 'content-type': 'text/turtle' },
+          body: Buffer.alloc(0),
+        }),
     }),
     (error: unknown) => error instanceof PublicResourceFetchError && error.code === 'empty_payload'
   )
@@ -133,26 +143,47 @@ void test('fetchPublicResource rejects unsupported, empty, oversized, and excess
     fetchPublicResource('https://example.com/profile', {
       ...baseOptions,
       maxBytes: 4,
-      requestOnce: () => Promise.resolve({
-        status: 200,
-        headers: { 'content-type': 'application/ld+json' },
-        body: Buffer.from('12345'),
-      }),
+      requestOnce: () =>
+        Promise.resolve({
+          status: 200,
+          headers: { 'content-type': 'application/ld+json' },
+          body: Buffer.from('12345'),
+        }),
     }),
-    (error: unknown) => error instanceof PublicResourceFetchError && error.code === 'payload_too_large'
+    (error: unknown) =>
+      error instanceof PublicResourceFetchError && error.code === 'payload_too_large'
   )
   await assert.rejects(
     fetchPublicResource('https://example.com/profile', {
       ...baseOptions,
       maxRedirects: 0,
-      requestOnce: () => Promise.resolve({
-        status: 302,
-        headers: { location: 'https://example.com/other' },
-        body: Buffer.alloc(0),
-      }),
+      requestOnce: () =>
+        Promise.resolve({
+          status: 302,
+          headers: { location: 'https://example.com/other' },
+          body: Buffer.alloc(0),
+        }),
     }),
-    (error: unknown) => error instanceof PublicResourceFetchError && error.code === 'too_many_redirects'
+    (error: unknown) =>
+      error instanceof PublicResourceFetchError && error.code === 'too_many_redirects'
   )
+})
+
+void test('fetchPublicResource supports an explicit image-only content allowlist', async () => {
+  const response = await fetchPublicResource('https://example.com/avatar.png', {
+    allowedContentTypes: ['image/png'],
+    resolveHost: publicResolver,
+    requestOnce: async (input) => {
+      assert.equal(input.accept, 'image/png')
+      return {
+        status: 200,
+        headers: { 'content-type': 'image/png' },
+        body: Buffer.from([1, 2, 3]),
+      }
+    },
+  })
+  assert.equal(response.contentType, 'image/png')
+  assert.deepEqual(response.body, Buffer.from([1, 2, 3]))
 })
 
 void test('public request contract has no authorization or caller-controlled header input', async () => {
@@ -168,23 +199,25 @@ void test('public request contract has no authorization or caller-controlled hea
       })
     },
   })
-  assert.deepEqual(inputKeys, ['addresses', 'maxBytes', 'timeoutMs', 'url', 'userAgent'])
+  assert.deepEqual(inputKeys, ['accept', 'addresses', 'maxBytes', 'timeoutMs', 'url', 'userAgent'])
 })
 
 void test('credential-free public fetch rejects non-GET methods and preserves response URL', async () => {
   const publicFetch = createCredentialFreePublicFetch({
     resolveHost: publicResolver as never,
-    requestOnce: () => Promise.resolve({
-      status: 200,
-      headers: { 'content-type': 'text/turtle' },
-      body: Buffer.from('<#me> a <https://example.test/Person> .'),
-    }),
+    requestOnce: () =>
+      Promise.resolve({
+        status: 200,
+        headers: { 'content-type': 'text/turtle' },
+        body: Buffer.from('<#me> a <https://example.test/Person> .'),
+      }),
   })
   const response = await publicFetch('https://example.com/profile/card')
   assert.equal(response.url, 'https://example.com/profile/card')
   await assert.rejects(
     publicFetch('https://example.com/profile/card', { method: 'POST' }),
-    (error: unknown) => error instanceof PublicResourceFetchError && error.code === 'method_not_allowed'
+    (error: unknown) =>
+      error instanceof PublicResourceFetchError && error.code === 'method_not_allowed'
   )
 })
 
@@ -231,7 +264,11 @@ void test('postPublicResource follows only revalidated 307/308 redirects', async
         requests += 1
         return Promise.resolve(
           requests === 1
-            ? { status: 307, headers: { location: 'https://example.com/inbox-v2/' }, body: Buffer.alloc(0) }
+            ? {
+                status: 307,
+                headers: { location: 'https://example.com/inbox-v2/' },
+                body: Buffer.alloc(0),
+              }
             : { status: 202, headers: {}, body: Buffer.alloc(0) }
         )
       },
@@ -241,19 +278,16 @@ void test('postPublicResource follows only revalidated 307/308 redirects', async
   assert.equal(requests, 2)
 
   await assert.rejects(
-    postPublicResource(
-      'https://example.com/inbox/',
-      Buffer.from('{}'),
-      'application/ld+json',
-      {
-        resolveHost: publicResolver as never,
-        requestOnce: () => Promise.resolve({
+    postPublicResource('https://example.com/inbox/', Buffer.from('{}'), 'application/ld+json', {
+      resolveHost: publicResolver as never,
+      requestOnce: () =>
+        Promise.resolve({
           status: 302,
           headers: { location: 'https://example.com/other' },
           body: Buffer.alloc(0),
         }),
-      }
-    ),
-    (error: unknown) => error instanceof PublicResourceFetchError && error.code === 'unsafe_redirect_status'
+    }),
+    (error: unknown) =>
+      error instanceof PublicResourceFetchError && error.code === 'unsafe_redirect_status'
   )
 })

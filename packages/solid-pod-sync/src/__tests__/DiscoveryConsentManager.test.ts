@@ -12,6 +12,7 @@ describe('DiscoveryConsentManager', () => {
     )
     expect(consent).toEqual({
       version: 1,
+      revision: 0,
       ownerWebId: alice,
       publicListing: false,
       publicIndexing: false,
@@ -23,8 +24,8 @@ describe('DiscoveryConsentManager', () => {
   })
 
   it('updates only explicitly patched consent dimensions', async () => {
-    const fetch = jestGlobal.fn()
-      .mockResolvedValueOnce(new Response('', { status: 404 }))
+    const fetch = jestGlobal
+      .fn()
       .mockResolvedValueOnce(new Response('', { status: 404 }))
       .mockResolvedValueOnce(new Response('', { status: 201 }))
     const manager = new DiscoveryConsentManager({ fetch })
@@ -34,7 +35,64 @@ describe('DiscoveryConsentManager', () => {
       '2026-08-01T12:00:00.000Z'
     )
     expect(consent.inboundContactRequests).toBe(true)
+    expect(consent.revision).toBe(1)
     expect(consent.publicListing).toBe(false)
-    expect(String(fetch.mock.calls[2]?.[1]?.body)).toContain('inboundContactRequests')
+    expect(fetch.mock.calls[1]?.[1]?.headers).toMatchObject({ 'if-none-match': '*' })
+    expect(String(fetch.mock.calls[1]?.[1]?.body)).toContain('inboundContactRequests')
+  })
+
+  it('retries ETag conflicts and patches only requested dimensions', async () => {
+    const fetch = jestGlobal
+      .fn()
+      .mockResolvedValueOnce(consentResponse(4, '"consent-4"', false))
+      .mockResolvedValueOnce(new Response('', { status: 412 }))
+      .mockResolvedValueOnce(consentResponse(5, '"consent-5"', true))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+    const consent = await new DiscoveryConsentManager({ fetch }).updateConsent(
+      'https://alice.example/',
+      { inboundContactRequests: true },
+      '2026-08-01T12:00:00.000Z'
+    )
+    expect(consent.revision).toBe(6)
+    expect(consent.nearbyPresence).toBe(true)
+    expect(fetch.mock.calls[1]?.[1]?.headers).toMatchObject({ 'if-match': '"consent-4"' })
+    expect(fetch.mock.calls[3]?.[1]?.headers).toMatchObject({ 'if-match': '"consent-5"' })
+    const patch = String(fetch.mock.calls[3]?.[1]?.body)
+    expect(patch).toContain('inboundContactRequests')
+    expect(patch).not.toContain('publicListing')
+  })
+
+  it('rejects a stale field precondition before overwriting another device', async () => {
+    const fetch = jestGlobal.fn().mockResolvedValueOnce(consentResponse(5, '"consent-5"', false))
+    const manager = new DiscoveryConsentManager({ fetch })
+    await expect(
+      manager.updateConsent(
+        'https://alice.example/',
+        { publicListing: true },
+        '2026-08-01T12:00:00.000Z',
+        { publicListing: true }
+      )
+    ).rejects.toThrow('changed concurrently')
+    expect(fetch).toHaveBeenCalledTimes(1)
   })
 })
+
+function consentResponse(revision: number, etag: string, nearbyPresence: boolean): Response {
+  const thing = 'https://alice.example/social/consent/discovery#consent'
+  const predicate = 'https://nodezero.social/ns#'
+  return new Response(
+    [
+      `<${thing}> a <${predicate}DiscoveryConsent>;`,
+      `  <${predicate}version> 1;`,
+      `  <${predicate}revision> ${revision};`,
+      `  <${predicate}ownerWebId> <${alice}>;`,
+      `  <${predicate}publicListing> false;`,
+      `  <${predicate}publicIndexing> false;`,
+      `  <${predicate}nearbyPresence> ${nearbyPresence};`,
+      `  <${predicate}inboundContactRequests> false;`,
+      `  <${predicate}localBroadcasts> false;`,
+      `  <${predicate}updatedAt> "2026-08-01T11:00:00.000Z".`,
+    ].join('\n'),
+    { status: 200, headers: { 'content-type': 'text/turtle', etag } }
+  )
+}

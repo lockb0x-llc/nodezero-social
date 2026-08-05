@@ -44,6 +44,7 @@ const NZ_PUBLISHED_AT = 'https://nodezero.social/ns#publishedAt'
 const NZ_EXPIRES_AT = 'https://nodezero.social/ns#expiresAt'
 const NZ_DISPLAY_NAME = 'https://nodezero.social/ns#displayName'
 const NZ_AVATAR_URL = 'https://nodezero.social/ns#avatarUrl'
+const SOLID_PUBLIC_TYPE_INDEX = 'http://www.w3.org/ns/solid/terms#publicTypeIndex'
 const NZ_PUBLIC_INTEREST = 'https://nodezero.social/ns#publicInterest'
 const NZ_CAPABILITY = 'https://nodezero.social/ns#capability'
 const LDP_INBOX = 'http://www.w3.org/ns/ldp#inbox'
@@ -85,12 +86,14 @@ export class DiscoveryManifestManager {
 
     const displayName = getStringNoLocale(thing, NZ_DISPLAY_NAME)
     const avatarUrl = getUrl(thing, NZ_AVATAR_URL)
+    const publicTypeIndexUrl = getUrl(thing, SOLID_PUBLIC_TYPE_INDEX)
     const publicInterests = getStringNoLocaleAll(thing, NZ_PUBLIC_INTEREST)
     const capabilities = getStringNoLocaleAll(thing, NZ_CAPABILITY)
     const inboxUrl = getUrl(thing, LDP_INBOX)
 
     if (displayName !== null) manifest.displayName = displayName
     if (avatarUrl !== null) manifest.avatarUrl = avatarUrl
+    if (publicTypeIndexUrl !== null) manifest.publicTypeIndexUrl = publicTypeIndexUrl
     if (publicInterests.length > 0) manifest.publicInterests = publicInterests
     if (capabilities.length > 0) manifest.capabilities = capabilities
     if (inboxUrl !== null) manifest.inboxUrl = inboxUrl
@@ -108,6 +111,15 @@ export class DiscoveryManifestManager {
       throw new Error(
         `Discovery manifest owner mismatch: '${manifest.webId}' does not match '${expectedOwnerWebId}'`
       )
+    }
+    if (manifest.publicTypeIndexUrl) {
+      const typeIndex = new URL(manifest.publicTypeIndexUrl)
+      const root = new URL(podRoot.endsWith('/') ? podRoot : `${podRoot}/`)
+      if (typeIndex.origin !== root.origin || !typeIndex.pathname.startsWith(root.pathname)) {
+        throw new Error(
+          'Discovery manifest public Type Index must remain inside the owner Pod namespace'
+        )
+      }
     }
 
     const datasetUrl = manifestUrl(podRoot)
@@ -128,8 +140,12 @@ export class DiscoveryManifestManager {
       .setStringNoLocale(NZ_PUBLISHED_AT, manifest.publishedAt)
       .setStringNoLocale(NZ_EXPIRES_AT, manifest.expiresAt)
 
-    if (manifest.displayName) builder = builder.setStringNoLocale(NZ_DISPLAY_NAME, manifest.displayName)
+    if (manifest.displayName)
+      builder = builder.setStringNoLocale(NZ_DISPLAY_NAME, manifest.displayName)
     if (manifest.avatarUrl) builder = builder.setUrl(NZ_AVATAR_URL, manifest.avatarUrl)
+    if (manifest.publicTypeIndexUrl) {
+      builder = builder.setUrl(SOLID_PUBLIC_TYPE_INDEX, manifest.publicTypeIndexUrl)
+    }
     if (manifest.inboxUrl) builder = builder.setUrl(LDP_INBOX, manifest.inboxUrl)
     for (const interest of manifest.publicInterests ?? []) {
       builder = builder.addStringNoLocale(NZ_PUBLIC_INTEREST, interest)
@@ -166,8 +182,14 @@ export class DiscoveryManifestManager {
 
 function isNotFoundError(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false
-  const candidate = error as { statusCode?: unknown; status?: unknown; response?: { status?: unknown } }
-  return candidate.statusCode === 404 || candidate.status === 404 || candidate.response?.status === 404
+  const candidate = error as {
+    statusCode?: unknown
+    status?: unknown
+    response?: { status?: unknown }
+  }
+  return (
+    candidate.statusCode === 404 || candidate.status === 404 || candidate.response?.status === 404
+  )
 }
 
 export const DISCOVERY_MANIFEST_DATASET_PATH = 'public/discovery/manifest'

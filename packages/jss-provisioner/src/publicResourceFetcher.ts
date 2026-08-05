@@ -17,6 +17,7 @@ export interface PublicResourceFetcherOptions {
   userAgent?: string
   resolveHost?: typeof lookup
   requestOnce?: PublicResourceRequest
+  allowedContentTypes?: readonly string[]
 }
 
 export interface PublicResourceDeliveryOptions {
@@ -51,6 +52,7 @@ export interface PublicResourceRequestInput {
   timeoutMs: number
   maxBytes: number
   userAgent: string
+  accept: string
 }
 
 export interface PublicResourceRequestResult {
@@ -105,6 +107,7 @@ export async function fetchPublicResource(
   const resolveHost = options.resolveHost ?? lookup
   const requestOnce = options.requestOnce ?? requestPinnedHttps
   const userAgent = options.userAgent?.trim() || DEFAULT_USER_AGENT
+  const allowedContentTypes = options.allowedContentTypes ?? PUBLIC_RESOURCE_CONTENT_TYPES
 
   let currentUrl = parsePublicUrl(rawUrl)
   for (let redirectCount = 0; redirectCount <= maxRedirects; redirectCount += 1) {
@@ -115,6 +118,7 @@ export async function fetchPublicResource(
       timeoutMs,
       maxBytes,
       userAgent,
+      accept: allowedContentTypes.join(', '),
     })
 
     if (response.status >= 300 && response.status < 400) {
@@ -146,7 +150,7 @@ export async function fetchPublicResource(
     }
 
     const contentType = normalizeContentType(firstHeader(response.headers['content-type']))
-    if (!PUBLIC_RESOURCE_CONTENT_TYPES.includes(contentType as (typeof PUBLIC_RESOURCE_CONTENT_TYPES)[number])) {
+    if (!allowedContentTypes.includes(contentType)) {
       throw new PublicResourceFetchError(
         'Public resource content type is not supported.',
         415,
@@ -237,7 +241,11 @@ export async function postPublicResource(
     )
   }
   if (!contentType.trim()) {
-    throw new PublicResourceFetchError('Delivery content type is required.', 400, 'missing_content_type')
+    throw new PublicResourceFetchError(
+      'Delivery content type is required.',
+      400,
+      'missing_content_type'
+    )
   }
 
   let currentUrl = parsePublicUrl(rawUrl)
@@ -263,7 +271,11 @@ export async function postPublicResource(
         )
       }
       if (redirectCount === maxRedirects) {
-        throw new PublicResourceFetchError('Delivery has too many redirects.', 502, 'too_many_redirects')
+        throw new PublicResourceFetchError(
+          'Delivery has too many redirects.',
+          502,
+          'too_many_redirects'
+        )
       }
       currentUrl = parsePublicUrl(new URL(location, currentUrl).toString())
       continue
@@ -362,7 +374,10 @@ export async function resolvePublicAddresses(
 }
 
 export function isBlockedAddress(address: string): boolean {
-  const normalized = address.trim().toLowerCase().replace(/^\[|\]$/g, '')
+  const normalized = address
+    .trim()
+    .toLowerCase()
+    .replace(/^\[|\]$/g, '')
   const mappedIpv4 = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(normalized)?.[1]
   if (mappedIpv4) return isBlockedAddress(mappedIpv4)
 
@@ -384,7 +399,8 @@ export function isBlockedAddress(address: string): boolean {
       hextets &&
       (hextets.every((part) => part === 0) ||
         (hextets.slice(0, 7).every((part) => part === 0) && hextets[7] === 1))
-    ) return true
+    )
+      return true
     const mappedAddress = extractMappedIpv4(normalized)
     if (mappedAddress) return isBlockedAddress(mappedAddress)
     const embeddedIpv4 = hextets ? extractEmbeddedIpv4(hextets) : null
@@ -425,11 +441,8 @@ function extractEmbeddedIpv4(hextets: number[]): string | null {
 
 function extractMappedIpv4(address: string): string | null {
   const hextets = parseIpv6Hextets(address)
-  if (
-    !hextets ||
-    hextets.slice(0, 5).some((part) => part !== 0) ||
-    hextets[5] !== 0xffff
-  ) return null
+  if (!hextets || hextets.slice(0, 5).some((part) => part !== 0) || hextets[5] !== 0xffff)
+    return null
   const high = hextets[6] ?? 0
   const low = hextets[7] ?? 0
   return `${high >>> 8}.${high & 0xff}.${low >>> 8}.${low & 0xff}`
@@ -450,7 +463,8 @@ function parseIpv6Hextets(address: string): number[] | null {
   if (
     hextets.length !== 8 ||
     hextets.some((part) => !Number.isInteger(part) || part < 0 || part > 0xffff)
-  ) return null
+  )
+    return null
   return hextets
 }
 
@@ -460,75 +474,90 @@ async function requestPinnedHttps(
   return new Promise((resolve, reject) => {
     const address = input.addresses[0]
     if (!address) {
-      reject(new PublicResourceFetchError('No validated address is available.', 400, 'unresolvable_host'))
+      reject(
+        new PublicResourceFetchError('No validated address is available.', 400, 'unresolvable_host')
+      )
       return
     }
 
-    const request = httpsRequest(input.url, {
-      method: 'GET',
-      headers: {
-        accept: PUBLIC_RESOURCE_CONTENT_TYPES.join(', '),
-        'user-agent': input.userAgent,
+    const request = httpsRequest(
+      input.url,
+      {
+        method: 'GET',
+        headers: {
+          accept: input.accept,
+          'user-agent': input.userAgent,
+        },
+        servername: input.url.hostname,
+        lookup: (_hostname, _options, callback) => callback(null, address.address, address.family),
       },
-      servername: input.url.hostname,
-      lookup: (_hostname, _options, callback) => callback(null, address.address, address.family),
-    }, (response) => {
-      const chunks: Buffer[] = []
-      let byteLength = 0
-      const declaredLength = Number(response.headers['content-length'] ?? '0')
-      if (declaredLength > input.maxBytes) {
-        response.destroy()
-        reject(new PublicResourceFetchError(
-          'Public resource payload exceeds maximum size.',
-          413,
-          'payload_too_large'
-        ))
-        return
-      }
-
-      response.on('data', (chunk: Buffer | string) => {
-        const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
-        byteLength += buffer.length
-        if (byteLength > input.maxBytes) {
-          response.destroy(new PublicResourceFetchError(
-            'Public resource payload exceeds maximum size.',
-            413,
-            'payload_too_large'
-          ))
+      (response) => {
+        const chunks: Buffer[] = []
+        let byteLength = 0
+        const declaredLength = Number(response.headers['content-length'] ?? '0')
+        if (declaredLength > input.maxBytes) {
+          response.destroy()
+          reject(
+            new PublicResourceFetchError(
+              'Public resource payload exceeds maximum size.',
+              413,
+              'payload_too_large'
+            )
+          )
           return
         }
-        chunks.push(buffer)
-      })
-      response.on('end', () => resolve({
-        status: response.statusCode ?? 502,
-        headers: response.headers,
-        body: Buffer.concat(chunks),
-      }))
-      response.on('error', reject)
-    })
+
+        response.on('data', (chunk: Buffer | string) => {
+          const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+          byteLength += buffer.length
+          if (byteLength > input.maxBytes) {
+            response.destroy(
+              new PublicResourceFetchError(
+                'Public resource payload exceeds maximum size.',
+                413,
+                'payload_too_large'
+              )
+            )
+            return
+          }
+          chunks.push(buffer)
+        })
+        response.on('end', () =>
+          resolve({
+            status: response.statusCode ?? 502,
+            headers: response.headers,
+            body: Buffer.concat(chunks),
+          })
+        )
+        response.on('error', reject)
+      }
+    )
 
     request.setTimeout(input.timeoutMs, () => {
-      request.destroy(new PublicResourceFetchError(
-        'Public resource request timed out.',
-        504,
-        'timeout'
-      ))
+      request.destroy(
+        new PublicResourceFetchError('Public resource request timed out.', 504, 'timeout')
+      )
     })
     const wallClockTimer = setTimeout(() => {
-      request.destroy(new PublicResourceFetchError(
-        'Public resource request exceeded its wall-clock deadline.',
-        504,
-        'timeout'
-      ))
+      request.destroy(
+        new PublicResourceFetchError(
+          'Public resource request exceeded its wall-clock deadline.',
+          504,
+          'timeout'
+        )
+      )
     }, input.timeoutMs)
     request.once('close', () => clearTimeout(wallClockTimer))
     request.on('error', (error) => {
       if (error instanceof PublicResourceFetchError) reject(error)
-      else reject(new PublicResourceFetchError(
-        error.message || 'Public resource request failed.',
-        502,
-        'fetch_failed'
-      ))
+      else
+        reject(
+          new PublicResourceFetchError(
+            error.message || 'Public resource request failed.',
+            502,
+            'fetch_failed'
+          )
+        )
     })
     request.end()
   })
@@ -546,64 +575,79 @@ async function requestPinnedHttpsWithBody(
   return new Promise((resolve, reject) => {
     const address = input.addresses[0]
     if (!address) {
-      reject(new PublicResourceFetchError('No validated address is available.', 400, 'unresolvable_host'))
+      reject(
+        new PublicResourceFetchError('No validated address is available.', 400, 'unresolvable_host')
+      )
       return
     }
 
-    const request = httpsRequest(input.url, {
-      method: 'POST',
-      headers: {
-        accept: 'application/ld+json, application/json',
-        'content-type': input.contentType,
-        'content-length': String(input.body.length),
-        'user-agent': input.userAgent,
+    const request = httpsRequest(
+      input.url,
+      {
+        method: 'POST',
+        headers: {
+          accept: 'application/ld+json, application/json',
+          'content-type': input.contentType,
+          'content-length': String(input.body.length),
+          'user-agent': input.userAgent,
+        },
+        servername: input.url.hostname,
+        lookup: (_hostname, _options, callback) => callback(null, address.address, address.family),
       },
-      servername: input.url.hostname,
-      lookup: (_hostname, _options, callback) => callback(null, address.address, address.family),
-    }, (response) => {
-      const chunks: Buffer[] = []
-      let byteLength = 0
-      const declaredLength = Number(response.headers['content-length'] ?? '0')
-      if (declaredLength > input.maxResponseBytes) {
-        response.destroy()
-        reject(new PublicResourceFetchError(
-          'Delivery response exceeds maximum size.',
-          413,
-          'payload_too_large'
-        ))
-        return
-      }
-      response.on('data', (chunk: Buffer | string) => {
-        const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
-        byteLength += buffer.length
-        if (byteLength > input.maxResponseBytes) {
-          response.destroy(new PublicResourceFetchError(
-            'Delivery response exceeds maximum size.',
-            413,
-            'payload_too_large'
-          ))
+      (response) => {
+        const chunks: Buffer[] = []
+        let byteLength = 0
+        const declaredLength = Number(response.headers['content-length'] ?? '0')
+        if (declaredLength > input.maxResponseBytes) {
+          response.destroy()
+          reject(
+            new PublicResourceFetchError(
+              'Delivery response exceeds maximum size.',
+              413,
+              'payload_too_large'
+            )
+          )
           return
         }
-        chunks.push(buffer)
-      })
-      response.on('end', () => resolve({
-        status: response.statusCode ?? 502,
-        headers: response.headers,
-        body: Buffer.concat(chunks),
-      }))
-      response.on('error', reject)
-    })
+        response.on('data', (chunk: Buffer | string) => {
+          const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+          byteLength += buffer.length
+          if (byteLength > input.maxResponseBytes) {
+            response.destroy(
+              new PublicResourceFetchError(
+                'Delivery response exceeds maximum size.',
+                413,
+                'payload_too_large'
+              )
+            )
+            return
+          }
+          chunks.push(buffer)
+        })
+        response.on('end', () =>
+          resolve({
+            status: response.statusCode ?? 502,
+            headers: response.headers,
+            body: Buffer.concat(chunks),
+          })
+        )
+        response.on('error', reject)
+      }
+    )
 
     request.setTimeout(input.timeoutMs, () => {
       request.destroy(new PublicResourceFetchError('Delivery request timed out.', 504, 'timeout'))
     })
     request.on('error', (error) => {
       if (error instanceof PublicResourceFetchError) reject(error)
-      else reject(new PublicResourceFetchError(
-        error.message || 'Delivery request failed.',
-        502,
-        'fetch_failed'
-      ))
+      else
+        reject(
+          new PublicResourceFetchError(
+            error.message || 'Delivery request failed.',
+            502,
+            'fetch_failed'
+          )
+        )
     })
     request.end(input.body)
   })

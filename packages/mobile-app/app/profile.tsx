@@ -23,10 +23,7 @@ import {
   Switch,
 } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
-import {
-  getProvisionerUrl,
-  useNodeZeroSession,
-} from '../src/contexts/NodeZeroSessionContext'
+import { getProvisionerUrl, useNodeZeroSession } from '../src/contexts/NodeZeroSessionContext'
 import type {
   ProfileManager,
   ProfilePreferencesManager,
@@ -43,11 +40,17 @@ import {
   mergeProfileData,
 } from '../src/profile/mergeProfileData'
 import { saveProfileForScreen } from '../src/profile/profileSaveCoordinator'
+import { getProfileSaveValidationMessage, PROFILE_LIMITS } from '../src/profile/profileValidation'
 import {
-  getProfileSaveValidationMessage,
-  PROFILE_LIMITS,
-} from '../src/profile/profileValidation'
-import { updateDiscoveryPreferences } from '../src/directory/discoveryPreferences'
+  maintainDirectoryPublication,
+  publishBasicDirectoryProfile,
+  unpublishDirectoryProfile,
+} from '../src/directory/directoryPublication'
+import {
+  NO_DIRECTORY_FEATURES,
+  readDirectoryFeatureAvailability,
+} from '../src/directory/directoryFeatureClient'
+import { publishDiscoveryConsentChanged } from '../src/directory/discoveryConsentEvents'
 import { derivePersonActionPolicy } from '../src/social/personActionPolicy'
 import {
   addTrustCircleMember,
@@ -84,18 +87,14 @@ export default function ProfileScreen(): JSX.Element {
   const [zkTooltipOpen, setZkTooltipOpen] = useState(false)
   const [connectionInput, setConnectionInput] = useState('')
   const [publicListing, setPublicListing] = useState(false)
-  const [publicIndexing, setPublicIndexing] = useState(false)
   const [nearbyPresence, setNearbyPresence] = useState(false)
   const [localBroadcasts, setLocalBroadcasts] = useState(false)
-  const [consentBaseline, setConsentBaseline] = useState({
-    publicListing: false,
-    publicIndexing: false,
-    nearbyPresence: false,
-    localBroadcasts: false,
-  })
-  const [selectedPublicInterests, setSelectedPublicInterests] = useState<string[]>([])
+  const [localConsentDirty, setLocalConsentDirty] = useState(false)
   const [discoverySaving, setDiscoverySaving] = useState(false)
   const [discoveryStatus, setDiscoveryStatus] = useState<string | null>(null)
+  const [milestoneQFeatures, setMilestoneQFeatures] = useState(NO_DIRECTORY_FEATURES)
+  const [featuresLoaded, setFeaturesLoaded] = useState(false)
+  const [directorySyncPending, setDirectorySyncPending] = useState(false)
   const [peerInTrustCircle, setPeerInTrustCircle] = useState(false)
   const [trustCircleBusy, setTrustCircleBusy] = useState(false)
 
@@ -104,9 +103,8 @@ export default function ProfileScreen(): JSX.Element {
   const profileView = deriveProfileViewState(webId, peerWebId)
   const { ownerWebId, viewedWebId, isPeerView } = profileView
   const draftProfile = buildUpdatedProfileDraft(profile, interestsInput)
-  const draftValidationMessage = !isPeerView
-    ? getProfileSaveValidationMessage(draftProfile)
-    : null
+  const draftValidationMessage = !isPeerView ? getProfileSaveValidationMessage(draftProfile) : null
+  const directoryAvailable = milestoneQFeatures.directory
 
   const {
     connectionsLoading,
@@ -192,82 +190,218 @@ export default function ProfileScreen(): JSX.Element {
   }, [authFetch, isLoggedIn, loadConnections])
 
   useEffect(() => {
+    if (!isLoggedIn || !ownerWebId) {
+      setMilestoneQFeatures(NO_DIRECTORY_FEATURES)
+      setFeaturesLoaded(false)
+      return
+    }
+    setFeaturesLoaded(false)
+    void readDirectoryFeatureAvailability(getProvisionerUrl(), authFetch)
+      .then(setMilestoneQFeatures)
+      .catch(() => setMilestoneQFeatures(NO_DIRECTORY_FEATURES))
+      .finally(() => setFeaturesLoaded(true))
+  }, [authFetch, isLoggedIn, ownerWebId])
+
+  useEffect(() => {
     if (!isLoggedIn || !ownerWebId || isPeerView) return
     const podRoot = `${ownerWebId.split('/profile/')[0]}/`
     const managers = getSolidPodSyncManagers({ fetch: authFetch })
-    void Promise.all([
-      managers.discoveryConsentManager.readConsent(podRoot),
-      managers.discoveryManifestManager.readManifest(podRoot),
-    ]).then(([consent, manifest]) => {
-      setPublicListing(consent.publicListing)
-      setPublicIndexing(consent.publicIndexing)
-      setNearbyPresence(consent.nearbyPresence)
-      setLocalBroadcasts(consent.localBroadcasts)
-      setConsentBaseline({
-        publicListing: consent.publicListing,
-        publicIndexing: consent.publicIndexing,
-        nearbyPresence: consent.nearbyPresence,
-        localBroadcasts: consent.localBroadcasts,
+    void managers.discoveryConsentManager
+      .readConsent(podRoot)
+      .then((consent) => {
+        setPublicListing(consent.publicListing)
+        setNearbyPresence(consent.nearbyPresence)
+        setLocalBroadcasts(consent.localBroadcasts)
       })
-      setSelectedPublicInterests(manifest?.publicInterests ?? [])
-    }).catch(() => {
-      setPublicListing(false)
-      setPublicIndexing(false)
-      setNearbyPresence(false)
-      setLocalBroadcasts(false)
-      setSelectedPublicInterests([])
-    })
+      .catch(() => {
+        setPublicListing(false)
+        setNearbyPresence(false)
+        setLocalBroadcasts(false)
+      })
   }, [authFetch, isLoggedIn, isPeerView, ownerWebId])
 
-  const togglePublicInterest = useCallback((interest: string): void => {
-    setSelectedPublicInterests((current) =>
-      current.some((value) => value.toLowerCase() === interest.toLowerCase())
-        ? current.filter((value) => value.toLowerCase() !== interest.toLowerCase())
-        : [...current, interest]
-    )
-  }, [])
+  useEffect(() => {
+    if (!featuresLoaded || !isLoggedIn || !ownerWebId || isPeerView) return
+    const podRoot = `${ownerWebId.split('/profile/')[0]}/`
+    const managers = getSolidPodSyncManagers({ fetch: authFetch })
+    void maintainDirectoryPublication({
+      available: directoryAvailable,
+      podRoot,
+      ownerWebId,
+      provisionerUrl: getProvisionerUrl(),
+      authFetch,
+      managers,
+    })
+      .then(async (outcome) => {
+        const consent = await managers.discoveryConsentManager.readConsent(podRoot)
+        setPublicListing(consent.publicListing)
+        setDirectorySyncPending(outcome.status === 'pending-sync')
+        if (outcome.status === 'pending-sync') setDiscoveryStatus(outcome.message)
+      })
+      .catch((error) => {
+        setDirectorySyncPending(true)
+        setDiscoveryStatus(
+          error instanceof Error ? error.message : 'Directory synchronization is pending.'
+        )
+      })
+  }, [authFetch, directoryAvailable, featuresLoaded, isLoggedIn, isPeerView, ownerWebId])
 
-  const saveDiscoveryPreferences = useCallback(async (): Promise<void> => {
+  const revokeLocalDiscoveryConsent = useCallback(async (): Promise<void> => {
     if (!ownerWebId) return
     setDiscoverySaving(true)
-    setDiscoveryStatus(null)
+    const podRoot = `${ownerWebId.split('/profile/')[0]}/`
+    const managers = getSolidPodSyncManagers({ fetch: authFetch })
+    const patch = {
+      ...(!nearbyPresence ? { nearbyPresence: false } : {}),
+      ...(!localBroadcasts ? { localBroadcasts: false } : {}),
+    }
     try {
-      const podRoot = `${ownerWebId.split('/profile/')[0]}/`
-      const result = await updateDiscoveryPreferences({
+      const consent = await managers.discoveryConsentManager.updateConsent(
         podRoot,
-        ownerWebId,
-        preferences: {
-          publicListing,
-          publicIndexing,
-          nearbyPresence,
-          localBroadcasts,
-          selectedPublicInterests,
-        },
-        baselineConsent: consentBaseline,
-        provisionerUrl: getProvisionerUrl(),
-        authFetch,
-        managers: getSolidPodSyncManagers({ fetch: authFetch }),
-      })
-      setSelectedPublicInterests(result.selectedPublicInterests)
-      setConsentBaseline({
-        publicListing: result.consent.publicListing,
-        publicIndexing: result.consent.publicIndexing,
-        nearbyPresence: result.consent.nearbyPresence,
-        localBroadcasts: result.consent.localBroadcasts,
-      })
-      setDiscoveryStatus(
-        result.listed
-          ? 'Public directory projection updated.'
-          : publicIndexing
-            ? 'Public indexing manifest updated without directory listing.'
-            : 'Public directory projection removed.'
+        patch,
+        undefined,
+        {
+          ...('nearbyPresence' in patch ? { nearbyPresence: true } : {}),
+          ...('localBroadcasts' in patch ? { localBroadcasts: true } : {}),
+        }
       )
+      publishDiscoveryConsentChanged(consent)
+      setLocalConsentDirty(false)
+      setDiscoveryStatus('Local discovery consent has been updated.')
     } catch (error) {
-      setDiscoveryStatus(error instanceof Error ? error.message : 'Unable to update discovery settings.')
+      const consent = await managers.discoveryConsentManager.readConsent(podRoot).catch(() => null)
+      const revocationAlreadyApplied =
+        consent !== null &&
+        (!('nearbyPresence' in patch) || !consent.nearbyPresence) &&
+        (!('localBroadcasts' in patch) || !consent.localBroadcasts)
+      if (revocationAlreadyApplied) {
+        publishDiscoveryConsentChanged(consent)
+        setLocalConsentDirty(false)
+        setDiscoveryStatus('Local discovery consent has been updated.')
+      } else {
+        setDiscoveryStatus(error instanceof Error ? error.message : 'Unable to update consent.')
+      }
     } finally {
       setDiscoverySaving(false)
     }
-  }, [authFetch, consentBaseline, localBroadcasts, nearbyPresence, ownerWebId, publicIndexing, publicListing, selectedPublicInterests])
+  }, [authFetch, localBroadcasts, nearbyPresence, ownerWebId])
+
+  const updateDirectoryPublication = useCallback(
+    async (publish: boolean): Promise<void> => {
+      if (!ownerWebId || !managerRef.current || !preferencesManagerRef.current) return
+      setDiscoverySaving(true)
+      setDiscoveryStatus(null)
+      try {
+        if (publish) {
+          const saved = await saveProfileForScreen({
+            isPeerView: false,
+            ownerWebId,
+            currentProfile: profile,
+            interestsInput,
+            deps: {
+              writePublicProfile: async (podRoot, updatedProfile) => {
+                await managerRef.current?.writeProfile(podRoot, updatedProfile, {
+                  bootstrapPodLayout: false,
+                })
+              },
+              writePrivatePreferences: async (podRoot, preferencesPayload) => {
+                await preferencesManagerRef.current?.writePreferences(podRoot, preferencesPayload)
+              },
+              readPublicProfile: async (webIdToRead) =>
+                managerRef.current?.readProfile(webIdToRead) ?? null,
+              readPrivatePreferences: async (podRoot) =>
+                preferencesManagerRef.current?.readPreferences(podRoot) ?? null,
+            },
+          })
+          if (saved.status === 'error') throw saved.error
+          if (saved.status !== 'saved') throw new Error(saved.message)
+          if (saved.mergedSavedProfile) {
+            setProfile(saved.mergedSavedProfile)
+            setInterestsInput(
+              saved.mergedSavedInterestsInput ??
+                interestsToInput(saved.mergedSavedProfile.interests)
+            )
+          }
+        }
+
+        const podRoot = `${ownerWebId.split('/profile/')[0]}/`
+        const managers = getSolidPodSyncManagers({ fetch: authFetch })
+        const outcome = publish
+          ? await publishBasicDirectoryProfile({
+              available: directoryAvailable,
+              podRoot,
+              ownerWebId,
+              provisionerUrl: getProvisionerUrl(),
+              authFetch,
+              managers,
+            })
+          : await unpublishDirectoryProfile({
+              available: directoryAvailable,
+              podRoot,
+              ownerWebId,
+              provisionerUrl: getProvisionerUrl(),
+              authFetch,
+              managers,
+            })
+        const intendedListing =
+          outcome.status === 'pending-sync'
+            ? outcome.intendedListing
+            : outcome.status === 'published'
+        setPublicListing(intendedListing)
+        setDirectorySyncPending(outcome.status === 'pending-sync')
+        setDiscoveryStatus(
+          outcome.status === 'pending-sync'
+            ? `${outcome.message} Retry to update the Directory.`
+            : outcome.status === 'published'
+              ? 'Your basic profile is published to the Directory.'
+              : 'Your profile is no longer listed in the Directory.'
+        )
+      } catch (error) {
+        setDiscoveryStatus(
+          error instanceof Error ? error.message : 'Unable to update Directory publication.'
+        )
+      } finally {
+        setDiscoverySaving(false)
+      }
+    },
+    [authFetch, directoryAvailable, interestsInput, ownerWebId, profile]
+  )
+
+  const retryDirectorySync = useCallback(async (): Promise<void> => {
+    if (!ownerWebId) return
+    setDiscoverySaving(true)
+    try {
+      const podRoot = `${ownerWebId.split('/profile/')[0]}/`
+      const managers = getSolidPodSyncManagers({ fetch: authFetch })
+      const outcome = await maintainDirectoryPublication({
+        available: directoryAvailable,
+        podRoot,
+        ownerWebId,
+        provisionerUrl: getProvisionerUrl(),
+        authFetch,
+        managers,
+      })
+      const consent = await managers.discoveryConsentManager.readConsent(podRoot)
+      setPublicListing(consent.publicListing)
+      setDirectorySyncPending(outcome.status === 'pending-sync')
+      setDiscoveryStatus(
+        outcome.status === 'published'
+          ? 'Your basic profile is published to the Directory.'
+          : outcome.status === 'unpublished'
+            ? 'Your profile is no longer listed in the Directory.'
+            : outcome.status === 'pending-sync'
+              ? outcome.message
+              : 'Directory synchronization is complete.'
+      )
+    } catch (error) {
+      setDirectorySyncPending(true)
+      setDiscoveryStatus(
+        error instanceof Error ? error.message : 'Directory synchronization is pending.'
+      )
+    } finally {
+      setDiscoverySaving(false)
+    }
+  }, [authFetch, directoryAvailable, ownerWebId])
 
   // Load profile from Pod.
   useEffect(() => {
@@ -288,6 +422,12 @@ export default function ProfileScreen(): JSX.Element {
           cancelled = true
         }
       }
+      if (!featuresLoaded || !milestoneQFeatures.peerProfile) {
+        setLoading(!featuresLoaded)
+        return (): void => {
+          cancelled = true
+        }
+      }
       const ownerProfileRead = ownerWebId
         ? managerRef.current.readProfile(ownerWebId)
         : Promise.resolve(null)
@@ -300,10 +440,9 @@ export default function ProfileScreen(): JSX.Element {
           if (peerProfile) {
             setProfile(peerProfile)
             setInterestsInput(interestsToInput(peerProfile.interests))
-            setSharedThreads(findPublicInterestOverlap(
-              ownerProfile?.interests ?? [],
-              peerProfile.interests
-            ))
+            setSharedThreads(
+              findPublicInterestOverlap(ownerProfile?.interests ?? [], peerProfile.interests)
+            )
           }
         })
         .catch(() => {
@@ -318,13 +457,10 @@ export default function ProfileScreen(): JSX.Element {
     }
 
     const viewedPodRoot = viewedWebId.split('/profile/')[0] + '/'
-    const preferenceRead = preferencesManagerRef.current?.readPreferences(viewedPodRoot) ??
-      Promise.resolve(null)
+    const preferenceRead =
+      preferencesManagerRef.current?.readPreferences(viewedPodRoot) ?? Promise.resolve(null)
 
-    void Promise.all([
-      managerRef.current.readProfile(viewedWebId),
-      preferenceRead,
-    ])
+    void Promise.all([managerRef.current.readProfile(viewedWebId), preferenceRead])
       .then(([publicProfile, privatePreferences]) => {
         if (cancelled) return
         if (publicProfile) {
@@ -339,7 +475,16 @@ export default function ProfileScreen(): JSX.Element {
     return (): void => {
       cancelled = true
     }
-  }, [authFetch, isPeerView, managersReady, ownerWebId, peerBlocked, viewedWebId])
+  }, [
+    authFetch,
+    featuresLoaded,
+    isPeerView,
+    managersReady,
+    milestoneQFeatures.peerProfile,
+    ownerWebId,
+    peerBlocked,
+    viewedWebId,
+  ])
 
   const saveProfile = useCallback(async () => {
     if (!managerRef.current || !preferencesManagerRef.current) {
@@ -369,7 +514,8 @@ export default function ProfileScreen(): JSX.Element {
           writePrivatePreferences: async (podRoot, preferencesPayload) => {
             await preferencesManagerRef.current?.writePreferences(podRoot, preferencesPayload)
           },
-          readPublicProfile: async (webIdToRead) => managerRef.current?.readProfile(webIdToRead) ?? null,
+          readPublicProfile: async (webIdToRead) =>
+            managerRef.current?.readProfile(webIdToRead) ?? null,
           readPrivatePreferences: async (podRoot) =>
             preferencesManagerRef.current?.readPreferences(podRoot) ?? null,
         },
@@ -387,13 +533,24 @@ export default function ProfileScreen(): JSX.Element {
       if (result.status === 'saved') {
         if (result.mergedSavedProfile) {
           setProfile(result.mergedSavedProfile)
-          setInterestsInput(result.mergedSavedInterestsInput ?? interestsToInput(result.mergedSavedProfile.interests))
-          const savedInterestKeys = new Set(
-            result.mergedSavedProfile.interests.map((interest) => interest.trim().toLowerCase())
+          setInterestsInput(
+            result.mergedSavedInterestsInput ??
+              interestsToInput(result.mergedSavedProfile.interests)
           )
-          setSelectedPublicInterests((current) =>
-            current.filter((interest) => savedInterestKeys.has(interest.trim().toLowerCase()))
-          )
+        }
+        if (directoryAvailable && ownerWebId) {
+          const outcome = await maintainDirectoryPublication({
+            available: true,
+            podRoot: `${ownerWebId.split('/profile/')[0]}/`,
+            ownerWebId,
+            provisionerUrl: getProvisionerUrl(),
+            authFetch,
+            managers: getSolidPodSyncManagers({ fetch: authFetch }),
+          })
+          setDirectorySyncPending(outcome.status === 'pending-sync')
+          if (outcome.status === 'pending-sync') {
+            setDiscoveryStatus(`${outcome.message} Retry to update the Directory.`)
+          }
         }
         Alert.alert('Saved', result.message)
         return
@@ -403,7 +560,15 @@ export default function ProfileScreen(): JSX.Element {
     } finally {
       setSaving(false)
     }
-  }, [draftValidationMessage, interestsInput, isPeerView, ownerWebId, profile])
+  }, [
+    authFetch,
+    directoryAvailable,
+    draftValidationMessage,
+    interestsInput,
+    isPeerView,
+    ownerWebId,
+    profile,
+  ])
 
   if (!isLoggedIn) {
     return (
@@ -421,10 +586,15 @@ export default function ProfileScreen(): JSX.Element {
     )
   }
 
-  if (
-    isPeerView &&
-    !connectionAuthorityReady
-  ) {
+  if (isPeerView && !milestoneQFeatures.peerProfile) {
+    return (
+      <View style={styles.centred}>
+        <Text style={styles.infoText}>This profile is unavailable.</Text>
+      </View>
+    )
+  }
+
+  if (isPeerView && !connectionAuthorityReady) {
     return (
       <View style={styles.centred}>
         <Text style={styles.infoText}>This profile is unavailable.</Text>
@@ -451,18 +621,14 @@ export default function ProfileScreen(): JSX.Element {
   return (
     <>
       {/* NSFW interstitial modal */}
-      <Modal
-        visible={profile.isNsfw && !nsfwWarningDismissed}
-        transparent
-        animationType="fade"
-      >
+      <Modal visible={profile.isNsfw && !nsfwWarningDismissed} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>🔞 Adult Content Notice</Text>
             <Text style={styles.modalBody}>
-              This profile contains links to adult-oriented content and has been
-              tagged as NSFW. NodeZero does not penalize users for legal content -
-              this notice is shown so you can make an informed choice.
+              This profile contains links to adult-oriented content and has been tagged as NSFW.
+              NodeZero does not penalize users for legal content - this notice is shown so you can
+              make an informed choice.
             </Text>
             <TouchableOpacity
               style={styles.modalButton}
@@ -485,9 +651,13 @@ export default function ProfileScreen(): JSX.Element {
           <View style={styles.modalCard}>
             <Text style={[styles.modalTitle, styles.zkModalTitle]}>Zero-Knowledge Identity</Text>
             <Text style={styles.modalBody}>
-              <Text style={{ fontWeight: '700', color: '#10B981' }}>{'What NodeZero knows:\n'}</Text>
+              <Text style={{ fontWeight: '700', color: '#10B981' }}>
+                {'What NodeZero knows:\n'}
+              </Text>
               {'You are a unique human.\n\n'}
-              <Text style={{ fontWeight: '700', color: '#FF6B6B' }}>{"What it doesn't know:\n"}</Text>
+              <Text style={{ fontWeight: '700', color: '#FF6B6B' }}>
+                {"What it doesn't know:\n"}
+              </Text>
               {'Your name, location, or IP.'}
             </Text>
             <TouchableOpacity
@@ -524,7 +694,13 @@ export default function ProfileScreen(): JSX.Element {
 
         <Text style={styles.sectionLabel}>WebID</Text>
         <View style={styles.webIdRow}>
-          <Text style={[styles.webIdText, { marginBottom: 0, flex: 1 }]} numberOfLines={2}>{viewedWebId}</Text>
+          <Text
+            style={[styles.webIdText, { marginBottom: 0, flex: 1 }]}
+            numberOfLines={2}
+            accessibilityLabel="Profile WebID"
+          >
+            {viewedWebId}
+          </Text>
           {profile.isNsfw === false && (
             <TouchableOpacity
               onPress={() => setZkTooltipOpen(true)}
@@ -627,7 +803,7 @@ export default function ProfileScreen(): JSX.Element {
 
         {isPeerView && viewedWebId && connectionAuthorityReady ? (
           <View style={styles.peerActionRow}>
-            {peerActionPolicy.canRequest ? (
+            {milestoneQFeatures.relationship && peerActionPolicy.canRequest ? (
               <TouchableOpacity
                 style={styles.connectionActionButton}
                 onPress={() => void addConnection(viewedWebId)}
@@ -638,7 +814,7 @@ export default function ProfileScreen(): JSX.Element {
                 <Text style={styles.connectionActionButtonText}>Request</Text>
               </TouchableOpacity>
             ) : null}
-            {peerActionPolicy.canCancelRequest ? (
+            {milestoneQFeatures.relationship && peerActionPolicy.canCancelRequest ? (
               <TouchableOpacity
                 style={styles.secondaryActionButton}
                 onPress={() => void cancelConnectionRequest(viewedWebId)}
@@ -649,7 +825,7 @@ export default function ProfileScreen(): JSX.Element {
                 <Text style={styles.connectionActionButtonText}>Cancel</Text>
               </TouchableOpacity>
             ) : null}
-            {peerActionPolicy.canAcceptRequest ? (
+            {milestoneQFeatures.relationship && peerActionPolicy.canAcceptRequest ? (
               <TouchableOpacity
                 style={styles.connectionActionButton}
                 onPress={() => void respondToIncomingRequest(viewedWebId, 'accept')}
@@ -660,7 +836,7 @@ export default function ProfileScreen(): JSX.Element {
                 <Text style={styles.connectionActionButtonText}>Accept</Text>
               </TouchableOpacity>
             ) : null}
-            {peerActionPolicy.canDeclineRequest ? (
+            {milestoneQFeatures.relationship && peerActionPolicy.canDeclineRequest ? (
               <TouchableOpacity
                 style={styles.secondaryActionButton}
                 onPress={() => void respondToIncomingRequest(viewedWebId, 'reject')}
@@ -671,7 +847,7 @@ export default function ProfileScreen(): JSX.Element {
                 <Text style={styles.connectionActionButtonText}>Decline</Text>
               </TouchableOpacity>
             ) : null}
-            {peerActionPolicy.canDisconnect ? (
+            {milestoneQFeatures.relationship && peerActionPolicy.canDisconnect ? (
               <TouchableOpacity
                 style={styles.connectionRemoveButtonWide}
                 onPress={() => void removeConnection(viewedWebId)}
@@ -682,10 +858,12 @@ export default function ProfileScreen(): JSX.Element {
                 <Text style={styles.connectionActionButtonText}>Disconnect</Text>
               </TouchableOpacity>
             ) : null}
-            {peerActionPolicy.canMessage ? (
+            {milestoneQFeatures.transport && peerActionPolicy.canMessage ? (
               <TouchableOpacity
                 style={styles.messageActionButton}
-                onPress={() => router.push({ pathname: '/local', params: { peerWebId: viewedWebId } })}
+                onPress={() =>
+                  router.push({ pathname: '/local', params: { peerWebId: viewedWebId } })
+                }
                 accessibilityRole="button"
                 accessibilityLabel={`Message ${viewedWebId}`}
               >
@@ -732,11 +910,7 @@ export default function ProfileScreen(): JSX.Element {
             {peerActionPolicy.canMute || peerActionPolicy.canUnmute ? (
               <TouchableOpacity
                 style={styles.muteActionButton}
-                onPress={() => void setModeration(
-                  viewedWebId,
-                  'mute',
-                  peerActionPolicy.canMute
-                )}
+                onPress={() => void setModeration(viewedWebId, 'mute', peerActionPolicy.canMute)}
                 accessibilityRole="button"
                 accessibilityLabel={`${peerActionPolicy.canUnmute ? 'Unmute' : 'Mute'} ${viewedWebId}`}
               >
@@ -775,231 +949,244 @@ export default function ProfileScreen(): JSX.Element {
           </TouchableOpacity>
         ) : null}
 
-        {!isPeerView ? (
+        {!isPeerView && (directoryAvailable || publicListing || directorySyncPending) ? (
           <View style={styles.sectionCard}>
-            <Text style={styles.sectionCardTitle}>Discovery</Text>
-            <View style={styles.requestConsentRow}>
-              <Text style={styles.requestConsentTitle}>Public directory listing</Text>
-              <Switch
-                value={publicListing}
-                onValueChange={setPublicListing}
-                trackColor={{ false: '#343842', true: aesthetic.color.accent }}
-                thumbColor="#FFF"
-                accessibilityLabel="Enable public directory listing"
-              />
+            <Text style={styles.sectionCardTitle}>Directory publication</Text>
+            <Text style={styles.directoryHintText}>
+              Publish your display name, avatar, and WebID. Your bio and interests stay private.
+            </Text>
+            <View style={styles.publicationPreview}>
+              <Text style={styles.requestConsentTitle}>
+                {draftProfile.displayName || 'Unnamed profile'}
+              </Text>
+              <Text style={styles.discoveryStatusText}>{ownerWebId}</Text>
             </View>
-            <View style={styles.requestConsentRow}>
-              <Text style={styles.requestConsentTitle}>Public profile indexing</Text>
-              <Switch
-                value={publicIndexing}
-                onValueChange={setPublicIndexing}
-                trackColor={{ false: '#343842', true: aesthetic.color.accent }}
-                thumbColor="#FFF"
-                accessibilityLabel="Enable public profile indexing"
-              />
-            </View>
-            <View style={styles.requestConsentRow}>
-              <Text style={styles.requestConsentTitle}>Nearby presence</Text>
-              <Switch
-                value={nearbyPresence}
-                onValueChange={setNearbyPresence}
-                trackColor={{ false: '#343842', true: aesthetic.color.accent }}
-                thumbColor="#FFF"
-                accessibilityLabel="Enable nearby presence"
-              />
-            </View>
-            <View style={styles.requestConsentRow}>
-              <Text style={styles.requestConsentTitle}>Local broadcasts</Text>
-              <Switch
-                value={localBroadcasts}
-                onValueChange={setLocalBroadcasts}
-                trackColor={{ false: '#343842', true: aesthetic.color.accent }}
-                thumbColor="#FFF"
-                accessibilityLabel="Enable local broadcasts"
-              />
-            </View>
-
-            {draftProfile.interests.length > 0 ? (
-              <View style={styles.publicInterestList}>
-                {draftProfile.interests.map((interest) => {
-                  const selected = selectedPublicInterests.some(
-                    (value) => value.toLowerCase() === interest.toLowerCase()
-                  )
-                  return (
-                    <TouchableOpacity
-                      key={interest}
-                      style={styles.publicInterestRow}
-                      onPress={() => togglePublicInterest(interest)}
-                      accessibilityRole="checkbox"
-                      accessibilityState={{ checked: selected }}
-                      accessibilityLabel={`Publish interest ${interest}`}
-                    >
-                      <Ionicons
-                        name={selected ? 'checkbox' : 'square-outline'}
-                        size={20}
-                        color={selected ? aesthetic.color.accentSoft : aesthetic.color.textLow}
-                      />
-                      <Text style={styles.publicInterestText}>{interest}</Text>
-                    </TouchableOpacity>
-                  )
-                })}
-              </View>
-            ) : null}
-
-            {discoveryStatus ? (
-              <Text style={styles.discoveryStatusText}>{discoveryStatus}</Text>
-            ) : null}
             <TouchableOpacity
               style={[styles.saveButton, discoverySaving && styles.saveButtonDisabled]}
-              onPress={() => void saveDiscoveryPreferences()}
-              disabled={discoverySaving}
+              onPress={() => void updateDirectoryPublication(!publicListing)}
+              disabled={discoverySaving || (!publicListing && Boolean(draftValidationMessage))}
               accessibilityRole="button"
-              accessibilityLabel="Save discovery settings"
+              accessibilityLabel={
+                publicListing ? 'Unpublish from Directory' : 'Publish to Directory'
+              }
             >
               {discoverySaving ? (
                 <ActivityIndicator color="#FFF" />
               ) : (
-                <Text style={styles.saveButtonText}>Save discovery settings</Text>
+                <Text style={styles.saveButtonText}>
+                  {publicListing ? 'Unpublish from Directory' : 'Publish to Directory'}
+                </Text>
               )}
+            </TouchableOpacity>
+            {directorySyncPending ? (
+              <TouchableOpacity
+                style={styles.secondaryActionButton}
+                onPress={() => void retryDirectorySync()}
+                disabled={discoverySaving}
+                accessibilityRole="button"
+                accessibilityLabel="Retry Directory synchronization"
+              >
+                <Text style={styles.connectionActionButtonText}>Retry synchronization</Text>
+              </TouchableOpacity>
+            ) : null}
+            {discoveryStatus ? (
+              <Text style={styles.discoveryStatusText}>{discoveryStatus}</Text>
+            ) : null}
+          </View>
+        ) : null}
+
+        {!isPeerView && (nearbyPresence || localBroadcasts || localConsentDirty) ? (
+          <View style={styles.sectionCard}>
+            <Text style={styles.sectionCardTitle}>Revoke local discovery</Text>
+            {nearbyPresence ? (
+              <View style={styles.requestConsentRow}>
+                <Text style={styles.requestConsentTitle}>Nearby presence</Text>
+                <Switch
+                  value={nearbyPresence}
+                  onValueChange={(value) => {
+                    setNearbyPresence(value && nearbyPresence)
+                    setLocalConsentDirty(true)
+                  }}
+                  trackColor={{ false: '#343842', true: aesthetic.color.accent }}
+                  thumbColor="#FFF"
+                  accessibilityLabel="Disable nearby presence"
+                />
+              </View>
+            ) : null}
+            {localBroadcasts ? (
+              <View style={styles.requestConsentRow}>
+                <Text style={styles.requestConsentTitle}>Local broadcasts</Text>
+                <Switch
+                  value={localBroadcasts}
+                  onValueChange={(value) => {
+                    setLocalBroadcasts(value && localBroadcasts)
+                    setLocalConsentDirty(true)
+                  }}
+                  trackColor={{ false: '#343842', true: aesthetic.color.accent }}
+                  thumbColor="#FFF"
+                  accessibilityLabel="Disable local broadcasts"
+                />
+              </View>
+            ) : null}
+            <TouchableOpacity
+              style={[styles.secondaryActionButton, discoverySaving && styles.saveButtonDisabled]}
+              onPress={() => void revokeLocalDiscoveryConsent()}
+              disabled={discoverySaving}
+              accessibilityRole="button"
+              accessibilityLabel="Save local discovery revocation"
+            >
+              <Text style={styles.connectionActionButtonText}>Save revocation</Text>
             </TouchableOpacity>
           </View>
         ) : null}
 
-        <View style={styles.sectionCard}>
-          <View style={styles.sectionCardHeader}>
-            <Text style={styles.sectionCardTitle}>Connections</Text>
-            {connectionsLoading ? <ActivityIndicator color={aesthetic.color.accentSoft} size="small" /> : null}
-          </View>
+        {milestoneQFeatures.relationship ? (
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionCardHeader}>
+              <Text style={styles.sectionCardTitle}>Connections</Text>
+              {connectionsLoading ? (
+                <ActivityIndicator color={aesthetic.color.accentSoft} size="small" />
+              ) : null}
+            </View>
 
-          {!isPeerView ? (
-            <>
-              <View style={styles.requestConsentRow}>
-                <View style={styles.requestConsentCopy}>
-                  <Text style={styles.requestConsentTitle}>Relationship requests</Text>
-                  <Text style={styles.emptySubtleText}>
-                    Allow signed requests to be verified and shown here.
-                  </Text>
+            {!isPeerView ? (
+              <>
+                <View style={styles.requestConsentRow}>
+                  <View style={styles.requestConsentCopy}>
+                    <Text style={styles.requestConsentTitle}>Relationship requests</Text>
+                    <Text style={styles.emptySubtleText}>
+                      Allow signed requests to be verified and shown here.
+                    </Text>
+                  </View>
+                  <Switch
+                    value={inboundRequestsEnabled}
+                    onValueChange={(enabled) => void setInboundRequestsEnabled(enabled)}
+                    trackColor={{ false: '#343842', true: aesthetic.color.accent }}
+                    thumbColor="#FFF"
+                    accessibilityLabel="Allow relationship requests"
+                  />
                 </View>
-                <Switch
-                  value={inboundRequestsEnabled}
-                  onValueChange={(enabled) => void setInboundRequestsEnabled(enabled)}
-                  trackColor={{ false: '#343842', true: aesthetic.color.accent }}
-                  thumbColor="#FFF"
-                  accessibilityLabel="Allow relationship requests"
-                />
-              </View>
 
-              {inboundRequestsEnabled ? (
-                <>
+                {inboundRequestsEnabled ? (
+                  <>
+                    <TouchableOpacity
+                      style={styles.requestRefreshButton}
+                      onPress={() => void syncIncomingRequests()}
+                      disabled={inboxSyncing}
+                      activeOpacity={aesthetic.motion.pressOpacity}
+                      accessibilityRole="button"
+                      accessibilityLabel="Refresh relationship requests"
+                    >
+                      {inboxSyncing ? (
+                        <ActivityIndicator color="#FFF" size="small" />
+                      ) : (
+                        <Ionicons name="refresh" size={16} color="#FFF" />
+                      )}
+                      <Text style={styles.requestRefreshText}>Refresh requests</Text>
+                    </TouchableOpacity>
+
+                    {incomingRequests.map((request) => (
+                      <View key={request.peerWebId} style={styles.incomingRequestRow}>
+                        <Text style={styles.connectionWebId} numberOfLines={2}>
+                          {request.peerWebId}
+                        </Text>
+                        <View style={styles.incomingRequestActions}>
+                          <TouchableOpacity
+                            style={styles.requestRejectButton}
+                            onPress={() =>
+                              void respondToIncomingRequest(request.peerWebId, 'reject')
+                            }
+                            disabled={connectionBusyWebId === request.peerWebId}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Reject request from ${request.peerWebId}`}
+                          >
+                            <Ionicons name="close" size={17} color="#FFF" />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.requestAcceptButton}
+                            onPress={() =>
+                              void respondToIncomingRequest(request.peerWebId, 'accept')
+                            }
+                            disabled={connectionBusyWebId === request.peerWebId}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Accept request from ${request.peerWebId}`}
+                          >
+                            <Ionicons name="checkmark" size={17} color="#FFF" />
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    ))}
+                  </>
+                ) : null}
+              </>
+            ) : null}
+
+            <View style={styles.connectionComposerRow}>
+              <TextInput
+                style={[styles.input, styles.connectionInput]}
+                value={connectionInput}
+                onChangeText={setConnectionInput}
+                placeholder="https://node-handle/profile/card#me"
+                placeholderTextColor="#555"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              <TouchableOpacity
+                style={styles.connectionActionButton}
+                onPress={() => {
+                  void addConnection(connectionInput).then((didAdd) => {
+                    if (didAdd) setConnectionInput('')
+                  })
+                }}
+                disabled={Boolean(connectionBusyWebId) || connectionInput.trim().length === 0}
+                activeOpacity={aesthetic.motion.pressOpacity}
+              >
+                <Text style={styles.connectionActionButtonText}>Add</Text>
+              </TouchableOpacity>
+            </View>
+
+            {connectionStatus ? (
+              <Text
+                style={[
+                  styles.connectionStatusText,
+                  connectionStatus.type === 'error'
+                    ? styles.connectionStatusError
+                    : connectionStatus.type === 'success'
+                      ? styles.connectionStatusSuccess
+                      : styles.connectionStatusInfo,
+                ]}
+              >
+                {connectionStatus.message}
+              </Text>
+            ) : null}
+
+            {connections.length === 0 ? (
+              <Text style={styles.emptySubtleText}>
+                No connections yet. Add a WebID to build your contact list.
+              </Text>
+            ) : (
+              connections.map((connectionWebId) => (
+                <View key={connectionWebId} style={styles.connectionRow}>
+                  <Text style={styles.connectionWebId} numberOfLines={2}>
+                    {connectionWebId}
+                  </Text>
                   <TouchableOpacity
-                    style={styles.requestRefreshButton}
-                    onPress={() => void syncIncomingRequests()}
-                    disabled={inboxSyncing}
+                    style={styles.connectionRemoveButton}
+                    onPress={() => void removeConnection(connectionWebId)}
+                    disabled={connectionBusyWebId === connectionWebId}
                     activeOpacity={aesthetic.motion.pressOpacity}
-                    accessibilityRole="button"
-                    accessibilityLabel="Refresh relationship requests"
                   >
-                    {inboxSyncing ? (
+                    {connectionBusyWebId === connectionWebId ? (
                       <ActivityIndicator color="#FFF" size="small" />
                     ) : (
-                      <Ionicons name="refresh" size={16} color="#FFF" />
+                      <Ionicons name="person-remove" size={16} color="#FFF" />
                     )}
-                    <Text style={styles.requestRefreshText}>Refresh requests</Text>
                   </TouchableOpacity>
-
-                  {incomingRequests.map((request) => (
-                    <View key={request.peerWebId} style={styles.incomingRequestRow}>
-                      <Text style={styles.connectionWebId} numberOfLines={2}>
-                        {request.peerWebId}
-                      </Text>
-                      <View style={styles.incomingRequestActions}>
-                        <TouchableOpacity
-                          style={styles.requestRejectButton}
-                          onPress={() => void respondToIncomingRequest(request.peerWebId, 'reject')}
-                          disabled={connectionBusyWebId === request.peerWebId}
-                          accessibilityRole="button"
-                          accessibilityLabel={`Reject request from ${request.peerWebId}`}
-                        >
-                          <Ionicons name="close" size={17} color="#FFF" />
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={styles.requestAcceptButton}
-                          onPress={() => void respondToIncomingRequest(request.peerWebId, 'accept')}
-                          disabled={connectionBusyWebId === request.peerWebId}
-                          accessibilityRole="button"
-                          accessibilityLabel={`Accept request from ${request.peerWebId}`}
-                        >
-                          <Ionicons name="checkmark" size={17} color="#FFF" />
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  ))}
-                </>
-              ) : null}
-            </>
-          ) : null}
-
-          <View style={styles.connectionComposerRow}>
-            <TextInput
-              style={[styles.input, styles.connectionInput]}
-              value={connectionInput}
-              onChangeText={setConnectionInput}
-              placeholder="https://node-handle/profile/card#me"
-              placeholderTextColor="#555"
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-            <TouchableOpacity
-              style={styles.connectionActionButton}
-              onPress={() => {
-                void addConnection(connectionInput).then((didAdd) => {
-                  if (didAdd) setConnectionInput('')
-                })
-              }}
-              disabled={Boolean(connectionBusyWebId) || connectionInput.trim().length === 0}
-              activeOpacity={aesthetic.motion.pressOpacity}
-            >
-              <Text style={styles.connectionActionButtonText}>Add</Text>
-            </TouchableOpacity>
+                </View>
+              ))
+            )}
           </View>
-
-          {connectionStatus ? (
-            <Text
-              style={[
-                styles.connectionStatusText,
-                connectionStatus.type === 'error'
-                  ? styles.connectionStatusError
-                  : connectionStatus.type === 'success'
-                    ? styles.connectionStatusSuccess
-                    : styles.connectionStatusInfo,
-              ]}
-            >
-              {connectionStatus.message}
-            </Text>
-          ) : null}
-
-          {connections.length === 0 ? (
-            <Text style={styles.emptySubtleText}>No connections yet. Add a WebID to build your contact list.</Text>
-          ) : (
-            connections.map((connectionWebId) => (
-              <View key={connectionWebId} style={styles.connectionRow}>
-                <Text style={styles.connectionWebId} numberOfLines={2}>{connectionWebId}</Text>
-                <TouchableOpacity
-                  style={styles.connectionRemoveButton}
-                  onPress={() => void removeConnection(connectionWebId)}
-                  disabled={connectionBusyWebId === connectionWebId}
-                  activeOpacity={aesthetic.motion.pressOpacity}
-                >
-                  {connectionBusyWebId === connectionWebId ? (
-                    <ActivityIndicator color="#FFF" size="small" />
-                  ) : (
-                    <Ionicons name="person-remove" size={16} color="#FFF" />
-                  )}
-                </TouchableOpacity>
-              </View>
-            ))
-          )}
-        </View>
+        ) : null}
       </ScrollView>
     </>
   )
@@ -1008,13 +1195,35 @@ export default function ProfileScreen(): JSX.Element {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: aesthetic.color.bgNight },
   scrollContent: { padding: 20, paddingBottom: 48 },
-  centred: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: aesthetic.color.bgNight },
+  centred: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: aesthetic.color.bgNight,
+  },
   infoText: { color: aesthetic.color.textMid, fontSize: 14 },
   nsfwBanner: { backgroundColor: '#3D1515', borderRadius: 8, padding: 10, marginBottom: 16 },
   nsfwBannerText: { color: '#FF6B6B', fontSize: 13, fontWeight: '600' },
-  sectionLabel: { color: aesthetic.color.textLow, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', marginBottom: 4 },
-  webIdText: { color: aesthetic.color.accentSoft, fontSize: 12, marginBottom: 20, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
-  label: { color: aesthetic.color.textMid, fontSize: 13, fontWeight: '600', marginBottom: 6, marginTop: 16 },
+  sectionLabel: {
+    color: aesthetic.color.textLow,
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  webIdText: {
+    color: aesthetic.color.accentSoft,
+    fontSize: 12,
+    marginBottom: 20,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  label: {
+    color: aesthetic.color.textMid,
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 6,
+    marginTop: 16,
+  },
   input: {
     backgroundColor: aesthetic.color.surface,
     borderRadius: 10,
@@ -1028,7 +1237,13 @@ const styles = StyleSheet.create({
   textArea: { minHeight: 100, textAlignVertical: 'top', paddingTop: 11 },
   helperText: { color: aesthetic.color.textLow, fontSize: 11, marginTop: 4 },
   validationText: { color: '#FCA5A5', fontSize: 12, marginTop: 8 },
-  saveButton: { marginTop: 28, backgroundColor: aesthetic.color.accent, borderRadius: 10, paddingVertical: 14, alignItems: 'center' },
+  saveButton: {
+    marginTop: 28,
+    backgroundColor: aesthetic.color.accent,
+    borderRadius: 10,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
   saveButtonDisabled: { opacity: 0.6 },
   saveButtonText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
   sectionCard: {
@@ -1049,6 +1264,20 @@ const styles = StyleSheet.create({
     color: aesthetic.color.textHigh,
     fontSize: 15,
     fontWeight: '800',
+  },
+  directoryHintText: {
+    color: aesthetic.color.textMid,
+    fontSize: 12,
+    marginTop: 6,
+    marginBottom: 12,
+  },
+  publicationPreview: {
+    minHeight: 64,
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: aesthetic.color.border,
+    borderRadius: 8,
+    padding: 12,
   },
   connectionComposerRow: {
     flexDirection: 'row',
@@ -1231,18 +1460,49 @@ const styles = StyleSheet.create({
   // Shared Threads + ZK badge
   webIdRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 20 },
   zkBadge: { marginLeft: 8, marginTop: 1 },
-  sharedThreadsCard: { backgroundColor: aesthetic.color.surfaceAlt, borderRadius: 14, padding: 16, marginBottom: 20, borderWidth: 1, borderColor: aesthetic.color.border },
+  sharedThreadsCard: {
+    backgroundColor: aesthetic.color.surfaceAlt,
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: aesthetic.color.border,
+  },
   sharedThreadsTitle: { color: '#FFF', fontSize: 15, fontWeight: '800', marginBottom: 4 },
   sharedThreadsSubtitle: { color: aesthetic.color.textMid, fontSize: 12, marginBottom: 10 },
   pillRow: { flexDirection: 'row', flexWrap: 'wrap' },
-  pill: { backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 4, marginRight: 8, marginBottom: 4 },
+  pill: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    marginRight: 8,
+    marginBottom: 4,
+  },
   pillText: { color: '#FFF', fontSize: 12, fontWeight: '600' },
   // NSFW modal
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center', padding: 24 },
-  modalCard: { backgroundColor: aesthetic.color.surface, borderRadius: 16, padding: 24, borderWidth: 1, borderColor: '#3D1515' },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalCard: {
+    backgroundColor: aesthetic.color.surface,
+    borderRadius: 16,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: '#3D1515',
+  },
   modalTitle: { color: '#FF6B6B', fontSize: 18, fontWeight: '800', marginBottom: 12 },
   zkModalTitle: { color: aesthetic.color.textHigh },
   modalBody: { color: aesthetic.color.textMid, fontSize: 14, lineHeight: 22, marginBottom: 20 },
-  modalButton: { backgroundColor: aesthetic.color.accent, borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
+  modalButton: {
+    backgroundColor: aesthetic.color.accent,
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
   modalButtonText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
 })

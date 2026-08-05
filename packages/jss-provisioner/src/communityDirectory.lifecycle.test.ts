@@ -19,6 +19,23 @@ function withStore(run: (store: CommunityDirectoryStore, path: string) => void):
   }
 }
 
+function publishListedRecord(store: CommunityDirectoryStore, webId: string, podUrl: string): void {
+  store.refreshProjection({
+    webId,
+    podUrl,
+    issuer: 'https://solid.nodezero.social',
+    publicListing: true,
+    publicIndexing: false,
+    consentUpdatedAt: now.toISOString(),
+    manifestUrl: `${podUrl}public/discovery/manifest`,
+    manifest: {
+      publishedAt: now.toISOString(),
+      expiresAt: '2026-08-09T00:00:00.000Z',
+    },
+    now,
+  })
+}
+
 void test('pre-opt-in records are absent from public index', () => {
   withStore((store) => {
     store.seedRecord({
@@ -34,6 +51,18 @@ void test('pre-opt-in records are absent from public index', () => {
   })
 })
 
+void test('listed records without a current manifest expiry remain private', () => {
+  withStore((store) => {
+    store.seedRecord({
+      webId: seededWebId,
+      podUrl: 'https://solid.nodezero.social/lifecycle-user/',
+      issuer: 'https://solid.nodezero.social',
+    })
+    store.setListing(seededWebId, true)
+    assert.deepEqual(store.buildPublicPage({ now }).members, [])
+  })
+})
+
 void test('opt-in publishes record to public index', () => {
   withStore((store) => {
     store.seedRecord({
@@ -42,7 +71,8 @@ void test('opt-in publishes record to public index', () => {
       issuer: 'https://solid.nodezero.social',
     })
 
-    const updated = store.setListing(seededWebId, true)
+    publishListedRecord(store, seededWebId, 'https://solid.nodezero.social/lifecycle-user/')
+    const updated = store.getByWebId(seededWebId)
     assert.equal(updated?.listed, true)
 
     const index = store.buildPublicIndex()
@@ -60,7 +90,7 @@ void test('opt-out removes record from public index and preserves record state',
       issuer: 'https://solid.nodezero.social',
     })
 
-    store.setListing(seededWebId, true)
+    publishListedRecord(store, seededWebId, 'https://solid.nodezero.social/lifecycle-user/')
     const updated = store.setListing(seededWebId, false)
     assert.equal(updated?.listed, false)
 
@@ -79,7 +109,7 @@ void test('store persists records across re-initialization', () => {
       podUrl: 'https://solid.nodezero.social/lifecycle-user/',
       issuer: 'https://solid.nodezero.social',
     })
-    store.setListing(seededWebId, true)
+    publishListedRecord(store, seededWebId, 'https://solid.nodezero.social/lifecycle-user/')
 
     const rehydrated = new CommunityDirectoryStore({ persistenceFilePath: path })
     const index = rehydrated.buildPublicIndex()
@@ -114,7 +144,9 @@ void test('manifest projection publishes only allowlisted public fields and prov
 
     assert.equal(projected.listed, true)
     assert.equal(projected.displayName, 'Alice')
-    assert.deepEqual(projected.publicInterests, ['solid'])
+    assert.equal(projected.publicInterests, undefined)
+    assert.equal(projected.capabilities, undefined)
+    assert.equal(projected.inboxUrl, undefined)
     assert.equal(projected.sourceRevision, '"manifest-v1"')
     assert.equal('privateInterests' in projected, false)
     assert.equal('blockedWebIds' in projected, false)
@@ -167,14 +199,52 @@ void test('missing or expired manifests cannot remain publicly projected', () =>
       now: new Date('2026-08-02T00:00:00.000Z'),
     }
     assert.equal(store.refreshProjection({ ...base, manifest: null }).listed, false)
-    assert.equal(store.refreshProjection({
-      ...base,
-      manifest: {
-        publishedAt: '2026-07-01T00:00:00.000Z',
-        expiresAt: '2026-07-02T00:00:00.000Z',
-      },
-    }).listed, false)
+    assert.equal(
+      store.refreshProjection({
+        ...base,
+        manifest: {
+          publishedAt: '2026-07-01T00:00:00.000Z',
+          expiresAt: '2026-07-02T00:00:00.000Z',
+        },
+      }).listed,
+      false
+    )
     assert.deepEqual(store.buildPublicIndex().members, [])
+  })
+})
+
+void test('far-future and overlong manifests cannot enter the public projection', () => {
+  withStore((store) => {
+    const base = {
+      webId: seededWebId,
+      podUrl: 'https://solid.nodezero.social/lifecycle-user/',
+      issuer: 'https://solid.nodezero.social',
+      publicListing: true,
+      publicIndexing: false,
+      consentUpdatedAt: now.toISOString(),
+      manifestUrl: 'https://solid.nodezero.social/lifecycle-user/public/discovery/manifest',
+      now,
+    }
+    assert.equal(
+      store.refreshProjection({
+        ...base,
+        manifest: {
+          publishedAt: '2030-01-01T00:00:00.000Z',
+          expiresAt: '2030-01-08T00:00:00.000Z',
+        },
+      }).listed,
+      false
+    )
+    assert.equal(
+      store.refreshProjection({
+        ...base,
+        manifest: {
+          publishedAt: now.toISOString(),
+          expiresAt: new Date(now.getTime() + 8 * 24 * 60 * 60_000).toISOString(),
+        },
+      }).listed,
+      false
+    )
   })
 })
 
@@ -224,7 +294,7 @@ void test('public pages are bounded, cursor-stable, and emit deterministic valid
         podUrl: `https://solid.nodezero.social/${name}/`,
         issuer: 'https://solid.nodezero.social',
       })
-      store.setListing(webId, true)
+      publishListedRecord(store, webId, `https://solid.nodezero.social/${name}/`)
     }
     const first = store.buildPublicPage({ limit: 2, now })
     const repeated = store.buildPublicPage({ limit: 2, now })
@@ -235,6 +305,25 @@ void test('public pages are bounded, cursor-stable, and emit deterministic valid
     assert.equal(second.members.length, 1)
     assert.equal(second.nextCursor, null)
     assert.equal(new Set([...first.members, ...second.members].map((entry) => entry.webId)).size, 3)
+  })
+})
+
+void test('public pages exclude owners withdrawn from the active cohort before pagination', () => {
+  withStore((store) => {
+    const alice = 'https://solid.nodezero.social/alice/profile/card#me'
+    const bob = 'https://solid.nodezero.social/bob/profile/card#me'
+    publishListedRecord(store, alice, 'https://solid.nodezero.social/alice/')
+    publishListedRecord(store, bob, 'https://solid.nodezero.social/bob/')
+    const page = store.buildPublicPage({
+      limit: 1,
+      now,
+      include: (record) => record.webId === bob,
+    })
+    assert.deepEqual(
+      page.members.map((record) => record.webId),
+      [bob]
+    )
+    assert.equal(page.nextCursor, null)
   })
 })
 
@@ -283,9 +372,7 @@ void test('a transient persistence failure does not poison later writes', async 
     loadRecord: () => Promise.resolve(null),
     upsertRecord: () => {
       upsertCalls += 1
-      return upsertCalls === 1
-        ? Promise.reject(new Error('table outage'))
-        : Promise.resolve()
+      return upsertCalls === 1 ? Promise.reject(new Error('table outage')) : Promise.resolve()
     },
     probe: () => Promise.resolve(),
   }
@@ -362,6 +449,50 @@ void test('a failed durable opt-out is immediately suppressed from public pages'
   stored = { ...stored }
 })
 
+void test('explicit suppression hides a durable listing before persistence completes', async () => {
+  let releaseWrite: (() => void) | null = null
+  let writeCount = 0
+  let signalWriteStarted!: () => void
+  const writeStarted = new Promise<void>((resolve) => {
+    signalWriteStarted = resolve
+  })
+  const persistence: CommunityDirectoryPersistence = {
+    loadRecords: () => Promise.resolve([]),
+    loadRecord: () => Promise.resolve(null),
+    upsertRecord: () => {
+      writeCount += 1
+      if (writeCount === 1) return Promise.resolve()
+      return new Promise((resolve) => {
+        releaseWrite = resolve
+        signalWriteStarted()
+      })
+    },
+    probe: () => Promise.resolve(),
+  }
+  const store = new CommunityDirectoryStore({ persistence })
+  store.refreshProjection({
+    webId: seededWebId,
+    podUrl: 'https://solid.nodezero.social/lifecycle-user/',
+    issuer: 'https://solid.nodezero.social',
+    publicListing: true,
+    publicIndexing: false,
+    consentRevision: 1,
+    consentUpdatedAt: now.toISOString(),
+    manifestUrl: 'https://solid.nodezero.social/lifecycle-user/public/discovery/manifest',
+    manifest: {
+      publishedAt: now.toISOString(),
+      expiresAt: '2026-08-09T00:00:00.000Z',
+    },
+    now,
+  })
+  await store.flush()
+  store.setListing(seededWebId, false)
+  assert.deepEqual(store.buildPublicPage({ now }).members, [])
+  await writeStarted
+  releaseWrite?.()
+  await store.flush()
+})
+
 void test('an older full scan cannot overwrite a newer targeted opt-out', async () => {
   const olderOptIn = {
     webId: seededWebId,
@@ -378,9 +509,12 @@ void test('an older full scan cannot overwrite a newer targeted opt-out', async 
     updatedAt: '2026-08-02T02:00:00.000Z',
     consentUpdatedAt: '2026-08-02T02:00:00.000Z',
   }
-  let releaseScan: ((records: typeof olderOptIn[]) => void) | null = null
+  let releaseScan: ((records: (typeof olderOptIn)[]) => void) | null = null
   const persistence: CommunityDirectoryPersistence = {
-    loadRecords: () => new Promise((resolve) => { releaseScan = resolve }),
+    loadRecords: () =>
+      new Promise((resolve) => {
+        releaseScan = resolve
+      }),
     loadRecord: () => Promise.resolve(newerOptOut),
     upsertRecord: () => Promise.resolve(),
     probe: () => Promise.resolve(),
@@ -403,11 +537,12 @@ void test('pending and failed durable opt-ins never enter public pages', async (
   const persistence: CommunityDirectoryPersistence = {
     loadRecords: () => Promise.resolve([]),
     loadRecord: () => Promise.resolve(null),
-    upsertRecord: () => new Promise((resolve, reject): void => {
-      void resolve
-      rejectWrite = reject
-      signalWriteStarted?.()
-    }),
+    upsertRecord: () =>
+      new Promise((resolve, reject): void => {
+        void resolve
+        rejectWrite = reject
+        signalWriteStarted?.()
+      }),
     probe: () => Promise.resolve(),
   }
   const store = new CommunityDirectoryStore({ persistence })
@@ -427,6 +562,7 @@ void test('pending and failed durable opt-ins never enter public pages', async (
   })
   assert.deepEqual(store.buildPublicPage({ now }).members, [])
   await writeStarted
+  assert.equal(store.getCommittedByWebId(seededWebId), null)
   assert.ok(rejectWrite)
   rejectWrite?.(new Error('table outage'))
   await assert.rejects(store.flush(), /table outage/)
@@ -449,7 +585,13 @@ void test('a durable listing disappears when its manifest expires after publicat
       },
       now: new Date('2026-08-02T00:30:00.000Z'),
     })
-    assert.equal(store.buildPublicPage({ now: new Date('2026-08-02T00:59:00.000Z') }).members.length, 1)
-    assert.deepEqual(store.buildPublicPage({ now: new Date('2026-08-02T01:00:00.000Z') }).members, [])
+    assert.equal(
+      store.buildPublicPage({ now: new Date('2026-08-02T00:59:00.000Z') }).members.length,
+      1
+    )
+    assert.deepEqual(
+      store.buildPublicPage({ now: new Date('2026-08-02T01:00:00.000Z') }).members,
+      []
+    )
   })
 })

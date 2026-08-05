@@ -2,6 +2,13 @@ import { createHmac } from 'node:crypto'
 
 export type MilestoneQFeature = 'directory' | 'peer-profile' | 'relationship' | 'transport'
 
+export interface MilestoneQAvailability {
+  directory: boolean
+  peerProfile: boolean
+  relationship: boolean
+  transport: boolean
+}
+
 export interface MilestoneQControlsOptions {
   directoryEnabled?: boolean
   peerProfileEnabled?: boolean
@@ -42,6 +49,15 @@ export class MilestoneQControls {
     return this.enabled[feature] && this.cohortHashes.size > 0 && Boolean(this.cohortKey)
   }
 
+  availability(webId: string): MilestoneQAvailability {
+    return {
+      directory: this.isEnabled('directory', webId),
+      peerProfile: this.isEnabled('peer-profile', webId),
+      relationship: this.isEnabled('relationship', webId),
+      transport: this.isEnabled('transport', webId),
+    }
+  }
+
   count(feature: MilestoneQFeature, outcome: string): void {
     const key = `${feature}.${normalizeOutcome(outcome)}`
     const value = (this.counters.get(key) ?? 0) + 1
@@ -61,9 +77,7 @@ export function createMilestoneQControlsFromEnv(): MilestoneQControls {
     relationshipEnabled: enabled(process.env.JSS_Q_RELATIONSHIP_ENABLED),
     transportEnabled: enabled(process.env.JSS_Q_TRANSPORT_ENABLED),
     cohortHashes: (process.env.JSS_Q_COHORT_HASHES ?? '').split(','),
-    ...(process.env.JSS_Q_COHORT_KEY
-      ? { cohortKey: process.env.JSS_Q_COHORT_KEY }
-      : {}),
+    ...(process.env.JSS_Q_COHORT_KEY ? { cohortKey: process.env.JSS_Q_COHORT_KEY } : {}),
     metricSink: defaultMetricSink,
   })
 }
@@ -78,7 +92,10 @@ function enabled(value: string | undefined): boolean {
 }
 
 function normalizeOutcome(value: string): string {
-  const normalized = value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-')
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
   return normalized || 'unknown'
 }
 

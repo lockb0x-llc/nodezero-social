@@ -32,7 +32,7 @@ import {
   createNotificationEventPublisherFromEnv,
   publishProvisioningEvent,
 } from './notificationEvents.js'
-import { CommunityDirectoryStore } from './communityDirectory.js'
+import { CommunityDirectoryStore, type CommunityDirectoryRecord } from './communityDirectory.js'
 import { AzureTableCommunityDirectoryPersistence } from './communityDirectoryPersistence.js'
 import type { BridgeProofPayload } from './lockboxFactory.js'
 import { verifyBridgeProof } from './bridgeProofVerifier.js'
@@ -54,6 +54,7 @@ import {
   TransportIdentityAssertionManager,
 } from './transportIdentityAssertions.js'
 import { createMilestoneQControlsFromEnv } from './milestoneQControls.js'
+import { fetchPublicResource, PublicResourceFetchError } from './publicResourceFetcher.js'
 // Stellar StrKey base32 decode + Ed25519 verify using Web Crypto API
 const _B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
 function _b32Decode(s: string): Uint8Array {
@@ -222,10 +223,23 @@ const communityDirectoryRefreshRateLimiter = new RelationshipRateLimiter({
   maxRequests: Number(process.env.JSS_COMMUNITY_DIRECTORY_REFRESH_RATE_LIMIT ?? 12),
   windowMs: Number(process.env.JSS_COMMUNITY_DIRECTORY_REFRESH_RATE_WINDOW_MS ?? 60_000),
 })
+const communityDirectorySuppressRateLimiter = new RelationshipRateLimiter({
+  maxRequests: Number(process.env.JSS_COMMUNITY_DIRECTORY_SUPPRESS_RATE_LIMIT ?? 60),
+  windowMs: Number(process.env.JSS_COMMUNITY_DIRECTORY_SUPPRESS_RATE_WINDOW_MS ?? 60_000),
+})
 const communityDirectoryIndexRateLimiter = new RelationshipRateLimiter({
   maxRequests: Number(process.env.JSS_COMMUNITY_DIRECTORY_INDEX_RATE_LIMIT ?? 60),
   windowMs: Number(process.env.JSS_COMMUNITY_DIRECTORY_INDEX_RATE_WINDOW_MS ?? 60_000),
 })
+const communityDirectoryAvatarRateLimiter = new RelationshipRateLimiter({
+  maxRequests: Number(process.env.JSS_COMMUNITY_DIRECTORY_AVATAR_RATE_LIMIT ?? 120),
+  windowMs: Number(process.env.JSS_COMMUNITY_DIRECTORY_AVATAR_RATE_WINDOW_MS ?? 60_000),
+})
+const COMMUNITY_DIRECTORY_AVATAR_MAX_CONCURRENCY = positiveIntegerEnvironment(
+  'JSS_COMMUNITY_DIRECTORY_AVATAR_MAX_CONCURRENCY',
+  8
+)
+let communityDirectoryAvatarActiveRequests = 0
 const COMMUNITY_DIRECTORY_REFRESH_MAX_CONCURRENCY = positiveIntegerEnvironment(
   'JSS_COMMUNITY_DIRECTORY_REFRESH_MAX_CONCURRENCY',
   4
@@ -267,7 +281,10 @@ function positiveIntegerEnvironment(name: string, fallback: number): number {
 export interface RequestHandlerOverrides {
   isRelationshipRecipientBlocked?: typeof isRelationshipRecipientBlocked
   refreshCommunityDirectoryProjection?: typeof refreshCommunityDirectoryProjection
+  reloadCommunityDirectory?: () => Promise<void>
   readPublicPeerProfile?: typeof readPublicPeerProfile
+  fetchDirectoryAvatar?: typeof fetchPublicResource
+  readDirectoryRecord?: (webId: string) => Promise<CommunityDirectoryRecord | null>
 }
 const knownSolidAccountEmails = new Set<string>()
 const notificationPublisher = createNotificationEventPublisherFromEnv()
@@ -1121,6 +1138,28 @@ export async function handleHttpRequest(
     return
   }
 
+  if (req.method === 'GET' && url.pathname === '/v1/milestone-q/features') {
+    const claims = verifyBearerSession(req)
+    if (!claims) {
+      sendJson(req, res, 401, {
+        error: 'A valid NodeZero session is required.',
+        code: 'session_invalid',
+      })
+      return
+    }
+    sendJson(
+      req,
+      res,
+      200,
+      {
+        version: 1,
+        features: milestoneQControls.availability(claims.sub),
+      },
+      { 'cache-control': 'private, no-store' }
+    )
+    return
+  }
+
   if (req.method === 'GET' && url.pathname === '/v1/community-directory/index') {
     const claims = verifyBearerSession(req)
     if (!claims || !milestoneQControls.isEnabled('directory', claims.sub)) {
@@ -1145,12 +1184,27 @@ export async function handleHttpRequest(
       )
       return
     }
-    await communityDirectory.reload()
+    try {
+      await (overrides.reloadCommunityDirectory ?? (() => communityDirectory.reload()))()
+    } catch {
+      sendJson(
+        req,
+        res,
+        503,
+        {
+          error: 'Community directory index is temporarily unavailable.',
+          code: 'directory_index_unavailable',
+        },
+        { 'cache-control': 'private, no-store' }
+      )
+      return
+    }
     const rawLimit = Number(url.searchParams.get('limit') ?? '100')
     const limit = Number.isInteger(rawLimit) ? rawLimit : 100
     const page = communityDirectory.buildPublicPage({
       ...(url.searchParams.get('cursor') ? { cursor: url.searchParams.get('cursor')! } : {}),
       limit,
+      include: (record) => milestoneQControls.isEnabled('directory', record.webId),
     })
     if (req.headers['if-none-match'] === page.etag) {
       res.writeHead(304, {
@@ -1178,11 +1232,8 @@ export async function handleHttpRequest(
       })
       return
     }
-    if (!milestoneQControls.isEnabled('directory', claims.sub)) {
-      milestoneQControls.count('directory', 'cohort-denied')
-      sendJson(req, res, 404, { error: 'Not found' })
-      return
-    }
+    const directoryAvailable = milestoneQControls.isEnabled('directory', claims.sub)
+    if (!directoryAvailable) milestoneQControls.count('directory', 'cohort-denied')
     const refreshLimit = communityDirectoryRefreshRateLimiter.consume(claims.sub)
     if (!refreshLimit.allowed) {
       sendJson(
@@ -1218,10 +1269,12 @@ export async function handleHttpRequest(
         credentialStore,
         directoryStore: communityDirectory,
         cssBaseUrl: SOLID_CSS_BASE_URL,
+        allowListing: directoryAvailable,
       })
       sendJson(req, res, 200, {
         status: 'ok',
         listed: record.listed,
+        available: directoryAvailable,
         record,
       })
       milestoneQControls.count('directory', record.listed ? 'listed' : 'unlisted')
@@ -1238,6 +1291,131 @@ export async function handleHttpRequest(
       milestoneQControls.count('directory', 'refresh-failed')
     } finally {
       communityDirectoryRefreshActiveRequests -= 1
+    }
+    return
+  }
+
+  if (req.method === 'POST' && url.pathname === '/v1/community-directory/suppress') {
+    const claims = verifyBearerSession(req)
+    if (!claims) {
+      sendJson(req, res, 401, {
+        error: 'A valid NodeZero session is required.',
+        code: 'session_invalid',
+      })
+      return
+    }
+    const suppressLimit = communityDirectorySuppressRateLimiter.consume(claims.sub)
+    if (!suppressLimit.allowed) {
+      sendJson(
+        req,
+        res,
+        429,
+        {
+          error: 'Community directory suppression rate limit exceeded.',
+          code: 'directory_suppress_rate_limited',
+        },
+        { 'retry-after': String(suppressLimit.retryAfterSeconds) }
+      )
+      return
+    }
+    try {
+      await communityDirectory.reloadRecord(claims.sub)
+      communityDirectory.setListing(claims.sub, false)
+      await communityDirectory.flush()
+      await communityDirectory.reloadRecord(claims.sub)
+      sendJson(req, res, 200, { status: 'ok', listed: false })
+      milestoneQControls.count('directory', 'suppressed')
+    } catch {
+      sendJson(req, res, 503, {
+        error: 'Community directory suppression is temporarily unavailable.',
+        code: 'directory_suppress_unavailable',
+      })
+    }
+    return
+  }
+
+  if (req.method === 'POST' && url.pathname === '/v1/community-directory/avatar') {
+    const claims = verifyBearerSession(req)
+    if (!claims) {
+      sendJson(req, res, 401, {
+        error: 'A valid NodeZero session is required.',
+        code: 'session_invalid',
+      })
+      return
+    }
+    if (!milestoneQControls.isEnabled('directory', claims.sub)) {
+      sendJson(req, res, 404, { error: 'Not found' })
+      return
+    }
+    const avatarLimit = communityDirectoryAvatarRateLimiter.consume(claims.sub)
+    if (!avatarLimit.allowed) {
+      sendJson(
+        req,
+        res,
+        429,
+        { error: 'Directory avatar rate limit exceeded.', code: 'avatar_rate_limited' },
+        { 'retry-after': String(avatarLimit.retryAfterSeconds) }
+      )
+      return
+    }
+    if (communityDirectoryAvatarActiveRequests >= COMMUNITY_DIRECTORY_AVATAR_MAX_CONCURRENCY) {
+      sendJson(
+        req,
+        res,
+        429,
+        { error: 'Directory avatar capacity reached.', code: 'avatar_concurrency_limited' },
+        { 'retry-after': '1' }
+      )
+      return
+    }
+    communityDirectoryAvatarActiveRequests += 1
+    try {
+      const body = await readBoundedJsonBody<{ webId?: unknown }>(req, 4 * 1024)
+      const webId = typeof body.webId === 'string' ? body.webId : ''
+      const record = overrides.readDirectoryRecord
+        ? await overrides.readDirectoryRecord(webId)
+        : await communityDirectory
+            .reload()
+            .then(() => communityDirectory.getCommittedByWebId(webId))
+      const expiresAt = record?.manifestExpiresAt
+        ? Date.parse(record.manifestExpiresAt)
+        : Number.NaN
+      if (
+        !record?.listed ||
+        !milestoneQControls.isEnabled('directory', record.webId) ||
+        !record.avatarUrl ||
+        !Number.isFinite(expiresAt) ||
+        expiresAt <= Date.now()
+      ) {
+        sendJson(req, res, 404, { error: 'Directory avatar not found.', code: 'avatar_not_found' })
+        return
+      }
+      const avatar = await (overrides.fetchDirectoryAvatar ?? fetchPublicResource)(
+        record.avatarUrl,
+        {
+          maxBytes: 512 * 1024,
+          allowedContentTypes: ['image/png', 'image/jpeg', 'image/webp', 'image/gif'],
+        }
+      )
+      res.writeHead(200, {
+        ...corsHeaders(req),
+        'content-type': avatar.contentType,
+        'content-length': String(avatar.body.length),
+        'cache-control': 'private, max-age=300',
+        'x-content-type-options': 'nosniff',
+      })
+      res.end(avatar.body)
+    } catch (error) {
+      if (error instanceof PublicResourceFetchError) {
+        sendJson(req, res, error.statusCode, { error: error.message, code: error.code })
+        return
+      }
+      sendJson(req, res, 502, {
+        error: 'Directory avatar is unavailable.',
+        code: 'avatar_unavailable',
+      })
+    } finally {
+      communityDirectoryAvatarActiveRequests -= 1
     }
     return
   }

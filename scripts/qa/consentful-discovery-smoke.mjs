@@ -5,8 +5,8 @@ import { readFile } from 'node:fs/promises'
 const checks = [
   [
     'Pod consent contract',
-    'packages/solid-pod-sync/src/contracts/ConsentfulDiscoveryContract.ts',
-    /nearbyPresence/,
+    'packages/solid-pod-sync/src/DiscoveryConsentManager.ts',
+    /if-match[\s\S]*revision/,
   ],
   [
     'Directory durable store',
@@ -19,7 +19,11 @@ const checks = [
     /createMilestoneQControlsFromEnv/,
   ],
   ['Directory UI', 'packages/mobile-app/app/directory.tsx', /derivePersonActionPolicy/],
-  ['Profile consent UI', 'packages/mobile-app/app/profile.tsx', /updateDiscoveryPreferences/],
+  [
+    'Profile consent UI',
+    'packages/mobile-app/app/profile.tsx',
+    /publishBasicDirectoryProfile[\s\S]*milestoneQFeatures\.relationship[\s\S]*milestoneQFeatures\.transport/,
+  ],
   ['Local transport authority', 'packages/mobile-app/app/local.tsx', /authorizeInbound/],
   ['Waku identity assertion', 'packages/waku-comms/src/types.ts', /transportIdentityAssertion/],
   ['Relay proof of possession', 'packages/relay-service/src/relayChallenge.ts', /NZ_RELAY_AUTH_V1/],
@@ -61,6 +65,53 @@ if (
   )
 ) {
   failures.push('deploy workflow: staging clean cutover does not skip only N-1 authentication')
+}
+if (
+  !/directory_rollout:[\s\S]*- off[\s\S]*- cohort[\s\S]*Validate Directory cohort rollout[\s\S]*JSS_Q_COHORT_KEY[\s\S]*JSS_Q_COHORT_HASHES[\s\S]*NZ_DIRECTORY_ACCOUNT_A_STORAGE_STATE[\s\S]*NZ_DIRECTORY_ACCOUNT_B_STORAGE_STATE[\s\S]*\^\[0-9a-f\]\{64\}[\s\S]*JSS_Q_DIRECTORY_ENABLED="\$directory_enabled"[\s\S]*JSS_Q_PEER_PROFILE_ENABLED="false"[\s\S]*JSS_Q_RELATIONSHIP_ENABLED="false"[\s\S]*JSS_Q_TRANSPORT_ENABLED="false"[\s\S]*EXPECTED_DIRECTORY_ENABLED[\s\S]*Run Directory publication E2E gate/.test(
+    deployWorkflow
+  )
+) {
+  failures.push('deploy workflow: Directory cohort rollout is not isolated and fail closed')
+}
+for (const [label, pattern] of [
+  [
+    'cohort limited to clean deploy',
+    /deploy\)[\s\S]*DIRECTORY_ROLLOUT" = "off"[\s\S]*clean-deploy\)[\s\S]*off\|cohort/,
+  ],
+  [
+    'exact distinct cohort hashes',
+    /\^\[0-9a-f\]\{64\},\[0-9a-f\]\{64\}\$[\s\S]*"\$cohort_a" != "\$cohort_b"/,
+  ],
+  [
+    'canonical distinct storage states',
+    /jq -cS[\s\S]*ACCOUNT_A_STORAGE_STATE[\s\S]*!=[\s\S]*jq -cS[\s\S]*ACCOUNT_B_STORAGE_STATE/,
+  ],
+  [
+    'cohort secrets passed through env',
+    /Configure JSS provisioner runtime[\s\S]*env:[\s\S]*COHORT_KEY:[\s\S]*COHORT_HASHES:[\s\S]*if \[ -n "\$COHORT_KEY"/,
+  ],
+  [
+    'E2E state cleanup trap',
+    /Run Directory publication E2E gate[\s\S]*trap 'rm -rf \/tmp\/nodezero-directory-e2e' EXIT/,
+  ],
+  [
+    'cohort deploy provenance',
+    /"releaseAction": "\$\{\{ inputs\.release_action \}\}"[\s\S]*"directoryRollout": "\$\{\{ inputs\.directory_rollout \}\}"/,
+  ],
+]) {
+  if (!pattern.test(deployWorkflow)) failures.push(`deploy workflow: missing ${label}`)
+}
+
+const directoryEvidence = await readFile(
+  'scripts/qa/staging-directory-publication-evidence.mjs',
+  'utf8'
+)
+if (!/request\.allHeaders\(\)[\s\S]*initial-derived-index-clean/.test(directoryEvidence)) {
+  failures.push('Directory E2E must inspect complete headers and prove an initially clean index')
+}
+const q4Preflight = await readFile('scripts/qa/q4-release-preflight.mjs', 'utf8')
+if (!/directoryRollout !== 'cohort'[\s\S]*directory-publication-/.test(q4Preflight)) {
+  failures.push('Q4 deployed provenance must require cohort rollout evidence')
 }
 if (/^\s*workflow_dispatch:/m.test(baselineWorkflow)) {
   failures.push(
@@ -143,7 +194,7 @@ if (
   )
 }
 if (
-  !/Verify JSS provisioner health[\s\S]*health_deadline=\$\(\(SECONDS \+ 600\)\)[\s\S]*health_contract_matches\(\)[\s\S]*\.build\.commit == \$commit[\s\S]*\.build\.payloadSha256 == \$payload[\s\S]*\.build\.configuredArtifactSha256 == \$artifact[\s\S]*\.communityDirectory\.backend == "table"[\s\S]*\.communityDirectory\.ready == true[\s\S]*\.transportIdentity\.ready == true[\s\S]*\.session\.signingKeyConfigured == true[\s\S]*\.milestoneQ\.flags\.directory == false[\s\S]*\.milestoneQ\.flags\["peer-profile"\] == false[\s\S]*\.milestoneQ\.flags\.relationship == false[\s\S]*\.milestoneQ\.flags\.transport == false[\s\S]*while \(\( SECONDS < health_deadline \)\)[\s\S]*fetch_timeout_ms=\$\(\(remaining_seconds \* 1000\)\)[\s\S]*fetch_timeout_ms > 10000[\s\S]*NZ_FETCH_TIMEOUT_MS="\$fetch_timeout_ms"[\s\S]*if health_contract_matches \/tmp\/provisioner-health\.json[\s\S]*consecutive_healthy=\$\(\(consecutive_healthy \+ 1\)\)[\s\S]*"\$consecutive_healthy" -eq 3[\s\S]*remaining_seconds < 40[\s\S]*sleep 30[\s\S]*! health_contract_matches \/tmp\/provisioner-stable-health\.json[\s\S]*SECONDS > health_deadline[\s\S]*print_health_diagnostics \/tmp\/provisioner-stable-health\.json[\s\S]*600-second deadline/.test(
+  !/Verify JSS provisioner health[\s\S]*EXPECTED_DIRECTORY_ENABLED[\s\S]*health_deadline=\$\(\(SECONDS \+ 600\)\)[\s\S]*health_contract_matches\(\)[\s\S]*--argjson directory "\$EXPECTED_DIRECTORY_ENABLED"[\s\S]*\.build\.commit == \$commit[\s\S]*\.build\.payloadSha256 == \$payload[\s\S]*\.build\.configuredArtifactSha256 == \$artifact[\s\S]*\.communityDirectory\.backend == "table"[\s\S]*\.communityDirectory\.ready == true[\s\S]*\.transportIdentity\.ready == true[\s\S]*\.session\.signingKeyConfigured == true[\s\S]*\.milestoneQ\.flags\.directory == \$directory[\s\S]*\.milestoneQ\.flags\["peer-profile"\] == false[\s\S]*\.milestoneQ\.flags\.relationship == false[\s\S]*\.milestoneQ\.flags\.transport == false[\s\S]*while \(\( SECONDS < health_deadline \)\)[\s\S]*fetch_timeout_ms=\$\(\(remaining_seconds \* 1000\)\)[\s\S]*fetch_timeout_ms > 10000[\s\S]*NZ_FETCH_TIMEOUT_MS="\$fetch_timeout_ms"[\s\S]*if health_contract_matches \/tmp\/provisioner-health\.json[\s\S]*consecutive_healthy=\$\(\(consecutive_healthy \+ 1\)\)[\s\S]*"\$consecutive_healthy" -eq 3[\s\S]*remaining_seconds < 40[\s\S]*sleep 30[\s\S]*! health_contract_matches \/tmp\/provisioner-stable-health\.json[\s\S]*SECONDS > health_deadline[\s\S]*print_health_diagnostics \/tmp\/provisioner-stable-health\.json[\s\S]*600-second deadline/.test(
     deployWorkflow
   )
 ) {

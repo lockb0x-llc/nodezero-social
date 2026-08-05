@@ -98,6 +98,9 @@ async function assertDeployed(head) {
   }
   if (marker.commit !== head)
     fail(`Live marker commit ${String(marker.commit)} does not match ${head}.`)
+  if (marker.releaseAction !== 'clean-deploy' || marker.directoryRollout !== 'cohort') {
+    fail('Live marker is not a clean-deploy Directory cohort rollout.')
+  }
   const runId = String(marker.runId ?? '')
   const runAttempt = String(marker.runAttempt ?? '')
   if (!/^\d+$/.test(runId) || !/^\d+$/.test(runAttempt)) {
@@ -125,6 +128,33 @@ async function assertDeployed(head) {
     !String(run.path ?? '').endsWith('/staging-deploy.yml')
   ) {
     fail(`Marker run ${runId} attempt ${runAttempt} is not a successful exact-SHA staging deploy.`)
+  }
+  let artifactPages
+  try {
+    artifactPages = JSON.parse(
+      output('gh', [
+        'api',
+        '--paginate',
+        '--slurp',
+        `repos/lockb0x-llc/nodezero-social/actions/runs/${runId}/artifacts?per_page=100`,
+      ])
+    )
+  } catch (error) {
+    fail(
+      `Unable to query retained Directory evidence: ${error instanceof Error ? error.message : String(error)}`
+    )
+  }
+  const expectedArtifactName = `directory-publication-${head}-${runAttempt}`
+  const artifacts = Array.isArray(artifactPages)
+    ? artifactPages.flatMap((page) => (Array.isArray(page?.artifacts) ? page.artifacts : []))
+    : []
+  const evidenceArtifact = artifacts.find((artifact) => artifact.name === expectedArtifactName)
+  if (
+    !evidenceArtifact ||
+    evidenceArtifact.expired ||
+    Number(evidenceArtifact.size_in_bytes) <= 0
+  ) {
+    fail(`Run ${runId} is missing retained evidence artifact ${expectedArtifactName}.`)
   }
   log(`PASS deployed provenance run ${runId} attempt ${runAttempt}: ${String(run.html_url)}`)
 }
@@ -168,6 +198,9 @@ const gates = [
       '.github/workflows/staging-baseline-capture.yml',
       'packages/jss-provisioner/runtime/package.json',
       'packages/relay-service/runtime/package.json',
+      'scripts/qa/hash-milestone-q-cohort.mjs',
+      'scripts/qa/staging-directory-publication-evidence.mjs',
+      'scripts/qa/validate-directory-cohort-states.mjs',
       'scripts/qa/hash-relay-payload.mjs',
       'scripts/qa/validate-provisioner-runtime.mjs',
       'scripts/qa/validate-relay-runtime.mjs',
