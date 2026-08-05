@@ -67,7 +67,7 @@ if (
   failures.push('deploy workflow: staging clean cutover does not skip only N-1 authentication')
 }
 if (
-  !/directory_rollout:[\s\S]*- off[\s\S]*- cohort[\s\S]*Validate Directory cohort rollout[\s\S]*JSS_Q_COHORT_KEY[\s\S]*JSS_Q_COHORT_HASHES[\s\S]*NZ_DIRECTORY_ACCOUNT_A_STORAGE_STATE[\s\S]*NZ_DIRECTORY_ACCOUNT_B_STORAGE_STATE[\s\S]*\^\[0-9a-f\]\{64\}[\s\S]*JSS_Q_DIRECTORY_ENABLED="\$directory_enabled"[\s\S]*JSS_Q_PEER_PROFILE_ENABLED="false"[\s\S]*JSS_Q_RELATIONSHIP_ENABLED="false"[\s\S]*JSS_Q_TRANSPORT_ENABLED="false"[\s\S]*EXPECTED_DIRECTORY_ENABLED[\s\S]*Run Directory publication E2E gate/.test(
+  !/directory_rollout:[\s\S]*default: 'off'[\s\S]*- 'off'[\s\S]*- cohort[\s\S]*Validate Directory cohort rollout[\s\S]*JSS_Q_COHORT_KEY[\s\S]*JSS_Q_COHORT_HASHES[\s\S]*NZ_DIRECTORY_ACCOUNT_A_STORAGE_STATE[\s\S]*NZ_DIRECTORY_ACCOUNT_B_STORAGE_STATE[\s\S]*\^\[0-9a-f\]\{64\}[\s\S]*JSS_Q_DIRECTORY_ENABLED="\$directory_enabled"[\s\S]*JSS_Q_PEER_PROFILE_ENABLED="false"[\s\S]*JSS_Q_RELATIONSHIP_ENABLED="false"[\s\S]*JSS_Q_TRANSPORT_ENABLED="false"[\s\S]*EXPECTED_DIRECTORY_ENABLED[\s\S]*Run Directory publication E2E gate/.test(
     deployWorkflow
   )
 ) {

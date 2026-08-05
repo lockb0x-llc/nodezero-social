@@ -15,10 +15,10 @@ on:
       directory_rollout:
         description: Directory feature rollout for this staging deployment
         required: true
-        default: off
+        default: 'off'
         type: choice
         options:
-          - off
+          - 'off'
           - cohort
       expected_deployed_commit:
         description: Exact live staging commit required for baseline capture
