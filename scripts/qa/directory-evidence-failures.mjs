@@ -14,6 +14,24 @@ async function runCleanupStage(stage, operation) {
   }
 }
 
+export async function confirmDirectoryUnpublishedIntent({
+  isUnpublished,
+  reload,
+  retryUnpublish,
+  attempts = 3,
+}) {
+  if (!Number.isInteger(attempts) || attempts < 1) {
+    throw new Error('Directory intent confirmation attempts must be a positive integer.')
+  }
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (await isUnpublished()) return
+    await reload()
+    if (await isUnpublished()) return
+    if (attempt < attempts - 1) await retryUnpublish()
+  }
+  throw new Error('Directory publication intent remained enabled.')
+}
+
 export async function ensureDirectoryUnpublished({
   isPublished,
   unpublish,

@@ -1,10 +1,57 @@
 import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 import {
+  confirmDirectoryUnpublishedIntent,
   DirectoryCleanupStageError,
   directoryEvidenceFailure,
   ensureDirectoryUnpublished,
 } from './directory-evidence-failures.mjs'
+
+void test('confirms unpublished Pod intent after reloading stale profile state', async () => {
+  const calls = []
+  let unpublished = false
+  await confirmDirectoryUnpublishedIntent({
+    isUnpublished: async () => {
+      calls.push('check')
+      return unpublished
+    },
+    reload: async () => {
+      calls.push('reload')
+      unpublished = true
+    },
+    retryUnpublish: async () => calls.push('retry'),
+  })
+  assert.deepEqual(calls, ['check', 'reload', 'check'])
+})
+
+void test('bounds Pod intent reload and unpublish retries', async () => {
+  const calls = []
+  await assert.rejects(
+    confirmDirectoryUnpublishedIntent({
+      isUnpublished: async () => {
+        calls.push('check')
+        return false
+      },
+      reload: async () => calls.push('reload'),
+      retryUnpublish: async () => calls.push('retry'),
+      attempts: 3,
+    }),
+    /publication intent remained enabled/
+  )
+  assert.deepEqual(calls, [
+    'check',
+    'reload',
+    'check',
+    'retry',
+    'check',
+    'reload',
+    'check',
+    'retry',
+    'check',
+    'reload',
+    'check',
+  ])
+})
 
 void test('cleanup is idempotent when publication is already off', async () => {
   const calls = []

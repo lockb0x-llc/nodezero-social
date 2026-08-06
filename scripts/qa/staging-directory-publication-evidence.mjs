@@ -4,6 +4,7 @@ import { chromium } from '@playwright/test'
 import { createHmac } from 'node:crypto'
 import { readFile, writeFile } from 'node:fs/promises'
 import {
+  confirmDirectoryUnpublishedIntent,
   DirectoryCleanupStageError,
   directoryEvidenceFailure,
   ensureDirectoryUnpublished,
@@ -19,6 +20,15 @@ const nonCohortRecoveryPath = (process.env.DIRECTORY_NON_COHORT_RECOVERY_BUNDLE 
 const avatarUrl = (process.env.DIRECTORY_E2E_AVATAR_URL ?? `${baseUrl}/favicon.png`).trim()
 const timeoutMs = Number(process.env.DIRECTORY_E2E_TIMEOUT_MS ?? 60_000)
 const cleanupTimeoutMs = Number(process.env.DIRECTORY_E2E_CLEANUP_TIMEOUT_MS ?? timeoutMs * 3)
+const cleanupIntentAttempts = 2
+const cleanupIntentInitialWaitMs = Math.max(
+  1,
+  Math.min(timeoutMs, Math.floor(cleanupTimeoutMs / 3))
+)
+const cleanupIntentAttemptTimeoutMs = Math.max(
+  1,
+  Math.floor((cleanupTimeoutMs - cleanupIntentInitialWaitMs) / cleanupIntentAttempts)
+)
 const requestAuditTimeoutMs = Number(process.env.DIRECTORY_REQUEST_AUDIT_TIMEOUT_MS ?? 15_000)
 const cohortKey = (process.env.JSS_Q_COHORT_KEY ?? '').trim()
 const configuredCohortHashes = (process.env.JSS_Q_COHORT_HASHES ?? '')
@@ -233,11 +243,16 @@ async function restoreAccount(context, recoveryBundle) {
   return page
 }
 
-async function openProfile(page) {
-  await page.goto(`${baseUrl}/profile`, { waitUntil: 'networkidle' })
+async function openProfile(page, operationTimeoutMs = timeoutMs) {
+  const deadline = Date.now() + operationTimeoutMs
+  const remainingTimeout = () => Math.max(1, deadline - Date.now())
+  await page.goto(`${baseUrl}/profile`, {
+    waitUntil: 'networkidle',
+    timeout: remainingTimeout(),
+  })
   await page
     .getByRole('button', { name: /Publish to Directory|Unpublish from Directory/ })
-    .waitFor({ timeout: timeoutMs })
+    .waitFor({ timeout: remainingTimeout() })
 }
 
 async function loadDirectory(page) {
@@ -301,7 +316,24 @@ async function cleanupDirectoryAccount(page, directoryReader, accountWebId) {
   await ensureDirectoryUnpublished({
     isPublished: () => unpublishButton.isVisible().catch(() => false),
     unpublish: () => unpublishButton.click(),
-    waitForUnpublishedIntent: () => publishButton.waitFor({ timeout: cleanupTimeoutMs }),
+    waitForUnpublishedIntent: async () => {
+      const settled = await publishButton
+        .waitFor({ timeout: cleanupIntentInitialWaitMs })
+        .then(() => true)
+        .catch(() => false)
+      if (settled) return
+      await confirmDirectoryUnpublishedIntent({
+        isUnpublished: () => publishButton.isVisible().catch(() => false),
+        reload: () => openProfile(page, cleanupIntentAttemptTimeoutMs),
+        retryUnpublish: async () => {
+          if (!(await unpublishButton.isVisible().catch(() => false))) {
+            throw new Error('Directory unpublish control was unavailable after reload.')
+          }
+          await unpublishButton.click()
+        },
+        attempts: cleanupIntentAttempts,
+      })
+    },
     retryProjection: async () => {
       const retryButton = page.getByRole('button', {
         name: 'Retry Directory synchronization',
