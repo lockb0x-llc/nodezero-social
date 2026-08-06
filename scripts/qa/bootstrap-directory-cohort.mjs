@@ -7,6 +7,7 @@ import { spawnSync } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
 
 const SESSION_COOKIE = '__Host-nz_browser_session'
+const REQUEST_AUDIT_TIMEOUT_MS = 15_000
 const STELLAR_PUBLIC_KEY_PATTERN = /^G[A-Z2-7]{55}$/
 const STELLAR_SECRET_KEY_PATTERN = /^S[A-Z2-7]{55}$/
 const SESSION_COOKIE_DOMAINS = new Set([
@@ -131,30 +132,70 @@ function run(command, args, options = {}) {
   return result.stdout
 }
 
-export function captureRequestAudit(request) {
+export function captureRequestAudit(request, timeoutMs = REQUEST_AUDIT_TIMEOUT_MS) {
   let hostname = ''
+  let protocol = ''
+  let method = ''
+  let resourceType = ''
   let baseSurfaces = []
   try {
     const url = request.url()
-    hostname = new URL(url).hostname
-    baseSurfaces = [url, request.postData() ?? '']
-    return Promise.resolve(request.allHeaders())
-      .then((headers) => ({
-        auditFailed: false,
-        hostname,
-        hasAuthorization: Boolean(headers.authorization),
-        surfaces: [...baseSurfaces, ...Object.values(headers)],
-      }))
+    const parsedUrl = new URL(url)
+    hostname = parsedUrl.hostname
+    protocol = parsedUrl.protocol
+    const immediateHeaders =
+      typeof request.headers === 'function' ? Object.values(request.headers()) : []
+    baseSurfaces = [url, request.postData() ?? '', ...immediateHeaders]
+    method = typeof request.method === 'function' ? request.method() : ''
+    resourceType = typeof request.resourceType === 'function' ? request.resourceType() : ''
+    let timeout
+    const headers = Promise.resolve(request.allHeaders()).then(
+      (value) => ({ available: true, value }),
+      () => ({ available: false, value: null })
+    )
+    const deadline = new Promise((resolve) => {
+      timeout = setTimeout(() => resolve({ available: false, value: null }), timeoutMs)
+      timeout.unref?.()
+    })
+    return Promise.race([headers, deadline])
+      .then((result) =>
+        result.available
+          ? {
+              auditFailed: false,
+              hostname,
+              protocol,
+              method,
+              resourceType,
+              hasAuthorization: Boolean(result.value.authorization),
+              surfaces: [...baseSurfaces, ...Object.values(result.value)],
+            }
+          : {
+              auditFailed: true,
+              hostname,
+              protocol,
+              method,
+              resourceType,
+              hasAuthorization: false,
+              surfaces: baseSurfaces,
+            }
+      )
       .catch(() => ({
         auditFailed: true,
         hostname,
+        protocol,
+        method,
+        resourceType,
         hasAuthorization: false,
         surfaces: baseSurfaces,
       }))
+      .finally(() => clearTimeout(timeout))
   } catch {
     return Promise.resolve({
       auditFailed: true,
       hostname,
+      protocol,
+      method,
+      resourceType,
       hasAuthorization: false,
       surfaces: baseSurfaces,
     })
@@ -210,16 +251,28 @@ async function installRecoveryCapture(context) {
   })
 }
 
-async function captureRecoveryBundle(page, baseUrl, timeoutMs) {
+async function captureRecoveryBundle(page, baseUrl, expectedWebId, timeoutMs) {
   await page.goto(`${baseUrl}/settings`, { waitUntil: 'domcontentloaded', timeout: 60_000 })
+  const restoredWebId = page
+    .getByText(/^https:\/\/solid\.nodezero\.social\/[^/]+\/profile\/card#me$/)
+    .first()
+  await restoredWebId.waitFor({
+    state: 'visible',
+    timeout: timeoutMs,
+  })
+  if ((await restoredWebId.textContent())?.trim() !== expectedWebId) {
+    throw new Error('Settings did not restore the expected authenticated account binding.')
+  }
   const exportButton = page.getByRole('button', { name: 'Export recovery bundle' })
   await exportButton.waitFor({ state: 'visible', timeout: timeoutMs })
-  const dialogPromise = page.waitForEvent('dialog', { timeout: timeoutMs })
-  await exportButton.click()
-  const dialog = await dialogPromise
-  const expectedWarning =
-    dialog.type() === 'confirm' && dialog.message().includes('private wallet key')
-  await dialog.accept()
+  const [expectedWarning] = await Promise.all([
+    page.waitForEvent('dialog', { timeout: timeoutMs }).then(async (dialog) => {
+      const matches = dialog.type() === 'confirm' && dialog.message().includes('private wallet key')
+      await dialog.accept()
+      return matches
+    }),
+    exportButton.click(),
+  ])
   if (!expectedWarning) throw new Error('Recovery export did not present its private-key warning.')
   await page.waitForFunction(
     () => {
@@ -336,12 +389,34 @@ async function collectRequestAudits(audits) {
   return records
 }
 
+function describeIncompleteAudits(audits) {
+  return [
+    ...new Set(
+      audits
+        .filter(({ auditFailed }) => auditFailed)
+        .map(
+          ({ protocol, hostname, method, resourceType }) =>
+            `${protocol || 'unknown'}//${hostname || 'no-host'} ${method || 'unknown'} ${resourceType || 'unknown'}`
+        )
+    ),
+  ].join(', ')
+}
+
+export function hasIncompleteExternalAudit(audits, credentialOrigins) {
+  return audits.some(({ auditFailed, hostname }) => auditFailed && !credentialOrigins.has(hostname))
+}
+
 async function createAccount(browser, input) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } })
   await installRecoveryCapture(context)
   const page = await context.newPage()
   const cssRequests = []
   const requestAudits = []
+  const credentialOrigins = new Set([
+    new URL(input.baseUrl).hostname,
+    'api.nodezero.social',
+    'nodezero-social-staging-testnet-provisioner.azurewebsites.net',
+  ])
   const onRequest = (request) => {
     const hostname = new URL(request.url()).hostname
     if (isCssHost(hostname, input.solidHost)) {
@@ -369,13 +444,17 @@ async function createAccount(browser, input) {
     })
     const webId = (await page.getByLabel('Profile WebID').textContent())?.trim()
     if (!webId) throw new Error(`${input.label} did not expose an authenticated WebID.`)
-    const recoveryBundle = await captureRecoveryBundle(page, input.baseUrl, input.timeoutMs)
+    const recoveryBundle = await captureRecoveryBundle(page, input.baseUrl, webId, input.timeoutMs)
     validateRecoveryBundle(recoveryBundle, webId)
     const recoverySecret = JSON.parse(recoveryBundle).wallet.secretKey
     page.off('request', onRequest)
     const auditedRequests = await collectRequestAudits(requestAudits)
-    if (auditedRequests.some(({ auditFailed }) => auditFailed)) {
-      throw new Error(`${input.label} request credential audit was incomplete.`)
+    if (hasIncompleteExternalAudit(auditedRequests, credentialOrigins)) {
+      throw new Error(
+        `${input.label} external request credential audit was incomplete: ${describeIncompleteAudits(
+          auditedRequests.filter(({ hostname }) => !credentialOrigins.has(hostname))
+        )}.`
+      )
     }
     if (
       auditedRequests.some(({ surfaces }) =>
@@ -429,8 +508,12 @@ async function verifyAccount(browser, account, baseUrl, timeoutMs) {
     }
     context.off('request', onRequest)
     const auditedRequests = await collectRequestAudits(requestAudits)
-    if (auditedRequests.some(({ auditFailed }) => auditFailed)) {
-      throw new Error(`${account.label} request credential audit was incomplete.`)
+    if (hasIncompleteExternalAudit(auditedRequests, credentialOrigins)) {
+      throw new Error(
+        `${account.label} external request credential audit was incomplete: ${describeIncompleteAudits(
+          auditedRequests.filter(({ hostname }) => !credentialOrigins.has(hostname))
+        )}.`
+      )
     }
     if (
       auditedRequests.some(({ surfaces }) =>

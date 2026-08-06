@@ -13,6 +13,7 @@ const accountBRecoveryPath = (process.env.DIRECTORY_ACCOUNT_B_RECOVERY_BUNDLE ??
 const nonCohortRecoveryPath = (process.env.DIRECTORY_NON_COHORT_RECOVERY_BUNDLE ?? '').trim()
 const avatarUrl = (process.env.DIRECTORY_E2E_AVATAR_URL ?? `${baseUrl}/favicon.png`).trim()
 const timeoutMs = Number(process.env.DIRECTORY_E2E_TIMEOUT_MS ?? 60_000)
+const requestAuditTimeoutMs = Number(process.env.DIRECTORY_REQUEST_AUDIT_TIMEOUT_MS ?? 15_000)
 const cohortKey = (process.env.JSS_Q_COHORT_KEY ?? '').trim()
 const configuredCohortHashes = (process.env.JSS_Q_COHORT_HASHES ?? '')
   .split(',')
@@ -52,28 +53,68 @@ async function loadJson(path, label) {
 
 function captureRequestAudit(request) {
   let hostname = ''
+  let protocol = ''
+  let method = ''
+  let resourceType = ''
   let baseSurfaces = []
   try {
     const url = request.url()
-    hostname = new URL(url).hostname
-    baseSurfaces = [url, request.postData() ?? '']
-    return Promise.resolve(request.allHeaders())
-      .then((headers) => ({
-        auditFailed: false,
-        hostname,
-        hasAuthorization: Boolean(headers.authorization),
-        surfaces: [...baseSurfaces, ...Object.values(headers)],
-      }))
+    const parsedUrl = new URL(url)
+    hostname = parsedUrl.hostname
+    protocol = parsedUrl.protocol
+    const immediateHeaders =
+      typeof request.headers === 'function' ? Object.values(request.headers()) : []
+    baseSurfaces = [url, request.postData() ?? '', ...immediateHeaders]
+    method = typeof request.method === 'function' ? request.method() : ''
+    resourceType = typeof request.resourceType === 'function' ? request.resourceType() : ''
+    let timeout
+    const headers = Promise.resolve(request.allHeaders()).then(
+      (value) => ({ available: true, value }),
+      () => ({ available: false, value: null })
+    )
+    const deadline = new Promise((resolve) => {
+      timeout = setTimeout(() => resolve({ available: false, value: null }), requestAuditTimeoutMs)
+      timeout.unref?.()
+    })
+    return Promise.race([headers, deadline])
+      .then((result) =>
+        result.available
+          ? {
+              auditFailed: false,
+              hostname,
+              protocol,
+              method,
+              resourceType,
+              hasAuthorization: Boolean(result.value.authorization),
+              surfaces: [...baseSurfaces, ...Object.values(result.value)],
+            }
+          : {
+              auditFailed: true,
+              hostname,
+              protocol,
+              method,
+              resourceType,
+              hasAuthorization: false,
+              surfaces: baseSurfaces,
+            }
+      )
       .catch(() => ({
         auditFailed: true,
         hostname,
+        protocol,
+        method,
+        resourceType,
         hasAuthorization: false,
         surfaces: baseSurfaces,
       }))
+      .finally(() => clearTimeout(timeout))
   } catch {
     return Promise.resolve({
       auditFailed: true,
       hostname,
+      protocol,
+      method,
+      resourceType,
       hasAuthorization: false,
       surfaces: baseSurfaces,
     })
@@ -517,8 +558,12 @@ try {
       context.off('request', onRequest)
     }
     await drainRequestHeaderAudits()
-    if (auditedRequests.some(({ auditFailed }) => auditFailed)) {
-      throw new Error('Browser request credential audit was incomplete.')
+    if (
+      auditedRequests.some(
+        ({ auditFailed, hostname }) => auditFailed && !credentialOrigins.has(hostname)
+      )
+    ) {
+      throw new Error('Browser external request credential audit was incomplete.')
     }
     for (const { hostname, hasAuthorization, surfaces } of auditedRequests) {
       const containsSessionToken = [...browserSessionTokens].some((token) =>

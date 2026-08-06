@@ -6,6 +6,7 @@ import {
   captureRequestAudit,
   deriveCohort,
   githubSecretArgs,
+  hasIncompleteExternalAudit,
   isCssHost,
   validateFreshBrowserSession,
   validateRecoveryBundle,
@@ -15,13 +16,17 @@ void test('contains request-header failures after a browser context closes', asy
   const audit = await captureRequestAudit({
     url: () => 'https://staging.nodezero.social/profile',
     postData: () => null,
+    headers: () => ({ 'x-audit-fallback': 'fallback-value' }),
     allHeaders: () => Promise.reject(new Error('Target page has been closed')),
   })
   assert.deepEqual(audit, {
     auditFailed: true,
     hostname: 'staging.nodezero.social',
+    protocol: 'https:',
+    method: '',
+    resourceType: '',
     hasAuthorization: false,
-    surfaces: ['https://staging.nodezero.social/profile', ''],
+    surfaces: ['https://staging.nodezero.social/profile', '', 'fallback-value'],
   })
 })
 
@@ -34,9 +39,36 @@ void test('contains synchronous request-audit failures without request data', as
   assert.deepEqual(audit, {
     auditFailed: true,
     hostname: '',
+    protocol: '',
+    method: '',
+    resourceType: '',
     hasAuthorization: false,
     surfaces: [],
   })
+})
+
+void test('bounds a request-header audit that never settles', async () => {
+  const audit = await captureRequestAudit(
+    {
+      url: () => 'https://staging.nodezero.social/profile',
+      postData: () => null,
+      allHeaders: () => new Promise(() => {}),
+    },
+    5
+  )
+  assert.equal(audit.auditFailed, true)
+  assert.equal(audit.hostname, 'staging.nodezero.social')
+})
+
+void test('requires complete full headers only beyond credential origins', () => {
+  const audits = [
+    { auditFailed: true, hostname: 'api.nodezero.social' },
+    { auditFailed: false, hostname: 'cdn.example.test' },
+  ]
+  const credentialOrigins = new Set(['api.nodezero.social'])
+  assert.equal(hasIncompleteExternalAudit(audits, credentialOrigins), false)
+  audits.push({ auditFailed: true, hostname: 'cdn.example.test' })
+  assert.equal(hasIncompleteExternalAudit(audits, credentialOrigins), true)
 })
 
 function sessionCookie(token) {
