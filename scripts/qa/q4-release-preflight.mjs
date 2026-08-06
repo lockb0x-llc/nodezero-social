@@ -198,6 +198,8 @@ const gates = [
       '.github/workflows/staging-baseline-capture.yml',
       'packages/jss-provisioner/runtime/package.json',
       'packages/relay-service/runtime/package.json',
+      'scripts/qa/directory-evidence-failures.mjs',
+      'scripts/qa/directory-evidence-failures.test.mjs',
       'scripts/qa/hash-milestone-q-cohort.mjs',
       'scripts/qa/staging-directory-publication-evidence.mjs',
       'scripts/qa/validate-directory-cohort-states.mjs',

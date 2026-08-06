@@ -3,6 +3,10 @@
 import { chromium } from '@playwright/test'
 import { createHmac } from 'node:crypto'
 import { readFile, writeFile } from 'node:fs/promises'
+import {
+  directoryEvidenceFailure,
+  ensureDirectoryUnpublished,
+} from './directory-evidence-failures.mjs'
 
 const baseUrl = (process.env.STAGING_BASE_URL ?? 'https://staging.nodezero.social').replace(
   /\/$/,
@@ -277,6 +281,14 @@ async function drainRequestHeaderAudits() {
   }
 }
 
+async function runCleanupPhase(cleanupFailures, phase, operation) {
+  try {
+    await operation()
+  } catch (error) {
+    cleanupFailures.push({ phase, error })
+  }
+}
+
 const browser = await chromium.launch({ headless: true })
 const [accountARecovery, accountBRecovery, controlRecovery] = await Promise.all([
   loadJson(accountARecoveryPath, 'Account A recovery bundle'),
@@ -351,7 +363,9 @@ const initialName = `Directory A ${token}`
 const updatedName = `${initialName} Updated`
 const privateBio = `private-${token}`
 let originalProfile = null
-let cleanupError = null
+let primaryError = null
+const cleanupFailures = []
+let accountAWebId = ''
 let accountAHash = ''
 let accountBHash = ''
 
@@ -360,7 +374,7 @@ try {
   await openProfile(pageB)
   await pageControl.goto(`${baseUrl}/profile`, { waitUntil: 'networkidle' })
   await pageControl.getByLabel('Profile WebID').waitFor({ timeout: timeoutMs })
-  const accountAWebId = (await pageA.getByLabel('Profile WebID').textContent())?.trim()
+  accountAWebId = (await pageA.getByLabel('Profile WebID').textContent())?.trim() ?? ''
   const accountBWebId = (await pageB.getByLabel('Profile WebID').textContent())?.trim()
   const controlWebId = (await pageControl.getByLabel('Profile WebID').textContent())?.trim()
   if (
@@ -527,17 +541,35 @@ try {
     .getByText(updatedName, { exact: true })
     .waitFor({ state: 'detached', timeout: timeoutMs })
   log('PASS unpublish removed projection')
+} catch (error) {
+  primaryError = error
 } finally {
-  try {
+  await runCleanupPhase(cleanupFailures, 'unpublish verification', async () => {
+    if (!accountAWebId) return
     await openProfile(pageA)
-    const cleanupUnpublish = pageA.getByRole('button', { name: 'Unpublish from Directory' })
-    if (await cleanupUnpublish.isVisible().catch(() => false)) {
-      await cleanupUnpublish.click()
-      await pageA
-        .getByText('Your profile is no longer listed in the Directory.')
-        .waitFor({ timeout: timeoutMs })
-    }
+    const unpublishButton = pageA.getByRole('button', { name: 'Unpublish from Directory' })
+    const publishButton = pageA.getByRole('button', { name: 'Publish to Directory' })
+    await ensureDirectoryUnpublished({
+      isPublished: () => unpublishButton.isVisible().catch(() => false),
+      unpublish: () => unpublishButton.click(),
+      waitForUnpublishedIntent: () => publishButton.waitFor({ timeout: timeoutMs }),
+      retryProjection: async () => {
+        const retryButton = pageA.getByRole('button', {
+          name: 'Retry Directory synchronization',
+        })
+        if (await retryButton.isVisible().catch(() => false)) {
+          await retryButton.click()
+          await retryButton.waitFor({ state: 'hidden', timeout: timeoutMs })
+        }
+      },
+      readProjection: () => loadDirectory(pageB),
+      projectionContainsAccount: (projection) =>
+        projection.members?.some((record) => record.webId === accountAWebId) ?? false,
+    })
+  })
+  await runCleanupPhase(cleanupFailures, 'profile restoration', async () => {
     if (originalProfile) {
+      await openProfile(pageA)
       await pageA.getByPlaceholder('Your name').fill(originalProfile.displayName)
       await pageA.getByPlaceholder('Tell the world about yourself').fill(originalProfile.bio)
       await pageA.getByPlaceholder('https://…').first().fill(originalProfile.avatarUrl)
@@ -553,6 +585,8 @@ try {
         throw new Error('Original profile values were not restored.')
       }
     }
+  })
+  await runCleanupPhase(cleanupFailures, 'request audit', async () => {
     if (directCssRequests.length > 0) throw new Error('Browser contacted the CSS origin directly.')
     for (const [context, onRequest] of requestListeners) {
       context.off('request', onRequest)
@@ -587,19 +621,15 @@ try {
       throw new Error('Browser exposed recovery material in a network request.')
     }
     log('PASS zero direct CSS, external credential, and recovery-material requests')
-  } catch (error) {
-    cleanupError = error
-  }
-  await contextA.close()
-  await contextB.close()
-  await contextControl.close()
-  await browser.close()
-  if (cleanupError) {
-    throw new Error(
-      `Directory E2E cleanup failed: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`
-    )
-  }
+  })
+  await runCleanupPhase(cleanupFailures, 'account A browser close', () => contextA.close())
+  await runCleanupPhase(cleanupFailures, 'account B browser close', () => contextB.close())
+  await runCleanupPhase(cleanupFailures, 'control browser close', () => contextControl.close())
+  await runCleanupPhase(cleanupFailures, 'browser close', () => browser.close())
 }
+
+const terminalError = directoryEvidenceFailure(primaryError, cleanupFailures)
+if (terminalError) throw terminalError
 
 await writeFile(
   evidencePath,

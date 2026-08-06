@@ -114,6 +114,20 @@ const directoryEvidence = await readFile(
 if (!/request\.allHeaders\(\)[\s\S]*initial-derived-index-clean/.test(directoryEvidence)) {
   failures.push('Directory E2E must inspect complete headers and prove an initially clean index')
 }
+if (
+  !/catch \(error\)[\s\S]*primaryError = error[\s\S]*directoryEvidenceFailure/.test(
+    directoryEvidence
+  )
+) {
+  failures.push('Directory E2E cleanup must preserve the primary journey failure')
+}
+if (
+  !/ensureDirectoryUnpublished\([\s\S]*readProjection:[\s\S]*projectionContainsAccount:/.test(
+    directoryEvidence
+  )
+) {
+  failures.push('Directory E2E cleanup must verify removal from the derived projection')
+}
 const q4Preflight = await readFile('scripts/qa/q4-release-preflight.mjs', 'utf8')
 if (!/directoryRollout !== 'cohort'[\s\S]*directory-publication-/.test(q4Preflight)) {
   failures.push('Q4 deployed provenance must require cohort rollout evidence')
