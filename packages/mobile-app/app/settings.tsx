@@ -27,6 +27,9 @@ import { useWallet } from '../src/contexts/WalletContext'
 import { aesthetic } from '../src/theme/aesthetic'
 import { readContentPreferences, writeContentPreferences } from '../src/preferences/contentPreferences'
 
+const recoveryExportWarning =
+  'This bundle contains your private wallet key. Anyone with it controls your node. Store it securely and never share it.'
+
 export default function SettingsScreen(): JSX.Element {
   const { signOut, webId, podUrl, lockbox, sessionCreatedAt } = useNodeZeroSession()
   const router = useRouter()
@@ -106,31 +109,30 @@ export default function SettingsScreen(): JSX.Element {
     void Share.share({ title: fileName, message: json })
   }, [])
 
-  const exportData = useCallback(() => {
-    Alert.alert(
-      'Export Recovery Bundle',
-      'This bundle contains your private wallet key. Anyone with it controls your node. Store it securely and never share it.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Export',
-          onPress: (): void => {
-            setIsExporting(true)
-            setDataActionStatus(null)
-            void exportRecoveryBundle()
-              .then(({ fileName, json }) => {
-                deliverBundle(fileName, json)
-                setDataActionStatus('Recovery bundle exported.')
-              })
-              .catch((err: unknown) => {
-                setDataActionStatus(err instanceof Error ? `Export failed: ${err.message}` : 'Export failed.')
-              })
-              .finally(() => setIsExporting(false))
-          },
-        },
-      ]
-    )
+  const performRecoveryExport = useCallback((): void => {
+    setIsExporting(true)
+    setDataActionStatus(null)
+    void exportRecoveryBundle()
+      .then(({ fileName, json }) => {
+        deliverBundle(fileName, json)
+        setDataActionStatus('Recovery bundle exported.')
+      })
+      .catch((err: unknown) => {
+        setDataActionStatus(err instanceof Error ? `Export failed: ${err.message}` : 'Export failed.')
+      })
+      .finally(() => setIsExporting(false))
   }, [deliverBundle, exportRecoveryBundle])
+
+  const exportData = useCallback(() => {
+    if (Platform.OS === 'web' && typeof globalThis.confirm === 'function') {
+      if (globalThis.confirm(recoveryExportWarning)) performRecoveryExport()
+      return
+    }
+    Alert.alert('Export Recovery Bundle', recoveryExportWarning, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Export', onPress: performRecoveryExport },
+    ])
+  }, [performRecoveryExport])
 
   const deleteData = useCallback(() => {
     Alert.alert(

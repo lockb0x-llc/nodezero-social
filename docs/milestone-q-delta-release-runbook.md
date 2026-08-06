@@ -152,10 +152,21 @@ This runbook does not authorize Production Mainnet deployment.
    confirmation and no baseline inputs. This skips only N-1 authentication; every
    forward policy, build, infrastructure, dark-flag, health, marker, smoke, auth, and
    lockbox gate remains mandatory.
-   Set `directory_rollout=cohort` only after the staging environment contains a non-empty
-   `JSS_Q_COHORT_KEY` and at least two comma-separated HMAC values in
-   `JSS_Q_COHORT_HASHES`. Cohort mode enables Directory only; peer Profile,
-   relationship, and transport remain off.
+   Before the first cohort dispatch, run
+   `pnpm qa:bootstrap:directory-cohort -- --apply` from an authenticated operator
+   workstation. The command creates and immediately recovery-verifies two cohort
+   accounts plus one non-cohort control before writing any GitHub environment secret.
+   Set `directory_rollout=cohort` only after the `staging-testnet` environment contains
+   `JSS_Q_COHORT_KEY`, exactly two comma-separated values in `JSS_Q_COHORT_HASHES`, and
+   recovery bundles for account A, account B, and the non-cohort control:
+   `NZ_DIRECTORY_ACCOUNT_A_RECOVERY_BUNDLE`,
+   `NZ_DIRECTORY_ACCOUNT_B_RECOVERY_BUNDLE`, and
+   `NZ_DIRECTORY_NON_COHORT_RECOVERY_BUNDLE`. Recovery bundles contain private wallet
+   keys. Keep them only in GitHub environment secrets; the workflow materializes them
+   with owner-only permissions in a trapped temporary directory, removes the raw
+   environment values before browser execution, imports each into a fresh encrypted
+   wallet, and mints a new browser session with a wallet-signed challenge. Cohort mode
+   enables Directory only; peer Profile, relationship, and transport remain off.
 2. Require successful blocking jobs:
    - environment isolation;
    - consentful discovery policy;
@@ -196,6 +207,8 @@ Requirements:
 
 - User A and User B are distinct provisioned identities on separate device/browser
   profiles;
+- a third distinct provisioned identity remains outside the cohort and proves the
+  control path;
 - both are explicitly included in the same approved test cohort;
 - flags are enabled one at a time in this order:
   1. Directory;

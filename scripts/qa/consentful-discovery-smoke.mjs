@@ -37,6 +37,11 @@ const checks = [
     '.github/workflows/staging-deploy.yml',
     /release_action:[\s\S]*capture-baseline:[\s\S]*staging-baseline-capture\.yml/,
   ],
+  [
+    'Directory cohort artifact validator',
+    'scripts/qa/validate-directory-cohort-states.mjs',
+    /configuredHashes\.length !== 2[\s\S]*new Set\(recoveries\.map\(\(\{ webId \}\) => webId\)\)\.size !== 3[\s\S]*new Set\(recoveries\.map\(\(\{ publicKey \}\) => publicKey\)\)\.size !== 3/,
+  ],
   ['Reusable baseline capture', '.github/workflows/staging-baseline-capture.yml', /workflow_call:/],
 ]
 
@@ -67,7 +72,7 @@ if (
   failures.push('deploy workflow: staging clean cutover does not skip only N-1 authentication')
 }
 if (
-  !/directory_rollout:[\s\S]*default: 'off'[\s\S]*- 'off'[\s\S]*- cohort[\s\S]*Validate Directory cohort rollout[\s\S]*JSS_Q_COHORT_KEY[\s\S]*JSS_Q_COHORT_HASHES[\s\S]*NZ_DIRECTORY_ACCOUNT_A_STORAGE_STATE[\s\S]*NZ_DIRECTORY_ACCOUNT_B_STORAGE_STATE[\s\S]*\^\[0-9a-f\]\{64\}[\s\S]*JSS_Q_DIRECTORY_ENABLED="\$directory_enabled"[\s\S]*JSS_Q_PEER_PROFILE_ENABLED="false"[\s\S]*JSS_Q_RELATIONSHIP_ENABLED="false"[\s\S]*JSS_Q_TRANSPORT_ENABLED="false"[\s\S]*EXPECTED_DIRECTORY_ENABLED[\s\S]*Run Directory publication E2E gate/.test(
+  !/directory_rollout:[\s\S]*default: 'off'[\s\S]*- 'off'[\s\S]*- cohort[\s\S]*Validate Directory cohort rollout[\s\S]*JSS_Q_COHORT_KEY[\s\S]*JSS_Q_COHORT_HASHES[\s\S]*NZ_DIRECTORY_ACCOUNT_A_RECOVERY_BUNDLE[\s\S]*NZ_DIRECTORY_ACCOUNT_B_RECOVERY_BUNDLE[\s\S]*NZ_DIRECTORY_NON_COHORT_RECOVERY_BUNDLE[\s\S]*JSS_Q_DIRECTORY_ENABLED="\$directory_enabled"[\s\S]*JSS_Q_PEER_PROFILE_ENABLED="false"[\s\S]*JSS_Q_RELATIONSHIP_ENABLED="false"[\s\S]*JSS_Q_TRANSPORT_ENABLED="false"[\s\S]*EXPECTED_DIRECTORY_ENABLED[\s\S]*Run Directory publication E2E gate/.test(
     deployWorkflow
   )
 ) {
@@ -79,12 +84,12 @@ for (const [label, pattern] of [
     /deploy\)[\s\S]*DIRECTORY_ROLLOUT" = "off"[\s\S]*clean-deploy\)[\s\S]*off\|cohort/,
   ],
   [
-    'exact distinct cohort hashes',
-    /\^\[0-9a-f\]\{64\},\[0-9a-f\]\{64\}\$[\s\S]*"\$cohort_a" != "\$cohort_b"/,
+    'cohort validator gate',
+    /JSS_Q_COHORT_HASHES:[\s\S]*node \.\/scripts\/qa\/validate-directory-cohort-states\.mjs/,
   ],
   [
-    'canonical distinct storage states',
-    /jq -cS[\s\S]*ACCOUNT_A_STORAGE_STATE[\s\S]*!=[\s\S]*jq -cS[\s\S]*ACCOUNT_B_STORAGE_STATE/,
+    'canonical recovery artifacts',
+    /DIRECTORY_ACCOUNT_A_RECOVERY_BUNDLE:[\s\S]*DIRECTORY_ACCOUNT_B_RECOVERY_BUNDLE:[\s\S]*DIRECTORY_NON_COHORT_RECOVERY_BUNDLE:/,
   ],
   [
     'cohort secrets passed through env',

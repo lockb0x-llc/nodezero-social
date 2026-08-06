@@ -2,15 +2,15 @@
 
 import { chromium } from '@playwright/test'
 import { createHmac } from 'node:crypto'
-import { writeFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 
 const baseUrl = (process.env.STAGING_BASE_URL ?? 'https://staging.nodezero.social').replace(
   /\/$/,
   ''
 )
-const accountAState = (process.env.DIRECTORY_ACCOUNT_A_STORAGE_STATE ?? '').trim()
-const accountBState = (process.env.DIRECTORY_ACCOUNT_B_STORAGE_STATE ?? '').trim()
-const nonCohortState = (process.env.DIRECTORY_NON_COHORT_STORAGE_STATE ?? '').trim()
+const accountARecoveryPath = (process.env.DIRECTORY_ACCOUNT_A_RECOVERY_BUNDLE ?? '').trim()
+const accountBRecoveryPath = (process.env.DIRECTORY_ACCOUNT_B_RECOVERY_BUNDLE ?? '').trim()
+const nonCohortRecoveryPath = (process.env.DIRECTORY_NON_COHORT_RECOVERY_BUNDLE ?? '').trim()
 const avatarUrl = (process.env.DIRECTORY_E2E_AVATAR_URL ?? `${baseUrl}/favicon.png`).trim()
 const timeoutMs = Number(process.env.DIRECTORY_E2E_TIMEOUT_MS ?? 60_000)
 const cohortKey = (process.env.JSS_Q_COHORT_KEY ?? '').trim()
@@ -21,10 +21,14 @@ const configuredCohortHashes = (process.env.JSS_Q_COHORT_HASHES ?? '')
 const evidencePath = (process.env.DIRECTORY_E2E_EVIDENCE_PATH ?? '').trim()
 const startedAtUtc = new Date().toISOString()
 
-if (!accountAState || !accountBState || !nonCohortState || !cohortKey || !evidencePath) {
-  throw new Error(
-    'Two cohort states, one control state, cohort key, and evidence path are required.'
-  )
+if (
+  !accountARecoveryPath ||
+  !accountBRecoveryPath ||
+  !nonCohortRecoveryPath ||
+  !cohortKey ||
+  !evidencePath
+) {
+  throw new Error('Three recovery bundles, cohort key, and evidence path are required.')
 }
 if (
   configuredCohortHashes.length !== 2 ||
@@ -36,6 +40,150 @@ if (
 
 function log(message) {
   console.log(`[directory-publication-evidence] ${message}`)
+}
+
+async function loadJson(path, label) {
+  try {
+    return JSON.parse(await readFile(path, 'utf8'))
+  } catch {
+    throw new Error(`${label} is not a readable JSON artifact.`)
+  }
+}
+
+function captureRequestAudit(request) {
+  let hostname = ''
+  let baseSurfaces = []
+  try {
+    const url = request.url()
+    hostname = new URL(url).hostname
+    baseSurfaces = [url, request.postData() ?? '']
+    return Promise.resolve(request.allHeaders())
+      .then((headers) => ({
+        auditFailed: false,
+        hostname,
+        hasAuthorization: Boolean(headers.authorization),
+        surfaces: [...baseSurfaces, ...Object.values(headers)],
+      }))
+      .catch(() => ({
+        auditFailed: true,
+        hostname,
+        hasAuthorization: false,
+        surfaces: baseSurfaces,
+      }))
+  } catch {
+    return Promise.resolve({
+      auditFailed: true,
+      hostname,
+      hasAuthorization: false,
+      surfaces: baseSurfaces,
+    })
+  }
+}
+
+async function waitForAuthenticatedSurface(page) {
+  await page.waitForURL((url) => /\/(feed|onboarding|local)([/?#]|$)/.test(url.pathname), {
+    timeout: timeoutMs,
+  })
+  await page.waitForFunction(
+    () =>
+      window.location.pathname === '/feed' &&
+      !document.body.innerText.includes('Finalizing your onboarding'),
+    undefined,
+    { timeout: timeoutMs }
+  )
+}
+
+async function assertEncryptedWallet(page, recoverySecret) {
+  const result = await page.evaluate(async (secret) => {
+    const databaseInfo = (await indexedDB.databases()).find(
+      (database) => database.name === 'nodezero-wallet-staging-testnet-v1'
+    )
+    if (!databaseInfo?.name) return { databasePresent: false }
+    const openRequest = indexedDB.open(databaseInfo.name)
+    const database = await new Promise((resolve, reject) => {
+      openRequest.onsuccess = () => resolve(openRequest.result)
+      openRequest.onerror = () => reject(openRequest.error)
+    })
+    try {
+      if (
+        !database.objectStoreNames.contains('keys') ||
+        !database.objectStoreNames.contains('records')
+      ) {
+        return { databasePresent: true, storesPresent: false }
+      }
+      const keyTransaction = database.transaction('keys', 'readonly')
+      const keyRequest = keyTransaction.objectStore('keys').get('wallet-records-v1')
+      const keyRecord = await new Promise((resolve, reject) => {
+        keyRequest.onsuccess = () => resolve(keyRequest.result)
+        keyRequest.onerror = () => reject(keyRequest.error)
+      })
+      const recordsTransaction = database.transaction('records', 'readonly')
+      const recordsRequest = recordsTransaction.objectStore('records').getAll()
+      const records = await new Promise((resolve, reject) => {
+        recordsRequest.onsuccess = () => resolve(recordsRequest.result)
+        recordsRequest.onerror = () => reject(recordsRequest.error)
+      })
+      let exportRejected = false
+      if (keyRecord?.key instanceof CryptoKey) {
+        try {
+          await crypto.subtle.exportKey('raw', keyRecord.key)
+        } catch {
+          exportRejected = true
+        }
+      }
+      return {
+        databasePresent: true,
+        storesPresent: true,
+        keyIsCryptoKey: keyRecord?.key instanceof CryptoKey,
+        keyExtractable: keyRecord?.key?.extractable,
+        keyAlgorithm: keyRecord?.key?.algorithm?.name,
+        keyUsages: [...(keyRecord?.key?.usages ?? [])].sort(),
+        exportRejected,
+        plaintextAbsent: !JSON.stringify(records).includes(secret),
+      }
+    } finally {
+      database.close()
+    }
+  }, recoverySecret)
+  if (
+    result.databasePresent !== true ||
+    result.storesPresent !== true ||
+    result.keyIsCryptoKey !== true ||
+    result.keyExtractable !== false ||
+    result.keyAlgorithm !== 'AES-GCM' ||
+    result.keyUsages?.join(',') !== 'decrypt,encrypt' ||
+    result.exportRejected !== true ||
+    result.plaintextAbsent !== true
+  ) {
+    throw new Error('Recovery import did not produce a non-extractable encrypted wallet.')
+  }
+}
+
+async function restoreAccount(context, recoveryBundle) {
+  const page = await context.newPage()
+  await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: timeoutMs })
+  const restoreButton = page.getByRole('button', {
+    name: 'Restore identity from recovery bundle',
+  })
+  await restoreButton.waitFor({ state: 'visible', timeout: timeoutMs })
+  const fileChooserPromise = page.waitForEvent('filechooser', { timeout: timeoutMs })
+  await restoreButton.click()
+  const fileChooser = await fileChooserPromise
+  await fileChooser.setFiles({
+    name: 'nodezero-recovery.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify(recoveryBundle)),
+  })
+  await page
+    .getByText('Identity restored securely. Tap Sign In to continue.')
+    .waitFor({ timeout: timeoutMs })
+  await assertEncryptedWallet(page, recoveryBundle.wallet.secretKey)
+  await page.getByRole('button', { name: 'Sign In' }).click()
+  await waitForAuthenticatedSurface(page)
+  if ((await page.evaluate(() => localStorage.getItem('nz.session.v2'))) !== null) {
+    throw new Error('Returning sign-in persisted a forbidden browser bearer session.')
+  }
+  return page
 }
 
 async function openProfile(page) {
@@ -84,23 +232,29 @@ async function drainRequestHeaderAudits() {
   while (audited < requestHeaderAudits.length) {
     const pending = requestHeaderAudits.slice(audited)
     audited += pending.length
-    await Promise.all(pending)
+    auditedRequests.push(...(await Promise.all(pending)))
   }
 }
 
 const browser = await chromium.launch({ headless: true })
-const contextA = await browser.newContext({ storageState: accountAState })
-const contextB = await browser.newContext({ storageState: accountBState })
-const contextControl = await browser.newContext({ storageState: nonCohortState })
+const [accountARecovery, accountBRecovery, controlRecovery] = await Promise.all([
+  loadJson(accountARecoveryPath, 'Account A recovery bundle'),
+  loadJson(accountBRecoveryPath, 'Account B recovery bundle'),
+  loadJson(nonCohortRecoveryPath, 'Control recovery bundle'),
+])
+const contextA = await browser.newContext()
+const contextB = await browser.newContext()
+const contextControl = await browser.newContext()
 const contexts = [contextA, contextB, contextControl]
-const browserSessionTokens = new Set(
-  (await Promise.all(contexts.map((context) => context.cookies(baseUrl))))
-    .flat()
-    .filter((cookie) => cookie.name === '__Host-nz_browser_session')
-    .map((cookie) => cookie.value)
-)
-if (browserSessionTokens.size !== contexts.length) {
-  throw new Error('Each Directory evidence account requires a distinct browser session.')
+const recoveryBundles = [accountARecovery, accountBRecovery, controlRecovery]
+const recoverySecrets = new Set(recoveryBundles.map((bundle) => bundle.wallet?.secretKey))
+if (
+  recoverySecrets.size !== contexts.length ||
+  [...recoverySecrets].some(
+    (secret) => typeof secret !== 'string' || !/^S[A-Z2-7]{55}$/.test(secret)
+  )
+) {
+  throw new Error('Each Directory evidence account requires distinct recovery material.')
 }
 const credentialOrigins = new Set([
   new URL(baseUrl).hostname,
@@ -109,31 +263,44 @@ const credentialOrigins = new Set([
 ])
 const directCssRequests = []
 const externalCredentialRequests = []
+const recoveryMaterialRequests = []
 const requestHeaderAudits = []
+const auditedRequests = []
+const requestListeners = new Map()
 for (const context of contexts) {
-  context.on('request', (request) => {
+  const onRequest = (request) => {
     const hostname = new URL(request.url()).hostname
-    if (hostname === 'solid.nodezero.social') {
+    if (hostname === 'solid.nodezero.social' || hostname.endsWith('.solid.nodezero.social')) {
       directCssRequests.push(request.url())
     }
-    requestHeaderAudits.push(
-      request.allHeaders().then((headers) => {
-        const requestSurfaces = [request.url(), request.postData() ?? '', ...Object.values(headers)]
-        const containsSessionToken = [...browserSessionTokens].some((token) =>
-          requestSurfaces.some(
-            (surface) => surface.includes(token) || surface.includes(encodeURIComponent(token))
-          )
-        )
-        if (!credentialOrigins.has(hostname) && (headers.authorization || containsSessionToken)) {
-          externalCredentialRequests.push(hostname)
-        }
-      })
-    )
-  })
+    requestHeaderAudits.push(captureRequestAudit(request))
+  }
+  requestListeners.set(context, onRequest)
+  context.on('request', onRequest)
 }
-const pageA = await contextA.newPage()
-const pageB = await contextB.newPage()
-const pageControl = await contextControl.newPage()
+const pageA = await restoreAccount(contextA, accountARecovery)
+const pageB = await restoreAccount(contextB, accountBRecovery)
+const pageControl = await restoreAccount(contextControl, controlRecovery)
+const sessionTokens = await Promise.all(
+  contexts.map(async (context) => {
+    const sessions = (await context.cookies()).filter(
+      (cookie) => cookie.name === '__Host-nz_browser_session'
+    )
+    if (
+      sessions.length !== 1 ||
+      !sessions[0]?.value ||
+      sessions[0].httpOnly !== true ||
+      sessions[0].secure !== true
+    ) {
+      throw new Error('Recovery sign-in did not mint one secure opaque browser session.')
+    }
+    return sessions[0].value
+  })
+)
+const browserSessionTokens = new Set(sessionTokens)
+if (browserSessionTokens.size !== contexts.length) {
+  throw new Error('Each Directory evidence account requires a distinct fresh browser session.')
+}
 pageA.on('dialog', (dialog) => void dialog.accept())
 pageB.on('dialog', (dialog) => void dialog.accept())
 pageControl.on('dialog', (dialog) => void dialog.accept())
@@ -346,11 +513,35 @@ try {
       }
     }
     if (directCssRequests.length > 0) throw new Error('Browser contacted the CSS origin directly.')
+    for (const [context, onRequest] of requestListeners) {
+      context.off('request', onRequest)
+    }
     await drainRequestHeaderAudits()
+    if (auditedRequests.some(({ auditFailed }) => auditFailed)) {
+      throw new Error('Browser request credential audit was incomplete.')
+    }
+    for (const { hostname, hasAuthorization, surfaces } of auditedRequests) {
+      const containsSessionToken = [...browserSessionTokens].some((token) =>
+        surfaces.some(
+          (surface) => surface.includes(token) || surface.includes(encodeURIComponent(token))
+        )
+      )
+      if (!credentialOrigins.has(hostname) && (hasAuthorization || containsSessionToken)) {
+        externalCredentialRequests.push(hostname)
+      }
+      if (
+        [...recoverySecrets].some((secret) => surfaces.some((surface) => surface.includes(secret)))
+      ) {
+        recoveryMaterialRequests.push(hostname)
+      }
+    }
     if (externalCredentialRequests.length > 0) {
       throw new Error('Browser sent session credentials to an external origin.')
     }
-    log('PASS zero direct CSS and external credential requests')
+    if (recoveryMaterialRequests.length > 0) {
+      throw new Error('Browser exposed recovery material in a network request.')
+    }
+    log('PASS zero direct CSS, external credential, and recovery-material requests')
   } catch (error) {
     cleanupError = error
   }

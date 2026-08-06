@@ -155,40 +155,13 @@ jobs:
       - name: Validate Directory cohort rollout
         if: ${{ inputs.directory_rollout == 'cohort' }}
         env:
-          COHORT_KEY: ${{ secrets.JSS_Q_COHORT_KEY }}
-          COHORT_HASHES: ${{ secrets.JSS_Q_COHORT_HASHES }}
-          ACCOUNT_A_STORAGE_STATE: ${{ secrets.NZ_DIRECTORY_ACCOUNT_A_STORAGE_STATE }}
-          ACCOUNT_B_STORAGE_STATE: ${{ secrets.NZ_DIRECTORY_ACCOUNT_B_STORAGE_STATE }}
-          DIRECTORY_ACCOUNT_A_STORAGE_STATE: ${{ secrets.NZ_DIRECTORY_ACCOUNT_A_STORAGE_STATE }}
-          DIRECTORY_ACCOUNT_B_STORAGE_STATE: ${{ secrets.NZ_DIRECTORY_ACCOUNT_B_STORAGE_STATE }}
-          DIRECTORY_NON_COHORT_STORAGE_STATE: ${{ secrets.NZ_DIRECTORY_NON_COHORT_STORAGE_STATE }}
           JSS_Q_COHORT_KEY: ${{ secrets.JSS_Q_COHORT_KEY }}
           JSS_Q_COHORT_HASHES: ${{ secrets.JSS_Q_COHORT_HASHES }}
+          DIRECTORY_ACCOUNT_A_RECOVERY_BUNDLE: ${{ secrets.NZ_DIRECTORY_ACCOUNT_A_RECOVERY_BUNDLE }}
+          DIRECTORY_ACCOUNT_B_RECOVERY_BUNDLE: ${{ secrets.NZ_DIRECTORY_ACCOUNT_B_RECOVERY_BUNDLE }}
+          DIRECTORY_NON_COHORT_RECOVERY_BUNDLE: ${{ secrets.NZ_DIRECTORY_NON_COHORT_RECOVERY_BUNDLE }}
         run: |
           set -euo pipefail
-          test -n "$COHORT_KEY"
-          [[ "$COHORT_HASHES" =~ ^[0-9a-f]{64},[0-9a-f]{64}$ ]]
-          IFS=, read -r cohort_a cohort_b <<<"$COHORT_HASHES"
-          [ "$cohort_a" != "$cohort_b" ]
-          test -n "$ACCOUNT_A_STORAGE_STATE"
-          test -n "$ACCOUNT_B_STORAGE_STATE"
-          jq -e '
-            .cookies | type == "array" and length > 0 and
-            all(.[];
-              (.name | type == "string" and length > 0) and
-              (.value | type == "string" and length > 0) and
-              (.domain | type == "string" and length > 0)
-            )
-          ' <<<"$ACCOUNT_A_STORAGE_STATE" >/dev/null
-          jq -e '
-            .cookies | type == "array" and length > 0 and
-            all(.[];
-              (.name | type == "string" and length > 0) and
-              (.value | type == "string" and length > 0) and
-              (.domain | type == "string" and length > 0)
-            )
-          ' <<<"$ACCOUNT_B_STORAGE_STATE" >/dev/null
-          [ "$(jq -cS . <<<"$ACCOUNT_A_STORAGE_STATE")" != "$(jq -cS . <<<"$ACCOUNT_B_STORAGE_STATE")" ]
           node ./scripts/qa/validate-directory-cohort-states.mjs
 
       - name: Authenticate retained N-1 baseline
@@ -1267,22 +1240,26 @@ jobs:
         if: ${{ inputs.directory_rollout == 'cohort' }}
         env:
           STAGING_BASE_URL: https://staging.nodezero.social
-          ACCOUNT_A_STORAGE_STATE: ${{ secrets.NZ_DIRECTORY_ACCOUNT_A_STORAGE_STATE }}
-          ACCOUNT_B_STORAGE_STATE: ${{ secrets.NZ_DIRECTORY_ACCOUNT_B_STORAGE_STATE }}
-          NON_COHORT_STORAGE_STATE: ${{ secrets.NZ_DIRECTORY_NON_COHORT_STORAGE_STATE }}
+          ACCOUNT_A_RECOVERY_BUNDLE: ${{ secrets.NZ_DIRECTORY_ACCOUNT_A_RECOVERY_BUNDLE }}
+          ACCOUNT_B_RECOVERY_BUNDLE: ${{ secrets.NZ_DIRECTORY_ACCOUNT_B_RECOVERY_BUNDLE }}
+          NON_COHORT_RECOVERY_BUNDLE: ${{ secrets.NZ_DIRECTORY_NON_COHORT_RECOVERY_BUNDLE }}
           JSS_Q_COHORT_KEY: ${{ secrets.JSS_Q_COHORT_KEY }}
           JSS_Q_COHORT_HASHES: ${{ secrets.JSS_Q_COHORT_HASHES }}
           DIRECTORY_E2E_EVIDENCE_PATH: ${{ github.workspace }}/directory-publication-evidence.json
         run: |
           set -euo pipefail
+          umask 077
           mkdir -p /tmp/nodezero-directory-e2e
           trap 'rm -rf /tmp/nodezero-directory-e2e' EXIT
-          printf '%s' "$ACCOUNT_A_STORAGE_STATE" > /tmp/nodezero-directory-e2e/account-a.json
-          printf '%s' "$ACCOUNT_B_STORAGE_STATE" > /tmp/nodezero-directory-e2e/account-b.json
-          printf '%s' "$NON_COHORT_STORAGE_STATE" > /tmp/nodezero-directory-e2e/non-cohort.json
-          DIRECTORY_ACCOUNT_A_STORAGE_STATE=/tmp/nodezero-directory-e2e/account-a.json \
-          DIRECTORY_ACCOUNT_B_STORAGE_STATE=/tmp/nodezero-directory-e2e/account-b.json \
-          DIRECTORY_NON_COHORT_STORAGE_STATE=/tmp/nodezero-directory-e2e/non-cohort.json \
+          printf '%s' "$ACCOUNT_A_RECOVERY_BUNDLE" > /tmp/nodezero-directory-e2e/account-a-recovery.json
+          printf '%s' "$ACCOUNT_B_RECOVERY_BUNDLE" > /tmp/nodezero-directory-e2e/account-b-recovery.json
+          printf '%s' "$NON_COHORT_RECOVERY_BUNDLE" > /tmp/nodezero-directory-e2e/control-recovery.json
+          unset ACCOUNT_A_RECOVERY_BUNDLE
+          unset ACCOUNT_B_RECOVERY_BUNDLE
+          unset NON_COHORT_RECOVERY_BUNDLE
+          DIRECTORY_ACCOUNT_A_RECOVERY_BUNDLE=/tmp/nodezero-directory-e2e/account-a-recovery.json \
+          DIRECTORY_ACCOUNT_B_RECOVERY_BUNDLE=/tmp/nodezero-directory-e2e/account-b-recovery.json \
+          DIRECTORY_NON_COHORT_RECOVERY_BUNDLE=/tmp/nodezero-directory-e2e/control-recovery.json \
             pnpm qa:smoke:directory-publication
 
       - name: Retain Directory publication evidence
