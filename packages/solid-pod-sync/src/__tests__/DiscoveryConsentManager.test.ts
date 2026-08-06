@@ -62,6 +62,33 @@ describe('DiscoveryConsentManager', () => {
     expect(patch).not.toContain('publicListing')
   })
 
+  it('falls back to an ETag-guarded replacement when SPARQL PATCH is unsupported', async () => {
+    const fetch = jestGlobal
+      .fn()
+      .mockResolvedValueOnce(consentResponse(4, '"consent-4"', true))
+      .mockResolvedValueOnce(new Response('', { status: 501 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+    const consent = await new DiscoveryConsentManager({ fetch }).updateConsent(
+      'https://alice.example/',
+      { publicListing: true },
+      '2026-08-01T12:00:00.000Z',
+      { publicListing: false }
+    )
+    expect(consent.publicListing).toBe(true)
+    expect(consent.nearbyPresence).toBe(true)
+    expect(fetch.mock.calls[1]?.[1]).toMatchObject({
+      method: 'PATCH',
+      headers: { 'if-match': '"consent-4"' },
+    })
+    expect(fetch.mock.calls[2]?.[1]).toMatchObject({
+      method: 'PUT',
+      headers: { 'content-type': 'text/turtle', 'if-match': '"consent-4"' },
+    })
+    const replacement = String(fetch.mock.calls[2]?.[1]?.body)
+    expect(replacement).toContain('publicListing> true')
+    expect(replacement).toContain('nearbyPresence> true')
+  })
+
   it('rejects a stale field precondition before overwriting another device', async () => {
     const fetch = jestGlobal.fn().mockResolvedValueOnce(consentResponse(5, '"consent-5"', false))
     const manager = new DiscoveryConsentManager({ fetch })

@@ -203,11 +203,20 @@ export class DiscoveryConsentManager {
     if (!etag) {
       throw new Error('Discovery consent is missing an ETag; refusing an unsafe update.')
     }
-    return this.session.fetch(consentUrl(podRoot), {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/sparql-update', 'if-match': etag },
-      body: serializeConsentPatch(consentThingUrl(podRoot), consent, patch),
-    })
+    return this.session
+      .fetch(consentUrl(podRoot), {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/sparql-update', 'if-match': etag },
+        body: serializeConsentPatch(consentThingUrl(podRoot), consent, patch),
+      })
+      .then((response) => {
+        if (![405, 415, 501].includes(response.status)) return response
+        return this.session.fetch(consentUrl(podRoot), {
+          method: 'PUT',
+          headers: { 'content-type': 'text/turtle', 'if-match': etag },
+          body: serializeConsent(consentThingUrl(podRoot), consent),
+        })
+      })
   }
 
   private async ensurePodLayoutIfEnabled(podRoot: string): Promise<void> {
