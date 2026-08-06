@@ -1,6 +1,7 @@
 import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 import {
+  DirectoryCleanupStageError,
   directoryEvidenceFailure,
   ensureDirectoryUnpublished,
 } from './directory-evidence-failures.mjs'
@@ -35,9 +36,34 @@ void test('cleanup unpublishes and rejects a retained projection', async () => {
       },
       projectionContainsAccount: (projection) => projection.members.length > 0,
     }),
-    /could not remove the account projection/
+    (error) =>
+      error instanceof DirectoryCleanupStageError &&
+      error.stage === 'projection removal verification'
   )
   assert.deepEqual(calls, ['unpublish', 'wait', 'retry', 'read'])
+})
+
+void test('reports the exact cleanup stage without retaining its underlying error', async () => {
+  const privateError = new Error('private account detail')
+  await assert.rejects(
+    ensureDirectoryUnpublished({
+      isPublished: async () => true,
+      unpublish: async () => {},
+      waitForUnpublishedIntent: async () => {
+        throw privateError
+      },
+      retryProjection: async () => {},
+      readProjection: async () => ({ members: [] }),
+      projectionContainsAccount: () => false,
+    }),
+    (error) => {
+      assert(error instanceof DirectoryCleanupStageError)
+      assert.equal(error.stage, 'Pod intent confirmation')
+      assert.equal(error.cause, undefined)
+      assert.doesNotMatch(error.message, /private account detail/)
+      return true
+    }
+  )
 })
 
 void test('preserves the primary journey error when cleanup succeeds', () => {

@@ -128,6 +128,11 @@ if (
 ) {
   failures.push('Directory E2E cleanup must verify removal from the derived projection')
 }
+if (
+  !/account A unpublish verification[\s\S]*account B unpublish verification/.test(directoryEvidence)
+) {
+  failures.push('Directory E2E cleanup must independently unpublish both cohort accounts')
+}
 const q4Preflight = await readFile('scripts/qa/q4-release-preflight.mjs', 'utf8')
 if (!/directoryRollout !== 'cohort'[\s\S]*directory-publication-/.test(q4Preflight)) {
   failures.push('Q4 deployed provenance must require cohort rollout evidence')

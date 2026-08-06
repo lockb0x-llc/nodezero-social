@@ -4,6 +4,7 @@ import { chromium } from '@playwright/test'
 import { createHmac } from 'node:crypto'
 import { readFile, writeFile } from 'node:fs/promises'
 import {
+  DirectoryCleanupStageError,
   directoryEvidenceFailure,
   ensureDirectoryUnpublished,
 } from './directory-evidence-failures.mjs'
@@ -17,6 +18,7 @@ const accountBRecoveryPath = (process.env.DIRECTORY_ACCOUNT_B_RECOVERY_BUNDLE ??
 const nonCohortRecoveryPath = (process.env.DIRECTORY_NON_COHORT_RECOVERY_BUNDLE ?? '').trim()
 const avatarUrl = (process.env.DIRECTORY_E2E_AVATAR_URL ?? `${baseUrl}/favicon.png`).trim()
 const timeoutMs = Number(process.env.DIRECTORY_E2E_TIMEOUT_MS ?? 60_000)
+const cleanupTimeoutMs = Number(process.env.DIRECTORY_E2E_CLEANUP_TIMEOUT_MS ?? timeoutMs * 3)
 const requestAuditTimeoutMs = Number(process.env.DIRECTORY_REQUEST_AUDIT_TIMEOUT_MS ?? 15_000)
 const cohortKey = (process.env.JSS_Q_COHORT_KEY ?? '').trim()
 const configuredCohortHashes = (process.env.JSS_Q_COHORT_HASHES ?? '')
@@ -285,8 +287,34 @@ async function runCleanupPhase(cleanupFailures, phase, operation) {
   try {
     await operation()
   } catch (error) {
-    cleanupFailures.push({ phase, error })
+    cleanupFailures.push({
+      phase: error instanceof DirectoryCleanupStageError ? `${phase}: ${error.stage}` : phase,
+      error,
+    })
   }
+}
+
+async function cleanupDirectoryAccount(page, directoryReader, accountWebId) {
+  await openProfile(page)
+  const unpublishButton = page.getByRole('button', { name: 'Unpublish from Directory' })
+  const publishButton = page.getByRole('button', { name: 'Publish to Directory' })
+  await ensureDirectoryUnpublished({
+    isPublished: () => unpublishButton.isVisible().catch(() => false),
+    unpublish: () => unpublishButton.click(),
+    waitForUnpublishedIntent: () => publishButton.waitFor({ timeout: cleanupTimeoutMs }),
+    retryProjection: async () => {
+      const retryButton = page.getByRole('button', {
+        name: 'Retry Directory synchronization',
+      })
+      if (await retryButton.isVisible().catch(() => false)) {
+        await retryButton.click()
+        await retryButton.waitFor({ state: 'hidden', timeout: cleanupTimeoutMs })
+      }
+    },
+    readProjection: () => loadDirectory(directoryReader),
+    projectionContainsAccount: (projection) =>
+      projection.members?.some((record) => record.webId === accountWebId) ?? false,
+  })
 }
 
 const browser = await chromium.launch({ headless: true })
@@ -366,6 +394,7 @@ let originalProfile = null
 let primaryError = null
 const cleanupFailures = []
 let accountAWebId = ''
+let accountBWebId = ''
 let accountAHash = ''
 let accountBHash = ''
 
@@ -375,7 +404,7 @@ try {
   await pageControl.goto(`${baseUrl}/profile`, { waitUntil: 'networkidle' })
   await pageControl.getByLabel('Profile WebID').waitFor({ timeout: timeoutMs })
   accountAWebId = (await pageA.getByLabel('Profile WebID').textContent())?.trim() ?? ''
-  const accountBWebId = (await pageB.getByLabel('Profile WebID').textContent())?.trim()
+  accountBWebId = (await pageB.getByLabel('Profile WebID').textContent())?.trim() ?? ''
   const controlWebId = (await pageControl.getByLabel('Profile WebID').textContent())?.trim()
   if (
     !accountAWebId ||
@@ -544,29 +573,18 @@ try {
 } catch (error) {
   primaryError = error
 } finally {
-  await runCleanupPhase(cleanupFailures, 'unpublish verification', async () => {
-    if (!accountAWebId) return
-    await openProfile(pageA)
-    const unpublishButton = pageA.getByRole('button', { name: 'Unpublish from Directory' })
-    const publishButton = pageA.getByRole('button', { name: 'Publish to Directory' })
-    await ensureDirectoryUnpublished({
-      isPublished: () => unpublishButton.isVisible().catch(() => false),
-      unpublish: () => unpublishButton.click(),
-      waitForUnpublishedIntent: () => publishButton.waitFor({ timeout: timeoutMs }),
-      retryProjection: async () => {
-        const retryButton = pageA.getByRole('button', {
-          name: 'Retry Directory synchronization',
-        })
-        if (await retryButton.isVisible().catch(() => false)) {
-          await retryButton.click()
-          await retryButton.waitFor({ state: 'hidden', timeout: timeoutMs })
-        }
-      },
-      readProjection: () => loadDirectory(pageB),
-      projectionContainsAccount: (projection) =>
-        projection.members?.some((record) => record.webId === accountAWebId) ?? false,
-    })
-  })
+  await Promise.all([
+    runCleanupPhase(cleanupFailures, 'account A unpublish verification', async () => {
+      if (!accountAWebId) return
+      const directoryReader = await contextA.newPage()
+      await cleanupDirectoryAccount(pageA, directoryReader, accountAWebId)
+    }),
+    runCleanupPhase(cleanupFailures, 'account B unpublish verification', async () => {
+      if (!accountBWebId) return
+      const directoryReader = await contextB.newPage()
+      await cleanupDirectoryAccount(pageB, directoryReader, accountBWebId)
+    }),
+  ])
   await runCleanupPhase(cleanupFailures, 'profile restoration', async () => {
     if (originalProfile) {
       await openProfile(pageA)

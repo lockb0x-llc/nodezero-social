@@ -1,3 +1,19 @@
+export class DirectoryCleanupStageError extends Error {
+  constructor(stage) {
+    super(`Directory cleanup failed during ${stage}.`)
+    this.name = 'DirectoryCleanupStageError'
+    this.stage = stage
+  }
+}
+
+async function runCleanupStage(stage, operation) {
+  try {
+    return await operation()
+  } catch {
+    throw new DirectoryCleanupStageError(stage)
+  }
+}
+
 export async function ensureDirectoryUnpublished({
   isPublished,
   unpublish,
@@ -6,15 +22,16 @@ export async function ensureDirectoryUnpublished({
   readProjection,
   projectionContainsAccount,
 }) {
-  if (await isPublished()) {
-    await unpublish()
-    await waitForUnpublishedIntent()
+  const published = await runCleanupStage('publication state read', isPublished)
+  if (published) {
+    await runCleanupStage('unpublish submission', unpublish)
+    await runCleanupStage('Pod intent confirmation', waitForUnpublishedIntent)
   }
-  await retryProjection()
-  const projection = await readProjection()
-  if (projectionContainsAccount(projection)) {
-    throw new Error('Directory cleanup could not remove the account projection.')
-  }
+  await runCleanupStage('projection retry', retryProjection)
+  const projection = await runCleanupStage('projection read', readProjection)
+  await runCleanupStage('projection removal verification', async () => {
+    if (projectionContainsAccount(projection)) throw new Error('Projection remained listed.')
+  })
 }
 
 export function directoryEvidenceFailure(primaryError, cleanupFailures = []) {
