@@ -3,12 +3,10 @@ import {
   createSolidDataset,
   createThing,
   getInteger,
-  getSolidDataset,
   getStringNoLocale,
   getStringNoLocaleAll,
   getThing,
   getUrl,
-  saveSolidDatasetAt,
   setThing,
   type SolidDataset,
   type WithServerResourceInfo,
@@ -23,6 +21,10 @@ import {
   deriveOwnerWebId,
   type PodPolicyMatrix,
 } from './PodLayoutManager.js'
+import {
+  getSolidDatasetSnapshot,
+  saveSolidDatasetWithPatchFallback,
+} from './saveSolidDatasetCompat.js'
 
 interface AuthenticatedSession {
   fetch: typeof globalThis.fetch
@@ -68,7 +70,7 @@ export class DiscoveryManifestManager {
     let dataset: SolidDataset & WithServerResourceInfo
 
     try {
-      dataset = await getSolidDataset(datasetUrl, { fetch: this.session.fetch })
+      dataset = (await getSolidDatasetSnapshot(datasetUrl, this.session.fetch)).dataset
     } catch (error) {
       if (isNotFoundError(error)) return null
       throw error
@@ -125,9 +127,12 @@ export class DiscoveryManifestManager {
     const datasetUrl = manifestUrl(podRoot)
     const thingUrl = manifestThingUrl(podRoot)
     let dataset: SolidDataset & Partial<WithServerResourceInfo>
+    let etag: string | null = null
 
     try {
-      dataset = await getSolidDataset(datasetUrl, { fetch: this.session.fetch })
+      const snapshot = await getSolidDatasetSnapshot(datasetUrl, this.session.fetch)
+      dataset = snapshot.dataset
+      etag = snapshot.etag
     } catch (error) {
       if (!isNotFoundError(error)) throw error
       dataset = createSolidDataset()
@@ -155,9 +160,7 @@ export class DiscoveryManifestManager {
     }
 
     const updated = setThing(dataset, builder.build())
-    await saveSolidDatasetAt(datasetUrl, updated, {
-      fetch: this.session.fetch,
-    })
+    await saveSolidDatasetWithPatchFallback(datasetUrl, updated, this.session.fetch, etag)
     return datasetUrl
   }
 

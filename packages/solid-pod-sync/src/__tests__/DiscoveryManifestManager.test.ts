@@ -74,14 +74,49 @@ describe('DiscoveryManifestManager', () => {
     expect(body).toContain('2026-07-01T00:00:00.000Z')
   })
 
+  it('uses an ETag-guarded replacement when manifest PATCH is unsupported', async () => {
+    const existing = `
+      @prefix nz: <https://nodezero.social/ns#> .
+      <https://alice.example/public/discovery/manifest#manifest>
+        a nz:DiscoveryManifest ;
+        nz:version 1 ;
+        nz:webId <https://alice.example/profile/card#me> ;
+        nz:publishedAt "2026-07-01T00:00:00.000Z" ;
+        nz:expiresAt "2026-07-08T00:00:00.000Z" .
+    `
+    const existingResponse = new Response(existing, {
+      status: 200,
+      headers: { 'content-type': 'text/turtle', etag: '"manifest-1"' },
+    })
+    Object.defineProperty(existingResponse, 'url', {
+      value: 'https://alice.example/public/discovery/manifest',
+    })
+    const fetch = jestGlobal
+      .fn()
+      .mockResolvedValueOnce(existingResponse)
+      .mockResolvedValueOnce(new Response('', { status: 501 }))
+      .mockResolvedValueOnce(new Response('', { status: 200 }))
+    const manager = new DiscoveryManifestManager({ fetch })
+
+    await manager.writeManifest('https://alice.example/', manifest)
+
+    expect(fetch.mock.calls[2]?.[1]).toMatchObject({
+      method: 'PUT',
+      headers: { 'content-type': 'text/turtle', 'if-match': '"manifest-1"' },
+    })
+    expect(String(fetch.mock.calls[2]?.[1]?.body ?? '')).toContain(manifest.publishedAt)
+  })
+
   it('rejects a manifest whose WebID does not own the target Pod namespace', async () => {
     const fetch = jestGlobal.fn()
     const manager = new DiscoveryManifestManager({ fetch })
 
-    await expect(manager.writeManifest('https://alice.example/', {
-      ...manifest,
-      webId: 'https://mallory.example/profile/card#me',
-    })).rejects.toThrow('Discovery manifest owner mismatch')
+    await expect(
+      manager.writeManifest('https://alice.example/', {
+        ...manifest,
+        webId: 'https://mallory.example/profile/card#me',
+      })
+    ).rejects.toThrow('Discovery manifest owner mismatch')
     expect(fetch).not.toHaveBeenCalled()
   })
 
@@ -100,10 +135,12 @@ describe('DiscoveryManifestManager', () => {
         nz:capability "relationship-requests" ;
         ldp:inbox <https://alice.example/social/inbox/> .
     `
-    const fetch = jestGlobal.fn().mockResolvedValue(new Response(body, {
-      status: 200,
-      headers: { 'content-type': 'text/turtle' },
-    }))
+    const fetch = jestGlobal.fn().mockResolvedValue(
+      new Response(body, {
+        status: 200,
+        headers: { 'content-type': 'text/turtle' },
+      })
+    )
     const manager = new DiscoveryManifestManager({ fetch })
 
     await expect(manager.readManifest('https://alice.example/')).resolves.toEqual({

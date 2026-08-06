@@ -77,6 +77,41 @@ describe('PublicTypeIndexManager', () => {
     expect(patch).toContain(manifestUrl)
   })
 
+  it('uses an ETag-guarded replacement when Type Index PATCH is unsupported', async () => {
+    const existing = `
+      @prefix solid: <http://www.w3.org/ns/solid/terms#> .
+      <${indexUrl}> a solid:TypeIndex, solid:ListedDocument .
+      <${indexUrl}#bookmarks> a solid:TypeRegistration ;
+        solid:forClass <https://example.test/ns#Bookmark> ;
+        solid:instance <https://alice.example/public/bookmarks> .
+    `
+    const existingResponse = new Response(existing, {
+      status: 200,
+      headers: { 'content-type': 'text/turtle', etag: '"index-1"' },
+    })
+    Object.defineProperty(existingResponse, 'url', { value: indexUrl })
+    const fetch = jestGlobal
+      .fn()
+      .mockResolvedValueOnce(existingResponse)
+      .mockResolvedValueOnce(new Response('', { status: 415 }))
+      .mockResolvedValueOnce(new Response('', { status: 200 }))
+    const manager = new PublicTypeIndexManager({ fetch })
+
+    await manager.ensureDiscoveryManifestRegistration(
+      'https://alice.example/',
+      indexUrl,
+      manifestUrl
+    )
+
+    expect(fetch.mock.calls[2]?.[1]).toMatchObject({
+      method: 'PUT',
+      headers: { 'content-type': 'text/turtle', 'if-match': '"index-1"' },
+    })
+    const replacement = String(fetch.mock.calls[2]?.[1]?.body ?? '')
+    expect(replacement).toContain('Bookmark')
+    expect(replacement).toContain(DISCOVERY_MANIFEST_CLASS)
+  })
+
   it('rejects Type Index and manifest resources outside the owner Pod namespace', async () => {
     const fetch = jestGlobal.fn()
     const manager = new PublicTypeIndexManager({ fetch })

@@ -2,16 +2,18 @@ import {
   buildThing,
   createSolidDataset,
   createThing,
-  getSolidDataset,
   getThing,
   getThingAll,
   getUrl,
   removeThing,
-  saveSolidDatasetAt,
   setThing,
   type SolidDataset,
   type WithServerResourceInfo,
 } from '@inrupt/solid-client'
+import {
+  getSolidDatasetSnapshot,
+  saveSolidDatasetWithPatchFallback,
+} from './saveSolidDatasetCompat.js'
 interface AuthenticatedSession {
   fetch: typeof globalThis.fetch
 }
@@ -36,7 +38,7 @@ export class PublicTypeIndexManager {
 
   async discoverPublicTypeIndex(webId: string): Promise<string | null> {
     const profileUrl = webId.split('#')[0]
-    const dataset = await getSolidDataset(profileUrl, { fetch: this.session.fetch })
+    const dataset = (await getSolidDatasetSnapshot(profileUrl, this.session.fetch)).dataset
     const profile = getThing(dataset, webId)
     return profile ? getUrl(profile, SOLID_PUBLIC_TYPE_INDEX) : null
   }
@@ -50,8 +52,11 @@ export class PublicTypeIndexManager {
     assertOwnedResource(discoveryManifestUrl, podRoot, 'discoveryManifestUrl')
 
     let dataset: SolidDataset & Partial<WithServerResourceInfo>
+    let etag: string | null = null
     try {
-      dataset = await getSolidDataset(publicTypeIndexUrl, { fetch: this.session.fetch })
+      const snapshot = await getSolidDatasetSnapshot(publicTypeIndexUrl, this.session.fetch)
+      dataset = snapshot.dataset
+      etag = snapshot.etag
     } catch (error) {
       if (!isNotFoundError(error)) throw error
       dataset = createSolidDataset()
@@ -78,7 +83,7 @@ export class PublicTypeIndexManager {
 
     let updated = setThing(dataset, updatedIndex)
     updated = setThing(updated, updatedRegistration)
-    await saveSolidDatasetAt(publicTypeIndexUrl, updated, { fetch: this.session.fetch })
+    await saveSolidDatasetWithPatchFallback(publicTypeIndexUrl, updated, this.session.fetch, etag)
 
     return registrationUrl
   }
@@ -88,22 +93,26 @@ export class PublicTypeIndexManager {
     publicTypeIndexUrl: string
   ): Promise<void> {
     assertOwnedResource(publicTypeIndexUrl, podRoot, 'publicTypeIndexUrl')
-    let dataset: SolidDataset & Partial<WithServerResourceInfo>
+    let snapshot
     try {
-      dataset = await getSolidDataset(publicTypeIndexUrl, { fetch: this.session.fetch })
+      snapshot = await getSolidDatasetSnapshot(publicTypeIndexUrl, this.session.fetch)
     } catch (error) {
       if (isNotFoundError(error)) return
       throw error
     }
+    const dataset: SolidDataset & Partial<WithServerResourceInfo> = snapshot.dataset
     const registrationUrl = `${publicTypeIndexUrl}#nodezero-discovery-manifest`
     if (!getThing(dataset, registrationUrl)) return
-    await saveSolidDatasetAt(publicTypeIndexUrl, removeThing(dataset, registrationUrl), {
-      fetch: this.session.fetch,
-    })
+    await saveSolidDatasetWithPatchFallback(
+      publicTypeIndexUrl,
+      removeThing(dataset, registrationUrl),
+      this.session.fetch,
+      snapshot.etag
+    )
   }
 
   async listRegistrations(publicTypeIndexUrl: string): Promise<PublicTypeRegistration[]> {
-    const dataset = await getSolidDataset(publicTypeIndexUrl, { fetch: this.session.fetch })
+    const dataset = (await getSolidDatasetSnapshot(publicTypeIndexUrl, this.session.fetch)).dataset
     const registrations: PublicTypeRegistration[] = []
     for (const thing of getThingAll(dataset)) {
       if (getUrl(thing, RDF_TYPE) !== SOLID_TYPE_REGISTRATION) continue
