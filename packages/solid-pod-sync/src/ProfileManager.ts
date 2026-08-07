@@ -15,7 +15,6 @@
 import {
   createSolidDataset,
   createThing,
-  saveSolidDatasetAt,
   getSolidDataset,
   getThing,
   getThingAll,
@@ -42,6 +41,10 @@ import {
   PodLayoutManager,
   type PodPolicyMatrix,
 } from './PodLayoutManager.js'
+import {
+  getSolidDatasetSnapshot,
+  saveSolidDatasetWithPatchFallback,
+} from './saveSolidDatasetCompat.js'
 
 // ─── Session interface ────────────────────────────────────────────────────────
 /** Minimal authenticated session interface – structurally compatible with
@@ -217,11 +220,14 @@ export class ProfileManager {
 
     // ── Fetch or create the dataset, then patch and save ──────────────────
     let dataset: SolidDataset
+    let etag: string | null = null
     let existingDocumentThing: import('@inrupt/solid-client').Thing
     let existingProfileThing: import('@inrupt/solid-client').Thing
 
     try {
-      dataset = await getSolidDataset(datasetUrl, { fetch: this.session.fetch })
+      const snapshot = await getSolidDatasetSnapshot(datasetUrl, this.session.fetch)
+      dataset = snapshot.dataset
+      etag = snapshot.etag
       existingDocumentThing = getThing(dataset, datasetUrl) ?? createThing({ url: datasetUrl })
       existingProfileThing = getThing(dataset, webId) ?? createThing({ url: webId })
     } catch (err) {
@@ -267,7 +273,7 @@ export class ProfileManager {
     dataset = setThing(dataset, profileThing)
 
     const targetUrl = getSourceUrl(dataset) || datasetUrl
-    await saveSolidDatasetAt(targetUrl, dataset, { fetch: this.session.fetch })
+    await saveSolidDatasetWithPatchFallback(targetUrl, dataset, this.session.fetch, etag)
 
     return datasetUrl
   }

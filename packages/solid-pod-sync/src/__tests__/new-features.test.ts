@@ -151,6 +151,53 @@ describe('ProfileManager.updateWebACL', () => {
 })
 
 describe('ProfileManager.writeProfile', () => {
+  it('uses an ETag-guarded replacement when profile PATCH is unsupported', async () => {
+    const profileUrl = 'https://alice.example/profile/card'
+    const existing = `
+@prefix vcard: <http://www.w3.org/2006/vcard/ns#> .
+@prefix foaf: <http://xmlns.com/foaf/0.1/> .
+@prefix ex: <https://example.test/ns#> .
+
+<${profileUrl}> a foaf:PersonalProfileDocument .
+<${profileUrl}#me>
+  a foaf:Person ;
+  vcard:fn "Old Alice" ;
+  vcard:note "Old bio" ;
+  ex:preserved "third-party" .
+`
+    const existingResponse = new Response(existing, {
+      status: 200,
+      headers: { 'content-type': 'text/turtle', etag: '"profile-1"' },
+    })
+    Object.defineProperty(existingResponse, 'url', { value: profileUrl })
+    const fetch = jestGlobal
+      .fn()
+      .mockResolvedValueOnce(existingResponse)
+      .mockResolvedValueOnce(new Response('', { status: 501 }))
+      .mockResolvedValueOnce(new Response('', { status: 200 }))
+    const manager = new ProfileManager({ fetch })
+
+    await manager.writeProfile(
+      'https://alice.example/',
+      {
+        displayName: 'Updated Alice',
+        bio: 'Updated bio',
+        interests: ['solid'],
+        isNsfw: false,
+      },
+      { bootstrapPodLayout: false },
+    )
+
+    expect(fetch.mock.calls[1]?.[1]).toMatchObject({ method: 'PATCH' })
+    expect(fetch.mock.calls[2]?.[1]).toMatchObject({
+      method: 'PUT',
+      headers: { 'content-type': 'text/turtle', 'if-match': '"profile-1"' },
+    })
+    const replacement = String(fetch.mock.calls[2]?.[1]?.body ?? '')
+    expect(replacement).toContain('Updated Alice')
+    expect(replacement).toContain('third-party')
+  })
+
   it('rejects invalid Data Backpack profile contract payloads', async () => {
     const fetch = jestGlobal.fn().mockResolvedValue({ ok: true })
     const manager = new ProfileManager({ fetch })
