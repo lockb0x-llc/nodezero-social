@@ -29,6 +29,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import Constants from 'expo-constants'
 import { Platform } from 'react-native'
 import { isProvisionerRequest } from '../auth/provisionerRequestPolicy'
+import { exposeLogicalResponseUrl } from '../auth/podProxyResponse'
 
 export type SessionStatus = 'restoring' | 'unauthenticated' | 'authenticated'
 
@@ -440,7 +441,7 @@ export function NodeZeroSessionProvider({ children }: { children: ReactNode }): 
           await signOut()
         }
       }
-      return response
+      return targetUrl === rawUrl ? response : exposeLogicalResponseUrl(response, rawUrl)
     }
 
     return wrapped as typeof globalThis.fetch
