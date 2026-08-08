@@ -19,6 +19,9 @@ const accountBRecoveryPath = (process.env.DIRECTORY_ACCOUNT_B_RECOVERY_BUNDLE ??
 const nonCohortRecoveryPath = (process.env.DIRECTORY_NON_COHORT_RECOVERY_BUNDLE ?? '').trim()
 const avatarUrl = (process.env.DIRECTORY_E2E_AVATAR_URL ?? `${baseUrl}/favicon.png`).trim()
 const timeoutMs = Number(process.env.DIRECTORY_E2E_TIMEOUT_MS ?? 60_000)
+const publicationTimeoutMs = Number(
+  process.env.DIRECTORY_E2E_PUBLICATION_TIMEOUT_MS ?? Math.max(timeoutMs, 120_000)
+)
 const cleanupTimeoutMs = Number(process.env.DIRECTORY_E2E_CLEANUP_TIMEOUT_MS ?? timeoutMs * 3)
 const cleanupIntentAttempts = 2
 const cleanupIntentInitialWaitMs = Math.max(
@@ -321,6 +324,19 @@ function sanitizePublicationStatus(message) {
   return message.replace(/https?:\/\/\S+/gi, '[redacted-url]')
 }
 
+async function waitForDirectoryPublicationIdle(page, timeout = publicationTimeoutMs) {
+  await page.waitForFunction(
+    () => {
+      const control = document.querySelector(
+        '[aria-label="Publish to Directory"], [aria-label="Unpublish from Directory"]'
+      )
+      return control !== null && control.getAttribute('aria-disabled') !== 'true'
+    },
+    undefined,
+    { timeout }
+  )
+}
+
 async function cleanupDirectoryAccount(page, directoryReader, accountWebId) {
   await openProfile(page)
   const unpublishButton = page.getByRole('button', { name: 'Unpublish from Directory' })
@@ -441,6 +457,8 @@ let accountAWebId = ''
 let accountBWebId = ''
 let accountAHash = ''
 let accountBHash = ''
+let publicationStarted = false
+let publicationSettled = false
 
 try {
   await openProfile(pageA)
@@ -505,14 +523,17 @@ try {
   const updatedAvatarUrl = `${avatarUrl}?directory=${token}-updated`
   await pageA.getByPlaceholder('https://…').first().fill(initialAvatarUrl)
   await pageA.getByRole('button', { name: 'Publish to Directory' }).click()
+  publicationStarted = true
   const publicationStatus = pageA.getByLabel('Directory publication status')
-  await publicationStatus.waitFor({ timeout: timeoutMs })
+  await publicationStatus.waitFor({ timeout: publicationTimeoutMs })
   const publicationMessage = (await publicationStatus.textContent())?.trim() ?? ''
   if (publicationMessage !== 'Your basic profile is published to the Directory.') {
     throw new Error(
       `Directory publication did not complete: ${sanitizePublicationStatus(publicationMessage)}`
     )
   }
+  await waitForDirectoryPublicationIdle(pageA)
+  publicationSettled = true
   log('PASS publish basic profile')
 
   const initialPage = await loadDirectory(pageB)
@@ -622,9 +643,19 @@ try {
 } catch (error) {
   primaryError = error
 } finally {
+  let accountACleanupReady = true
+  if (publicationStarted && !publicationSettled) {
+    try {
+      await waitForDirectoryPublicationIdle(pageA, cleanupTimeoutMs)
+      publicationSettled = true
+    } catch (error) {
+      accountACleanupReady = false
+      cleanupFailures.push({ phase: 'publication settlement before cleanup', error })
+    }
+  }
   await Promise.all([
     runCleanupPhase(cleanupFailures, 'account A unpublish verification', async () => {
-      if (!accountAWebId) return
+      if (!accountAWebId || !accountACleanupReady) return
       const directoryReader = await contextA.newPage()
       await cleanupDirectoryAccount(pageA, directoryReader, accountAWebId)
     }),
@@ -635,7 +666,7 @@ try {
     }),
   ])
   await runCleanupPhase(cleanupFailures, 'profile restoration', async () => {
-    if (originalProfile) {
+    if (originalProfile && accountACleanupReady) {
       await runCleanupStage('profile editor open', () => openProfile(pageA))
       await runCleanupStage('profile editor reset', async () => {
         await pageA.getByPlaceholder('Your name').fill(originalProfile.displayName)

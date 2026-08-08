@@ -220,32 +220,6 @@ export default function ProfileScreen(): JSX.Element {
       })
   }, [authFetch, isLoggedIn, isPeerView, ownerWebId])
 
-  useEffect(() => {
-    if (!featuresLoaded || !isLoggedIn || !ownerWebId || isPeerView) return
-    const podRoot = `${ownerWebId.split('/profile/')[0]}/`
-    const managers = getSolidPodSyncManagers({ fetch: authFetch })
-    void maintainDirectoryPublication({
-      available: directoryAvailable,
-      podRoot,
-      ownerWebId,
-      provisionerUrl: getProvisionerUrl(),
-      authFetch,
-      managers,
-    })
-      .then(async (outcome) => {
-        const consent = await managers.discoveryConsentManager.readConsent(podRoot)
-        setPublicListing(consent.publicListing)
-        setDirectorySyncPending(outcome.status === 'pending-sync')
-        if (outcome.status === 'pending-sync') setDiscoveryStatus(outcome.message)
-      })
-      .catch((error) => {
-        setDirectorySyncPending(true)
-        setDiscoveryStatus(
-          error instanceof Error ? error.message : 'Directory synchronization is pending.'
-        )
-      })
-  }, [authFetch, directoryAvailable, featuresLoaded, isLoggedIn, isPeerView, ownerWebId])
-
   const revokeLocalDiscoveryConsent = useCallback(async (): Promise<void> => {
     if (!ownerWebId) return
     setDiscoverySaving(true)

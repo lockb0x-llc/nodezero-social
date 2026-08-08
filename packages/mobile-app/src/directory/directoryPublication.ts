@@ -32,6 +32,7 @@ export interface DirectoryPublicationInput {
 
 const RENEWAL_WINDOW_MS = 48 * 60 * 60_000
 const publicationQueue = new Map<string, Promise<DirectoryPublicationOutcome>>()
+const maintenanceQueue = new Map<string, Promise<DirectoryPublicationOutcome>>()
 
 export async function publishBasicDirectoryProfile(
   input: DirectoryPublicationInput
@@ -78,7 +79,15 @@ export async function retryDirectoryProjection(
 export function maintainDirectoryPublication(
   input: DirectoryPublicationInput
 ): Promise<DirectoryPublicationOutcome> {
-  return enqueue(input.ownerWebId, () => maintainOnce(input))
+  const existing = maintenanceQueue.get(input.ownerWebId)
+  if (existing) return existing
+  const maintenance = enqueue(input.ownerWebId, () => maintainOnce(input)).finally(() => {
+    if (maintenanceQueue.get(input.ownerWebId) === maintenance) {
+      maintenanceQueue.delete(input.ownerWebId)
+    }
+  })
+  maintenanceQueue.set(input.ownerWebId, maintenance)
+  return maintenance
 }
 
 function enqueue(

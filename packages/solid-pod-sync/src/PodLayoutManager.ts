@@ -104,7 +104,9 @@ export function assertAclNamespacePolicy(containerPath: string, ownerWebId: stri
   try {
     containerUrl = new URL(containerPath)
   } catch {
-    throw new Error(`${ACL_POLICY_RULES.TARGET_MALFORMED}: invalid containerPath '${containerPath}'`)
+    throw new Error(
+      `${ACL_POLICY_RULES.TARGET_MALFORMED}: invalid containerPath '${containerPath}'`
+    )
   }
 
   if (containerUrl.protocol !== 'https:' && containerUrl.protocol !== 'http:') {
@@ -174,19 +176,23 @@ export class PodLayoutManager {
   async ensureDefaultLayout(podRoot: string): Promise<PodContainerLayout> {
     const layout = buildPodContainerLayout(podRoot)
 
-    await this.ensureContainer(layout.docustreamContainer)
-    await this.ensureContainer(layout.socialContainer)
-    await this.ensureContainer(layout.backpackContainer)
-    await this.ensureContainer(layout.notificationsContainer)
-    await this.ensureContainer(layout.discoveryContainer)
-    await this.ensureContainer(layout.socialInboxContainer)
-    await this.ensureContainer(layout.socialOutboxContainer)
-    await this.ensureContainer(layout.socialQuarantineContainer)
-    await this.ensureContainer(layout.socialConsentContainer)
-    await this.ensureContainer(layout.relationshipsContainer)
-    await this.ensureContainer(layout.moderationContainer)
-    await this.ensureContainer(layout.processedActivitiesContainer)
-    await this.ensureContainer(layout.deliveryReceiptsContainer)
+    await Promise.all([
+      this.ensureContainer(layout.docustreamContainer),
+      this.ensureContainer(layout.socialContainer),
+      this.ensureContainer(layout.backpackContainer),
+      this.ensureContainer(layout.discoveryContainer),
+    ])
+    await Promise.all([
+      this.ensureContainer(layout.notificationsContainer),
+      this.ensureContainer(layout.socialInboxContainer),
+      this.ensureContainer(layout.socialOutboxContainer),
+      this.ensureContainer(layout.socialQuarantineContainer),
+      this.ensureContainer(layout.socialConsentContainer),
+      this.ensureContainer(layout.relationshipsContainer),
+      this.ensureContainer(layout.moderationContainer),
+      this.ensureContainer(layout.processedActivitiesContainer),
+      this.ensureContainer(layout.deliveryReceiptsContainer),
+    ])
 
     return layout
   }
@@ -197,19 +203,21 @@ export class PodLayoutManager {
   ): Promise<PodContainerLayout> {
     const layout = buildPodContainerLayout(podRoot)
 
-    await this.ensureAcl(layout.docustreamContainer, policyMatrix.docustream)
-    await this.ensureAcl(layout.socialContainer, policyMatrix.social)
-    await this.ensureAcl(layout.backpackContainer, policyMatrix.backpack)
-    await this.ensureAcl(layout.notificationsContainer, policyMatrix.notifications)
-    await this.ensureAcl(layout.discoveryContainer, policyMatrix.discovery)
-    await this.ensureAcl(layout.socialInboxContainer, policyMatrix.socialInbox)
-    await this.ensureAcl(layout.socialOutboxContainer, policyMatrix.socialOutbox)
-    await this.ensureAcl(layout.socialQuarantineContainer, policyMatrix.socialQuarantine)
-    await this.ensureAcl(layout.socialConsentContainer, policyMatrix.socialConsent)
-    await this.ensureAcl(layout.relationshipsContainer, policyMatrix.relationships)
-    await this.ensureAcl(layout.moderationContainer, policyMatrix.moderation)
-    await this.ensureAcl(layout.processedActivitiesContainer, policyMatrix.processedActivities)
-    await this.ensureAcl(layout.deliveryReceiptsContainer, policyMatrix.deliveryReceipts)
+    await Promise.all([
+      this.ensureAcl(layout.docustreamContainer, policyMatrix.docustream),
+      this.ensureAcl(layout.socialContainer, policyMatrix.social),
+      this.ensureAcl(layout.backpackContainer, policyMatrix.backpack),
+      this.ensureAcl(layout.notificationsContainer, policyMatrix.notifications),
+      this.ensureAcl(layout.discoveryContainer, policyMatrix.discovery),
+      this.ensureAcl(layout.socialInboxContainer, policyMatrix.socialInbox),
+      this.ensureAcl(layout.socialOutboxContainer, policyMatrix.socialOutbox),
+      this.ensureAcl(layout.socialQuarantineContainer, policyMatrix.socialQuarantine),
+      this.ensureAcl(layout.socialConsentContainer, policyMatrix.socialConsent),
+      this.ensureAcl(layout.relationshipsContainer, policyMatrix.relationships),
+      this.ensureAcl(layout.moderationContainer, policyMatrix.moderation),
+      this.ensureAcl(layout.processedActivitiesContainer, policyMatrix.processedActivities),
+      this.ensureAcl(layout.deliveryReceiptsContainer, policyMatrix.deliveryReceipts),
+    ])
 
     return layout
   }

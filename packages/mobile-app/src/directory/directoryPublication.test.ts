@@ -404,3 +404,25 @@ void test('serializes renewal and unpublish so opt-out wins', async () => {
   assert.equal(calls.at(-1), 'manifest:remove')
   assert.equal(calls.filter((call) => call === 'consent:false:undefined').length, 1)
 })
+
+void test('coalesces duplicate background maintenance for one account', async () => {
+  const { input } = setup()
+  let releaseConsent: (() => void) | undefined
+  const consentReady = new Promise<void>((resolve) => {
+    releaseConsent = resolve
+  })
+  let consentReads = 0
+  const readConsent = input.managers.discoveryConsentManager.readConsent
+  input.managers.discoveryConsentManager.readConsent = async (...args) => {
+    consentReads += 1
+    await consentReady
+    return readConsent(...args)
+  }
+
+  const first = maintainDirectoryPublication(input)
+  const duplicate = maintainDirectoryPublication(input)
+  assert.equal(first, duplicate)
+  releaseConsent?.()
+  await Promise.all([first, duplicate])
+  assert.equal(consentReads, 1)
+})
