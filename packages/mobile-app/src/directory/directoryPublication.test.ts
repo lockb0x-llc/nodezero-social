@@ -97,6 +97,10 @@ function setup(
         },
         publicTypeIndexManager: {
           discoverPublicTypeIndex: async () => `${podRoot}settings/publicTypeIndex`,
+          ensurePublicTypeIndex: async () => {
+            calls.push('type-index:ensure')
+            return `${podRoot}public/discovery/type-index`
+          },
           ensureDiscoveryManifestRegistration: async () => {
             calls.push('type-index:register')
             return `${podRoot}settings/publicTypeIndex#manifest`
@@ -134,9 +138,21 @@ void test('publishes only the basic persisted profile fields', async () => {
   assert.equal(JSON.stringify(manifests[0]).includes('Private biography'), false)
 })
 
-void test('reports pending synchronization when the public Type Index is unavailable', async () => {
+void test('provisions a public Type Index when publishing a fresh profile', async () => {
+  const { input, calls, manifests } = setup()
+  input.managers.publicTypeIndexManager.discoverPublicTypeIndex = async () => null
+  const outcome = await publishBasicDirectoryProfile(input)
+  assert.deepEqual(outcome, { status: 'published', listed: true })
+  assert.equal(calls.includes('type-index:ensure'), true)
+  assert.equal(manifests[0]?.publicTypeIndexUrl, `${podRoot}public/discovery/type-index`)
+})
+
+void test('reports pending synchronization when public Type Index provisioning fails', async () => {
   const { input } = setup()
   input.managers.publicTypeIndexManager.discoverPublicTypeIndex = async () => null
+  input.managers.publicTypeIndexManager.ensurePublicTypeIndex = async () => {
+    throw new Error('Pod write failed')
+  }
   const outcome = await publishBasicDirectoryProfile(input)
   assert.equal(outcome.status, 'pending-sync')
 })

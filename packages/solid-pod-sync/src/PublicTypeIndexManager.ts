@@ -43,6 +43,32 @@ export class PublicTypeIndexManager {
     return profile ? getUrl(profile, SOLID_PUBLIC_TYPE_INDEX) : null
   }
 
+  async ensurePublicTypeIndex(podRoot: string, webId: string): Promise<string> {
+    const profileUrl = webId.split('#')[0]
+    assertOwnedResource(profileUrl, podRoot, 'webId')
+
+    const snapshot = await getSolidDatasetSnapshot(profileUrl, this.session.fetch)
+    const profile = getThing(snapshot.dataset, webId)
+    if (!profile) throw new Error('The owner WebID profile is unavailable.')
+
+    const existing = getUrl(profile, SOLID_PUBLIC_TYPE_INDEX)
+    if (existing) return existing
+
+    const publicTypeIndexUrl = `${podRoot.replace(/\/$/, '')}/public/discovery/type-index`
+    const updatedProfile = buildThing(profile)
+      .setUrl(SOLID_PUBLIC_TYPE_INDEX, publicTypeIndexUrl)
+      .build()
+    const updatedDataset = setThing(snapshot.dataset, updatedProfile)
+    await saveSolidDatasetWithPatchFallback(
+      profileUrl,
+      updatedDataset,
+      this.session.fetch,
+      snapshot.etag
+    )
+
+    return publicTypeIndexUrl
+  }
+
   async ensureDiscoveryManifestRegistration(
     podRoot: string,
     publicTypeIndexUrl: string,

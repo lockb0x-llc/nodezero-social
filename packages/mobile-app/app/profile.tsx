@@ -990,7 +990,12 @@ export default function ProfileScreen(): JSX.Element {
               </TouchableOpacity>
             ) : null}
             {discoveryStatus ? (
-              <Text style={styles.discoveryStatusText}>{discoveryStatus}</Text>
+              <Text
+                style={styles.discoveryStatusText}
+                accessibilityLabel="Directory publication status"
+              >
+                {discoveryStatus}
+              </Text>
             ) : null}
           </View>
         ) : null}

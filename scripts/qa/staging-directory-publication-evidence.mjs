@@ -309,6 +309,18 @@ async function runCleanupPhase(cleanupFailures, phase, operation) {
   }
 }
 
+async function runCleanupStage(stage, operation) {
+  try {
+    return await operation()
+  } catch {
+    throw new DirectoryCleanupStageError(stage)
+  }
+}
+
+function sanitizePublicationStatus(message) {
+  return message.replace(/https?:\/\/\S+/gi, '[redacted-url]')
+}
+
 async function cleanupDirectoryAccount(page, directoryReader, accountWebId) {
   await openProfile(page)
   const unpublishButton = page.getByRole('button', { name: 'Unpublish from Directory' })
@@ -493,9 +505,14 @@ try {
   const updatedAvatarUrl = `${avatarUrl}?directory=${token}-updated`
   await pageA.getByPlaceholder('https://…').first().fill(initialAvatarUrl)
   await pageA.getByRole('button', { name: 'Publish to Directory' }).click()
-  await pageA
-    .getByText('Your basic profile is published to the Directory.')
-    .waitFor({ timeout: timeoutMs })
+  const publicationStatus = pageA.getByLabel('Directory publication status')
+  await publicationStatus.waitFor({ timeout: timeoutMs })
+  const publicationMessage = (await publicationStatus.textContent())?.trim() ?? ''
+  if (publicationMessage !== 'Your basic profile is published to the Directory.') {
+    throw new Error(
+      `Directory publication did not complete: ${sanitizePublicationStatus(publicationMessage)}`
+    )
+  }
   log('PASS publish basic profile')
 
   const initialPage = await loadDirectory(pageB)
@@ -619,21 +636,26 @@ try {
   ])
   await runCleanupPhase(cleanupFailures, 'profile restoration', async () => {
     if (originalProfile) {
-      await openProfile(pageA)
-      await pageA.getByPlaceholder('Your name').fill(originalProfile.displayName)
-      await pageA.getByPlaceholder('Tell the world about yourself').fill(originalProfile.bio)
-      await pageA.getByPlaceholder('https://…').first().fill(originalProfile.avatarUrl)
-      await saveProfileAndWait(pageA)
-      await openProfile(pageA)
-      if (
-        (await pageA.getByPlaceholder('Your name').inputValue()) !== originalProfile.displayName ||
-        (await pageA.getByPlaceholder('Tell the world about yourself').inputValue()) !==
-          originalProfile.bio ||
-        (await pageA.getByPlaceholder('https://…').first().inputValue()) !==
-          originalProfile.avatarUrl
-      ) {
-        throw new Error('Original profile values were not restored.')
-      }
+      await runCleanupStage('profile editor open', () => openProfile(pageA))
+      await runCleanupStage('profile editor reset', async () => {
+        await pageA.getByPlaceholder('Your name').fill(originalProfile.displayName)
+        await pageA.getByPlaceholder('Tell the world about yourself').fill(originalProfile.bio)
+        await pageA.getByPlaceholder('https://…').first().fill(originalProfile.avatarUrl)
+      })
+      await runCleanupStage('profile save confirmation', () => saveProfileAndWait(pageA))
+      await runCleanupStage('profile reload', () => openProfile(pageA))
+      await runCleanupStage('profile read-back verification', async () => {
+        if (
+          (await pageA.getByPlaceholder('Your name').inputValue()) !==
+            originalProfile.displayName ||
+          (await pageA.getByPlaceholder('Tell the world about yourself').inputValue()) !==
+            originalProfile.bio ||
+          (await pageA.getByPlaceholder('https://…').first().inputValue()) !==
+            originalProfile.avatarUrl
+        ) {
+          throw new Error('Original profile values were not restored.')
+        }
+      })
     }
   })
   await runCleanupPhase(cleanupFailures, 'request audit', async () => {

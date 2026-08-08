@@ -1,0 +1,14 @@
+{
+  "name": "@nodezero/metro-image-size",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Synchronous image-dimension adapter for Metro asset builds",
+  "license": "MIT",
+  "main": "index.cjs",
+  "scripts": {
+    "test": "node --test index.test.mjs"
+  },
+  "dependencies": {
+    "probe-image-size": "7.3.0"
+  }
+}

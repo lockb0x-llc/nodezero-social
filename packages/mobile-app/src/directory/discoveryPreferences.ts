@@ -35,6 +35,7 @@ export interface UpdateDiscoveryPreferencesInput {
     publicTypeIndexManager: Pick<
       PublicTypeIndexManager,
       | 'discoverPublicTypeIndex'
+      | 'ensurePublicTypeIndex'
       | 'ensureDiscoveryManifestRegistration'
       | 'removeDiscoveryManifestRegistration'
     >
@@ -172,9 +173,9 @@ export async function updateDiscoveryPreferences(
       input.ownerWebId
     )
     if (!publicTypeIndexUrl && input.requirePublicTypeIndex) {
-      throw new DiscoveryPreferencesError(
-        'Your public Type Index is unavailable for Directory publication.',
-        'type_index_sync_failed'
+      publicTypeIndexUrl = await input.managers.publicTypeIndexManager.ensurePublicTypeIndex(
+        input.podRoot,
+        input.ownerWebId
       )
     }
   } catch {

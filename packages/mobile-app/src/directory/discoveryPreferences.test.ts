@@ -77,6 +77,10 @@ function setup(): {
       },
       publicTypeIndexManager: {
         discoverPublicTypeIndex: async () => `${podRoot}settings/publicTypeIndex`,
+        ensurePublicTypeIndex: async () => {
+          calls.push('type-index:ensure')
+          return `${podRoot}public/discovery/type-index`
+        },
         ensureDiscoveryManifestRegistration: async () => {
           calls.push('type-index:register')
           return `${podRoot}settings/publicTypeIndex#registration`
@@ -117,6 +121,24 @@ void test('publishes only explicitly selected public interests and refreshes pro
   assert.equal(JSON.stringify(writtenManifest[0]).includes('Music'), false)
   assert.deepEqual(calls, [
     'consent:true:true',
+    'manifest:write',
+    'type-index:register',
+    'refresh:https://api.nodezero.example/v1/community-directory/refresh',
+  ])
+})
+
+void test('provisions a missing public Type Index for explicit Directory publication', async () => {
+  const { input, calls, writtenManifest } = setup()
+  input.requirePublicTypeIndex = true
+  input.managers.publicTypeIndexManager.discoverPublicTypeIndex = async () => null
+
+  const result = await updateDiscoveryPreferences(input)
+
+  assert.equal(result.listed, true)
+  assert.equal(writtenManifest[0]?.publicTypeIndexUrl, `${podRoot}public/discovery/type-index`)
+  assert.deepEqual(calls, [
+    'consent:true:true',
+    'type-index:ensure',
     'manifest:write',
     'type-index:register',
     'refresh:https://api.nodezero.example/v1/community-directory/refresh',

@@ -28,6 +28,34 @@ describe('PublicTypeIndexManager', () => {
     await expect(manager.discoverPublicTypeIndex(webId)).resolves.toBe(indexUrl)
   })
 
+  it('adds a public Type Index pointer to a fresh owner profile', async () => {
+    const profile = `
+      @prefix foaf: <http://xmlns.com/foaf/0.1/> .
+      <${webId}> a foaf:Person ; foaf:name "Alice" .
+    `
+    const profileResponse = new Response(profile, {
+      status: 200,
+      headers: { 'content-type': 'text/turtle', etag: '"profile-1"' },
+    })
+    Object.defineProperty(profileResponse, 'url', {
+      value: 'https://alice.example/profile/card',
+    })
+    const fetch = jestGlobal
+      .fn()
+      .mockResolvedValueOnce(profileResponse)
+      .mockResolvedValueOnce(new Response('', { status: 200 }))
+    const manager = new PublicTypeIndexManager({ fetch })
+
+    await expect(manager.ensurePublicTypeIndex('https://alice.example/', webId)).resolves.toBe(
+      'https://alice.example/public/discovery/type-index'
+    )
+
+    const patch = String(fetch.mock.calls[1]?.[1]?.body ?? '')
+    expect(patch).toContain('http://www.w3.org/ns/solid/terms#publicTypeIndex')
+    expect(patch).toContain('https://alice.example/public/discovery/type-index')
+    expect(patch).not.toContain('foaf:name')
+  })
+
   it('creates the discovery registration in a missing public Type Index', async () => {
     const fetch = jestGlobal
       .fn()
