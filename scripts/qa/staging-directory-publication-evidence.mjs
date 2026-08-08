@@ -17,7 +17,10 @@ const baseUrl = (process.env.STAGING_BASE_URL ?? 'https://staging.nodezero.socia
 const accountARecoveryPath = (process.env.DIRECTORY_ACCOUNT_A_RECOVERY_BUNDLE ?? '').trim()
 const accountBRecoveryPath = (process.env.DIRECTORY_ACCOUNT_B_RECOVERY_BUNDLE ?? '').trim()
 const nonCohortRecoveryPath = (process.env.DIRECTORY_NON_COHORT_RECOVERY_BUNDLE ?? '').trim()
-const avatarUrl = (process.env.DIRECTORY_E2E_AVATAR_URL ?? `${baseUrl}/favicon.png`).trim()
+const githubRepository = (process.env.GITHUB_REPOSITORY ?? 'lockb0x-llc/nodezero-social').trim()
+const githubRevision = (process.env.GITHUB_SHA ?? 'testnet').trim()
+const defaultAvatarUrl = `https://raw.githubusercontent.com/${githubRepository}/${githubRevision}/packages/mobile-app/assets/favicon.png`
+const avatarUrl = (process.env.DIRECTORY_E2E_AVATAR_URL ?? defaultAvatarUrl).trim()
 const timeoutMs = Number(process.env.DIRECTORY_E2E_TIMEOUT_MS ?? 60_000)
 const publicationTimeoutMs = Number(
   process.env.DIRECTORY_E2E_PUBLICATION_TIMEOUT_MS ?? Math.max(timeoutMs, 120_000)
@@ -283,13 +286,14 @@ async function loadDirectory(page) {
   return { ...combined, members, nextCursor: null }
 }
 
-async function saveProfileAndWait(page) {
-  const dialogPromise = page.waitForEvent('dialog', { timeout: timeoutMs })
-  await page.getByRole('button', { name: 'Save profile' }).click()
-  const dialog = await dialogPromise
-  if (dialog.type() !== 'alert' || !dialog.message().toLowerCase().includes('profile')) {
-    throw new Error(`Profile save did not confirm success: ${dialog.message()}`)
-  }
+async function saveProfileAndWait(page, operationTimeoutMs = publicationTimeoutMs) {
+  const [dialog] = await Promise.all([
+    page.waitForEvent('dialog', { timeout: operationTimeoutMs }),
+    page.getByRole('button', { name: 'Save profile' }).click(),
+  ])
+  const confirmed = dialog.type() === 'alert' && dialog.message().toLowerCase().includes('profile')
+  await dialog.accept()
+  if (!confirmed) throw new Error(`Profile save did not confirm success: ${dialog.message()}`)
 }
 
 async function drainRequestHeaderAudits() {
@@ -673,7 +677,9 @@ try {
         await pageA.getByPlaceholder('Tell the world about yourself').fill(originalProfile.bio)
         await pageA.getByPlaceholder('https://…').first().fill(originalProfile.avatarUrl)
       })
-      await runCleanupStage('profile save confirmation', () => saveProfileAndWait(pageA))
+      await runCleanupStage('profile save confirmation', () =>
+        saveProfileAndWait(pageA, cleanupTimeoutMs)
+      )
       await runCleanupStage('profile reload', () => openProfile(pageA))
       await runCleanupStage('profile read-back verification', async () => {
         if (
