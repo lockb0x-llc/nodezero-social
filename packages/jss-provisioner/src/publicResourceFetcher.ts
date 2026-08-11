@@ -471,15 +471,41 @@ function parseIpv6Hextets(address: string): number[] | null {
 async function requestPinnedHttps(
   input: PublicResourceRequestInput
 ): Promise<PublicResourceRequestResult> {
-  return new Promise((resolve, reject) => {
-    const address = input.addresses[0]
-    if (!address) {
-      reject(
-        new PublicResourceFetchError('No validated address is available.', 400, 'unresolvable_host')
-      )
-      return
-    }
+  return requestAcrossValidatedAddresses(input.addresses, (address) =>
+    requestPinnedHttpsAddress(input, address)
+  )
+}
 
+export async function requestAcrossValidatedAddresses<T>(
+  addresses: Array<{ address: string; family: number }>,
+  requestAddress: (address: { address: string; family: number }) => Promise<T>
+): Promise<T> {
+  let lastError: unknown = new PublicResourceFetchError(
+    'No validated address is available.',
+    400,
+    'unresolvable_host'
+  )
+  for (const address of addresses) {
+    try {
+      return await requestAddress(address)
+    } catch (error) {
+      lastError = error
+      if (
+        !(error instanceof PublicResourceFetchError) ||
+        (error.code !== 'fetch_failed' && error.code !== 'timeout')
+      ) {
+        throw error
+      }
+    }
+  }
+  throw lastError
+}
+
+async function requestPinnedHttpsAddress(
+  input: PublicResourceRequestInput,
+  address: { address: string; family: number }
+): Promise<PublicResourceRequestResult> {
+  return new Promise((resolve, reject) => {
     const request = httpsRequest(
       input.url,
       {
@@ -529,7 +555,17 @@ async function requestPinnedHttps(
             body: Buffer.concat(chunks),
           })
         )
-        response.on('error', reject)
+        response.on('error', (error) =>
+          reject(
+            error instanceof PublicResourceFetchError
+              ? error
+              : new PublicResourceFetchError(
+                  error.message || 'Public resource response failed.',
+                  502,
+                  'fetch_failed'
+                )
+          )
+        )
       }
     )
 

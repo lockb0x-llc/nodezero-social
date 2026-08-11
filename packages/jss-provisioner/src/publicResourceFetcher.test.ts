@@ -7,6 +7,7 @@ import {
   isBlockedAddress,
   parsePublicUrl,
   postPublicResource,
+  requestAcrossValidatedAddresses,
 } from './publicResourceFetcher.js'
 
 const publicResolver = (): Promise<Array<{ address: string; family: 4 }>> =>
@@ -85,6 +86,83 @@ void test('fetchPublicResource pins validated DNS addresses into each request', 
   assert.equal(response.contentType, 'text/turtle')
   assert.equal(response.etag, '"profile-1"')
   assert.match(response.link ?? '', /ldp#inbox/)
+})
+
+void test('pinned requests fall through network failure to the next validated address', async () => {
+  const attempted: string[] = []
+  const result = await requestAcrossValidatedAddresses(
+    [
+      { address: '2606:50c0:8000::154', family: 6 },
+      { address: '185.199.108.133', family: 4 },
+    ],
+    (address) => {
+      attempted.push(address.address)
+      if (address.family === 6) {
+        return Promise.reject(new PublicResourceFetchError('unreachable', 502, 'fetch_failed'))
+      }
+      return Promise.resolve('image-bytes')
+    }
+  )
+
+  assert.equal(result, 'image-bytes')
+  assert.deepEqual(attempted, ['2606:50c0:8000::154', '185.199.108.133'])
+})
+
+void test('pinned requests do not retry non-network failures', async () => {
+  let attempts = 0
+  await assert.rejects(
+    requestAcrossValidatedAddresses(
+      [
+        { address: '185.199.108.133', family: 4 },
+        { address: '185.199.109.133', family: 4 },
+      ],
+      () => {
+        attempts += 1
+        return Promise.reject(
+          new PublicResourceFetchError('payload too large', 413, 'payload_too_large')
+        )
+      }
+    ),
+    (error: unknown) =>
+      error instanceof PublicResourceFetchError && error.code === 'payload_too_large'
+  )
+  assert.equal(attempts, 1)
+})
+
+void test('pinned requests fall through an explicit timeout', async () => {
+  let attempts = 0
+  const result = await requestAcrossValidatedAddresses(
+    [
+      { address: '2606:50c0:8000::154', family: 6 },
+      { address: '185.199.108.133', family: 4 },
+    ],
+    (address) => {
+      attempts += 1
+      return address.family === 6
+        ? Promise.reject(new PublicResourceFetchError('timeout', 504, 'timeout'))
+        : Promise.resolve('ok')
+    }
+  )
+  assert.equal(result, 'ok')
+  assert.equal(attempts, 2)
+})
+
+void test('pinned requests do not retry unclassified errors', async () => {
+  let attempts = 0
+  await assert.rejects(
+    requestAcrossValidatedAddresses(
+      [
+        { address: '185.199.108.133', family: 4 },
+        { address: '185.199.109.133', family: 4 },
+      ],
+      () => {
+        attempts += 1
+        return Promise.reject(new Error('unexpected'))
+      }
+    ),
+    /unexpected/
+  )
+  assert.equal(attempts, 1)
 })
 
 void test('fetchPublicResource revalidates redirect targets and blocks private DNS answers', async () => {
@@ -173,13 +251,13 @@ void test('fetchPublicResource supports an explicit image-only content allowlist
   const response = await fetchPublicResource('https://example.com/avatar.png', {
     allowedContentTypes: ['image/png'],
     resolveHost: publicResolver,
-    requestOnce: async (input) => {
+    requestOnce: (input) => {
       assert.equal(input.accept, 'image/png')
-      return {
+      return Promise.resolve({
         status: 200,
         headers: { 'content-type': 'image/png' },
         body: Buffer.from([1, 2, 3]),
-      }
+      })
     },
   })
   assert.equal(response.contentType, 'image/png')
