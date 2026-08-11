@@ -6,6 +6,7 @@ const alice = 'https://alice.example/profile/card#me'
 const manifest = {
   version: 1 as const,
   webId: alice,
+  publicationRevision: 4,
   publishedAt: '2026-08-01T12:00:00.000Z',
   expiresAt: '2026-08-08T12:00:00.000Z',
   displayName: 'Alice',
@@ -29,8 +30,11 @@ describe('DiscoveryManifestManager', () => {
     expect(fetch).toHaveBeenCalledTimes(2)
     expect(fetch.mock.calls[1]?.[0]).toBe('https://alice.example/public/discovery/manifest')
     expect(fetch.mock.calls[1]?.[1]).toMatchObject({ method: 'PUT' })
+    const writeInit = fetch.mock.calls[1]?.[1] as unknown as RequestInit
+    expect(new Headers(writeInit.headers).get('if-none-match')).toBe('*')
     const body = String(fetch.mock.calls[1]?.[1]?.body ?? '')
     expect(body).toContain('https://nodezero.social/ns#DiscoveryManifest')
+    expect(body).toContain('https://nodezero.social/ns#publicationRevision')
     expect(body).toContain('http://www.w3.org/ns/ldp#inbox')
     expect(body).toContain('relationship-requests')
   })
@@ -49,7 +53,7 @@ describe('DiscoveryManifestManager', () => {
     `
     const existingResponse = new Response(existing, {
       status: 200,
-      headers: { 'content-type': 'text/turtle' },
+      headers: { 'content-type': 'text/turtle', etag: '"manifest-old"' },
     })
     Object.defineProperty(existingResponse, 'url', {
       value: 'https://alice.example/public/discovery/manifest',
@@ -128,6 +132,7 @@ describe('DiscoveryManifestManager', () => {
         a nz:DiscoveryManifest ;
         nz:version 1 ;
         nz:webId <https://alice.example/profile/card#me> ;
+        nz:publicationRevision 4 ;
         nz:publishedAt "${manifest.publishedAt}" ;
         nz:expiresAt "${manifest.expiresAt}" ;
         nz:displayName "Alice" ;
@@ -146,6 +151,7 @@ describe('DiscoveryManifestManager', () => {
     await expect(manager.readManifest('https://alice.example/')).resolves.toEqual({
       version: 1,
       webId: alice,
+      publicationRevision: 4,
       publishedAt: manifest.publishedAt,
       expiresAt: manifest.expiresAt,
       displayName: 'Alice',
@@ -155,16 +161,148 @@ describe('DiscoveryManifestManager', () => {
     })
   })
 
-  it('deletes idempotently and reports other failures', async () => {
-    const missingFetch = jestGlobal.fn().mockResolvedValue(new Response('', { status: 404 }))
-    await expect(
-      new DiscoveryManifestManager({ fetch: missingFetch }).removeManifest('https://alice.example/')
-    ).resolves.toBeUndefined()
+  it('conditionally removes only a manifest at or before the observed consent revision', async () => {
+    const body = `
+      @prefix nz: <https://nodezero.social/ns#> .
+      <https://alice.example/public/discovery/manifest#manifest>
+        a nz:DiscoveryManifest ;
+        nz:version 1 ;
+        nz:webId <https://alice.example/profile/card#me> ;
+        nz:publicationRevision 4 ;
+        nz:publishedAt "${manifest.publishedAt}" ;
+        nz:expiresAt "${manifest.expiresAt}" .
+    `
+    const existingResponse = new Response(body, {
+      status: 200,
+      headers: { 'content-type': 'text/turtle', etag: '"manifest-4"' },
+    })
+    Object.defineProperty(existingResponse, 'url', {
+      value: 'https://alice.example/public/discovery/manifest',
+    })
+    const fetch = jestGlobal
+      .fn()
+      .mockResolvedValueOnce(existingResponse)
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
 
-    const failedFetch = jestGlobal.fn().mockResolvedValue(new Response('', { status: 500 }))
     await expect(
-      new DiscoveryManifestManager({ fetch: failedFetch }).removeManifest('https://alice.example/')
-    ).rejects.toThrow('Failed to remove discovery manifest')
+      new DiscoveryManifestManager({ fetch }).removeManifestIfUnchanged('https://alice.example/', 4)
+    ).resolves.toBe(true)
+    expect(fetch.mock.calls[1]?.[1]).toMatchObject({
+      method: 'DELETE',
+      headers: { 'if-match': '"manifest-4"' },
+    })
+  })
+
+  it('preserves a manifest authorized by newer consent or changed after its snapshot', async () => {
+    const body = `
+      @prefix nz: <https://nodezero.social/ns#> .
+      <https://alice.example/public/discovery/manifest#manifest>
+        a nz:DiscoveryManifest ;
+        nz:version 1 ;
+        nz:webId <https://alice.example/profile/card#me> ;
+        nz:publicationRevision 5 ;
+        nz:publishedAt "${manifest.publishedAt}" ;
+        nz:expiresAt "${manifest.expiresAt}" .
+    `
+    const newerResponse = new Response(body, {
+      status: 200,
+      headers: { 'content-type': 'text/turtle', etag: '"manifest-5"' },
+    })
+    Object.defineProperty(newerResponse, 'url', {
+      value: 'https://alice.example/public/discovery/manifest',
+    })
+    const newerFetch = jestGlobal.fn().mockResolvedValueOnce(newerResponse)
+    await expect(
+      new DiscoveryManifestManager({ fetch: newerFetch }).removeManifestIfUnchanged(
+        'https://alice.example/',
+        4
+      )
+    ).resolves.toBe(false)
+    expect(newerFetch).toHaveBeenCalledTimes(1)
+
+    const currentResponse = new Response(
+      body.replace('nz:publicationRevision 5', 'nz:publicationRevision 4'),
+      {
+        status: 200,
+        headers: { 'content-type': 'text/turtle', etag: '"manifest-4"' },
+      }
+    )
+    Object.defineProperty(currentResponse, 'url', {
+      value: 'https://alice.example/public/discovery/manifest',
+    })
+    const racedFetch = jestGlobal
+      .fn()
+      .mockResolvedValueOnce(currentResponse)
+      .mockResolvedValueOnce(new Response('', { status: 412 }))
+    await expect(
+      new DiscoveryManifestManager({ fetch: racedFetch }).removeManifestIfUnchanged(
+        'https://alice.example/',
+        4
+      )
+    ).resolves.toBe(false)
+  })
+
+  it('removes an ETag-stable legacy manifest during authoritative opt-out', async () => {
+    const body = `
+      @prefix nz: <https://nodezero.social/ns#> .
+      <https://alice.example/public/discovery/manifest#manifest>
+        a nz:DiscoveryManifest ;
+        nz:version 1 ;
+        nz:webId <https://alice.example/profile/card#me> ;
+        nz:publishedAt "${manifest.publishedAt}" ;
+        nz:expiresAt "${manifest.expiresAt}" .
+    `
+    const existingResponse = new Response(body, {
+      status: 200,
+      headers: { 'content-type': 'text/turtle', etag: '"legacy"' },
+    })
+    Object.defineProperty(existingResponse, 'url', {
+      value: 'https://alice.example/public/discovery/manifest',
+    })
+    const fetch = jestGlobal
+      .fn()
+      .mockResolvedValueOnce(existingResponse)
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+
+    await expect(
+      new DiscoveryManifestManager({ fetch }).removeManifestIfUnchanged(
+        'https://alice.example/',
+        10
+      )
+    ).resolves.toBe(true)
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(fetch.mock.calls[1]?.[1]?.method).toBe('DELETE')
+    const deleteInit = fetch.mock.calls[1]?.[1] as RequestInit | undefined
+    expect(new Headers(deleteInit?.headers).get('if-match')).toBe('"legacy"')
+  })
+
+  it('rejects a stale writer before overwriting a newer manifest generation', async () => {
+    const body = `
+      @prefix nz: <https://nodezero.social/ns#> .
+      <https://alice.example/public/discovery/manifest#manifest>
+        a nz:DiscoveryManifest ;
+        nz:version 1 ;
+        nz:webId <https://alice.example/profile/card#me> ;
+        nz:publicationRevision 5 ;
+        nz:publishedAt "${manifest.publishedAt}" ;
+        nz:expiresAt "${manifest.expiresAt}" .
+    `
+    const existingResponse = new Response(body, {
+      status: 200,
+      headers: { 'content-type': 'text/turtle', etag: '"manifest-5"' },
+    })
+    Object.defineProperty(existingResponse, 'url', {
+      value: 'https://alice.example/public/discovery/manifest',
+    })
+    const fetch = jestGlobal.fn().mockResolvedValueOnce(existingResponse)
+
+    await expect(
+      new DiscoveryManifestManager({ fetch }).writeManifest('https://alice.example/', {
+        ...manifest,
+        publicationRevision: 4,
+      })
+    ).rejects.toThrow('newer discovery manifest publication')
+    expect(fetch).toHaveBeenCalledTimes(1)
   })
 
   it('runs Pod bootstrap before write when enabled', async () => {

@@ -30,10 +30,8 @@ void test('parseDirectoryRecords reads members payload and filters invalid webId
     members: [
       {
         webId: 'https://solid.nodezero.social/alice/profile/card#me',
-        listed: true,
         publicInterests: ['solid', 'privacy'],
-        capabilities: ['relationship-requests'],
-        sourceRevision: '"manifest-v1"',
+        avatarUrl: 'https://alice.example/avatar.png',
         trustSignals: { verified: true },
       },
       {
@@ -44,11 +42,9 @@ void test('parseDirectoryRecords reads members payload and filters invalid webId
 
   assert.equal(parsed.length, 1)
   assert.equal(parsed[0]?.webId, 'https://solid.nodezero.social/alice/profile/card#me')
-  assert.equal(parsed[0]?.listed, true)
   assert.equal(parsed[0]?.trustSignals?.verified, true)
   assert.deepEqual(parsed[0]?.publicInterests, ['solid', 'privacy'])
-  assert.deepEqual(parsed[0]?.capabilities, ['relationship-requests'])
-  assert.equal(parsed[0]?.sourceRevision, '"manifest-v1"')
+  assert.equal(parsed[0]?.avatarUrl, 'https://alice.example/avatar.png')
 })
 
 void test('parseDirectoryPage preserves cursor and response ETag', () => {

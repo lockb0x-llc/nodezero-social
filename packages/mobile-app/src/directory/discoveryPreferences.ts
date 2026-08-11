@@ -27,10 +27,13 @@ export interface UpdateDiscoveryPreferencesInput {
   provisionerUrl: string
   authFetch: typeof globalThis.fetch
   managers: {
-    discoveryConsentManager: Pick<DiscoveryConsentManager, 'readConsent' | 'updateConsent'>
+    discoveryConsentManager: Pick<
+      DiscoveryConsentManager,
+      'readConsent' | 'updateConsent' | 'reservePublicationRevision'
+    >
     discoveryManifestManager: Pick<
       DiscoveryManifestManager,
-      'readManifest' | 'writeManifest' | 'removeManifest'
+      'readManifest' | 'writeManifest' | 'removeManifestIfUnchanged'
     >
     publicTypeIndexManager: Pick<
       PublicTypeIndexManager,
@@ -79,7 +82,11 @@ export async function updateDiscoveryPreferences(
   )
   if (input.forcePublicIndexingOff) mergedPreferences.publicIndexing = false
   if (previousConsent.publicListing && !mergedPreferences.publicListing) {
-    await suppressDirectoryProjection(input.provisionerUrl, input.authFetch).catch(() => undefined)
+    await suppressDirectoryProjection(
+      input.provisionerUrl,
+      input.authFetch,
+      previousConsent.publicationRevision ?? 0
+    )
   }
   const publish = mergedPreferences.publicListing || mergedPreferences.publicIndexing
   const privatePreferences = publish
@@ -121,12 +128,90 @@ export async function updateDiscoveryPreferences(
       : previousConsent
   publishDiscoveryConsentChanged(consent)
   if (consent.publicIndexing && input.preserveIndependentIndexingArtifacts) {
+    const publicationConsent =
+      await input.managers.discoveryConsentManager.reservePublicationRevision(
+        input.podRoot,
+        consent.publicationRevision,
+        now.toISOString()
+      )
+    publishDiscoveryConsentChanged(publicationConsent)
+    const previousManifest = await input.managers.discoveryManifestManager
+      .readManifest(input.podRoot)
+      .catch(() => null)
+    const profile = await input.managers.profileManager.readProfile(input.ownerWebId)
+    const publicTypeIndexUrl =
+      (await input.managers.publicTypeIndexManager.discoverPublicTypeIndex(input.ownerWebId)) ??
+      previousManifest?.publicTypeIndexUrl ??
+      null
+    if (!publicTypeIndexUrl) {
+      throw new DiscoveryPreferencesError(
+        'Your public Type Index is unavailable for public indexing.',
+        'type_index_sync_failed'
+      )
+    }
+    await input.managers.discoveryManifestManager.writeManifest(input.podRoot, {
+      version: 1,
+      webId: input.ownerWebId,
+      ...(typeof publicationConsent.publicationRevision === 'number'
+        ? { publicationRevision: publicationConsent.publicationRevision }
+        : {}),
+      publishedAt: now.toISOString(),
+      expiresAt: new Date(now.getTime() + MANIFEST_TTL_MS).toISOString(),
+      ...(profile?.displayName ? { displayName: profile.displayName } : {}),
+      ...(profile?.avatarUrl ? { avatarUrl: profile.avatarUrl } : {}),
+      publicTypeIndexUrl,
+      ...(previousManifest?.publicInterests
+        ? { publicInterests: previousManifest.publicInterests }
+        : {}),
+      ...(previousManifest?.capabilities
+        ? { capabilities: previousManifest.capabilities }
+        : {}),
+      ...(previousManifest?.inboxUrl ? { inboxUrl: previousManifest.inboxUrl } : {}),
+    })
+    const afterManifestConsent = await input.managers.discoveryConsentManager.readConsent(
+      input.podRoot
+    )
+    const afterManifestSuperseded = await reconcileSupersededPublication(
+      input,
+      publicationConsent,
+      afterManifestConsent,
+      [publicTypeIndexUrl, previousManifest?.publicTypeIndexUrl],
+      []
+    )
+    if (afterManifestSuperseded) return afterManifestSuperseded
+    await input.managers.publicTypeIndexManager.ensureDiscoveryManifestRegistration(
+      input.podRoot,
+      publicTypeIndexUrl,
+      `${input.podRoot.replace(/\/$/, '')}/public/discovery/manifest`,
+      publicationConsent.publicationRevision
+    )
+    const afterTypeIndexConsent = await input.managers.discoveryConsentManager.readConsent(
+      input.podRoot
+    )
+    const afterTypeIndexSuperseded = await reconcileSupersededPublication(
+      input,
+      publicationConsent,
+      afterTypeIndexConsent,
+      [publicTypeIndexUrl, previousManifest?.publicTypeIndexUrl],
+      []
+    )
+    if (afterTypeIndexSuperseded) return afterTypeIndexSuperseded
     const listed = await refreshDirectoryProjection(input.provisionerUrl, input.authFetch)
-    return { consent, listed, selectedPublicInterests: [] }
+    return { consent: publicationConsent, listed, selectedPublicInterests: [] }
   }
   if (!publish) {
+    await suppressDirectoryProjection(
+      input.provisionerUrl,
+      input.authFetch,
+      consent.publicationRevision ?? 0
+    )
     let cleanupFailed = false
     let manifestPublicTypeIndexUrl: string | null = null
+    let cleanupConsent = await input.managers.discoveryConsentManager.readConsent(input.podRoot)
+    if (isNewerPublicActivation(consent, cleanupConsent)) {
+      const listed = await refreshDirectoryProjection(input.provisionerUrl, input.authFetch)
+      return { consent: cleanupConsent, listed, selectedPublicInterests: [] }
+    }
     try {
       manifestPublicTypeIndexUrl =
         (await input.managers.discoveryManifestManager.readManifest(input.podRoot))
@@ -139,18 +224,34 @@ export async function updateDiscoveryPreferences(
         manifestPublicTypeIndexUrl ??
         (await input.managers.publicTypeIndexManager.discoverPublicTypeIndex(input.ownerWebId))
       if (publicTypeIndexUrl) {
-        await input.managers.publicTypeIndexManager.removeDiscoveryManifestRegistration(
+        const removed = await input.managers.publicTypeIndexManager.removeDiscoveryManifestRegistration(
           input.podRoot,
-          publicTypeIndexUrl
+          publicTypeIndexUrl,
+          cleanupConsent.publicationRevision ?? consent.publicationRevision ?? 0
         )
+        if (!removed) cleanupFailed = true
       }
     } catch {
       cleanupFailed = true
     }
     try {
-      await input.managers.discoveryManifestManager.removeManifest(input.podRoot)
+      cleanupConsent = await input.managers.discoveryConsentManager.readConsent(input.podRoot)
+      if (isNewerPublicActivation(consent, cleanupConsent)) {
+        const listed = await refreshDirectoryProjection(input.provisionerUrl, input.authFetch)
+        return { consent: cleanupConsent, listed, selectedPublicInterests: [] }
+      }
+      const removed = await input.managers.discoveryManifestManager.removeManifestIfUnchanged(
+        input.podRoot,
+        cleanupConsent.publicationRevision ?? consent.publicationRevision ?? 0
+      )
+      if (!removed) cleanupFailed = true
     } catch {
       cleanupFailed = true
+    }
+    cleanupConsent = await input.managers.discoveryConsentManager.readConsent(input.podRoot)
+    if (isNewerPublicActivation(consent, cleanupConsent)) {
+      const listed = await refreshDirectoryProjection(input.provisionerUrl, input.authFetch)
+      return { consent: cleanupConsent, listed, selectedPublicInterests: [] }
     }
     const listed = await refreshDirectoryProjection(input.provisionerUrl, input.authFetch)
     if (cleanupFailed) {
@@ -162,6 +263,13 @@ export async function updateDiscoveryPreferences(
     return { consent, listed, selectedPublicInterests }
   }
 
+  const publicationConsent =
+    await input.managers.discoveryConsentManager.reservePublicationRevision(
+      input.podRoot,
+      consent.publicationRevision,
+      now.toISOString()
+    )
+  publishDiscoveryConsentChanged(publicationConsent)
   const previousManifest = await input.managers.discoveryManifestManager
     .readManifest(input.podRoot)
     .catch(() => null)
@@ -175,7 +283,8 @@ export async function updateDiscoveryPreferences(
     if (!publicTypeIndexUrl && input.requirePublicTypeIndex) {
       publicTypeIndexUrl = await input.managers.publicTypeIndexManager.ensurePublicTypeIndex(
         input.podRoot,
-        input.ownerWebId
+        input.ownerWebId,
+        publicationConsent.publicationRevision ?? 0
       )
     }
   } catch {
@@ -188,24 +297,27 @@ export async function updateDiscoveryPreferences(
     await input.managers.discoveryManifestManager.writeManifest(input.podRoot, {
       version: 1,
       webId: input.ownerWebId,
+      ...(typeof publicationConsent.publicationRevision === 'number'
+        ? { publicationRevision: publicationConsent.publicationRevision }
+        : {}),
       publishedAt: now.toISOString(),
       expiresAt: new Date(now.getTime() + MANIFEST_TTL_MS).toISOString(),
       ...(profile?.displayName ? { displayName: profile.displayName } : {}),
       ...(profile?.avatarUrl ? { avatarUrl: profile.avatarUrl } : {}),
       ...(publicTypeIndexUrl ? { publicTypeIndexUrl } : {}),
-      ...(input.basicProfileOnly && consent.publicIndexing && previousManifest?.publicInterests
+      ...(input.basicProfileOnly && publicationConsent.publicIndexing && previousManifest?.publicInterests
         ? { publicInterests: previousManifest.publicInterests }
         : {}),
-      ...(input.basicProfileOnly && consent.publicIndexing && previousManifest?.capabilities
+      ...(input.basicProfileOnly && publicationConsent.publicIndexing && previousManifest?.capabilities
         ? { capabilities: previousManifest.capabilities }
         : {}),
-      ...(input.basicProfileOnly && consent.publicIndexing && previousManifest?.inboxUrl
+      ...(input.basicProfileOnly && publicationConsent.publicIndexing && previousManifest?.inboxUrl
         ? { inboxUrl: previousManifest.inboxUrl }
         : {}),
-      ...(!input.basicProfileOnly && consent.publicIndexing && selectedPublicInterests.length > 0
+      ...(!input.basicProfileOnly && publicationConsent.publicIndexing && selectedPublicInterests.length > 0
         ? { publicInterests: selectedPublicInterests }
         : {}),
-      ...(!input.basicProfileOnly && consent.publicIndexing
+      ...(!input.basicProfileOnly && publicationConsent.publicIndexing
         ? {
             capabilities: ['relationship-requests'],
             inboxUrl: `${input.podRoot.replace(/\/$/, '')}/social/inbox/`,
@@ -213,13 +325,22 @@ export async function updateDiscoveryPreferences(
         : {}),
     })
   } catch {
+    const latestConsent = await input.managers.discoveryConsentManager.readConsent(input.podRoot)
+    const superseded = await reconcileSupersededPublication(
+      input,
+      publicationConsent,
+      latestConsent,
+      [publicTypeIndexUrl, previousManifest?.publicTypeIndexUrl],
+      selectedPublicInterests
+    )
+    if (superseded) return superseded
     const rollbackPatch: Partial<Pick<DiscoveryConsent, 'publicListing' | 'publicIndexing'>> = {}
     const rollbackExpected: typeof rollbackPatch = {}
-    if (consent.publicListing && !previousConsent.publicListing) {
+    if (publicationConsent.publicListing && !previousConsent.publicListing) {
       rollbackPatch.publicListing = false
       rollbackExpected.publicListing = true
     }
-    if (consent.publicIndexing && !previousConsent.publicIndexing) {
+    if (publicationConsent.publicIndexing && !previousConsent.publicIndexing) {
       rollbackPatch.publicIndexing = false
       rollbackExpected.publicIndexing = true
     }
@@ -242,17 +363,21 @@ export async function updateDiscoveryPreferences(
   const afterManifestConsent = await input.managers.discoveryConsentManager.readConsent(
     input.podRoot
   )
-  const afterManifestOptOut = await repairConcurrentFullOptOut(input, afterManifestConsent, [
-    publicTypeIndexUrl,
-    previousManifest?.publicTypeIndexUrl,
-  ])
-  if (afterManifestOptOut) return afterManifestOptOut
+  const afterManifestSuperseded = await reconcileSupersededPublication(
+    input,
+    publicationConsent,
+    afterManifestConsent,
+    [publicTypeIndexUrl, previousManifest?.publicTypeIndexUrl],
+    selectedPublicInterests
+  )
+  if (afterManifestSuperseded) return afterManifestSuperseded
   try {
     if (publicTypeIndexUrl) {
       await input.managers.publicTypeIndexManager.ensureDiscoveryManifestRegistration(
         input.podRoot,
         publicTypeIndexUrl,
-        manifestUrl
+        manifestUrl,
+        publicationConsent.publicationRevision
       )
     }
     if (
@@ -261,7 +386,8 @@ export async function updateDiscoveryPreferences(
     ) {
       await input.managers.publicTypeIndexManager.removeDiscoveryManifestRegistration(
         input.podRoot,
-        previousManifest.publicTypeIndexUrl
+        previousManifest.publicTypeIndexUrl,
+        publicationConsent.publicationRevision ?? 0
       )
     }
   } catch {
@@ -273,13 +399,30 @@ export async function updateDiscoveryPreferences(
   const afterTypeIndexConsent = await input.managers.discoveryConsentManager.readConsent(
     input.podRoot
   )
-  const afterTypeIndexOptOut = await repairConcurrentFullOptOut(input, afterTypeIndexConsent, [
-    publicTypeIndexUrl,
-    previousManifest?.publicTypeIndexUrl,
-  ])
-  if (afterTypeIndexOptOut) return afterTypeIndexOptOut
+  const afterTypeIndexSuperseded = await reconcileSupersededPublication(
+    input,
+    publicationConsent,
+    afterTypeIndexConsent,
+    [publicTypeIndexUrl, previousManifest?.publicTypeIndexUrl],
+    selectedPublicInterests
+  )
+  if (afterTypeIndexSuperseded) return afterTypeIndexSuperseded
   const listed = await refreshDirectoryProjection(input.provisionerUrl, input.authFetch)
-  return { consent, listed, selectedPublicInterests }
+  return { consent: publicationConsent, listed, selectedPublicInterests }
+}
+
+async function reconcileSupersededPublication(
+  input: UpdateDiscoveryPreferencesInput,
+  reservedConsent: DiscoveryConsent,
+  latestConsent: DiscoveryConsent,
+  typeIndexUrls: Array<string | null | undefined>,
+  selectedPublicInterests: string[]
+): Promise<DiscoveryPreferencesResult | null> {
+  if (latestConsent.publicationRevision === reservedConsent.publicationRevision) return null
+  const optOut = await repairConcurrentFullOptOut(input, latestConsent, typeIndexUrls)
+  if (optOut) return optOut
+  const listed = await refreshDirectoryProjection(input.provisionerUrl, input.authFetch)
+  return { consent: latestConsent, listed, selectedPublicInterests }
 }
 
 async function repairConcurrentFullOptOut(
@@ -288,19 +431,30 @@ async function repairConcurrentFullOptOut(
   typeIndexUrls: Array<string | null | undefined>
 ): Promise<DiscoveryPreferencesResult | null> {
   if (consent.publicListing || consent.publicIndexing) return null
+  await suppressDirectoryProjection(
+    input.provisionerUrl,
+    input.authFetch,
+    consent.publicationRevision ?? 0
+  )
   let cleanupFailed = false
   for (const publicTypeIndexUrl of new Set(typeIndexUrls.filter(isString))) {
     try {
-      await input.managers.publicTypeIndexManager.removeDiscoveryManifestRegistration(
+      const removed = await input.managers.publicTypeIndexManager.removeDiscoveryManifestRegistration(
         input.podRoot,
-        publicTypeIndexUrl
+        publicTypeIndexUrl,
+        consent.publicationRevision ?? 0
       )
+      if (!removed) cleanupFailed = true
     } catch {
       cleanupFailed = true
     }
   }
   try {
-    await input.managers.discoveryManifestManager.removeManifest(input.podRoot)
+    const removed = await input.managers.discoveryManifestManager.removeManifestIfUnchanged(
+      input.podRoot,
+      consent.publicationRevision ?? 0
+    )
+    if (!removed) cleanupFailed = true
   } catch {
     cleanupFailed = true
   }
@@ -316,6 +470,13 @@ async function repairConcurrentFullOptOut(
 
 function isString(value: string | null | undefined): value is string {
   return typeof value === 'string'
+}
+
+function isNewerPublicActivation(baseline: DiscoveryConsent, candidate: DiscoveryConsent): boolean {
+  return (
+    (candidate.publicationRevision ?? 0) > (baseline.publicationRevision ?? 0) &&
+    (candidate.publicListing || candidate.publicIndexing)
+  )
 }
 
 function mergeConsentChanges(
@@ -410,7 +571,8 @@ export async function refreshDirectoryProjection(
 
 export async function suppressDirectoryProjection(
   provisionerUrl: string,
-  authFetch: typeof globalThis.fetch
+  authFetch: typeof globalThis.fetch,
+  expectedPublicationRevision: number
 ): Promise<void> {
   const baseUrl = provisionerUrl.trim().replace(/\/+$/, '')
   if (!baseUrl) {
@@ -423,7 +585,10 @@ export async function suppressDirectoryProjection(
   try {
     response = await authFetch(`${baseUrl}/v1/community-directory/suppress`, {
       method: 'POST',
-      headers: { accept: 'application/json' },
+      headers: {
+        accept: 'application/json',
+        'x-nodezero-publication-revision': String(expectedPublicationRevision),
+      },
     })
   } catch {
     throw new DiscoveryPreferencesError(

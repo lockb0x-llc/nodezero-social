@@ -1,5 +1,6 @@
 import {
   getSolidDataset,
+  getSourceUrl,
   saveSolidDatasetAt,
   solidDatasetAsTurtle,
   type SolidDataset,
@@ -32,20 +33,31 @@ export async function saveSolidDatasetWithPatchFallback(
   datasetUrl: string,
   dataset: SolidDataset,
   fetchImpl: typeof globalThis.fetch,
-  etag: string | null
+  etag: string | null,
+  mutationHeaders: Record<string, string> = {}
 ): Promise<void> {
+  if (getSourceUrl(dataset) && !etag) {
+    throw new Error('Solid dataset is missing an ETag; refusing an unsafe update.')
+  }
   const compatibleFetch: typeof globalThis.fetch = async (input, init) => {
-    const response = await fetchImpl(input, init)
-    if (
-      (init?.method ?? 'GET').toUpperCase() !== 'PATCH' ||
-      ![405, 415, 501].includes(response.status)
-    ) {
+    const method = (init?.method ?? 'GET').toUpperCase()
+    const headers = new Headers(init?.headers)
+    for (const [name, value] of Object.entries(mutationHeaders)) headers.set(name, value)
+    if (method === 'PATCH' && etag) headers.set('if-match', etag)
+    if (method === 'PUT' && !etag) headers.set('if-none-match', '*')
+    const guardedInit = { ...init, method, headers }
+    const response = await fetchImpl(input, guardedInit)
+    if (method !== 'PATCH' || ![405, 415, 501].includes(response.status)) {
       return response
     }
     if (!etag) throw new Error('Solid dataset is missing an ETag; refusing an unsafe replacement.')
     return fetchImpl(input, {
       method: 'PUT',
-      headers: { 'content-type': 'text/turtle', 'if-match': etag },
+      headers: {
+        'content-type': 'text/turtle',
+        'if-match': etag,
+        ...mutationHeaders,
+      },
       body: await solidDatasetAsTurtle(dataset),
     })
   }

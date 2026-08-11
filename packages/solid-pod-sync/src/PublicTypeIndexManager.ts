@@ -2,9 +2,11 @@ import {
   buildThing,
   createSolidDataset,
   createThing,
+  getInteger,
   getThing,
   getThingAll,
   getUrl,
+  getUrlAll,
   removeThing,
   setThing,
   type SolidDataset,
@@ -27,10 +29,12 @@ const SOLID_LISTED_DOCUMENT = 'http://www.w3.org/ns/solid/terms#ListedDocument'
 const SOLID_TYPE_REGISTRATION = 'http://www.w3.org/ns/solid/terms#TypeRegistration'
 const SOLID_FOR_CLASS = 'http://www.w3.org/ns/solid/terms#forClass'
 const SOLID_INSTANCE = 'http://www.w3.org/ns/solid/terms#instance'
+const NZ_PUBLICATION_REVISION = 'https://nodezero.social/ns#publicationRevision'
 
 export interface PublicTypeRegistration {
   forClass: string
   instance: string
+  publicationRevision?: number
 }
 
 export class PublicTypeIndexManager {
@@ -38,12 +42,22 @@ export class PublicTypeIndexManager {
 
   async discoverPublicTypeIndex(webId: string): Promise<string | null> {
     const profileUrl = webId.split('#')[0]
-    const dataset = (await getSolidDatasetSnapshot(profileUrl, this.session.fetch)).dataset
+    let dataset: SolidDataset
+    try {
+      dataset = (await getSolidDatasetSnapshot(profileUrl, this.session.fetch)).dataset
+    } catch (error) {
+      if (isNotFoundError(error)) return null
+      throw error
+    }
     const profile = getThing(dataset, webId)
     return profile ? getUrl(profile, SOLID_PUBLIC_TYPE_INDEX) : null
   }
 
-  async ensurePublicTypeIndex(podRoot: string, webId: string): Promise<string> {
+  async ensurePublicTypeIndex(
+    podRoot: string,
+    webId: string,
+    publicationRevision: number
+  ): Promise<string> {
     const profileUrl = webId.split('#')[0]
     assertOwnedResource(profileUrl, podRoot, 'webId')
 
@@ -63,7 +77,8 @@ export class PublicTypeIndexManager {
       profileUrl,
       updatedDataset,
       this.session.fetch,
-      snapshot.etag
+      snapshot.etag,
+      { 'x-nodezero-publication-revision': String(publicationRevision) }
     )
 
     return publicTypeIndexUrl
@@ -72,7 +87,8 @@ export class PublicTypeIndexManager {
   async ensureDiscoveryManifestRegistration(
     podRoot: string,
     publicTypeIndexUrl: string,
-    discoveryManifestUrl: string
+    discoveryManifestUrl: string,
+    publicationRevision?: number
   ): Promise<string> {
     assertOwnedResource(publicTypeIndexUrl, podRoot, 'publicTypeIndexUrl')
     assertOwnedResource(discoveryManifestUrl, podRoot, 'discoveryManifestUrl')
@@ -93,6 +109,16 @@ export class PublicTypeIndexManager {
     const registrationUrl = `${publicTypeIndexUrl}#nodezero-discovery-manifest`
     const existingRegistration =
       getThing(dataset, registrationUrl) ?? createThing({ url: registrationUrl })
+    const currentPublicationRevision = getInteger(
+      existingRegistration,
+      NZ_PUBLICATION_REVISION
+    )
+    if (
+      currentPublicationRevision !== null &&
+      (publicationRevision === undefined || currentPublicationRevision > publicationRevision)
+    ) {
+      throw new Error('A newer discovery Type Index registration already exists.')
+    }
 
     const updatedIndex = buildThing(indexThing)
       .addUrl(RDF_TYPE, SOLID_TYPE_INDEX)
@@ -106,45 +132,87 @@ export class PublicTypeIndexManager {
       .setUrl(SOLID_FOR_CLASS, DISCOVERY_MANIFEST_CLASS)
       .setUrl(SOLID_INSTANCE, discoveryManifestUrl)
       .build()
+    const revisionedRegistration =
+      publicationRevision === undefined
+        ? updatedRegistration
+        : buildThing(updatedRegistration)
+            .setInteger(NZ_PUBLICATION_REVISION, publicationRevision)
+            .build()
 
     let updated = setThing(dataset, updatedIndex)
-    updated = setThing(updated, updatedRegistration)
-    await saveSolidDatasetWithPatchFallback(publicTypeIndexUrl, updated, this.session.fetch, etag)
+    updated = setThing(updated, revisionedRegistration)
+    await saveSolidDatasetWithPatchFallback(
+      publicTypeIndexUrl,
+      updated,
+      this.session.fetch,
+      etag,
+      { 'x-nodezero-publication-revision': String(publicationRevision ?? 0) }
+    )
 
     return registrationUrl
   }
 
   async removeDiscoveryManifestRegistration(
     podRoot: string,
-    publicTypeIndexUrl: string
-  ): Promise<void> {
+    publicTypeIndexUrl: string,
+    maximumPublicationRevision?: number
+  ): Promise<boolean> {
     assertOwnedResource(publicTypeIndexUrl, podRoot, 'publicTypeIndexUrl')
     let snapshot
     try {
       snapshot = await getSolidDatasetSnapshot(publicTypeIndexUrl, this.session.fetch)
     } catch (error) {
-      if (isNotFoundError(error)) return
+      if (isNotFoundError(error)) return true
       throw error
     }
     const dataset: SolidDataset & Partial<WithServerResourceInfo> = snapshot.dataset
     const registrationUrl = `${publicTypeIndexUrl}#nodezero-discovery-manifest`
-    if (!getThing(dataset, registrationUrl)) return
+    const registration = getThing(dataset, registrationUrl)
+    if (!registration) return true
+    if (maximumPublicationRevision !== undefined) {
+      const publicationRevision = getInteger(registration, NZ_PUBLICATION_REVISION)
+      if (publicationRevision !== null && publicationRevision > maximumPublicationRevision) {
+        return false
+      }
+    }
     await saveSolidDatasetWithPatchFallback(
       publicTypeIndexUrl,
       removeThing(dataset, registrationUrl),
       this.session.fetch,
-      snapshot.etag
+      snapshot.etag,
+      {
+        'x-nodezero-publication-revision': String(maximumPublicationRevision ?? 0),
+      }
     )
+    return true
   }
 
-  async listRegistrations(publicTypeIndexUrl: string): Promise<PublicTypeRegistration[]> {
+  async listRegistrations(
+    publicTypeIndexUrl: string,
+    options: { requirePublicIndexTypes?: boolean } = {}
+  ): Promise<PublicTypeRegistration[]> {
     const dataset = (await getSolidDatasetSnapshot(publicTypeIndexUrl, this.session.fetch)).dataset
+    const indexThing = getThing(dataset, publicTypeIndexUrl)
+    const indexTypes = indexThing ? getUrlAll(indexThing, RDF_TYPE) : []
+    if (
+      options.requirePublicIndexTypes &&
+      (!indexTypes.includes(SOLID_TYPE_INDEX) || !indexTypes.includes(SOLID_LISTED_DOCUMENT))
+    ) {
+      throw new Error('The public Type Index document is missing its required Solid types.')
+    }
     const registrations: PublicTypeRegistration[] = []
     for (const thing of getThingAll(dataset)) {
       if (getUrl(thing, RDF_TYPE) !== SOLID_TYPE_REGISTRATION) continue
       const forClass = getUrl(thing, SOLID_FOR_CLASS)
       const instance = getUrl(thing, SOLID_INSTANCE)
-      if (forClass && instance) registrations.push({ forClass, instance })
+      const publicationRevision = getInteger(thing, NZ_PUBLICATION_REVISION)
+      if (forClass && instance) {
+        registrations.push({
+          forClass,
+          instance,
+          ...(publicationRevision !== null ? { publicationRevision } : {}),
+        })
+      }
     }
     return registrations.sort((left, right) => left.forClass.localeCompare(right.forClass))
   }

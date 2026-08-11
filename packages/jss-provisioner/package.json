@@ -3,6 +3,9 @@
   "version": "0.0.1",
   "description": "JSS provisioning and custody attestation API",
   "license": "MIT",
+  "engines": {
+    "node": ">=22.19.0"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
@@ -22,10 +25,14 @@
   "dependencies": {
     "@nodezero/solid-pod-sync": "workspace:*",
     "@stellar/stellar-sdk": "^16.0.0",
-    "snarkjs": "0.7.5"
+    "rdf-parse": "^5.0.0",
+    "snarkjs": "0.7.5",
+    "sparqljs": "^3.7.4"
   },
   "devDependencies": {
+    "@rdfjs/types": "^2.0.1",
     "@types/node": "^20.14.0",
+    "@types/sparqljs": "^3.1.12",
     "tsx": "^4.19.2",
     "typescript": "^5.4.5"
   }

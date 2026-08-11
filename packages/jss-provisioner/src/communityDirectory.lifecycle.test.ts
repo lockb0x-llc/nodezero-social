@@ -1,5 +1,5 @@
 import { strict as assert } from 'node:assert'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -26,7 +26,8 @@ function publishListedRecord(store: CommunityDirectoryStore, webId: string, podU
     issuer: 'https://solid.nodezero.social',
     publicListing: true,
     publicIndexing: false,
-    consentUpdatedAt: now.toISOString(),
+    publicationRevision: 1,
+    publicationUpdatedAt: now.toISOString(),
     manifestUrl: `${podUrl}public/discovery/manifest`,
     manifest: {
       publishedAt: now.toISOString(),
@@ -75,10 +76,9 @@ void test('opt-in publishes record to public index', () => {
     const updated = store.getByWebId(seededWebId)
     assert.equal(updated?.listed, true)
 
-    const index = store.buildPublicIndex()
-    assert.equal(index.members.length, 1)
-    assert.equal(index.members[0]?.webId, seededWebId)
-    assert.equal(index.members[0]?.listed, true)
+    const page = store.buildPublicPage({ now })
+    assert.equal(page.members.length, 1)
+    assert.equal(page.members[0]?.webId, seededWebId)
   })
 })
 
@@ -112,11 +112,35 @@ void test('store persists records across re-initialization', () => {
     publishListedRecord(store, seededWebId, 'https://solid.nodezero.social/lifecycle-user/')
 
     const rehydrated = new CommunityDirectoryStore({ persistenceFilePath: path })
-    const index = rehydrated.buildPublicIndex()
+    const index = rehydrated.buildPublicPage({ now })
 
     assert.equal(index.members.length, 1)
     assert.equal(index.members[0]?.webId, seededWebId)
-    assert.equal(index.members[0]?.listed, true)
+  })
+})
+
+void test('rehydrated generationless legacy listings remain private', () => {
+  withStore((_store, path) => {
+    writeFileSync(
+      path,
+      JSON.stringify({
+        version: 1,
+        records: [
+          {
+            webId: seededWebId,
+            podUrl: 'https://solid.nodezero.social/lifecycle-user/',
+            issuer: 'https://solid.nodezero.social',
+            listed: true,
+            updatedAt: now.toISOString(),
+            manifestExpiresAt: '2026-08-09T00:00:00.000Z',
+          },
+        ],
+      }),
+      'utf8'
+    )
+
+    const rehydrated = new CommunityDirectoryStore({ persistenceFilePath: path })
+    assert.deepEqual(rehydrated.buildPublicPage({ now }).members, [])
   })
 })
 
@@ -128,7 +152,8 @@ void test('manifest projection publishes only allowlisted public fields and prov
       issuer: 'https://solid.nodezero.social',
       publicListing: true,
       publicIndexing: true,
-      consentUpdatedAt: '2026-08-01T12:00:00.000Z',
+      publicationRevision: 1,
+      publicationUpdatedAt: '2026-08-01T12:00:00.000Z',
       manifestUrl: 'https://solid.nodezero.social/lifecycle-user/public/discovery/manifest',
       sourceRevision: '"manifest-v1"',
       manifest: {
@@ -151,6 +176,12 @@ void test('manifest projection publishes only allowlisted public fields and prov
     assert.equal('privateInterests' in projected, false)
     assert.equal('blockedWebIds' in projected, false)
     assert.equal('trustCircleMembers' in projected, false)
+    const publicRecord = store.buildPublicPage({ now: new Date('2026-08-02T00:00:00.000Z') })
+      .members[0]
+    assert.deepEqual(Object.keys(publicRecord ?? {}).sort(), [
+      'displayName',
+      'webId',
+    ])
   })
 })
 
@@ -162,7 +193,7 @@ void test('consent opt-out immediately removes the projection and clears public 
       issuer: 'https://solid.nodezero.social',
       publicListing: true,
       publicIndexing: true,
-      consentUpdatedAt: '2026-08-01T12:00:00.000Z',
+      publicationUpdatedAt: '2026-08-01T12:00:00.000Z',
       manifestUrl: 'https://solid.nodezero.social/lifecycle-user/public/discovery/manifest',
       manifest: {
         publishedAt: '2026-08-01T12:00:00.000Z',
@@ -176,7 +207,7 @@ void test('consent opt-out immediately removes the projection and clears public 
     const removed = store.refreshProjection({
       ...base,
       publicListing: false,
-      consentUpdatedAt: '2026-08-02T01:00:00.000Z',
+      publicationUpdatedAt: '2026-08-02T01:00:00.000Z',
     })
 
     assert.equal(removed.listed, false)
@@ -194,7 +225,7 @@ void test('missing or expired manifests cannot remain publicly projected', () =>
       issuer: 'https://solid.nodezero.social',
       publicListing: true,
       publicIndexing: true,
-      consentUpdatedAt: '2026-08-01T12:00:00.000Z',
+      publicationUpdatedAt: '2026-08-01T12:00:00.000Z',
       manifestUrl: 'https://solid.nodezero.social/lifecycle-user/public/discovery/manifest',
       now: new Date('2026-08-02T00:00:00.000Z'),
     }
@@ -221,7 +252,7 @@ void test('far-future and overlong manifests cannot enter the public projection'
       issuer: 'https://solid.nodezero.social',
       publicListing: true,
       publicIndexing: false,
-      consentUpdatedAt: now.toISOString(),
+      publicationUpdatedAt: now.toISOString(),
       manifestUrl: 'https://solid.nodezero.social/lifecycle-user/public/discovery/manifest',
       now,
     }
@@ -254,7 +285,8 @@ void test('listing and indexing independently control membership and projected m
       webId: seededWebId,
       podUrl: 'https://solid.nodezero.social/lifecycle-user/',
       issuer: 'https://solid.nodezero.social',
-      consentUpdatedAt: '2026-08-01T12:00:00.000Z',
+      publicationRevision: 1,
+      publicationUpdatedAt: '2026-08-01T12:00:00.000Z',
       manifestUrl: 'https://solid.nodezero.social/lifecycle-user/public/discovery/manifest',
       manifest: {
         publishedAt: '2026-08-01T12:00:00.000Z',
@@ -335,7 +367,8 @@ void test('removal tombstones remain internal and never appear in public pages',
       issuer: 'https://solid.nodezero.social',
       publicListing: true,
       publicIndexing: true,
-      consentUpdatedAt: '2026-08-01T12:00:00.000Z',
+      publicationRevision: 1,
+      publicationUpdatedAt: '2026-08-01T12:00:00.000Z',
       manifestUrl: 'https://solid.nodezero.social/lifecycle-user/public/discovery/manifest',
       manifest: {
         publishedAt: '2026-08-01T12:00:00.000Z',
@@ -351,7 +384,8 @@ void test('removal tombstones remain internal and never appear in public pages',
       issuer: 'https://solid.nodezero.social',
       publicListing: false,
       publicIndexing: false,
-      consentUpdatedAt: '2026-08-02T00:00:00.000Z',
+      publicationRevision: 2,
+      publicationUpdatedAt: '2026-08-02T00:00:00.000Z',
       manifestUrl: 'https://solid.nodezero.social/lifecycle-user/public/discovery/manifest',
       manifest: null,
       now: new Date('2026-08-02T00:00:00.000Z'),
@@ -421,7 +455,7 @@ void test('a failed durable opt-out is immediately suppressed from public pages'
     issuer: 'https://solid.nodezero.social',
     listed: true,
     updatedAt: '2026-08-02T01:00:00.000Z',
-    consentUpdatedAt: '2026-08-02T01:00:00.000Z',
+    publicationUpdatedAt: '2026-08-02T01:00:00.000Z',
     manifestExpiresAt: '2026-08-09T01:00:00.000Z',
   }
   const persistence: CommunityDirectoryPersistence = {
@@ -438,7 +472,7 @@ void test('a failed durable opt-out is immediately suppressed from public pages'
     issuer: stored.issuer,
     publicListing: false,
     publicIndexing: false,
-    consentUpdatedAt: '2026-08-02T02:00:00.000Z',
+    publicationUpdatedAt: '2026-08-02T02:00:00.000Z',
     manifest: null,
     manifestUrl: `${stored.podUrl}public/discovery/manifest`,
     now: new Date('2026-08-02T02:00:00.000Z'),
@@ -476,8 +510,8 @@ void test('explicit suppression hides a durable listing before persistence compl
     issuer: 'https://solid.nodezero.social',
     publicListing: true,
     publicIndexing: false,
-    consentRevision: 1,
-    consentUpdatedAt: now.toISOString(),
+    publicationRevision: 1,
+    publicationUpdatedAt: now.toISOString(),
     manifestUrl: 'https://solid.nodezero.social/lifecycle-user/public/discovery/manifest',
     manifest: {
       publishedAt: now.toISOString(),
@@ -500,14 +534,14 @@ void test('an older full scan cannot overwrite a newer targeted opt-out', async 
     issuer: 'https://solid.nodezero.social',
     listed: true,
     updatedAt: '2026-08-02T01:00:00.000Z',
-    consentUpdatedAt: '2026-08-02T01:00:00.000Z',
+    publicationUpdatedAt: '2026-08-02T01:00:00.000Z',
     manifestExpiresAt: '2026-08-09T01:00:00.000Z',
   }
   const newerOptOut = {
     ...olderOptIn,
     listed: false,
     updatedAt: '2026-08-02T02:00:00.000Z',
-    consentUpdatedAt: '2026-08-02T02:00:00.000Z',
+    publicationUpdatedAt: '2026-08-02T02:00:00.000Z',
   }
   let releaseScan: ((records: (typeof olderOptIn)[]) => void) | null = null
   const persistence: CommunityDirectoryPersistence = {
@@ -552,7 +586,8 @@ void test('pending and failed durable opt-ins never enter public pages', async (
     issuer: 'https://solid.nodezero.social',
     publicListing: true,
     publicIndexing: false,
-    consentUpdatedAt: '2026-08-02T00:00:00.000Z',
+    publicationRevision: 1,
+    publicationUpdatedAt: '2026-08-02T00:00:00.000Z',
     manifestUrl: 'https://solid.nodezero.social/lifecycle-user/public/discovery/manifest',
     manifest: {
       publishedAt: '2026-08-02T00:00:00.000Z',
@@ -569,6 +604,125 @@ void test('pending and failed durable opt-ins never enter public pages', async (
   assert.deepEqual(store.buildPublicPage({ now }).members, [])
 })
 
+void test('same-generation completion replaces an incomplete projection', () => {
+  withStore((store) => {
+    const base = {
+      webId: seededWebId,
+      podUrl: 'https://solid.nodezero.social/lifecycle-user/',
+      issuer: 'https://solid.nodezero.social',
+      publicListing: true,
+      publicIndexing: false,
+      publicationUpdatedAt: now.toISOString(),
+      publicationRevision: 4,
+      manifestUrl: 'https://solid.nodezero.social/lifecycle-user/public/discovery/manifest',
+      now,
+    }
+    store.refreshProjection({ ...base, manifest: null })
+    store.refreshProjection({
+      ...base,
+      manifest: {
+        publishedAt: now.toISOString(),
+        expiresAt: '2026-08-09T00:00:00.000Z',
+        displayName: 'Alice',
+      },
+    })
+    assert.equal(store.buildPublicPage({ now }).members[0]?.displayName, 'Alice')
+  })
+})
+
+void test('suppression blocks same-generation relisting until a newer generation wins', () => {
+  withStore((store) => {
+    const base = {
+      webId: seededWebId,
+      podUrl: 'https://solid.nodezero.social/lifecycle-user/',
+      issuer: 'https://solid.nodezero.social',
+      publicListing: true,
+      publicIndexing: false,
+      publicationUpdatedAt: now.toISOString(),
+      publicationRevision: 4,
+      manifestUrl: 'https://solid.nodezero.social/lifecycle-user/public/discovery/manifest',
+      manifest: {
+        publishedAt: now.toISOString(),
+        expiresAt: '2026-08-09T00:00:00.000Z',
+        displayName: 'Alice',
+      },
+      now,
+    }
+    store.refreshProjection({ ...base, suppressed: true })
+    store.refreshProjection(base)
+    assert.deepEqual(store.buildPublicPage({ now }).members, [])
+    store.refreshProjection({
+      ...base,
+      publicationRevision: 5,
+      publicationUpdatedAt: '2026-08-02T00:01:00.000Z',
+    })
+    assert.equal(store.buildPublicPage({ now }).members.length, 1)
+  })
+})
+
+void test('stale suppression cannot overwrite a newer committed listing', () => {
+  withStore((store) => {
+    const base = {
+      webId: seededWebId,
+      podUrl: 'https://solid.nodezero.social/lifecycle-user/',
+      issuer: 'https://solid.nodezero.social',
+      publicListing: true,
+      publicIndexing: false,
+      publicationUpdatedAt: '2026-08-02T00:01:00.000Z',
+      publicationRevision: 5,
+      manifestUrl: 'https://solid.nodezero.social/lifecycle-user/public/discovery/manifest',
+      manifest: {
+        publishedAt: now.toISOString(),
+        expiresAt: '2026-08-09T00:00:00.000Z',
+        displayName: 'Alice',
+      },
+      now,
+    }
+    store.refreshProjection(base)
+    store.refreshProjection({
+      ...base,
+      publicationRevision: 4,
+      publicationUpdatedAt: '2026-08-02T00:00:00.000Z',
+      manifest: null,
+      suppressed: true,
+    })
+    assert.equal(store.buildPublicPage({ now }).members.length, 1)
+  })
+})
+
+void test('generationless authoritative opt-out suppresses an existing generated listing', () => {
+  withStore((store) => {
+    const base = {
+      webId: seededWebId,
+      podUrl: 'https://solid.nodezero.social/lifecycle-user/',
+      issuer: 'https://solid.nodezero.social',
+      publicListing: true,
+      publicIndexing: false,
+      publicationUpdatedAt: '2026-08-02T00:01:00.000Z',
+      publicationRevision: 5,
+      manifestUrl: 'https://solid.nodezero.social/lifecycle-user/public/discovery/manifest',
+      manifest: {
+        publishedAt: now.toISOString(),
+        expiresAt: '2026-08-09T00:00:00.000Z',
+      },
+      now,
+    }
+    store.refreshProjection(base)
+    const { publicationRevision, ...generationlessBase } = base
+    assert.equal(publicationRevision, 5)
+    const suppressed = store.refreshProjection({
+      ...generationlessBase,
+      publicListing: false,
+      publicationUpdatedAt: now.toISOString(),
+      manifest: null,
+      suppressed: true,
+    })
+    assert.equal(suppressed.listed, false)
+    assert.equal(suppressed.suppressionRevision, 5)
+    assert.deepEqual(store.buildPublicPage({ now }).members, [])
+  })
+})
+
 void test('a durable listing disappears when its manifest expires after publication', () => {
   withStore((store) => {
     store.refreshProjection({
@@ -577,7 +731,8 @@ void test('a durable listing disappears when its manifest expires after publicat
       issuer: 'https://solid.nodezero.social',
       publicListing: true,
       publicIndexing: false,
-      consentUpdatedAt: '2026-08-02T00:00:00.000Z',
+      publicationRevision: 1,
+      publicationUpdatedAt: '2026-08-02T00:00:00.000Z',
       manifestUrl: 'https://solid.nodezero.social/lifecycle-user/public/discovery/manifest',
       manifest: {
         publishedAt: '2026-08-02T00:00:00.000Z',

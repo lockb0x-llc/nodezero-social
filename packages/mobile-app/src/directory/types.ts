@@ -2,16 +2,7 @@ export interface DirectoryRecord {
   webId: string
   displayName?: string
   avatarUrl?: string
-  podUrl?: string
-  issuer?: string
-  listed?: boolean
-  listedAt?: string
-  updatedAt?: string
   publicInterests?: string[]
-  capabilities?: string[]
-  inboxUrl?: string
-  manifestExpiresAt?: string
-  sourceRevision?: string
   trustSignals?: {
     verified?: boolean
   }

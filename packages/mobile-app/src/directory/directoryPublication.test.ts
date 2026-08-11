@@ -75,10 +75,34 @@ function setup(
           readConsent: async () => consent,
           updateConsent: async (_root, patch, updatedAt) => {
             calls.push(`consent:${String(patch.publicListing)}:${String(patch.publicIndexing)}`)
+            const publicationChanged =
+              (patch.publicListing !== undefined &&
+                patch.publicListing !== consent.publicListing) ||
+              (patch.publicIndexing !== undefined &&
+                patch.publicIndexing !== consent.publicIndexing)
             consent = {
               ...consent,
               ...patch,
               revision: (consent.revision ?? 0) + 1,
+              ...(publicationChanged
+                ? {
+                    publicationRevision: (consent.publicationRevision ?? 0) + 1,
+                    publicationUpdatedAt: updatedAt ?? now.toISOString(),
+                  }
+                : {}),
+              updatedAt: updatedAt ?? now.toISOString(),
+            }
+            return consent
+          },
+          reservePublicationRevision: async (_root, expected, updatedAt) => {
+            if (expected !== undefined && (consent.publicationRevision ?? 0) !== expected) {
+              throw new Error('Discovery publication changed concurrently; retry the operation.')
+            }
+            consent = {
+              ...consent,
+              revision: (consent.revision ?? 0) + 1,
+              publicationRevision: (consent.publicationRevision ?? 0) + 1,
+              publicationUpdatedAt: updatedAt,
               updatedAt: updatedAt ?? now.toISOString(),
             }
             return consent
@@ -86,8 +110,9 @@ function setup(
         },
         discoveryManifestManager: {
           readManifest: async () => overrides.manifest ?? null,
-          removeManifest: async () => {
+          removeManifestIfUnchanged: async () => {
             calls.push('manifest:remove')
+            return true
           },
           writeManifest: async (_root, manifest) => {
             calls.push('manifest:write')
@@ -107,6 +132,7 @@ function setup(
           },
           removeDiscoveryManifestRegistration: async () => {
             calls.push('type-index:remove')
+            return true
           },
         },
         profileManager: {
@@ -140,11 +166,44 @@ void test('publishes only the basic persisted profile fields', async () => {
 
 void test('provisions a public Type Index when publishing a fresh profile', async () => {
   const { input, calls, manifests } = setup()
+  let pointerPublicationRevision: number | undefined
   input.managers.publicTypeIndexManager.discoverPublicTypeIndex = async () => null
+  input.managers.publicTypeIndexManager.ensurePublicTypeIndex = async (
+    _root,
+    _webId,
+    publicationRevision
+  ) => {
+    pointerPublicationRevision = publicationRevision
+    calls.push('type-index:ensure')
+    return `${podRoot}public/discovery/type-index`
+  }
   const outcome = await publishBasicDirectoryProfile(input)
   assert.deepEqual(outcome, { status: 'published', listed: true })
   assert.equal(calls.includes('type-index:ensure'), true)
+  assert.equal(pointerPublicationRevision, 2)
   assert.equal(manifests[0]?.publicTypeIndexUrl, `${podRoot}public/discovery/type-index`)
+})
+
+void test('maintenance self-migrates a generationless public listing', async () => {
+  const manifest: DiscoveryManifest = {
+    version: 1,
+    webId: ownerWebId,
+    displayName: 'Alice',
+    avatarUrl: 'https://alice.example/avatar.png',
+    publicTypeIndexUrl: `${podRoot}settings/publicTypeIndex`,
+    publishedAt: now.toISOString(),
+    expiresAt: new Date(now.getTime() + 4 * 24 * 60 * 60_000).toISOString(),
+  }
+  const { input, manifests } = setup({
+    consent: { publicListing: true },
+    manifest,
+  })
+
+  assert.deepEqual(await maintainDirectoryPublication(input), {
+    status: 'published',
+    listed: true,
+  })
+  assert.equal(manifests[0]?.publicationRevision, 1)
 })
 
 void test('reports pending synchronization when public Type Index provisioning fails', async () => {
@@ -263,7 +322,7 @@ void test('maintenance preserves pending unpublish when manifest cleanup still f
     expiresAt: new Date(now.getTime() + 4 * 24 * 60 * 60_000).toISOString(),
   }
   const { input } = setup({ manifest: staleManifest })
-  input.managers.discoveryManifestManager.removeManifest = async () => {
+  input.managers.discoveryManifestManager.removeManifestIfUnchanged = async () => {
     throw new Error('delete unavailable')
   }
   const outcome = await maintainDirectoryPublication(input)
@@ -275,13 +334,17 @@ void test('renews only missing, changed, or near-expiry manifests', async () => 
   const currentManifest: DiscoveryManifest = {
     version: 1,
     webId: ownerWebId,
+    publicationRevision: 0,
     displayName: 'Alice',
     avatarUrl: 'https://alice.example/avatar.png',
     publicTypeIndexUrl: `${podRoot}settings/publicTypeIndex`,
     publishedAt: now.toISOString(),
     expiresAt: new Date(now.getTime() + 4 * 24 * 60 * 60_000).toISOString(),
   }
-  const current = setup({ consent: { publicListing: true }, manifest: currentManifest })
+  const current = setup({
+    consent: { publicListing: true, publicationRevision: 0 },
+    manifest: currentManifest,
+  })
   assert.deepEqual(await maintainDirectoryPublication(current.input), {
     status: 'published',
     listed: true,
@@ -289,7 +352,7 @@ void test('renews only missing, changed, or near-expiry manifests', async () => 
   assert.deepEqual(current.calls, ['type-index:register'])
 
   const expiring = setup({
-    consent: { publicListing: true },
+    consent: { publicListing: true, publicationRevision: 0 },
     manifest: {
       ...currentManifest,
       expiresAt: new Date(now.getTime() + 24 * 60 * 60_000).toISOString(),
@@ -301,10 +364,11 @@ void test('renews only missing, changed, or near-expiry manifests', async () => 
 
 void test('maintenance preserves independent indexing artifacts outside the Directory projection', async () => {
   const { input, manifests } = setup({
-    consent: { publicListing: true, publicIndexing: true },
+    consent: { publicListing: true, publicIndexing: true, publicationRevision: 0 },
     manifest: {
       version: 1,
       webId: ownerWebId,
+      publicationRevision: 0,
       displayName: 'Alice',
       avatarUrl: 'https://alice.example/avatar.png',
       publicTypeIndexUrl: `${podRoot}settings/publicTypeIndex`,
@@ -406,7 +470,7 @@ void test('serializes renewal and unpublish so opt-out wins', async () => {
 })
 
 void test('coalesces duplicate background maintenance for one account', async () => {
-  const { input } = setup()
+  const { input } = setup({ consent: { publicIndexing: true } })
   let releaseConsent: (() => void) | undefined
   const consentReady = new Promise<void>((resolve) => {
     releaseConsent = resolve
@@ -425,4 +489,190 @@ void test('coalesces duplicate background maintenance for one account', async ()
   releaseConsent?.()
   await Promise.all([first, duplicate])
   assert.equal(consentReads, 1)
+})
+
+void test('stale unlisting maintenance preserves a newer concurrent opt-in', async () => {
+  const { input, calls } = setup()
+  let consent: DiscoveryConsent = {
+    version: 1,
+    revision: 4,
+    publicationRevision: 4,
+    ownerWebId,
+    publicListing: false,
+    publicIndexing: false,
+    nearbyPresence: false,
+    inboundContactRequests: false,
+    localBroadcasts: false,
+    updatedAt: now.toISOString(),
+  }
+  const newerManifest: DiscoveryManifest = {
+    version: 1,
+    webId: ownerWebId,
+    publicationRevision: 5,
+    displayName: 'Alice',
+    avatarUrl: 'https://alice.example/avatar.png',
+    publicTypeIndexUrl: `${podRoot}settings/publicTypeIndex`,
+    publishedAt: now.toISOString(),
+    expiresAt: new Date(now.getTime() + 4 * 24 * 60 * 60_000).toISOString(),
+  }
+  let manifestReads = 0
+  input.managers.discoveryConsentManager.readConsent = async () => consent
+  input.managers.discoveryManifestManager.readManifest = async () => {
+    manifestReads += 1
+    if (manifestReads === 1) {
+      consent = { ...consent, revision: 5, publicationRevision: 5, publicListing: true }
+    }
+    return newerManifest
+  }
+  input.managers.discoveryManifestManager.removeManifestIfUnchanged = async () => {
+    throw new Error('A newer manifest must not be removed.')
+  }
+  input.authFetch = async (request) =>
+    new Response(
+      JSON.stringify({ listed: !String(request).endsWith('/v1/community-directory/suppress') })
+    )
+
+  assert.deepEqual(await maintainDirectoryPublication(input), {
+    status: 'published',
+    listed: true,
+  })
+  assert.equal(calls.includes('manifest:remove'), false)
+})
+
+void test('conditional manifest delete conflict reconciles the winning opt-in', async () => {
+  const { input } = setup()
+  let consent: DiscoveryConsent = {
+    version: 1,
+    revision: 4,
+    publicationRevision: 4,
+    ownerWebId,
+    publicListing: false,
+    publicIndexing: false,
+    nearbyPresence: false,
+    inboundContactRequests: false,
+    localBroadcasts: false,
+    updatedAt: now.toISOString(),
+  }
+  const newerManifest: DiscoveryManifest = {
+    version: 1,
+    webId: ownerWebId,
+    publicationRevision: 5,
+    displayName: 'Alice',
+    avatarUrl: 'https://alice.example/avatar.png',
+    publicTypeIndexUrl: `${podRoot}settings/publicTypeIndex`,
+    publishedAt: now.toISOString(),
+    expiresAt: new Date(now.getTime() + 4 * 24 * 60 * 60_000).toISOString(),
+  }
+  input.managers.discoveryConsentManager.readConsent = async () => consent
+  input.managers.discoveryManifestManager.readManifest = async () =>
+    consent.publicListing ? newerManifest : null
+  input.managers.discoveryManifestManager.removeManifestIfUnchanged = async () => {
+    consent = { ...consent, revision: 5, publicationRevision: 5, publicListing: true }
+    return false
+  }
+  input.authFetch = async (request) =>
+    new Response(
+      JSON.stringify({ listed: !String(request).endsWith('/v1/community-directory/suppress') })
+    )
+
+  assert.deepEqual(await maintainDirectoryPublication(input), {
+    status: 'published',
+    listed: true,
+  })
+})
+
+void test('reconciles a transient projection mismatch before reporting pending sync', async () => {
+  const { input, manifests } = setup()
+  let refreshes = 0
+  input.managers.discoveryManifestManager.readManifest = async () => manifests.at(-1) ?? null
+  input.authFetch = async (request) => {
+    const url = String(request)
+    if (url.endsWith('/v1/milestone-q/features')) {
+      return new Response(
+        JSON.stringify({
+          version: 1,
+          features: {
+            directory: true,
+            peerProfile: false,
+            relationship: false,
+            transport: false,
+          },
+        })
+      )
+    }
+    refreshes += 1
+    return new Response(JSON.stringify({ listed: refreshes > 1 }))
+  }
+
+  assert.deepEqual(await publishBasicDirectoryProfile(input), {
+    status: 'published',
+    listed: true,
+  })
+  assert.equal(refreshes, 2)
+})
+
+void test('suppresses the derived projection before stale artifact cleanup', async () => {
+  const { input, calls } = setup()
+  input.authFetch = async (request) => {
+    const url = String(request)
+    if (url.endsWith('/v1/community-directory/suppress')) {
+      calls.push('projection:suppress')
+      return new Response(JSON.stringify({ listed: false }))
+    }
+    return new Response(JSON.stringify({ listed: false }))
+  }
+
+  assert.deepEqual(await maintainDirectoryPublication(input), {
+    status: 'unpublished',
+    listed: false,
+  })
+  assert.equal(calls[0], 'projection:suppress')
+  assert.equal(calls.includes('manifest:remove'), true)
+})
+
+void test('suppression failure stops destructive artifact cleanup', async () => {
+  const { input, calls } = setup()
+  input.authFetch = async (request) => {
+    if (String(request).endsWith('/v1/community-directory/suppress')) {
+      return new Response(
+        JSON.stringify({
+          code: 'directory_suppress_unavailable',
+          error: 'Community directory suppression is temporarily unavailable.',
+        }),
+        { status: 503 }
+      )
+    }
+    return new Response(JSON.stringify({ listed: false }))
+  }
+
+  const outcome = await maintainDirectoryPublication(input)
+  assert.equal(outcome.status, 'pending-sync')
+  assert.equal(calls.includes('type-index:remove'), false)
+  assert.equal(calls.includes('manifest:remove'), false)
+})
+
+void test('bounds reconciliation when publication consent keeps changing', async () => {
+  const { input } = setup()
+  let reads = 0
+  input.managers.discoveryConsentManager.readConsent = async () => {
+    reads += 1
+    const enabled = reads % 2 === 0
+    return {
+      version: 1,
+      revision: reads,
+      publicationRevision: reads,
+      ownerWebId,
+      publicListing: enabled,
+      publicIndexing: false,
+      nearbyPresence: false,
+      inboundContactRequests: false,
+      localBroadcasts: false,
+      updatedAt: now.toISOString(),
+    }
+  }
+  input.managers.discoveryManifestManager.readManifest = async () => null
+
+  const outcome = await maintainDirectoryPublication(input)
+  assert.equal(outcome.status, 'pending-sync')
+  assert.equal(reads <= 8, true)
 })

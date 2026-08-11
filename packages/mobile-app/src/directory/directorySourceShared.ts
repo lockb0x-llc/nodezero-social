@@ -38,22 +38,10 @@ function parseFromArray(payload: unknown[]): DirectoryRecord[] {
         return {
           webId: record.webId,
           displayName: typeof record.displayName === 'string' ? record.displayName : undefined,
-          podUrl: typeof record.podUrl === 'string' ? record.podUrl : undefined,
-          issuer: typeof record.issuer === 'string' ? record.issuer : undefined,
-          listed: typeof record.listed === 'boolean' ? record.listed : undefined,
-          listedAt: typeof record.listedAt === 'string' ? record.listedAt : undefined,
-          updatedAt: typeof record.updatedAt === 'string' ? record.updatedAt : undefined,
+          avatarUrl: typeof record.avatarUrl === 'string' ? record.avatarUrl : undefined,
           publicInterests: Array.isArray(record.publicInterests)
             ? record.publicInterests.filter((value): value is string => typeof value === 'string')
             : undefined,
-          capabilities: Array.isArray(record.capabilities)
-            ? record.capabilities.filter((value): value is string => typeof value === 'string')
-            : undefined,
-          inboxUrl: typeof record.inboxUrl === 'string' ? record.inboxUrl : undefined,
-          manifestExpiresAt:
-            typeof record.manifestExpiresAt === 'string' ? record.manifestExpiresAt : undefined,
-          sourceRevision:
-            typeof record.sourceRevision === 'string' ? record.sourceRevision : undefined,
           trustSignals: { verified },
         }
       }

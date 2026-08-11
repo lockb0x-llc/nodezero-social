@@ -1,4 +1,9 @@
-import { DiscoveryConsentManager, DiscoveryManifestManager } from '@nodezero/solid-pod-sync'
+import {
+  DISCOVERY_MANIFEST_CLASS,
+  DiscoveryConsentManager,
+  DiscoveryManifestManager,
+  PublicTypeIndexManager,
+} from '@nodezero/solid-pod-sync'
 import type { CommunityDirectoryRecord, CommunityDirectoryStore } from './communityDirectory.js'
 import type { CredentialStore } from './credentialStore.js'
 import type { SessionClaims } from './sessionTokens.js'
@@ -14,6 +19,7 @@ export interface CommunityDirectoryRefreshOptions {
   mintToken?: typeof mintPodAccessToken
   now?: Date
   allowListing?: boolean
+  expectedPublicationRevision?: number
 }
 
 export class CommunityDirectoryRefreshError extends Error {
@@ -39,10 +45,18 @@ export async function refreshCommunityDirectoryProjection(
       'session_invalid'
     )
   }
-  const token = await (options.mintToken ?? mintPodAccessToken)(options.cssBaseUrl, {
-    id: credentials.clientCredentialsId,
-    secret: credentials.clientCredentialsSecret,
-  })
+  let token: PodAccessToken
+  try {
+    token = await (options.mintToken ?? mintPodAccessToken)(options.cssBaseUrl, {
+      id: credentials.clientCredentialsId,
+      secret: credentials.clientCredentialsSecret,
+    })
+  } catch {
+    throw new CommunityDirectoryRefreshError(
+      'Session Pod access could not be established.',
+      'session_invalid'
+    )
+  }
   const manifestUrl = `${podRoot.toString()}public/discovery/manifest`
   let sourceRevision: string | undefined
   const ownerFetch = createOwnerPodReadFetch(token, podRoot, (url, response) => {
@@ -58,17 +72,87 @@ export async function refreshCommunityDirectoryProjection(
       'consent_owner_mismatch'
     )
   }
+  if (
+    typeof options.expectedPublicationRevision === 'number' &&
+    (consent.publicationRevision ?? 0) !== options.expectedPublicationRevision
+  ) {
+    throw new CommunityDirectoryRefreshError(
+      'Discovery publication changed before suppression.',
+      'publication_changed'
+    )
+  }
 
   let manifest = null
-  if (consent.publicListing || consent.publicIndexing) {
+  if (
+    typeof consent.publicationRevision === 'number' &&
+    (consent.publicListing || consent.publicIndexing) &&
+    options.allowListing !== false
+  ) {
     try {
       manifest = await new DiscoveryManifestManager({ fetch: ownerFetch }).readManifest(
         podRoot.toString()
       )
-      if (manifest && manifest.webId !== claims.sub) manifest = null
+      if (
+        manifest &&
+        (manifest.webId !== claims.sub ||
+          manifest.publicationRevision !== consent.publicationRevision)
+      ) {
+        manifest = null
+      }
+      if (manifest) {
+        const publicTypeIndexUrl = manifest.publicTypeIndexUrl
+        if (!publicTypeIndexUrl) {
+          manifest = null
+        } else {
+          const typeIndexManager = new PublicTypeIndexManager({ fetch: ownerFetch })
+          const authoritativeTypeIndexUrl = await typeIndexManager.discoverPublicTypeIndex(
+            claims.sub
+          )
+          if (authoritativeTypeIndexUrl !== publicTypeIndexUrl) {
+            manifest = null
+          } else {
+            const registration = (
+              await typeIndexManager.listRegistrations(publicTypeIndexUrl, {
+                requirePublicIndexTypes: true,
+              })
+            ).find(
+              (candidate) =>
+                candidate.forClass === DISCOVERY_MANIFEST_CLASS &&
+                candidate.instance === manifestUrl
+            )
+            if (
+              !registration ||
+              registration.publicationRevision !== consent.publicationRevision
+            ) {
+              manifest = null
+            }
+          }
+        }
+      }
     } catch (error) {
-      if (isManifestValidationError(error)) manifest = null
-      else throw error
+      if (
+        error instanceof CommunityDirectoryRefreshError &&
+        error.code === 'session_invalid'
+      ) {
+        throw error
+      }
+      manifest = null
+    }
+  }
+
+  if (options.allowListing === false) {
+    const suppressionConsent = await new DiscoveryConsentManager({ fetch: ownerFetch }).readConsent(
+      podRoot.toString(),
+      options.now
+    )
+    if (
+      (suppressionConsent.publicationRevision ?? 0) !==
+      (options.expectedPublicationRevision ?? 0)
+    ) {
+      throw new CommunityDirectoryRefreshError(
+        'Discovery publication changed before suppression.',
+        'publication_changed'
+      )
     }
   }
 
@@ -78,8 +162,16 @@ export async function refreshCommunityDirectoryProjection(
     issuer: podRoot.origin,
     publicListing: consent.publicListing && options.allowListing !== false,
     publicIndexing: consent.publicIndexing,
-    consentUpdatedAt: consent.updatedAt,
-    ...(typeof consent.revision === 'number' ? { consentRevision: consent.revision } : {}),
+    publicationUpdatedAt:
+      consent.publicationUpdatedAt ?? manifest?.publishedAt ?? new Date(0).toISOString(),
+    ...(typeof consent.publicationRevision === 'number'
+      ? { publicationRevision: consent.publicationRevision }
+      : {}),
+    ...(!consent.publicListing ||
+    typeof consent.publicationRevision !== 'number' ||
+    options.allowListing === false
+      ? { suppressed: true }
+      : {}),
     manifest,
     manifestUrl,
     ...(sourceRevision ? { sourceRevision } : {}),
@@ -92,15 +184,28 @@ export async function refreshCommunityDirectoryProjection(
     throw error
   }
   await options.directoryStore.reloadRecord(claims.sub)
+  if (options.allowListing === false) {
+    const finalConsent = await new DiscoveryConsentManager({ fetch: ownerFetch }).readConsent(
+      podRoot.toString(),
+      options.now
+    )
+    if (
+      (finalConsent.publicationRevision ?? 0) !==
+      (options.expectedPublicationRevision ?? 0)
+    ) {
+      const reconciliationOptions: CommunityDirectoryRefreshOptions = {
+        ...options,
+        allowListing: true,
+      }
+      delete reconciliationOptions.expectedPublicationRevision
+      await refreshCommunityDirectoryProjection(claims, reconciliationOptions)
+      throw new CommunityDirectoryRefreshError(
+        'Discovery publication changed during suppression.',
+        'publication_changed'
+      )
+    }
+  }
   return options.directoryStore.getByWebId(claims.sub) ?? record
-}
-
-function isManifestValidationError(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    (error.message.includes('Discovery manifest contract validation failed') ||
-      error.message.includes('Discovery manifest owner mismatch'))
-  )
 }
 
 function normalizedPodRoot(podUrl: string, cssBaseUrl: string): URL {
@@ -150,6 +255,12 @@ function createOwnerPodReadFetch(
     headers.set('authorization', `DPoP ${token.accessToken}`)
     headers.set('dpop', token.proof(target.toString(), method))
     const response = await fetch(target, { ...init, method, headers })
+    if (response.status === 401) {
+      throw new CommunityDirectoryRefreshError(
+        'Session Pod access was rejected.',
+        'session_invalid'
+      )
+    }
     observe(target.toString(), response)
     return response
   }

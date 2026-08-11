@@ -30,18 +30,18 @@ retaining immediate disconnect, mute, block, and discovery-revocation controls.
 
 ## Work Breakdown
 
-| ID | Owner | Depends on | Deliverable | Status |
-|---|---|---|---|---|
-| Q0 | Project Manager and Docs Agent | None | Canonical system description, ADR, architecture updates, agent instructions, PM board, and baseline evidence | Complete |
-| Q1A | Solid Data Agent | Q0 | Versioned contracts, Pod layout, discovery, relationship, moderation, Type Index, and compatibility managers | Complete: superseded package evidence is recorded under Q2 |
-| Q1B | Solid Integration Specialist | Q0, shared Q1 contracts | LDN and WebID discovery adapters, credential-free remote fetch, Pod proxy constraints, and inbox delivery | Complete: Solid 20 suites/114 tests and provisioner 88/88 tests pass |
-| Q1C | Audit Agent | Q0 | Threat model and security test vectors for ACL, SSRF, replay, privacy, migration, and block precedence | Complete: 22 executable vectors across 10 categories pass; Audit Agent GO |
-| Q2 | Solid Data Agent | Q1A, Q1B | Relationship lifecycle, replay ledger, legacy migration, moderation, and `foaf:knows` projection | Complete: Solid 168, mobile 90, and provisioner 101 tests pass; strict staging PWA artifact passes |
-| Q3A | Azure Platform Agent | Q1 contracts, P6 | Durable derived index, feature flags, telemetry, slots/revisions, rollback assets, and staging deployment wiring | Complete locally: Azure/Audit GO; retained-artifact rollback substitutes for unavailable B1 slots; Q4 deployment/rehearsal pending |
-| Q3B | Mobile App Agent | Q2, Q3A API contract | Consent controls, public-interest selection, explainable recommendations, and unified Directory/Profile/Local actions | Complete locally: independent Mobile and Audit GO; deployment validation pending Q3A/Q4 |
-| Q3C | P2P Relay Agent | Q1 contracts | Presence, reveal, Waku, WebRTC, and relay consent/block enforcement plus abuse controls | Complete locally: independent Mobile and Audit GO; deployment configuration and Q4 journeys pending |
-| Q4 | QA Release Agent | Q1-Q3 | Package, integration, browser, device, deployment, rollback, and soak evidence | In progress: exact-SHA staging deployment is the current blocker |
-| Q5 | Docs Agent | Q4 and Audit GO | Validated Wiki/status updates and Milestone Q release evidence | Not started |
+| ID  | Owner                          | Depends on              | Deliverable                                                                                                           | Status                                                                                                                             |
+| --- | ------------------------------ | ----------------------- | --------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Q0  | Project Manager and Docs Agent | None                    | Canonical system description, ADR, architecture updates, agent instructions, PM board, and baseline evidence          | Complete                                                                                                                           |
+| Q1A | Solid Data Agent               | Q0                      | Versioned contracts, Pod layout, discovery, relationship, moderation, Type Index, and compatibility managers          | Complete: superseded package evidence is recorded under Q2                                                                         |
+| Q1B | Solid Integration Specialist   | Q0, shared Q1 contracts | LDN and WebID discovery adapters, credential-free remote fetch, Pod proxy constraints, and inbox delivery             | Complete: Solid 20 suites/114 tests and provisioner 88/88 tests pass                                                               |
+| Q1C | Audit Agent                    | Q0                      | Threat model and security test vectors for ACL, SSRF, replay, privacy, migration, and block precedence                | Complete: 22 executable vectors across 10 categories pass; Audit Agent GO                                                          |
+| Q2  | Solid Data Agent               | Q1A, Q1B                | Relationship lifecycle, replay ledger, legacy migration, moderation, and `foaf:knows` projection                      | Complete: Solid 168, mobile 90, and provisioner 101 tests pass; strict staging PWA artifact passes                                 |
+| Q3A | Azure Platform Agent           | Q1 contracts, P6        | Durable derived index, feature flags, telemetry, slots/revisions, rollback assets, and staging deployment wiring      | Complete locally: Azure/Audit GO; retained-artifact rollback substitutes for unavailable B1 slots; Q4 deployment/rehearsal pending |
+| Q3B | Mobile App Agent               | Q2, Q3A API contract    | Consent controls, public-interest selection, explainable recommendations, and unified Directory/Profile/Local actions | Complete locally: independent Mobile and Audit GO; deployment validation pending Q3A/Q4                                            |
+| Q3C | P2P Relay Agent                | Q1 contracts            | Presence, reveal, Waku, WebRTC, and relay consent/block enforcement plus abuse controls                               | Complete locally: independent Mobile and Audit GO; deployment configuration and Q4 journeys pending                                |
+| Q4  | QA Release Agent               | Q1-Q3                   | Package, integration, browser, device, deployment, rollback, and soak evidence                                        | In progress: exact-SHA staging deployment is the current blocker                                                                   |
+| Q5  | Docs Agent                     | Q4 and Audit GO         | Validated Wiki/status updates and Milestone Q release evidence                                                        | Not started                                                                                                                        |
 
 ## Phase 0: Documentation And Governance
 
@@ -95,43 +95,43 @@ and recipient-policy suites pass.
 Implemented:
 
 - Private relationship outbox, delivery-receipt, replay, moderation, relationship,
-   quarantine, and compatibility-projection stores.
+  quarantine, and compatibility-projection stores.
 - Compact ActivityStreams `Follow`, `Accept`, `Reject`, and correlated `Undo`
-   persistence and authenticated provisioner delivery.
+  persistence and authenticated provisioner delivery.
 - Pending, delivered, and failed receipt updates without giving the external delivery
-   boundary Pod credentials.
+  boundary Pod credentials.
 - Replay suppression, stale/future rejection, actor/recipient correlation, block
-   precedence, and private quarantine for malformed or unverifiable activities.
+  precedence, and private quarantine for malformed or unverifiable activities.
 - Lazy `foaf:knows` import as `legacy-connected`; accepted-only compatibility
-   projection; disconnect removes only NodeZero-owned `foaf:knows` values and preserves
-   unrelated RDF.
+  projection; disconnect removes only NodeZero-owned `foaf:knows` values and preserves
+  unrelated RDF.
 - Directed compose recipients now require accepted and unblocked relationship state;
-   Trust Circle membership only narrows that eligible set.
+  Trust Circle membership only narrows that eligible set.
 - Existing Directory/Profile connection actions now create a durable relationship
-   request instead of unilaterally granting consent through `foaf:knows`.
+  request instead of unilaterally granting consent through `foaf:knows`.
 - Recipient-bound short-lived delivery assertions use a dedicated provisioner signing
-   key, payload digest, recipient, actor, activity ID, issuer, and expiry. The recipient
-   verifies them through an authenticated endpoint; no session or Pod credential is
-   written to the inbox.
+  key, payload digest, recipient, actor, activity ID, issuer, and expiry. The recipient
+  verifies them through an authenticated endpoint; no session or Pod credential is
+  written to the inbox.
 - Pod-authoritative inbound-request consent defaults off. When explicitly enabled,
-   bounded direct-child inbox reads verify assertions, apply replay-safe transitions,
-   quarantine rejected payloads, and remove handled inbox resources.
+  bounded direct-child inbox reads verify assertions, apply replay-safe transitions,
+  quarantine rejected payloads, and remove handled inbox resources.
 - Profile exposes request consent, refresh, Accept, and Reject actions. Failed pending
-   requests retry the original immutable Follow rather than minting a second request.
+  requests retry the original immutable Follow rather than minting a second request.
 
 Validation:
 
 - `@nodezero/solid-pod-sync`: 31 suites, 168 tests pass; build/type-check pass; lint
-   has zero errors and one pre-existing warning in `NsfwDecision.test.ts`.
+  has zero errors and one pre-existing warning in `NsfwDecision.test.ts`.
 - `@nodezero/mobile-app`: 90 tests pass; type-check and touched-file lint pass; strict
-   `staging-testnet` web export and `pwa:validate:artifact` pass.
+  `staging-testnet` web export and `pwa:validate:artifact` pass.
 - `@nodezero/jss-provisioner`: 101 tests pass; type-check and touched-file lint pass.
 - `pnpm policy:validate-consentful-discovery` passes 22 versioned vectors across
-   inbox ACL, inbox flood, rate limiting, SSRF, credential isolation, replay,
-   sender verification, privacy, migration, and block-precedence categories.
+  inbox ACL, inbox flood, rate limiting, SSRF, credential isolation, replay,
+  sender verification, privacy, migration, and block-precedence categories.
 - `pnpm policy:validate-env` and `git diff --check` pass.
 - Full mobile source lint remains blocked by unrelated pre-existing diagnostics in
-   `app/index.tsx` and `src/contexts/WalletContext.tsx`.
+  `app/index.tsx` and `src/contexts/WalletContext.tsx`.
 
 Q1C and Q2 are complete locally with Audit Agent GO. The security gate includes
 actor-bound, ETag-fenced replay leases; adversarial chunked inbox cancellation;
@@ -145,7 +145,7 @@ No staging deployment or release certification was performed in Q1C/Q2.
    nearby presence, inbound contact requests, and local broadcast participation.
 2. Add explicit public-interest selection separate from private Backpack interests.
 3. Replace internal-key listing mutation with a session-authenticated manifest refresh.
-4. Persist only validated public manifest fields, source revision, consent timestamp,
+4. Persist only validated public manifest fields, source revision, publication timestamp,
    expiry, and index provenance in the derived directory.
 5. Add pagination, cache validators, tombstones, immediate opt-out, rate limits, and
    reconciliation.
@@ -158,74 +158,97 @@ interest separation, pagination, and recommendation-reason suites pass.
 ### Q3A API contract evidence (2026-08-01)
 
 - `POST /v1/community-directory/refresh` derives the owner exclusively from a valid
-   NodeZero session and reads private Pod consent before any public manifest read.
+  NodeZero session and reads private Pod consent before any public manifest read.
 - Legacy internal-key `opt-in`/`opt-out` routes return `410`; callers cannot supply a
-   target WebID to the refresh route.
-- The derived record stores only allowlisted manifest fields plus consent timestamp,
-   manifest URL, expiry, and source revision. Invalid, missing, expired, or opted-out
-   manifests clear prior public fields immediately.
+  target WebID to the refresh route.
+- The derived record stores only allowlisted manifest fields plus publication timestamp,
+  manifest URL, expiry, and source revision. Invalid, missing, expired, or opted-out
+  manifests clear prior public fields immediately.
 - Public index pages are bounded to 100 records, use stable WebID cursors and weak
-   ETags, and never expose internal removal tombstones or always-private records.
+  ETags, and never expose internal removal tombstones or always-private records.
 - Focused directory projection/refresh/route tests pass 18/18; full provisioner tests
-   pass 113/113; Q1C 22-vector and environment-isolation policies pass.
+  pass 113/113; Q1C 22-vector and environment-isolation policies pass.
 - At the time recorded, this was API-contract evidence only. The durable platform
-   implementation completed locally on 2026-08-02 as recorded below; deployed
-   provenance and rehearsal remain Q4 work.
+  implementation completed locally on 2026-08-02 as recorded below; deployed
+  provenance and rehearsal remain Q4 work.
+
+### Q3A publication hardening amendment (2026-08-09)
+
+- Publication and cleanup are generation-fenced and replay-safe: NodeZero manifests and
+  Type Index registrations bind to a publication-only generation reserved before artifact
+  inputs are read, so delayed writers cannot downgrade public data. The generation does not
+  reveal unrelated private-consent churn.
+- Existing RDF resources require an HTTP `ETag`; writes use `If-Match`, first creation uses
+  `If-None-Match: *`. The staging-testnet v4 clean cutover abandons generationless test
+  artifacts: full opt-out may remove only the exact representation observed under a strong
+  `ETag`. Cleanup still preserves newer or concurrently replaced artifacts.
+- Listing and indexing remain independent. Listing-only opt-out retains public artifacts
+  only when Pod consent explicitly keeps indexing enabled; full opt-out removes the
+  manifest and NodeZero Type Registration.
+- Opt-out suppresses the derived projection before public artifact cleanup. Every
+  destructive phase re-reads Pod authority, and a mismatched first projection triggers
+  bounded authoritative reconciliation before surfacing `pending-sync`.
+- The internal Pod proxy enforces generation plus `If-Match`/`If-None-Match` on protected
+  publication mutations. Durable suppression tombstones prevent same- or older-generation
+  refreshes from re-listing an opted-out owner while allowing incomplete same-generation
+  publication to finish.
+- Directory responses contain only WebID, display name, avatar URL, and explicitly selected
+  public recommendation fields. Pod location and projection provenance remain internal.
 
 ### Q3A local platform evidence (2026-08-02)
 
 - The derived Directory uses a partition-isolated Azure Table backend with hashed
-   row keys, ETag-fenced monotonic writes, equal-time opt-out precedence, bounded
-   scans, targeted mutation reads, active read/write/delete readiness, and immediate
-   in-process suppression of observed opt-outs even when persistence fails.
+  row keys, ETag-fenced monotonic writes, equal-time opt-out precedence, bounded
+  scans, targeted mutation reads, active read/write/delete readiness, and immediate
+  in-process suppression of observed opt-outs even when persistence fails.
 - Rollout controls default Directory, peer Profile, relationship, and transport
-   features off. Enabled features require keyed cohort HMAC membership. Telemetry
-   emits aggregate feature/outcome counters without WebIDs, interests, blocks, H3
-   cells, relationship payloads, or message content.
+  features off. Enabled features require keyed cohort HMAC membership. Telemetry
+  emits aggregate feature/outcome counters without WebIDs, interests, blocks, H3
+  cells, relationship payloads, or message content.
 - The staging workflow packages and verifies provisioner, relay, and PWA artifacts
-   from one commit, requires stable session/relationship/transport keys, proves Table
-   readiness, retains a digest-bound rollback bundle for 90 days, and keeps all Q
-   feature flags dark.
+  from one commit, requires stable session/relationship/transport keys, proves Table
+  readiness, retains a digest-bound rollback bundle for 90 days, and keeps all Q
+  feature flags dark.
 - The guarded rollback workflow authenticates the exact successful source workflow,
-   run attempt, branch, and commit; validates all artifact digests; clean-deploys the
-   retained provisioner and relay; verifies every retained PWA asset live; and reports
-   partial component outcomes without claiming unconditional success.
+  run attempt, branch, and commit; validates all artifact digests; clean-deploys the
+  retained provisioner and relay; verifies every retained PWA asset live; and reports
+  partial component outcomes without claiming unconditional success.
 - The current App Service plan is Basic B1 and does not support deployment slots.
-   Retained-artifact rollback is the accepted local Q3A mechanism. Slot adoption or a
-   paid SKU change remains P6 work and requires explicit approval.
+  Retained-artifact rollback is the accepted local Q3A mechanism. Slot adoption or a
+  paid SKU change remains P6 work and requires explicit approval.
 - Validation: provisioner 136/136, relay 3/3, adversarial opt-out 2/2, consent policy
-   22/22, touched type/lint, environment/PWA policy, both workflow YAML files, rollback
-   digest relocation, and diff hygiene pass. Azure Platform Agent and Audit Agent
-   issued local Q3A GO.
+  22/22, touched type/lint, environment/PWA policy, both workflow YAML files, rollback
+  digest relocation, and diff hygiene pass. Azure Platform Agent and Audit Agent
+  issued local Q3A GO.
 - No Q3A deployment or rollback rehearsal has occurred. Local `testnet` is ahead of
-   `origin/testnet`; the latest successful staging workflow and deploy marker remain
-   commit `5d0d3532ba4d1e035c141dd9f4dbf8f751dea5b9`. Deployment provenance,
-   zero-retry two-account/device journeys, rollback rehearsal, and soak are Q4 gates.
+  `origin/testnet`; the latest successful staging workflow and deploy marker remain
+  commit `5d0d3532ba4d1e035c141dd9f4dbf8f751dea5b9`. Deployment provenance,
+  zero-retry two-account/device journeys, rollback rehearsal, and soak are Q4 gates.
 
 ### Q3B/Q3C local implementation evidence (2026-08-01)
 
 - Discovery preferences persist independent listing, indexing, nearby-presence,
-   local-broadcast, and selected-interest choices. Three-way merging prevents a
-   stale device from restoring a fresher cross-device opt-out.
+  local-broadcast, and selected-interest choices. Three-way merging prevents a
+  stale device from restoring a fresher cross-device opt-out.
 - Directory, Profile, and Local share relationship, Trust Circle, mute, block,
-   and report policy. Incoming requests expose Accept/Decline, outgoing requests
-   expose Cancel, and only accepted/unblocked relationships can message.
+  and report policy. Incoming requests expose Accept/Decline, outgoing requests
+  expose Cancel, and only accepted/unblocked relationships can message.
 - Peer Profile reads use the authenticated provisioner route and a credential-free,
-   SSRF-resistant server fetch; NodeZero bearer credentials remain exact-origin.
+  SSRF-resistant server fetch; NodeZero bearer credentials remain exact-origin.
 - Waku envelopes bind opaque provisioner assertions inside Stellar signatures.
-   Presence aliases are derived from the authenticated account and checked against
-   beacon commitments. Relay admission additionally requires a one-time nonce signed
-   by the assertion-bound Stellar key before registration or replacement.
+  Presence aliases are derived from the authenticated account and checked against
+  beacon commitments. Relay admission additionally requires a one-time nonce signed
+  by the assertion-bound Stellar key before registration or replacement.
 - Consent and relationship state reconcile from the Pod, block state purges rendered
-   messages/reveals immediately in-process, and local disconnect takes effect before
-   best-effort remote notification.
+  messages/reveals immediately in-process, and local disconnect takes effect before
+  best-effort remote notification.
 - Local validation: mobile 119/119, provisioner 119/119, Waku 55/55, relay 3/3;
-   touched lint and five package type-checks pass; consent security 22/22, environment,
-   PWA policy, strict staging-profile build, artifact validation, and diff checks pass.
-   Mobile App Agent and Audit Agent issued local-code GO.
+  touched lint and five package type-checks pass; consent security 22/22, environment,
+  PWA policy, strict staging-profile build, artifact validation, and diff checks pass.
+  Mobile App Agent and Audit Agent issued local-code GO.
 - This is not deployment or release GO. Q3A platform implementation is complete
-   locally; staging must now obtain successful matching workflow provenance,
-   zero-retry two-account journeys, rollback evidence, and soak results under Q4.
+  locally; staging must now obtain successful matching workflow provenance,
+  zero-retry two-account journeys, rollback evidence, and soak results under Q4.
 
 ## Phase 4: Integrated Social Experience
 

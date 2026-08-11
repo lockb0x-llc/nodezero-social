@@ -208,8 +208,31 @@ export function shouldReplaceDirectoryRecord(
   current: CommunityDirectoryRecord,
   incoming: CommunityDirectoryRecord
 ): boolean {
-  const currentRevision = current.consentRevision
-  const incomingRevision = incoming.consentRevision
+  const currentRevision = current.publicationRevision
+  const incomingRevision = incoming.publicationRevision
+  const currentSuppressionRevision = current.suppressionRevision
+  const incomingSuppressionRevision = incoming.suppressionRevision
+  if (typeof incomingSuppressionRevision === 'number') {
+    if (
+      typeof currentRevision === 'number' &&
+      incomingSuppressionRevision < currentRevision
+    ) {
+      return false
+    }
+    if (
+      typeof currentSuppressionRevision !== 'number' ||
+      incomingSuppressionRevision > currentSuppressionRevision
+    ) {
+      return true
+    }
+  }
+  if (
+    current.suppressedAt &&
+    (currentSuppressionRevision ?? 0) >= (incomingRevision ?? 0) &&
+    !incoming.suppressedAt
+  ) {
+    return false
+  }
   if (typeof incomingRevision === 'number') {
     if (typeof currentRevision !== 'number') return true
     if (incomingRevision < currentRevision) return false
@@ -217,12 +240,24 @@ export function shouldReplaceDirectoryRecord(
   } else if (typeof currentRevision === 'number') {
     return false
   }
-  const currentConsent = Date.parse(current.consentUpdatedAt ?? current.updatedAt)
-  const incomingConsent = Date.parse(incoming.consentUpdatedAt ?? incoming.updatedAt)
+  if (current.listed && !incoming.listed) return true
+  if (!current.listed && incoming.listed) {
+    if (current.suppressedAt) return false
+    const currentPublication = Date.parse(current.publicationUpdatedAt ?? '')
+    const incomingPublication = Date.parse(incoming.publicationUpdatedAt ?? '')
+    if (
+      Number.isFinite(currentPublication) &&
+      Number.isFinite(incomingPublication) &&
+      incomingPublication < currentPublication
+    ) {
+      return false
+    }
+    if (incoming.manifestExpiresAt) return true
+  }
+  const currentConsent = Date.parse(current.publicationUpdatedAt ?? current.updatedAt)
+  const incomingConsent = Date.parse(incoming.publicationUpdatedAt ?? incoming.updatedAt)
   if (incomingConsent < currentConsent) return false
   if (incomingConsent > currentConsent) return true
-  if (current.listed && !incoming.listed) return true
-  if (!current.listed && incoming.listed) return false
   return Date.parse(incoming.updatedAt) > Date.parse(current.updatedAt)
 }
 
@@ -271,15 +306,20 @@ export function sanitizeCommunityDirectoryRecord(value: unknown): CommunityDirec
     'manifestUrl',
     'manifestPublishedAt',
     'manifestExpiresAt',
-    'consentUpdatedAt',
+    'publicationUpdatedAt',
+    'suppressedAt',
     'sourceRevision',
     'removedAt',
   ] as const) {
     if (typeof record[key] === 'string') sanitized[key] = record[key]
   }
-  const consentRevision = record.consentRevision
-  if (Number.isSafeInteger(consentRevision) && consentRevision! >= 0) {
-    sanitized.consentRevision = consentRevision!
+  const publicationRevision = record.publicationRevision
+  if (Number.isSafeInteger(publicationRevision) && publicationRevision! >= 0) {
+    sanitized.publicationRevision = publicationRevision!
+  }
+  const suppressionRevision = record.suppressionRevision
+  if (Number.isSafeInteger(suppressionRevision) && suppressionRevision! >= 0) {
+    sanitized.suppressionRevision = suppressionRevision!
   }
   return sanitized
 }

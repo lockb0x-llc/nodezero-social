@@ -552,19 +552,9 @@ try {
   }
   const allowedRecordKeys = new Set([
     'webId',
-    'podUrl',
-    'issuer',
-    'listed',
-    'listedAt',
-    'updatedAt',
     'displayName',
     'avatarUrl',
-    'manifestUrl',
-    'manifestPublishedAt',
-    'manifestExpiresAt',
-    'consentUpdatedAt',
-    'consentRevision',
-    'sourceRevision',
+    'publicInterests',
   ])
   const unexpectedRecordKeys = Object.keys(initialRecord).filter(
     (key) => !allowedRecordKeys.has(key)

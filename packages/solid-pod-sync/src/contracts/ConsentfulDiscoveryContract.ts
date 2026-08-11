@@ -43,6 +43,8 @@ export interface ConsentContractValidationIssue {
 export interface DiscoveryConsent {
   version: 1
   revision?: number
+  publicationRevision?: number
+  publicationUpdatedAt?: string
   ownerWebId: string
   publicListing: boolean
   publicIndexing: boolean
@@ -55,6 +57,7 @@ export interface DiscoveryConsent {
 export interface DiscoveryManifest {
   version: 1
   webId: string
+  publicationRevision?: number
   publishedAt: string
   expiresAt: string
   displayName?: string
@@ -114,6 +117,7 @@ export interface ProcessedActivityRecord {
 const DISCOVERY_MANIFEST_FIELDS = new Set([
   'version',
   'webId',
+  'publicationRevision',
   'publishedAt',
   'expiresAt',
   'displayName',
@@ -199,6 +203,21 @@ export function validateDiscoveryConsent(
   ) {
     issues.push({ field: 'revision', message: 'revision must be a non-negative safe integer' })
   }
+  if (
+    consent.publicationRevision !== undefined &&
+    (!Number.isSafeInteger(consent.publicationRevision) || consent.publicationRevision < 0)
+  ) {
+    issues.push({
+      field: 'publicationRevision',
+      message: 'publicationRevision must be a non-negative safe integer',
+    })
+  }
+  if (consent.publicationUpdatedAt !== undefined && !isIsoDate(consent.publicationUpdatedAt)) {
+    issues.push({
+      field: 'publicationUpdatedAt',
+      message: 'publicationUpdatedAt must be an ISO-compatible timestamp',
+    })
+  }
   if (!isWebId(consent.ownerWebId))
     issues.push({
       field: 'ownerWebId',
@@ -229,6 +248,15 @@ export function validateDiscoveryManifest(
   if (manifest.version !== 1) issues.push({ field: 'version', message: 'version must be 1' })
   if (!isWebId(manifest.webId))
     issues.push({ field: 'webId', message: 'webId must be an https WebID with a fragment' })
+  if (
+    manifest.publicationRevision !== undefined &&
+    (!Number.isSafeInteger(manifest.publicationRevision) || manifest.publicationRevision < 0)
+  ) {
+    issues.push({
+      field: 'publicationRevision',
+      message: 'publicationRevision must be a non-negative safe integer',
+    })
+  }
   if (!isIsoDate(manifest.publishedAt))
     issues.push({
       field: 'publishedAt',

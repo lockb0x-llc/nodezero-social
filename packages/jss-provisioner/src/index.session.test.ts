@@ -34,6 +34,7 @@ interface MockCssState {
   pods: Map<string, Map<string, { contentType: string; body: string }>>
   /** When true the token endpoint rejects every exchange (revoked upstream). */
   rejectTokenExchange: boolean
+  rejectPodRequests: number
   /** Number of transient CSS Pod creation 400 responses to emit. */
   transientPodBadRequests: number
   loseNextPodCreateResponse: boolean
@@ -49,6 +50,7 @@ const cssState: MockCssState = {
   credentials: new Map(),
   pods: new Map(),
   rejectTokenExchange: false,
+  rejectPodRequests: 0,
   transientPodBadRequests: 0,
   loseNextPodCreateResponse: false,
   podCreateRequests: 0,
@@ -194,6 +196,10 @@ async function handleMockCss(req: IncomingMessage, res: ServerResponse): Promise
     if (!authHeader.startsWith('DPoP ') || !req.headers.dpop) {
       return json(res, 401, { error: 'unauthenticated' })
     }
+    if (cssState.rejectPodRequests > 0) {
+      cssState.rejectPodRequests -= 1
+      return json(res, 401, { error: 'expired token' })
+    }
 
     if (req.method === 'HEAD' || req.method === 'GET') {
       if (rest === '') {
@@ -324,6 +330,7 @@ after(() => {
 
 beforeEach(() => {
   cssState.rejectTokenExchange = false
+  cssState.rejectPodRequests = 0
   cssState.transientPodBadRequests = 0
   cssState.loseNextPodCreateResponse = false
   cssState.loseNextAccountCreateResponse = false
@@ -430,6 +437,434 @@ void test('solid-account: returns a session that immediately proxies Pod writes'
   })
   assert.equal(read.status, 200)
   assert.match(await read.text(), /nodezero\.social\/ns#Note/)
+})
+
+void test('proxy: protected publication mutations require a generation and HTTP precondition', async () => {
+  const { session, podUrl, webId } = await provisionUser()
+  const podPath = new URL(podUrl).pathname.replace(/^\//, '')
+  const target = `${baseUrl}/v1/pod-proxy/${podPath}public/discovery/manifest`
+
+  const missing = await fetch(target, {
+    method: 'PUT',
+    headers: {
+      authorization: `Bearer ${session.accessToken}`,
+      'content-type': 'text/turtle',
+    },
+    body: '<#manifest> a <https://nodezero.social/ns#DiscoveryManifest> .',
+  })
+  assert.equal(missing.status, 428)
+  assert.equal((await missing.json() as { code?: string }).code, 'publication_precondition_required')
+
+  const emptyIfMatch = await fetch(target, {
+    method: 'DELETE',
+    headers: {
+      authorization: `Bearer ${session.accessToken}`,
+      'if-match': '',
+      'x-nodezero-publication-revision': '1',
+    },
+  })
+  assert.equal(emptyIfMatch.status, 428)
+
+  const guarded = await fetch(target, {
+    method: 'PUT',
+    headers: {
+      authorization: `Bearer ${session.accessToken}`,
+      'content-type': 'text/turtle',
+      'if-none-match': '*',
+      'x-nodezero-publication-revision': '1',
+    },
+    body: '<#manifest> a <https://nodezero.social/ns#DiscoveryManifest> .',
+  })
+  assert.equal(guarded.status, 201)
+
+  const wildcardIfMatch = await fetch(target, {
+    method: 'DELETE',
+    headers: {
+      authorization: `Bearer ${session.accessToken}`,
+      'if-match': '*',
+      'x-nodezero-publication-revision': '1',
+    },
+  })
+  assert.equal(wildcardIfMatch.status, 428)
+
+  const profileUrl = webId.split('#')[0] ?? ''
+  const profilePath = new URL(profileUrl).pathname.replace(/^\//, '')
+  const typeIndexUrl = `${podUrl}settings/publicTypeIndex`
+  const pointerWrite = await fetch(`${baseUrl}/v1/pod-proxy/${profilePath}`, {
+    method: 'PUT',
+    headers: {
+      authorization: `Bearer ${session.accessToken}`,
+      'content-type': 'text/turtle',
+      'if-none-match': '*',
+      'x-nodezero-publication-revision': '1',
+    },
+    body: `<${webId}> <http://www.w3.org/ns/solid/terms#publicTypeIndex> <${typeIndexUrl}> .`,
+  })
+  assert.equal(pointerWrite.status, 201)
+
+  const typeIndexPath = new URL(typeIndexUrl).pathname.replace(/^\//, '')
+  const markerFreeReplacement = await fetch(`${baseUrl}/v1/pod-proxy/${typeIndexPath}`, {
+    method: 'PUT',
+    headers: {
+      authorization: `Bearer ${session.accessToken}`,
+      'content-type': 'text/turtle',
+      'if-none-match': '*',
+    },
+    body: '<> a <http://www.w3.org/ns/solid/terms#TypeIndex> .',
+  })
+  assert.equal(markerFreeReplacement.status, 428)
+
+  const commaEtag = await fetch(target, {
+    method: 'DELETE',
+    headers: {
+      authorization: `Bearer ${session.accessToken}`,
+      'if-match': '"v1,part"',
+      'x-nodezero-publication-revision': '1',
+    },
+  })
+  assert.equal(commaEtag.status, 205)
+})
+
+void test('proxy: fails closed on a manifest-referenced Type Index after its WebID pointer disappears', async () => {
+  const { session, webId, podUrl } = await provisionUser()
+  const podName = new URL(podUrl).pathname.split('/').filter(Boolean)[0] ?? ''
+  const pod = cssState.pods.get(podName)
+  assert.ok(pod)
+  const manifestUrl = `${podUrl}public/discovery/manifest`
+  const typeIndexUrl = `${podUrl}settings/publicTypeIndex`
+  pod.set('public/discovery/manifest', {
+    contentType: 'text/turtle',
+    body: `
+      @prefix nz: <https://nodezero.social/ns#> .
+      <${manifestUrl}#manifest> a nz:DiscoveryManifest ; nz:version 1 ;
+        nz:publicationRevision 5 ; nz:webId <${webId}> ;
+        nz:publishedAt "2026-08-02T00:00:00.000Z" ;
+        nz:expiresAt "2026-08-08T00:00:00.000Z" ;
+        <http://www.w3.org/ns/solid/terms#publicTypeIndex> <${typeIndexUrl}> .
+    `,
+  })
+  const originalTypeIndex = '<> a <http://www.w3.org/ns/solid/terms#TypeIndex> .'
+  pod.set('settings/publicTypeIndex', {
+    contentType: 'text/turtle',
+    body: originalTypeIndex,
+  })
+
+  const targetPath = new URL(typeIndexUrl).pathname.replace(/^\//, '')
+  const attemptedMutation = await fetch(`${baseUrl}/v1/pod-proxy/${targetPath}`, {
+    method: 'PUT',
+    headers: {
+      authorization: `Bearer ${session.accessToken}`,
+      'content-type': 'text/turtle',
+      'if-match': '"v1"',
+    },
+    body: '<> a <http://www.w3.org/ns/solid/terms#TypeIndex> .',
+  })
+  assert.equal(attemptedMutation.status, 503)
+  assert.equal(
+    ((await attemptedMutation.json()) as { code?: string }).code,
+    'publication_guard_unavailable'
+  )
+  assert.equal(pod.get('settings/publicTypeIndex')?.body, originalTypeIndex)
+})
+
+void test('proxy: fails closed when authoritative Type Index discovery fails', async () => {
+  const { session, podUrl } = await provisionUser()
+  const podName = new URL(podUrl).pathname.split('/').filter(Boolean)[0] ?? ''
+  cssState.pods.get(podName)?.set('profile/card', {
+    contentType: 'text/turtle',
+    body: '<malformed',
+  })
+
+  const targetPath = new URL(`${podUrl}settings/publicTypeIndex`).pathname.replace(/^\//, '')
+  const attemptedMutation = await fetch(`${baseUrl}/v1/pod-proxy/${targetPath}`, {
+    method: 'PUT',
+    headers: {
+      authorization: `Bearer ${session.accessToken}`,
+      'content-type': 'text/turtle',
+      'if-none-match': '*',
+    },
+    body: '<> a <http://www.w3.org/ns/solid/terms#TypeIndex> .',
+  })
+  assert.equal(attemptedMutation.status, 503)
+  assert.equal(
+    ((await attemptedMutation.json()) as { code?: string }).code,
+    'publication_guard_unavailable'
+  )
+  assert.equal(cssState.pods.get(podName)?.has('settings/publicTypeIndex'), false)
+})
+
+void test('proxy: marker-free WebID profile replacement and deletion require publication fences', async () => {
+  const { session, webId, podUrl } = await provisionUser()
+  const podName = new URL(podUrl).pathname.split('/').filter(Boolean)[0] ?? ''
+  const typeIndexUrl = `${podUrl}settings/publicTypeIndex`
+  cssState.pods.get(podName)?.set('profile/card', {
+    contentType: 'text/turtle',
+    body: `<${webId}> <http://www.w3.org/ns/solid/terms#publicTypeIndex> <${typeIndexUrl}> .`,
+  })
+  const profilePath = new URL(webId.split('#')[0] ?? '').pathname.replace(/^\//, '')
+  const profileTarget = `${baseUrl}/v1/pod-proxy/${profilePath}`
+  const replace = await fetch(profileTarget, {
+    method: 'PUT',
+    headers: {
+      authorization: `Bearer ${session.accessToken}`,
+      'content-type': 'text/turtle',
+      'if-none-match': '*',
+    },
+    body: '<> a <http://xmlns.com/foaf/0.1/PersonalProfileDocument> .',
+  })
+  assert.equal(replace.status, 428)
+
+  const remove = await fetch(`${profileTarget}?cache-bust=1`, {
+    method: 'DELETE',
+    headers: {
+      authorization: `Bearer ${session.accessToken}`,
+      'if-match': '"v1"',
+    },
+  })
+  assert.equal(remove.status, 428)
+})
+
+void test('proxy: ordinary ETag-fenced profile patches remain compatible', async () => {
+  const { session, webId } = await provisionUser()
+  const profilePath = new URL(webId.split('#')[0] ?? '').pathname.replace(/^\//, '')
+  const update = await fetch(`${baseUrl}/v1/pod-proxy/${profilePath}`, {
+    method: 'PATCH',
+    headers: {
+      authorization: `Bearer ${session.accessToken}`,
+      'content-type': 'application/sparql-update',
+      'if-match': '"v1"',
+    },
+    body: `INSERT DATA { <${webId}> <http://xmlns.com/foaf/0.1/name> "Alice" . }`,
+  })
+  assert.equal(update.status, 205)
+})
+
+void test('proxy: prefixed SPARQL cannot bypass profile Type Index fencing', async () => {
+  const { session, webId, podUrl } = await provisionUser()
+  const podName = new URL(podUrl).pathname.split('/').filter(Boolean)[0] ?? ''
+  const typeIndexUrl = `${podUrl}settings/publicTypeIndex`
+  cssState.pods.get(podName)?.set('profile/card', {
+    contentType: 'text/turtle',
+    body: `<${webId}> <http://www.w3.org/ns/solid/terms#publicTypeIndex> <${typeIndexUrl}> .`,
+  })
+  const profilePath = new URL(webId.split('#')[0] ?? '').pathname.replace(/^\//, '')
+  const update = await fetch(`${baseUrl}/v1/pod-proxy/${profilePath}`, {
+    method: 'PATCH',
+    headers: {
+      authorization: `Bearer ${session.accessToken}`,
+      'content-type': 'application/sparql-update',
+      'if-match': '"v1"',
+    },
+    body: `PREFIX solid: <http://www.w3.org/ns/solid/terms#>
+      DELETE DATA { <${webId}> solid:publicTypeIndex <${typeIndexUrl}> . }`,
+  })
+  assert.equal(update.status, 428)
+})
+
+void test('proxy: profile mutation syntax variants cannot bypass Type Index fencing', async () => {
+  const { session, webId, podUrl } = await provisionUser()
+  const podName = new URL(podUrl).pathname.split('/').filter(Boolean)[0] ?? ''
+  const pod = cssState.pods.get(podName)
+  assert.ok(pod)
+  const typeIndexUrl = `${podUrl}settings/publicTypeIndex`
+  const profilePath = new URL(webId.split('#')[0] ?? '').pathname.replace(/^\//, '')
+  const profileTarget = `${baseUrl}/v1/pod-proxy/${profilePath}`
+
+  const prefixedCreation = await fetch(profileTarget, {
+    method: 'PUT',
+    headers: {
+      authorization: `Bearer ${session.accessToken}`,
+      'content-type': 'text/turtle',
+      'if-none-match': '*',
+    },
+    body: `@prefix s: <http://www.w3.org/ns/solid/terms#> . <${webId}> s:publicTypeIndex <${typeIndexUrl}> .`,
+  })
+  assert.equal(prefixedCreation.status, 428)
+
+  const decoy = await fetch(profileTarget, {
+    method: 'PUT',
+    headers: {
+      authorization: `Bearer ${session.accessToken}`,
+      'content-type': 'text/turtle',
+      'if-none-match': '*',
+    },
+    body: `<${webId}> <http://xmlns.com/foaf/0.1/name> "${typeIndexUrl}" .`,
+  })
+  assert.equal(decoy.status, 201)
+
+  pod.set('profile/card', {
+    contentType: 'text/turtle',
+    body: `<${webId}> <http://www.w3.org/ns/solid/terms#publicTypeIndex> <${typeIndexUrl}> .`,
+  })
+  const binaryReplacement = await fetch(profileTarget, {
+    method: 'PUT',
+    headers: {
+      authorization: `Bearer ${session.accessToken}`,
+      'content-type': 'application/octet-stream',
+      'if-match': '"v1"',
+    },
+    body: new Uint8Array([1, 2, 3]),
+  })
+  assert.equal(binaryReplacement.status, 428)
+
+  const computedPredicate = await fetch(profileTarget, {
+    method: 'PATCH',
+    headers: {
+      authorization: `Bearer ${session.accessToken}`,
+      'content-type': 'application/sparql-update',
+      'if-match': '"v1"',
+    },
+    body: `PREFIX solid: <http://www.w3.org/ns/solid/terms#>
+      INSERT { <${webId}> ?predicate <${typeIndexUrl}> . }
+      WHERE { BIND(solid:publicTypeIndex AS ?predicate) }`,
+  })
+  assert.equal(computedPredicate.status, 428)
+
+  const copy = await fetch(profileTarget, {
+    method: 'PATCH',
+    headers: {
+      authorization: `Bearer ${session.accessToken}`,
+      'content-type': 'application/sparql-update',
+      'if-match': '"v1"',
+    },
+    body: 'COPY DEFAULT TO <https://solid.nodezero.social/source>',
+  })
+  assert.equal(copy.status, 428)
+})
+
+void test('proxy: standard RDF profile replacements preserve exactly one authoritative Type Index', async () => {
+  const { session, webId, podUrl } = await provisionUser()
+  const podName = new URL(podUrl).pathname.split('/').filter(Boolean)[0] ?? ''
+  const pod = cssState.pods.get(podName)
+  assert.ok(pod)
+  const typeIndexUrl = `${podUrl}settings/publicTypeIndex`
+  const profilePath = new URL(webId.split('#')[0] ?? '').pathname.replace(/^\//, '')
+  const profileTarget = `${baseUrl}/v1/pod-proxy/${profilePath}`
+  const representations = [
+    {
+      contentType: 'application/ld+json',
+      body: JSON.stringify({
+        '@id': webId,
+        'http://www.w3.org/ns/solid/terms#publicTypeIndex': { '@id': typeIndexUrl },
+      }),
+    },
+    {
+      contentType: 'application/rdf+xml',
+      body: `<?xml version="1.0"?><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:solid="http://www.w3.org/ns/solid/terms#"><rdf:Description rdf:about="${webId}"><solid:publicTypeIndex rdf:resource="${typeIndexUrl}"/></rdf:Description></rdf:RDF>`,
+    },
+    {
+      contentType: 'application/n-triples',
+      body: `<${webId}> <http://www.w3.org/ns/solid/terms#publicTypeIndex> <${typeIndexUrl}> .`,
+    },
+  ]
+  for (const representation of representations) {
+    pod.set('profile/card', {
+      contentType: 'text/turtle',
+      body: `<${webId}> <http://www.w3.org/ns/solid/terms#publicTypeIndex> <${typeIndexUrl}> .`,
+    })
+    const response = await fetch(profileTarget, {
+      method: 'PUT',
+      headers: {
+        authorization: `Bearer ${session.accessToken}`,
+        'content-type': representation.contentType,
+        'if-match': '"v1"',
+      },
+      body: representation.body,
+    })
+    assert.equal(response.status, 201)
+  }
+
+  pod.set('profile/card', {
+    contentType: 'text/turtle',
+    body: `<${webId}> <http://www.w3.org/ns/solid/terms#publicTypeIndex> <${typeIndexUrl}> .`,
+  })
+  const duplicatePointer = await fetch(profileTarget, {
+    method: 'PUT',
+    headers: {
+      authorization: `Bearer ${session.accessToken}`,
+      'content-type': 'text/turtle',
+      'if-match': '"v1"',
+    },
+    body: `@prefix solid: <http://www.w3.org/ns/solid/terms#> .
+      <${webId}> solid:publicTypeIndex <${typeIndexUrl}>, <${podUrl}settings/otherIndex> .`,
+  })
+  assert.equal(duplicatePointer.status, 428)
+})
+
+void test('proxy: JSON-LD contexts and Type Index terms remain local and owner-bound', async () => {
+  const { session, webId, podUrl } = await provisionUser()
+  const podName = new URL(podUrl).pathname.split('/').filter(Boolean)[0] ?? ''
+  const pod = cssState.pods.get(podName)
+  assert.ok(pod)
+  const typeIndexUrl = `${podUrl}settings/publicTypeIndex`
+  const profilePath = new URL(webId.split('#')[0] ?? '').pathname.replace(/^\//, '')
+  const profileTarget = `${baseUrl}/v1/pod-proxy/${profilePath}`
+  const existingProfile = `<${webId}> <http://www.w3.org/ns/solid/terms#publicTypeIndex> <${typeIndexUrl}> .`
+
+  for (const [body, expectedStatus] of [
+    [JSON.stringify({ '@context': 'http://127.0.0.1/context', '@id': webId }), 503],
+    [
+      JSON.stringify({
+        '@context': { '@import': 'http://127.0.0.1/context' },
+        '@id': webId,
+      }),
+      503,
+    ],
+    [
+      JSON.stringify({
+        '@id': 'https://mallory.example/profile/card#me',
+        'http://www.w3.org/ns/solid/terms#publicTypeIndex': { '@id': typeIndexUrl },
+      }),
+      428,
+    ],
+    [
+      JSON.stringify({
+        '@id': webId,
+        'http://www.w3.org/ns/solid/terms#publicTypeIndex': typeIndexUrl,
+      }),
+      428,
+    ],
+  ] as const) {
+    pod.set('profile/card', { contentType: 'text/turtle', body: existingProfile })
+    const response = await fetch(profileTarget, {
+      method: 'PUT',
+      headers: {
+        authorization: `Bearer ${session.accessToken}`,
+        'content-type': 'application/ld+json',
+        'if-match': '"v1"',
+      },
+      body,
+    })
+    assert.equal(response.status, expectedStatus)
+    assert.equal(pod.get('profile/card')?.body, existingProfile)
+  }
+})
+
+void test('proxy: ordinary JSON resources are not classified as publication RDF', async () => {
+  const { session, podUrl } = await provisionUser()
+  const podPath = new URL(podUrl).pathname.replace(/^\//, '')
+  const target = `${baseUrl}/v1/pod-proxy/${podPath}social/trust-circles.json`
+  const create = await fetch(target, {
+    method: 'PUT',
+    headers: {
+      authorization: `Bearer ${session.accessToken}`,
+      'content-type': 'application/json',
+      'if-none-match': '*',
+    },
+    body: '{"version":1,"members":[]}',
+  })
+  assert.equal(create.status, 201)
+
+  const update = await fetch(target, {
+    method: 'PUT',
+    headers: {
+      authorization: `Bearer ${session.accessToken}`,
+      'content-type': 'application/json',
+      'if-match': '"v1"',
+    },
+    body: '{"version":1,"members":["alice"]}',
+  })
+  assert.equal(update.status, 201)
 })
 
 void test('solid-account: retries a transient CSS Pod creation 400', async () => {
@@ -983,6 +1418,43 @@ void test('proxy: retries once with a fresh token when CSS rejects, then fails c
   // the mint counter not exploding.
   assert.ok([401, 404].includes(denied.status))
   assert.ok(cssState.tokenExchanges - mintsBefore <= 1)
+})
+
+void test('proxy: publication guard remints once, then invalidates persistent Pod rejection', async () => {
+  const { session, webId, podUrl } = await provisionUser()
+  const podName = new URL(podUrl).pathname.split('/').filter(Boolean)[0] ?? ''
+  const typeIndexUrl = `${podUrl}settings/publicTypeIndex`
+  cssState.pods.get(podName)?.set('profile/card', {
+    contentType: 'text/turtle',
+    body: `<${webId}> <http://www.w3.org/ns/solid/terms#publicTypeIndex> <${typeIndexUrl}> .`,
+  })
+  const typeIndexPath = new URL(typeIndexUrl).pathname.replace(/^\//, '')
+
+  cssState.rejectPodRequests = 1
+  const mintsBeforeRecovery = cssState.tokenExchanges
+  const recoveredGuard = await fetch(`${baseUrl}/v1/pod-proxy/${typeIndexPath}`, {
+    method: 'DELETE',
+    headers: {
+      authorization: `Bearer ${session.accessToken}`,
+      'if-match': '"v1"',
+    },
+  })
+  assert.equal(recoveredGuard.status, 428)
+  assert.equal(cssState.tokenExchanges, mintsBeforeRecovery + 1)
+
+  cssState.rejectPodRequests = 2
+  const persistentRejection = await fetch(`${baseUrl}/v1/pod-proxy/${typeIndexPath}`, {
+    method: 'DELETE',
+    headers: {
+      authorization: `Bearer ${session.accessToken}`,
+      'if-match': '"v1"',
+    },
+  })
+  assert.equal(persistentRejection.status, 401)
+  assert.equal(
+    ((await persistentRejection.json()) as { code?: string }).code,
+    'session_invalid'
+  )
 })
 
 // ---------------------------------------------------------------------------

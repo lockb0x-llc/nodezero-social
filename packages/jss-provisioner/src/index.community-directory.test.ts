@@ -10,6 +10,7 @@ import { SessionTokenManager } from './sessionTokens.js'
 import type { CommunityDirectoryRecord } from './communityDirectory.js'
 import type { PublicPeerProfileResult } from './publicPeerProfile.js'
 import { hashCohortIdentity } from './milestoneQControls.js'
+import { CommunityDirectoryRefreshError } from './communityDirectoryRefresh.js'
 
 process.env.JSS_SOLID_CSS_BASE_URL = 'https://solid.nodezero.social'
 process.env.JSS_ISSUER_URL = 'https://staging.nodezero.social'
@@ -177,6 +178,16 @@ void test('/v1/community-directory/index honors cache validators', async () => {
     assert.equal(cached.status, 304)
     assert.equal(cached.headers.get('etag'), etag)
     assert.equal(cached.headers.get('cache-control'), 'private, no-cache, must-revalidate')
+
+    for (const validator of [`"other", ${etag}`, etag.replace(/^W\//, ''), '*']) {
+      const matched = await fetch(`${baseUrl}/v1/community-directory/index?limit=1`, {
+        headers: {
+          authorization: `Bearer ${directorySession.accessToken}`,
+          'if-none-match': validator,
+        },
+      })
+      assert.equal(matched.status, 304)
+    }
   })
 })
 
@@ -226,11 +237,11 @@ void test('/v1/community-directory/refresh derives the owner from the session', 
       })
       const payload = (await response.json()) as {
         listed?: boolean
-        record?: CommunityDirectoryRecord
+        record?: unknown
       }
       assert.equal(response.status, 200)
       assert.equal(payload.listed, true)
-      assert.equal(payload.record?.webId, ownerWebId)
+      assert.equal(payload.record, undefined)
       assert.equal(refreshedSubject, ownerWebId)
     },
     {
@@ -257,13 +268,6 @@ void test('/v1/community-directory/refresh suppresses listing for a non-cohort o
         status: 'ok',
         listed: false,
         available: false,
-        record: {
-          webId: nonCohortSession.webId,
-          podUrl: nonCohortSession.podUrl,
-          issuer: 'https://solid.nodezero.social',
-          listed: false,
-          updatedAt: '2026-08-01T12:00:00.000Z',
-        },
       })
       assert.equal(allowListing, false)
     },
@@ -286,14 +290,96 @@ void test('/v1/community-directory/refresh suppresses listing for a non-cohort o
 })
 
 void test('/v1/community-directory/suppress remains available after cohort withdrawal', async () => {
+  await withServer(
+    async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/v1/community-directory/suppress`, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${nonCohortSession.accessToken}`,
+          'x-nodezero-publication-revision': '0',
+        },
+      })
+      assert.equal(response.status, 200)
+      assert.deepEqual(await response.json(), { status: 'ok', listed: false })
+    },
+    {
+      refreshCommunityDirectoryProjection: (claims: {
+        sub: string
+        pod: string
+      }): Promise<CommunityDirectoryRecord> =>
+        Promise.resolve({
+          webId: claims.sub,
+          podUrl: claims.pod,
+          issuer: 'https://solid.nodezero.social',
+          listed: false,
+          updatedAt: '2026-08-01T12:00:00.000Z',
+        }),
+    }
+  )
+})
+
+void test('/v1/community-directory/suppress rejects unfenced cached clients', async () => {
   await withServer(async (baseUrl) => {
     const response = await fetch(`${baseUrl}/v1/community-directory/suppress`, {
       method: 'POST',
       headers: { authorization: `Bearer ${nonCohortSession.accessToken}` },
     })
-    assert.equal(response.status, 200)
-    assert.deepEqual(await response.json(), { status: 'ok', listed: false })
+    assert.equal(response.status, 428)
+    assert.equal(
+      ((await response.json()) as { code?: string }).code,
+      'publication_precondition_required'
+    )
   })
+})
+
+void test('/v1/community-directory/suppress reports a concurrent publication conflict', async () => {
+  await withServer(
+    async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/v1/community-directory/suppress`, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${nonCohortSession.accessToken}`,
+          'x-nodezero-publication-revision': '4',
+        },
+      })
+      assert.equal(response.status, 409)
+      assert.equal(((await response.json()) as { code?: string }).code, 'publication_changed')
+    },
+    {
+      refreshCommunityDirectoryProjection: () =>
+        Promise.reject(
+          new CommunityDirectoryRefreshError(
+            'Discovery publication changed during suppression.',
+            'publication_changed'
+          )
+        ),
+    }
+  )
+})
+
+void test('/v1/community-directory/suppress preserves session invalidation', async () => {
+  await withServer(
+    async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/v1/community-directory/suppress`, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${nonCohortSession.accessToken}`,
+          'x-nodezero-publication-revision': '4',
+        },
+      })
+      assert.equal(response.status, 401)
+      assert.equal(((await response.json()) as { code?: string }).code, 'session_invalid')
+    },
+    {
+      refreshCommunityDirectoryProjection: () =>
+        Promise.reject(
+          new CommunityDirectoryRefreshError(
+            'Session Pod credentials are unavailable.',
+            'session_invalid'
+          )
+        ),
+    }
+  )
 })
 
 void test('/v1/community-directory/suppress is independent from refresh throttling', async () => {
@@ -321,7 +407,10 @@ void test('/v1/community-directory/suppress is independent from refresh throttli
 
       const suppress = await fetch(`${baseUrl}/v1/community-directory/suppress`, {
         method: 'POST',
-        headers: { authorization: `Bearer ${rateLimitedSession.accessToken}` },
+        headers: {
+          authorization: `Bearer ${rateLimitedSession.accessToken}`,
+          'x-nodezero-publication-revision': '0',
+        },
       })
       assert.equal(suppress.status, 200)
       assert.deepEqual(await suppress.json(), { status: 'ok', listed: false })
@@ -499,7 +588,6 @@ void test('/v1/community-directory/avatar rejects expired records before fetchin
 })
 
 void test('/v1/community-directory/avatar enforces concurrency before outbound fetches', async () => {
-  let started = 0
   let releaseFetches!: () => void
   let capacityReached!: () => void
   const release = new Promise<void>((resolve) => {
@@ -543,7 +631,6 @@ void test('/v1/community-directory/avatar enforces concurrency before outbound f
           manifestExpiresAt: '2099-08-12T12:00:00.000Z',
         }),
       fetchDirectoryAvatar: async (url: string) => {
-        started += 1
         capacityReached()
         await release
         return {

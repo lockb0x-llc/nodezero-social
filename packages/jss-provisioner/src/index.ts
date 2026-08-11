@@ -388,7 +388,7 @@ function corsHeaders(req: IncomingMessage): Record<string, string> {
     ...(isAllowedOrigin ? { 'access-control-allow-credentials': 'true' } : {}),
     'access-control-allow-methods': 'GET,HEAD,POST,PUT,PATCH,DELETE,OPTIONS',
     'access-control-allow-headers':
-      'content-type,authorization,idempotency-key,x-nz-internal-key,accept,if-match,if-none-match,slug,link',
+      'content-type,authorization,idempotency-key,x-nz-internal-key,x-nodezero-publication-revision,accept,if-match,if-none-match,slug,link',
     'access-control-expose-headers': 'etag,location,link,wac-allow,accept-patch,allow',
     vary: 'origin',
   }
@@ -1185,7 +1185,10 @@ export async function handleHttpRequest(
       return
     }
     try {
-      await (overrides.reloadCommunityDirectory ?? (() => communityDirectory.reload()))()
+      await (
+        overrides.reloadCommunityDirectory ??
+        ((): Promise<void> => communityDirectory.reload())
+      )()
     } catch {
       sendJson(
         req,
@@ -1206,7 +1209,7 @@ export async function handleHttpRequest(
       limit,
       include: (record) => milestoneQControls.isEnabled('directory', record.webId),
     })
-    if (req.headers['if-none-match'] === page.etag) {
+    if (ifNoneMatchMatches(req.headers['if-none-match'], page.etag)) {
       res.writeHead(304, {
         ...corsHeaders(req),
         etag: page.etag,
@@ -1275,7 +1278,6 @@ export async function handleHttpRequest(
         status: 'ok',
         listed: record.listed,
         available: directoryAvailable,
-        record,
       })
       milestoneQControls.count('directory', record.listed ? 'listed' : 'unlisted')
     } catch (error) {
@@ -1304,6 +1306,18 @@ export async function handleHttpRequest(
       })
       return
     }
+    const publicationRevision = req.headers['x-nodezero-publication-revision']
+    if (
+      typeof publicationRevision !== 'string' ||
+      !/^\d+$/.test(publicationRevision) ||
+      !Number.isSafeInteger(Number(publicationRevision))
+    ) {
+      sendJson(req, res, 428, {
+        error: 'Directory suppression requires the observed publication generation.',
+        code: 'publication_precondition_required',
+      })
+      return
+    }
     const suppressLimit = communityDirectorySuppressRateLimiter.consume(claims.sub)
     if (!suppressLimit.allowed) {
       sendJson(
@@ -1319,17 +1333,31 @@ export async function handleHttpRequest(
       return
     }
     try {
-      await communityDirectory.reloadRecord(claims.sub)
-      communityDirectory.setListing(claims.sub, false)
-      await communityDirectory.flush()
-      await communityDirectory.reloadRecord(claims.sub)
+      const refresh =
+        overrides.refreshCommunityDirectoryProjection ?? refreshCommunityDirectoryProjection
+      await refresh(claims, {
+        credentialStore,
+        directoryStore: communityDirectory,
+        cssBaseUrl: SOLID_CSS_BASE_URL,
+        allowListing: false,
+        expectedPublicationRevision: Number(publicationRevision),
+      })
       sendJson(req, res, 200, { status: 'ok', listed: false })
       milestoneQControls.count('directory', 'suppressed')
-    } catch {
-      sendJson(req, res, 503, {
-        error: 'Community directory suppression is temporarily unavailable.',
-        code: 'directory_suppress_unavailable',
-      })
+    } catch (error) {
+      if (error instanceof CommunityDirectoryRefreshError && error.code === 'session_invalid') {
+        sendJson(req, res, 401, { error: error.message, code: error.code })
+      } else if (
+        error instanceof CommunityDirectoryRefreshError &&
+        error.code === 'publication_changed'
+      ) {
+        sendJson(req, res, 409, { error: error.message, code: error.code })
+      } else {
+        sendJson(req, res, 503, {
+          error: 'Community directory suppression is temporarily unavailable.',
+          code: 'directory_suppress_unavailable',
+        })
+      }
     }
     return
   }
@@ -2897,6 +2925,16 @@ export async function handleHttpRequest(
   }
 
   sendJson(req, res, 404, { error: 'Not found' })
+}
+
+function ifNoneMatchMatches(value: string | undefined, currentEtag: string): boolean {
+  if (!value) return false
+  if (value.trim() === '*') return true
+  const currentOpaque = currentEtag.replace(/^W\//, '')
+  return value
+    .split(',')
+    .map((candidate) => candidate.trim().replace(/^W\//, ''))
+    .some((candidate) => candidate === currentOpaque)
 }
 
 export function createRequestHandler(overrides: RequestHandlerOverrides = {}) {

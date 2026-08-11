@@ -36,6 +36,8 @@ describe('DiscoveryConsentManager', () => {
     )
     expect(consent.inboundContactRequests).toBe(true)
     expect(consent.revision).toBe(1)
+    expect(consent.publicationRevision).toBeUndefined()
+    expect(consent.publicationUpdatedAt).toBeUndefined()
     expect(consent.publicListing).toBe(false)
     expect(fetch.mock.calls[1]?.[1]?.headers).toMatchObject({ 'if-none-match': '*' })
     expect(String(fetch.mock.calls[1]?.[1]?.body)).toContain('inboundContactRequests')
@@ -75,6 +77,8 @@ describe('DiscoveryConsentManager', () => {
       { publicListing: false }
     )
     expect(consent.publicListing).toBe(true)
+    expect(consent.publicationRevision).toBe(1)
+    expect(consent.publicationUpdatedAt).toBe('2026-08-01T12:00:00.000Z')
     expect(consent.nearbyPresence).toBe(true)
     expect(fetch.mock.calls[1]?.[1]).toMatchObject({
       method: 'PATCH',
@@ -86,6 +90,7 @@ describe('DiscoveryConsentManager', () => {
     })
     const replacement = String(fetch.mock.calls[2]?.[1]?.body)
     expect(replacement).toContain('publicListing> true')
+    expect(replacement).toContain('publicationRevision> 1')
     expect(replacement).toContain('nearbyPresence> true')
   })
 
@@ -102,9 +107,57 @@ describe('DiscoveryConsentManager', () => {
     ).rejects.toThrow('changed concurrently')
     expect(fetch).toHaveBeenCalledTimes(1)
   })
+
+  it('reserves one monotonic publication generation and rejects a stale reservation', async () => {
+    const fetch = jestGlobal
+      .fn()
+      .mockResolvedValueOnce(consentResponse(4, '"consent-4"', false, 2))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(consentResponse(5, '"consent-5"', false, 3))
+    const manager = new DiscoveryConsentManager({ fetch })
+
+    const reserved = await manager.reservePublicationRevision(
+      'https://alice.example/',
+      2,
+      '2026-08-01T12:00:00.000Z'
+    )
+    expect(reserved.publicationRevision).toBe(3)
+    expect(fetch.mock.calls[1]?.[1]?.headers).toMatchObject({ 'if-match': '"consent-4"' })
+    await expect(
+      manager.reservePublicationRevision(
+        'https://alice.example/',
+        2,
+        '2026-08-01T12:01:00.000Z'
+      )
+    ).rejects.toThrow('publication changed concurrently')
+    expect(fetch).toHaveBeenCalledTimes(3)
+  })
+
+  it('treats a legacy expected generation as zero after an ETag conflict', async () => {
+    const fetch = jestGlobal
+      .fn()
+      .mockResolvedValueOnce(consentResponse(1, '"legacy"', false))
+      .mockResolvedValueOnce(new Response('', { status: 412 }))
+      .mockResolvedValueOnce(consentResponse(2, '"newer"', false, 1))
+    const manager = new DiscoveryConsentManager({ fetch })
+
+    await expect(
+      manager.reservePublicationRevision(
+        'https://alice.example/',
+        undefined,
+        '2026-08-01T12:00:00.000Z'
+      )
+    ).rejects.toThrow('publication changed concurrently')
+    expect(fetch).toHaveBeenCalledTimes(3)
+  })
 })
 
-function consentResponse(revision: number, etag: string, nearbyPresence: boolean): Response {
+function consentResponse(
+  revision: number,
+  etag: string,
+  nearbyPresence: boolean,
+  publicationRevision?: number
+): Response {
   const thing = 'https://alice.example/social/consent/discovery#consent'
   const predicate = 'https://nodezero.social/ns#'
   return new Response(
@@ -112,6 +165,12 @@ function consentResponse(revision: number, etag: string, nearbyPresence: boolean
       `<${thing}> a <${predicate}DiscoveryConsent>;`,
       `  <${predicate}version> 1;`,
       `  <${predicate}revision> ${revision};`,
+      ...(publicationRevision === undefined
+        ? []
+        : [
+            `  <${predicate}publicationRevision> ${publicationRevision};`,
+            `  <${predicate}publicationUpdatedAt> "2026-08-01T11:00:00.000Z";`,
+          ]),
       `  <${predicate}ownerWebId> <${alice}>;`,
       `  <${predicate}publicListing> false;`,
       `  <${predicate}publicIndexing> false;`,

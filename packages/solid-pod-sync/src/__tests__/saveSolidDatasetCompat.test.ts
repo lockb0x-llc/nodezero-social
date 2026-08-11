@@ -34,6 +34,8 @@ describe('saveSolidDatasetWithPatchFallback', () => {
     await saveSolidDatasetWithPatchFallback(datasetUrl, updated, fetch, snapshot.etag)
 
     expect(fetch.mock.calls[1]?.[1]).toMatchObject({ method: 'PATCH' })
+    const patchInit = fetch.mock.calls[1]?.[1] as unknown as RequestInit
+    expect(new Headers(patchInit.headers).get('if-match')).toBe('"index-1"')
     expect(fetch.mock.calls[2]?.[1]).toMatchObject({
       method: 'PUT',
       headers: { 'content-type': 'text/turtle', 'if-match': '"index-1"' },
@@ -75,5 +77,19 @@ describe('saveSolidDatasetWithPatchFallback', () => {
       saveSolidDatasetWithPatchFallback(datasetUrl, updated, fetch, snapshot.etag)
     ).rejects.toMatchObject({ statusCode: 500 })
     expect(fetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('refuses to mutate an existing dataset without an ETag', async () => {
+    const fetch = jestGlobal.fn().mockResolvedValueOnce(datasetResponse(''))
+    const snapshot = await getSolidDatasetSnapshot(datasetUrl, fetch)
+    const updated = setThing(
+      snapshot.dataset,
+      buildThing(createThing({ url: `${datasetUrl}#new` })).build()
+    )
+
+    await expect(
+      saveSolidDatasetWithPatchFallback(datasetUrl, updated, fetch, snapshot.etag)
+    ).rejects.toThrow('missing an ETag')
+    expect(fetch).toHaveBeenCalledTimes(1)
   })
 })

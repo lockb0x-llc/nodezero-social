@@ -47,6 +47,8 @@ const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type'
 const NZ_DISCOVERY_CONSENT = 'https://nodezero.social/ns#DiscoveryConsent'
 const NZ_VERSION = 'https://nodezero.social/ns#version'
 const NZ_REVISION = 'https://nodezero.social/ns#revision'
+const NZ_PUBLICATION_REVISION = 'https://nodezero.social/ns#publicationRevision'
+const NZ_PUBLICATION_UPDATED_AT = 'https://nodezero.social/ns#publicationUpdatedAt'
 const NZ_OWNER_WEB_ID = 'https://nodezero.social/ns#ownerWebId'
 const NZ_PUBLIC_LISTING = 'https://nodezero.social/ns#publicListing'
 const NZ_PUBLIC_INDEXING = 'https://nodezero.social/ns#publicIndexing'
@@ -79,6 +81,12 @@ export class DiscoveryConsentManager {
     const consent: DiscoveryConsent = {
       version: getInteger(thing, NZ_VERSION) as 1,
       revision: getInteger(thing, NZ_REVISION) ?? 0,
+      ...(getInteger(thing, NZ_PUBLICATION_REVISION) !== null
+        ? { publicationRevision: getInteger(thing, NZ_PUBLICATION_REVISION) ?? 0 }
+        : {}),
+      ...(getStringNoLocale(thing, NZ_PUBLICATION_UPDATED_AT) !== null
+        ? { publicationUpdatedAt: getStringNoLocale(thing, NZ_PUBLICATION_UPDATED_AT) ?? '' }
+        : {}),
       ownerWebId: getUrl(thing, NZ_OWNER_WEB_ID) ?? '',
       publicListing: getBoolean(thing, NZ_PUBLIC_LISTING) ?? false,
       publicIndexing: getBoolean(thing, NZ_PUBLIC_INDEXING) ?? false,
@@ -119,6 +127,12 @@ export class DiscoveryConsentManager {
         ...current,
         ...patch,
         revision: (current.revision ?? 0) + 1,
+        ...(changesPublicPublication(current, patch)
+          ? {
+              publicationRevision: (current.publicationRevision ?? 0) + 1,
+              publicationUpdatedAt: updatedAt,
+            }
+          : {}),
         updatedAt,
       }
       assertValidDiscoveryConsent(consent)
@@ -139,6 +153,48 @@ export class DiscoveryConsentManager {
     throw new Error('Discovery consent changed concurrently; retry the operation.')
   }
 
+  async reservePublicationRevision(
+    podRoot: string,
+    expectedPublicationRevision: number | undefined,
+    updatedAt = new Date().toISOString()
+  ): Promise<DiscoveryConsent> {
+    await this.ensurePodLayoutIfEnabled(podRoot)
+    for (let attempt = 0; attempt < MAX_WRITE_ATTEMPTS; attempt += 1) {
+      const snapshot = await this.readSnapshot(podRoot)
+      const current = snapshot.dataset
+        ? this.parseConsent(podRoot, snapshot.dataset)
+        : createDefaultDiscoveryConsent(
+            deriveOwnerWebId(`${podRoot.replace(/\/$/, '')}/social/consent/`),
+            updatedAt
+          )
+      if ((current.publicationRevision ?? 0) !== (expectedPublicationRevision ?? 0)) {
+        throw new Error('Discovery publication changed concurrently; retry the operation.')
+      }
+      const consent: DiscoveryConsent = {
+        ...current,
+        revision: (current.revision ?? 0) + 1,
+        publicationRevision: (current.publicationRevision ?? 0) + 1,
+        publicationUpdatedAt: updatedAt,
+        updatedAt,
+      }
+      assertValidDiscoveryConsent(consent)
+      const response = snapshot.dataset
+        ? await this.patchExistingConsent(podRoot, consent, {}, snapshot.etag)
+        : await this.createConsent(podRoot, consent)
+      if (
+        (response.status === 409 || response.status === 412) &&
+        attempt < MAX_WRITE_ATTEMPTS - 1
+      ) {
+        continue
+      }
+      if (!response.ok) {
+        throw new Error(`Failed to reserve discovery publication: HTTP ${response.status}`)
+      }
+      return consent
+    }
+    throw new Error('Discovery publication changed concurrently; retry the operation.')
+  }
+
   private parseConsent(
     podRoot: string,
     dataset: SolidDataset & Partial<WithServerResourceInfo>
@@ -148,6 +204,12 @@ export class DiscoveryConsentManager {
     const consent: DiscoveryConsent = {
       version: getInteger(thing, NZ_VERSION) as 1,
       revision: getInteger(thing, NZ_REVISION) ?? 0,
+      ...(getInteger(thing, NZ_PUBLICATION_REVISION) !== null
+        ? { publicationRevision: getInteger(thing, NZ_PUBLICATION_REVISION) ?? 0 }
+        : {}),
+      ...(getStringNoLocale(thing, NZ_PUBLICATION_UPDATED_AT) !== null
+        ? { publicationUpdatedAt: getStringNoLocale(thing, NZ_PUBLICATION_UPDATED_AT) ?? '' }
+        : {}),
       ownerWebId: getUrl(thing, NZ_OWNER_WEB_ID) ?? '',
       publicListing: getBoolean(thing, NZ_PUBLIC_LISTING) ?? false,
       publicIndexing: getBoolean(thing, NZ_PUBLIC_INDEXING) ?? false,
@@ -189,7 +251,11 @@ export class DiscoveryConsentManager {
   private createConsent(podRoot: string, consent: DiscoveryConsent): Promise<Response> {
     return this.session.fetch(consentUrl(podRoot), {
       method: 'PUT',
-      headers: { 'content-type': 'text/turtle', 'if-none-match': '*' },
+      headers: {
+        'content-type': 'text/turtle',
+        'if-none-match': '*',
+        'x-nodezero-publication-revision': String(consent.publicationRevision ?? 0),
+      },
       body: serializeConsent(consentThingUrl(podRoot), consent),
     })
   }
@@ -206,14 +272,22 @@ export class DiscoveryConsentManager {
     return this.session
       .fetch(consentUrl(podRoot), {
         method: 'PATCH',
-        headers: { 'content-type': 'application/sparql-update', 'if-match': etag },
+        headers: {
+          'content-type': 'application/sparql-update',
+          'if-match': etag,
+          'x-nodezero-publication-revision': String(consent.publicationRevision ?? 0),
+        },
         body: serializeConsentPatch(consentThingUrl(podRoot), consent, patch),
       })
       .then((response) => {
         if (![405, 415, 501].includes(response.status)) return response
         return this.session.fetch(consentUrl(podRoot), {
           method: 'PUT',
-          headers: { 'content-type': 'text/turtle', 'if-match': etag },
+          headers: {
+            'content-type': 'text/turtle',
+            'if-match': etag,
+            'x-nodezero-publication-revision': String(consent.publicationRevision ?? 0),
+          },
           body: serializeConsent(consentThingUrl(podRoot), consent),
         })
       })
@@ -255,6 +329,12 @@ function serializeConsent(thingUrl: string, consent: DiscoveryConsent): string {
     `${iri(thingUrl)} ${iri(RDF_TYPE)} ${iri(NZ_DISCOVERY_CONSENT)} .`,
     `${iri(thingUrl)} ${iri(NZ_VERSION)} ${consent.version} .`,
     `${iri(thingUrl)} ${iri(NZ_REVISION)} ${consent.revision ?? 0} .`,
+    ...(consent.publicationRevision !== undefined
+      ? [`${iri(thingUrl)} ${iri(NZ_PUBLICATION_REVISION)} ${consent.publicationRevision} .`]
+      : []),
+    ...(consent.publicationUpdatedAt
+      ? [`${iri(thingUrl)} ${iri(NZ_PUBLICATION_UPDATED_AT)} ${literal(consent.publicationUpdatedAt)} .`]
+      : []),
     `${iri(thingUrl)} ${iri(NZ_OWNER_WEB_ID)} ${iri(consent.ownerWebId)} .`,
     ...Object.entries(CONSENT_BOOLEAN_PREDICATES).map(
       ([key, predicate]) =>
@@ -275,6 +355,22 @@ function serializeConsentPatch(
       value: String(consent[key as keyof DiscoveryConsentPatch]),
     })),
     { predicate: NZ_REVISION, value: String(consent.revision ?? 0) },
+    ...(consent.publicationRevision !== undefined
+      ? [
+          {
+            predicate: NZ_PUBLICATION_REVISION,
+            value: String(consent.publicationRevision),
+          },
+        ]
+      : []),
+    ...(consent.publicationUpdatedAt
+      ? [
+          {
+            predicate: NZ_PUBLICATION_UPDATED_AT,
+            value: literal(consent.publicationUpdatedAt),
+          },
+        ]
+      : []),
     { predicate: NZ_UPDATED_AT, value: literal(consent.updatedAt) },
   ]
   return [
@@ -290,6 +386,16 @@ function serializeConsentPatch(
     ),
     '}',
   ].join('\n')
+}
+
+function changesPublicPublication(
+  current: DiscoveryConsent,
+  patch: DiscoveryConsentPatch
+): boolean {
+  return (
+    (patch.publicListing !== undefined && patch.publicListing !== current.publicListing) ||
+    (patch.publicIndexing !== undefined && patch.publicIndexing !== current.publicIndexing)
+  )
 }
 
 function iri(value: string): string {

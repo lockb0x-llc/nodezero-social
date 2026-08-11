@@ -20,6 +20,12 @@
 
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { createHash } from 'node:crypto'
+import { Readable } from 'node:stream'
+import type { Quad } from '@rdfjs/types'
+import { PublicTypeIndexManager } from '@nodezero/solid-pod-sync'
+import { DiscoveryManifestManager } from '@nodezero/solid-pod-sync'
+import { Parser as SparqlParser } from 'sparqljs'
+import { rdfParser } from 'rdf-parse'
 import type { CredentialStore } from './credentialStore.js'
 import type { SessionTokenManager, SessionClaims } from './sessionTokens.js'
 import { mintPodAccessToken, type PodAccessToken } from './solidAccount.js'
@@ -28,6 +34,7 @@ export const POD_PROXY_PREFIX = '/v1/pod-proxy/'
 
 /** Access tokens are re-minted this many ms before their reported expiry. */
 const TOKEN_EXPIRY_SLACK_MS = 30_000
+const SOLID_PUBLIC_TYPE_INDEX = 'http://www.w3.org/ns/solid/terms#publicTypeIndex'
 
 const ALLOWED_METHODS = new Set(['GET', 'HEAD', 'PUT', 'POST', 'PATCH', 'DELETE'])
 
@@ -40,6 +47,7 @@ const FORWARDED_REQUEST_HEADERS = [
   'if-none-match',
   'if-modified-since',
   'if-unmodified-since',
+  'x-nodezero-publication-revision',
   'slug',
   'link',
   'depth',
@@ -78,6 +86,8 @@ interface CachedToken {
   token: PodAccessToken
   webId: string
 }
+
+class PublicationGuardAuthenticationError extends Error {}
 
 const tokenCache = new Map<string, CachedToken>()
 
@@ -304,6 +314,57 @@ export async function handlePodProxyRequest(
       return true
     }
 
+    let protectedPublicationMutation: boolean
+    try {
+      protectedPublicationMutation = await isProtectedPublicationMutation(
+        targetUrl,
+        method,
+        body,
+        typeof req.headers['content-type'] === 'string' ? req.headers['content-type'] : '',
+        claims,
+        token
+      )
+    } catch (error) {
+      if (error instanceof PublicationGuardAuthenticationError && !attemptedFresh) {
+        attemptedFresh = true
+        tokenCache.delete(claims.sub)
+        continue
+      }
+      if (error instanceof PublicationGuardAuthenticationError) {
+        tokenCache.delete(claims.sub)
+        sendProxyJson(req, res, deps.corsHeaders, 401, {
+          error: 'Solid access was rejected for this session.',
+          code: 'session_invalid',
+        })
+        return true
+      }
+      const message = error instanceof Error ? error.message : 'Publication guard failed.'
+      deps.auditLog?.('pod-proxy.publication-guard-failed', {
+        identityDigest: podProxyAuditDigest('identity', claims.sub),
+        resourceDigest: podProxyAuditDigest('resource', targetUrl),
+        errorDigest: podProxyAuditDigest('error', message),
+      })
+      sendProxyJson(req, res, deps.corsHeaders, 503, {
+        error: 'Publication mutation safety could not be established.',
+        code: 'publication_guard_unavailable',
+      })
+      return true
+    }
+    if (protectedPublicationMutation) {
+      const publicationRevision = req.headers['x-nodezero-publication-revision']
+      const hasRevision =
+        typeof publicationRevision === 'string' && /^\d+$/.test(publicationRevision)
+      const hasWritePrecondition =
+        isValidIfMatch(req.headers['if-match']) || req.headers['if-none-match'] === '*'
+      if (!hasRevision || !hasWritePrecondition) {
+        sendProxyJson(req, res, deps.corsHeaders, 428, {
+          error: 'Publication mutations require a generation and HTTP precondition.',
+          code: 'publication_precondition_required',
+        })
+        return true
+      }
+    }
+
     const headers: Record<string, string> = {
       authorization: `DPoP ${token.accessToken}`,
       dpop: token.proof(targetUrl, method),
@@ -364,4 +425,190 @@ export async function handlePodProxyRequest(
     res.end(payload)
     return true
   }
+}
+
+function isValidIfMatch(value: string | undefined): boolean {
+  if (!value) return false
+  return /^"[\x21\x23-\x7e\x80-\xff]*"(?:\s*,\s*"[\x21\x23-\x7e\x80-\xff]*")*$/.test(
+    value.trim()
+  )
+}
+
+async function isProtectedPublicationMutation(
+  targetUrl: string,
+  method: string,
+  body: Buffer | null,
+  contentType: string,
+  claims: SessionClaims,
+  token: PodAccessToken
+): Promise<boolean> {
+  if (!['PUT', 'PATCH', 'DELETE'].includes(method)) return false
+  const target = new URL(targetUrl)
+  const pathname = target.pathname
+  const profileUrl = claims.sub.split('#')[0] ?? ''
+  const targetsProfile = sameResourcePath(target, new URL(profileUrl))
+  if (
+    pathname.endsWith('/social/consent/discovery') ||
+    pathname.endsWith('/public/discovery/manifest')
+  ) {
+    return true
+  }
+  const text = body?.toString('utf8') ?? ''
+  if (
+    isRdfMutationContentType(contentType) &&
+    (text.includes('nodezero-discovery-manifest') ||
+      text.includes('https://nodezero.social/ns#DiscoveryManifest'))
+  ) {
+    return true
+  }
+  if (method !== 'DELETE' && !isRdfMutationContentType(contentType) && !targetsProfile) {
+    return false
+  }
+  const ownerFetch: typeof globalThis.fetch = (input, init) => {
+    const url =
+      typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+    const requestMethod = (init?.method ?? 'GET').toUpperCase()
+    const headers = new Headers(init?.headers)
+    headers.set('authorization', `DPoP ${token.accessToken}`)
+    headers.set('dpop', token.proof(url, requestMethod))
+    return fetch(url, { ...init, method: requestMethod, headers }).then((response) => {
+      if (response.status === 401) throw new PublicationGuardAuthenticationError()
+      return response
+    })
+  }
+  const typeIndexManager = new PublicTypeIndexManager({ fetch: ownerFetch })
+  const publicTypeIndexUrl = await typeIndexManager.discoverPublicTypeIndex(claims.sub)
+  if (targetsProfile) {
+    if (method === 'DELETE') return publicTypeIndexUrl !== null
+    if (method === 'PATCH') {
+      return sparqlUpdateTouchesOrMayRemovePredicate(text, SOLID_PUBLIC_TYPE_INDEX)
+    }
+    if (method === 'PUT') {
+      if (!isRdfRepresentationContentType(contentType)) {
+        return publicTypeIndexUrl !== null
+      }
+      const replacementTypeIndexUrls = await parseRdfPredicateObjects(
+        body ?? Buffer.alloc(0),
+        contentType,
+        claims.sub,
+        SOLID_PUBLIC_TYPE_INDEX,
+        target.toString()
+      )
+      return publicTypeIndexUrl === null
+        ? replacementTypeIndexUrls.length > 0
+        : replacementTypeIndexUrls.length !== 1 ||
+            replacementTypeIndexUrls[0] !== publicTypeIndexUrl
+    }
+  }
+  if (publicTypeIndexUrl !== null && sameResourcePath(target, new URL(publicTypeIndexUrl))) {
+    return true
+  }
+  const podRoot = claims.pod.endsWith('/') ? claims.pod : `${claims.pod}/`
+  const manifest = await new DiscoveryManifestManager({ fetch: ownerFetch }).readManifest(podRoot)
+  if (
+    manifest?.publicTypeIndexUrl &&
+    sameResourcePath(target, new URL(manifest.publicTypeIndexUrl))
+  ) {
+    return true
+  }
+  return false
+}
+
+function sameResourcePath(left: URL, right: URL): boolean {
+  return left.origin === right.origin && left.pathname === right.pathname
+}
+
+function isRdfMutationContentType(contentType: string): boolean {
+  return /(?:text\/turtle|application\/(?:sparql-update|ld\+json|rdf\+xml|n-triples))/i.test(
+    contentType
+  )
+}
+
+function isRdfRepresentationContentType(contentType: string): boolean {
+  return /(?:text\/turtle|application\/(?:ld\+json|rdf\+xml|n-triples))/i.test(contentType)
+}
+
+function sparqlUpdateTouchesOrMayRemovePredicate(
+  updateText: string,
+  predicate: string
+): boolean {
+  const parsed = new SparqlParser().parse(updateText)
+  if (parsed.type !== 'update') throw new Error('Profile PATCH must be a SPARQL update.')
+  if (containsNamedNode(parsed, predicate)) return true
+  return parsed.updates.some((operation) => {
+    if ('type' in operation) return true
+    return containsNonConcretePredicate(operation)
+  })
+}
+
+async function parseRdfPredicateObjects(
+  body: Buffer,
+  contentType: string,
+  subject: string,
+  predicate: string,
+  baseIRI: string
+): Promise<string[]> {
+  if (/application\/ld\+json/i.test(contentType)) {
+    assertNoRemoteJsonLdContexts(JSON.parse(body.toString('utf8')))
+  }
+  const objects: string[] = []
+  const stream = rdfParser.parse(Readable.from([body]), {
+    contentType: contentType.split(';', 1)[0]?.trim() ?? contentType,
+    baseIRI,
+  }) as AsyncIterable<Quad>
+  for await (const quad of stream) {
+    if (
+      quad.subject.termType === 'NamedNode' &&
+      quad.subject.value === subject &&
+      quad.predicate.termType === 'NamedNode' &&
+      quad.predicate.value === predicate &&
+      quad.object.termType === 'NamedNode'
+    ) {
+      objects.push(quad.object.value)
+    }
+  }
+  return objects
+}
+
+function assertNoRemoteJsonLdContexts(value: unknown): void {
+  if (!value || typeof value !== 'object') return
+  if (Array.isArray(value)) {
+    for (const item of value) assertNoRemoteJsonLdContexts(item)
+    return
+  }
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    if (key === '@import') {
+      throw new Error('JSON-LD context imports are not allowed for Pod proxy mutations.')
+    }
+    if (key === '@context') {
+      const contexts = Array.isArray(item) ? item : [item]
+      if (contexts.some((context) => typeof context === 'string')) {
+        throw new Error('Remote JSON-LD contexts are not allowed for Pod proxy mutations.')
+      }
+    }
+    assertNoRemoteJsonLdContexts(item)
+  }
+}
+
+function containsNamedNode(value: unknown, iri: string): boolean {
+  if (!value || typeof value !== 'object') return false
+  const record = value as Record<string, unknown>
+  if (record.termType === 'NamedNode' && record.value === iri) return true
+  return Object.values(record).some((candidate) =>
+    Array.isArray(candidate)
+      ? candidate.some((item) => containsNamedNode(item, iri))
+      : containsNamedNode(candidate, iri)
+  )
+}
+
+function containsNonConcretePredicate(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false
+  const record = value as Record<string, unknown>
+  const predicate = record.predicate as Record<string, unknown> | undefined
+  if (predicate && predicate.termType !== 'NamedNode') return true
+  return Object.values(record).some((candidate) =>
+    Array.isArray(candidate)
+      ? candidate.some(containsNonConcretePredicate)
+      : containsNonConcretePredicate(candidate)
+  )
 }

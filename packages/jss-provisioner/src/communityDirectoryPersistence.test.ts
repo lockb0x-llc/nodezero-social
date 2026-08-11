@@ -66,20 +66,20 @@ void test('stale opt-in cannot replace a newer opt-out', () => {
   const newerOptOut = {
     ...record,
     listed: false,
-    consentUpdatedAt: '2026-08-02T12:02:00.000Z',
+    publicationUpdatedAt: '2026-08-02T12:02:00.000Z',
     updatedAt: '2026-08-02T12:02:00.000Z',
   }
   const staleOptIn = {
     ...record,
     listed: true,
-    consentUpdatedAt: '2026-08-02T12:01:00.000Z',
+    publicationUpdatedAt: '2026-08-02T12:01:00.000Z',
     updatedAt: '2026-08-02T12:03:00.000Z',
   }
   assert.equal(shouldReplaceDirectoryRecord(newerOptOut, staleOptIn), false)
   assert.equal(shouldReplaceDirectoryRecord(staleOptIn, newerOptOut), true)
   assert.equal(
     shouldReplaceDirectoryRecord(
-      { ...record, listed: true, consentUpdatedAt: newerOptOut.consentUpdatedAt },
+      { ...record, listed: true, publicationUpdatedAt: newerOptOut.publicationUpdatedAt },
       newerOptOut
     ),
     true
@@ -87,12 +87,16 @@ void test('stale opt-in cannot replace a newer opt-out', () => {
 })
 
 void test('consent revision wins even when a device clock moves backwards', () => {
-  const optIn = { ...record, consentRevision: 4, consentUpdatedAt: '2030-01-01T00:00:00.000Z' }
+  const optIn = {
+    ...record,
+    publicationRevision: 4,
+    publicationUpdatedAt: '2030-01-01T00:00:00.000Z',
+  }
   const optOut = {
     ...record,
     listed: false,
-    consentRevision: 5,
-    consentUpdatedAt: '2020-01-01T00:00:00.000Z',
+    publicationRevision: 5,
+    publicationUpdatedAt: '2020-01-01T00:00:00.000Z',
   }
   assert.equal(shouldReplaceDirectoryRecord(optIn, optOut), true)
   assert.equal(shouldReplaceDirectoryRecord(optOut, optIn), false)
@@ -131,12 +135,12 @@ void test('retries an ETag conflict and preserves the newer stored opt-out', asy
   const storedOptIn = {
     ...record,
     listed: true,
-    consentUpdatedAt: '2026-08-02T12:01:00.000Z',
+    publicationUpdatedAt: '2026-08-02T12:01:00.000Z',
   }
   const incomingOptOut = {
     ...record,
     listed: false,
-    consentUpdatedAt: '2026-08-02T12:02:00.000Z',
+    publicationUpdatedAt: '2026-08-02T12:02:00.000Z',
   }
   const persistence = new AzureTableCommunityDirectoryPersistence(
     sasUrl,

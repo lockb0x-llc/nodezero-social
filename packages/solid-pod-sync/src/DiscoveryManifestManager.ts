@@ -42,6 +42,7 @@ const RDF_TYPE = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type'
 const NZ_DISCOVERY_MANIFEST = 'https://nodezero.social/ns#DiscoveryManifest'
 const NZ_VERSION = 'https://nodezero.social/ns#version'
 const NZ_WEB_ID = 'https://nodezero.social/ns#webId'
+const NZ_PUBLICATION_REVISION = 'https://nodezero.social/ns#publicationRevision'
 const NZ_PUBLISHED_AT = 'https://nodezero.social/ns#publishedAt'
 const NZ_EXPIRES_AT = 'https://nodezero.social/ns#expiresAt'
 const NZ_DISPLAY_NAME = 'https://nodezero.social/ns#displayName'
@@ -87,12 +88,14 @@ export class DiscoveryManifestManager {
     }
 
     const displayName = getStringNoLocale(thing, NZ_DISPLAY_NAME)
+    const publicationRevision = getInteger(thing, NZ_PUBLICATION_REVISION)
     const avatarUrl = getUrl(thing, NZ_AVATAR_URL)
     const publicTypeIndexUrl = getUrl(thing, SOLID_PUBLIC_TYPE_INDEX)
     const publicInterests = getStringNoLocaleAll(thing, NZ_PUBLIC_INTEREST)
     const capabilities = getStringNoLocaleAll(thing, NZ_CAPABILITY)
     const inboxUrl = getUrl(thing, LDP_INBOX)
 
+    if (publicationRevision !== null) manifest.publicationRevision = publicationRevision
     if (displayName !== null) manifest.displayName = displayName
     if (avatarUrl !== null) manifest.avatarUrl = avatarUrl
     if (publicTypeIndexUrl !== null) manifest.publicTypeIndexUrl = publicTypeIndexUrl
@@ -133,6 +136,17 @@ export class DiscoveryManifestManager {
       const snapshot = await getSolidDatasetSnapshot(datasetUrl, this.session.fetch)
       dataset = snapshot.dataset
       etag = snapshot.etag
+      const currentThing = getThing(dataset, thingUrl)
+      const currentPublicationRevision = currentThing
+        ? getInteger(currentThing, NZ_PUBLICATION_REVISION)
+        : null
+      if (
+        currentPublicationRevision !== null &&
+        (manifest.publicationRevision === undefined ||
+          currentPublicationRevision > manifest.publicationRevision)
+      ) {
+        throw new Error('A newer discovery manifest publication already exists.')
+      }
     } catch (error) {
       if (!isNotFoundError(error)) throw error
       dataset = createSolidDataset()
@@ -145,6 +159,9 @@ export class DiscoveryManifestManager {
       .setStringNoLocale(NZ_PUBLISHED_AT, manifest.publishedAt)
       .setStringNoLocale(NZ_EXPIRES_AT, manifest.expiresAt)
 
+    if (manifest.publicationRevision !== undefined) {
+      builder = builder.setInteger(NZ_PUBLICATION_REVISION, manifest.publicationRevision)
+    }
     if (manifest.displayName)
       builder = builder.setStringNoLocale(NZ_DISPLAY_NAME, manifest.displayName)
     if (manifest.avatarUrl) builder = builder.setUrl(NZ_AVATAR_URL, manifest.avatarUrl)
@@ -160,16 +177,43 @@ export class DiscoveryManifestManager {
     }
 
     const updated = setThing(dataset, builder.build())
-    await saveSolidDatasetWithPatchFallback(datasetUrl, updated, this.session.fetch, etag)
+    await saveSolidDatasetWithPatchFallback(datasetUrl, updated, this.session.fetch, etag, {
+      'x-nodezero-publication-revision': String(manifest.publicationRevision ?? 0),
+    })
     return datasetUrl
   }
 
-  async removeManifest(podRoot: string): Promise<void> {
+  async removeManifestIfUnchanged(
+    podRoot: string,
+    maximumPublicationRevision: number
+  ): Promise<boolean> {
     const url = manifestUrl(podRoot)
-    const response = await this.session.fetch(url, { method: 'DELETE' })
-    if (!response.ok && response.status !== 404) {
+    let snapshot: Awaited<ReturnType<typeof getSolidDatasetSnapshot>>
+    try {
+      snapshot = await getSolidDatasetSnapshot(url, this.session.fetch)
+    } catch (error) {
+      if (isNotFoundError(error)) return true
+      throw error
+    }
+    const thing = getThing(snapshot.dataset, manifestThingUrl(podRoot))
+    const publicationRevision = thing ? getInteger(thing, NZ_PUBLICATION_REVISION) : null
+    if (publicationRevision !== null && publicationRevision > maximumPublicationRevision) {
+      return false
+    }
+    if (!snapshot.etag) return false
+    const response = await this.session.fetch(url, {
+      method: 'DELETE',
+      headers: {
+        'if-match': snapshot.etag,
+        'x-nodezero-publication-revision': String(maximumPublicationRevision),
+      },
+    })
+    if (response.status === 404) return true
+    if (response.status === 412) return false
+    if (!response.ok) {
       throw new Error(`Failed to remove discovery manifest at ${url}: HTTP ${response.status}`)
     }
+    return true
   }
 
   private async ensurePodLayoutIfEnabled(podRoot: string): Promise<void> {

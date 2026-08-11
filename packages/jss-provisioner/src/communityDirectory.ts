@@ -22,8 +22,10 @@ export interface CommunityDirectoryRecord {
   manifestUrl?: string
   manifestPublishedAt?: string
   manifestExpiresAt?: string
-  consentUpdatedAt?: string
-  consentRevision?: number
+  publicationUpdatedAt?: string
+  publicationRevision?: number
+  suppressionRevision?: number
+  suppressedAt?: string
   sourceRevision?: string
   removedAt?: string
 }
@@ -34,8 +36,9 @@ export interface CommunityDirectoryProjectionInput {
   issuer: string
   publicListing: boolean
   publicIndexing: boolean
-  consentUpdatedAt: string
-  consentRevision?: number
+  publicationUpdatedAt: string
+  publicationRevision?: number
+  suppressed?: boolean
   manifest: {
     publishedAt: string
     expiresAt: string
@@ -53,13 +56,20 @@ export interface CommunityDirectoryProjectionInput {
 export interface CommunityDirectoryIndex {
   version: 1
   generatedAt: string
-  members: CommunityDirectoryRecord[]
+  members: CommunityDirectoryPublicRecord[]
+}
+
+export interface CommunityDirectoryPublicRecord {
+  webId: string
+  displayName?: string
+  avatarUrl?: string
+  publicInterests?: string[]
 }
 
 export interface CommunityDirectoryPage {
   version: 1
   generatedAt: string
-  members: CommunityDirectoryRecord[]
+  members: CommunityDirectoryPublicRecord[]
   nextCursor: string | null
   etag: string
 }
@@ -243,7 +253,6 @@ export class CommunityDirectoryStore {
     if (!record) return null
 
     const now = new Date().toISOString()
-    const wasListed = record.listed
     record.listed = listed
     record.updatedAt = now
     if (listed) {
@@ -251,7 +260,9 @@ export class CommunityDirectoryStore {
       delete record.removedAt
     } else {
       delete record.listedAt
-      if (wasListed) record.removedAt = now
+      record.removedAt = now
+      record.suppressedAt = now
+      record.suppressionRevision = record.publicationRevision ?? 0
     }
 
     this.records.set(webId, record)
@@ -264,16 +275,19 @@ export class CommunityDirectoryStore {
     const now = input.now ?? new Date()
     const existing = this.records.get(input.webId)
     const manifestIsCurrent = isBoundedCurrentManifest(input.manifest, now.getTime())
-    const listed = input.publicListing && manifestIsCurrent
+    const listed =
+      input.publicListing &&
+      typeof input.publicationRevision === 'number' &&
+      manifestIsCurrent
     const record: CommunityDirectoryRecord = {
       webId: input.webId,
       podUrl: input.podUrl,
       issuer: input.issuer,
       listed,
       updatedAt: now.toISOString(),
-      consentUpdatedAt: input.consentUpdatedAt,
-      ...(typeof input.consentRevision === 'number'
-        ? { consentRevision: input.consentRevision }
+      publicationUpdatedAt: input.publicationUpdatedAt,
+      ...(typeof input.publicationRevision === 'number'
+        ? { publicationRevision: input.publicationRevision }
         : {}),
       manifestUrl: input.manifestUrl,
       ...(input.sourceRevision ? { sourceRevision: input.sourceRevision } : {}),
@@ -291,6 +305,29 @@ export class CommunityDirectoryStore {
       if (existing?.listed) record.removedAt = now.toISOString()
       else if (existing?.removedAt) record.removedAt = existing.removedAt
     }
+    if (input.suppressed) {
+      record.suppressedAt = now.toISOString()
+      record.suppressionRevision =
+        input.publicationRevision ??
+        existing?.publicationRevision ??
+        existing?.suppressionRevision ??
+        0
+    } else if (
+      listed &&
+      (existing?.suppressionRevision ?? -1) < (input.publicationRevision ?? 0)
+    ) {
+      delete record.suppressedAt
+      delete record.suppressionRevision
+    } else if (existing?.suppressedAt) {
+      record.suppressedAt = existing.suppressedAt
+      if (existing.suppressionRevision !== undefined) {
+        record.suppressionRevision = existing.suppressionRevision
+      }
+      record.listed = false
+      delete record.listedAt
+    }
+
+    if (existing && !shouldReplaceDirectoryRecord(existing, record)) return existing
 
     this.records.set(input.webId, record)
     if (!record.listed) this.committedRecords.set(input.webId, { ...record })
@@ -303,6 +340,7 @@ export class CommunityDirectoryStore {
     const members = Array.from(this.committedRecords.values())
       .filter((entry) => isPubliclyCurrent(entry, nowMs))
       .sort((a, b) => a.webId.localeCompare(b.webId))
+      .map(toPublicDirectoryRecord)
 
     return {
       version: 1,
@@ -327,9 +365,10 @@ export class CommunityDirectoryStore {
       .sort((left, right) => left.webId.localeCompare(right.webId))
     const start = input.cursor ? listed.findIndex((entry) => entry.webId > input.cursor!) : 0
     const offset = start < 0 ? listed.length : start
-    const members = listed.slice(offset, offset + limit)
+    const selected = listed.slice(offset, offset + limit)
+    const members = selected.map(toPublicDirectoryRecord)
     const nextCursor =
-      offset + limit < listed.length ? (members[members.length - 1]?.webId ?? null) : null
+      offset + limit < listed.length ? (selected[selected.length - 1]?.webId ?? null) : null
     const generatedAt = now.toISOString()
     const publicPayload = { version: 1 as const, members, nextCursor }
     const digest = createHash('sha256').update(JSON.stringify(publicPayload)).digest('hex')
@@ -349,9 +388,22 @@ export class CommunityDirectoryStore {
   }
 }
 
+function toPublicDirectoryRecord(
+  record: CommunityDirectoryRecord
+): CommunityDirectoryPublicRecord {
+  return {
+    webId: record.webId,
+    ...(record.displayName ? { displayName: record.displayName } : {}),
+    ...(record.avatarUrl ? { avatarUrl: record.avatarUrl } : {}),
+    ...(record.publicInterests?.length ? { publicInterests: [...record.publicInterests] } : {}),
+  }
+}
+
 function isPubliclyCurrent(record: CommunityDirectoryRecord, nowMs: number): boolean {
   return (
     record.listed &&
+    !record.suppressedAt &&
+    typeof record.publicationRevision === 'number' &&
     Boolean(record.manifestExpiresAt) &&
     Date.parse(record.manifestExpiresAt!) > nowMs
   )

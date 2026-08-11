@@ -58,6 +58,40 @@ Circles, directory records, or historical presence do not migrate into consent.
 - Waku presence and reveal state is ephemeral and does not create a durable
   relationship or public listing.
 
+### Publication Transaction And Concurrency
+
+Directory publication is a recoverable, idempotent transaction over separate Solid
+resources rather than an atomic database write:
+
+- Discovery consent carries a monotonic publication generation that advances when public
+  listing/indexing changes and whenever a writer reserves a new public artifact revision.
+  Writers reserve before reading artifact inputs. A manifest and its public Type Index
+  registration carry the generation that authorized them; unrelated private consent
+  changes are not exposed.
+- RDF updates derived from an existing representation are fenced with its HTTP `ETag`
+  through `If-Match`; first-write replacement uses `If-None-Match: *`.
+- An existing RDF resource without an `ETag` is not mutated. An opt-in is not reported as
+  published until consent, the current manifest, its public
+  Type Index registration, and the authenticated derived projection agree.
+- Opt-out suppresses the derived projection first, persists the Pod revocation, and then
+  removes public artifacts. Cleanup may remove generation-stamped artifacts at or before
+  the observed publication generation. During the staging-testnet clean cutover,
+  generationless test artifacts are abandoned and may be removed only with their observed
+  strong `ETag`; newer or concurrently replaced artifacts remain protected.
+- Public listing and public indexing remain independent. Listing-only opt-out may retain
+  the public manifest only when Pod consent still explicitly enables indexing; full
+  opt-out removes the manifest and NodeZero Type Registration.
+- The Pod proxy rejects protected consent, manifest, and Type Index mutations unless they
+  carry both an HTTP precondition and a publication generation. The projection persists a
+  separate suppression tombstone, permits same-generation completion of an incomplete
+  projection, and allows only a newer generation to clear suppression.
+- Every destructive phase re-reads Pod consent. A higher revision wins, and bounded
+  reconciliation repairs the winning state before returning `pending-sync`.
+- Directory responses expose only the minimal public card and recommendation fields;
+  projection provenance remains operator-internal. Process-local queues are latency
+  optimizations only. Correctness comes from Pod-owned
+  revisions, HTTP preconditions, fail-closed projection rules, and idempotent replay.
+
 ### Relationship Lifecycle
 
 The internal relationship state machine is:

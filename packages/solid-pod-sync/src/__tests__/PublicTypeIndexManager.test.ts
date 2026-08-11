@@ -8,7 +8,7 @@ const manifestUrl = 'https://alice.example/public/discovery/manifest'
 function responseWithUrl(body: string, url: string): Response {
   const response = new Response(body, {
     status: 200,
-    headers: { 'content-type': 'text/turtle' },
+    headers: { 'content-type': 'text/turtle', etag: '"index-1"' },
   })
   Object.defineProperty(response, 'url', { value: url })
   return response
@@ -46,11 +46,13 @@ describe('PublicTypeIndexManager', () => {
       .mockResolvedValueOnce(new Response('', { status: 200 }))
     const manager = new PublicTypeIndexManager({ fetch })
 
-    await expect(manager.ensurePublicTypeIndex('https://alice.example/', webId)).resolves.toBe(
-      'https://alice.example/public/discovery/type-index'
-    )
+    await expect(
+      manager.ensurePublicTypeIndex('https://alice.example/', webId, 4)
+    ).resolves.toBe('https://alice.example/public/discovery/type-index')
 
     const patch = String(fetch.mock.calls[1]?.[1]?.body ?? '')
+    const updateInit = fetch.mock.calls[1]?.[1] as RequestInit | undefined
+    expect(new Headers(updateInit?.headers).get('x-nodezero-publication-revision')).toBe('4')
     expect(patch).toContain('http://www.w3.org/ns/solid/terms#publicTypeIndex')
     expect(patch).toContain('https://alice.example/public/discovery/type-index')
     expect(patch).not.toContain('foaf:name')
@@ -64,12 +66,18 @@ describe('PublicTypeIndexManager', () => {
     const manager = new PublicTypeIndexManager({ fetch })
 
     await expect(
-      manager.ensureDiscoveryManifestRegistration('https://alice.example/', indexUrl, manifestUrl)
+      manager.ensureDiscoveryManifestRegistration(
+        'https://alice.example/',
+        indexUrl,
+        manifestUrl,
+        4
+      )
     ).resolves.toBe(`${indexUrl}#nodezero-discovery-manifest`)
 
     const body = String(fetch.mock.calls[1]?.[1]?.body ?? '')
     expect(body).toContain(DISCOVERY_MANIFEST_CLASS)
     expect(body).toContain(manifestUrl)
+    expect(body).toContain('https://nodezero.social/ns#publicationRevision')
     expect(body).toContain('http://www.w3.org/ns/solid/terms#ListedDocument')
   })
 
@@ -197,9 +205,89 @@ describe('PublicTypeIndexManager', () => {
     expect(fetch).toHaveBeenCalledTimes(3)
   })
 
+  it('conditionally removes only registrations at or before the observed generation', async () => {
+    const existing = `
+      @prefix solid: <http://www.w3.org/ns/solid/terms#> .
+      @prefix nz: <https://nodezero.social/ns#> .
+      <${indexUrl}#nodezero-discovery-manifest> a solid:TypeRegistration ;
+        solid:forClass <${DISCOVERY_MANIFEST_CLASS}> ;
+        solid:instance <${manifestUrl}> ;
+        nz:publicationRevision 4 .
+    `
+    const fetch = jestGlobal
+      .fn()
+      .mockResolvedValueOnce(responseWithUrl(existing, indexUrl))
+      .mockResolvedValueOnce(new Response('', { status: 200 }))
+    const manager = new PublicTypeIndexManager({ fetch })
+
+    await expect(
+      manager.removeDiscoveryManifestRegistration('https://alice.example/', indexUrl, 4)
+    ).resolves.toBe(true)
+    expect(fetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('preserves newer registrations and removes legacy registrations during opt-out', async () => {
+    const newer = `
+      @prefix solid: <http://www.w3.org/ns/solid/terms#> .
+      @prefix nz: <https://nodezero.social/ns#> .
+      <${indexUrl}#nodezero-discovery-manifest> a solid:TypeRegistration ;
+        solid:forClass <${DISCOVERY_MANIFEST_CLASS}> ;
+        solid:instance <${manifestUrl}> ;
+        nz:publicationRevision 5 .
+    `
+    const newerFetch = jestGlobal.fn().mockResolvedValueOnce(responseWithUrl(newer, indexUrl))
+    await expect(
+      new PublicTypeIndexManager({ fetch: newerFetch }).removeDiscoveryManifestRegistration(
+        'https://alice.example/',
+        indexUrl,
+        4
+      )
+    ).resolves.toBe(false)
+    expect(newerFetch).toHaveBeenCalledTimes(1)
+
+    const legacy = newer.replace(' ;\n        nz:publicationRevision 5', '')
+    const legacyFetch = jestGlobal
+      .fn()
+      .mockResolvedValueOnce(responseWithUrl(legacy, indexUrl))
+      .mockResolvedValueOnce(new Response('', { status: 200 }))
+    await expect(
+      new PublicTypeIndexManager({ fetch: legacyFetch }).removeDiscoveryManifestRegistration(
+        'https://alice.example/',
+        indexUrl,
+        10
+      )
+    ).resolves.toBe(true)
+    expect(legacyFetch).toHaveBeenCalledTimes(2)
+    const updateInit = legacyFetch.mock.calls[1]?.[1] as RequestInit | undefined
+    expect(new Headers(updateInit?.headers).get('if-match')).toBe('"index-1"')
+  })
+
+  it('rejects a stale writer before downgrading a newer registration generation', async () => {
+    const existing = `
+      @prefix solid: <http://www.w3.org/ns/solid/terms#> .
+      @prefix nz: <https://nodezero.social/ns#> .
+      <${indexUrl}#nodezero-discovery-manifest> a solid:TypeRegistration ;
+        solid:forClass <${DISCOVERY_MANIFEST_CLASS}> ;
+        solid:instance <${manifestUrl}> ;
+        nz:publicationRevision 5 .
+    `
+    const fetch = jestGlobal.fn().mockResolvedValueOnce(responseWithUrl(existing, indexUrl))
+
+    await expect(
+      new PublicTypeIndexManager({ fetch }).ensureDiscoveryManifestRegistration(
+        'https://alice.example/',
+        indexUrl,
+        manifestUrl,
+        4
+      )
+    ).rejects.toThrow('newer discovery Type Index registration')
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
   it('lists valid registrations in stable class order', async () => {
     const body = `
       @prefix solid: <http://www.w3.org/ns/solid/terms#> .
+      <${indexUrl}> a solid:TypeIndex, solid:ListedDocument .
       <${indexUrl}#discovery> a solid:TypeRegistration ;
         solid:forClass <${DISCOVERY_MANIFEST_CLASS}> ; solid:instance <${manifestUrl}> .
       <${indexUrl}#bookmarks> a solid:TypeRegistration ;
@@ -216,5 +304,20 @@ describe('PublicTypeIndexManager', () => {
       },
       { forClass: DISCOVERY_MANIFEST_CLASS, instance: manifestUrl },
     ])
+  })
+
+  it('rejects a registration graph that is not a declared public Type Index', async () => {
+    const body = `
+      @prefix solid: <http://www.w3.org/ns/solid/terms#> .
+      <${indexUrl}#discovery> a solid:TypeRegistration ;
+        solid:forClass <${DISCOVERY_MANIFEST_CLASS}> ; solid:instance <${manifestUrl}> .
+    `
+    const manager = new PublicTypeIndexManager({
+      fetch: jestGlobal.fn().mockResolvedValue(responseWithUrl(body, indexUrl)),
+    })
+
+    await expect(
+      manager.listRegistrations(indexUrl, { requirePublicIndexTypes: true })
+    ).rejects.toThrow('required Solid types')
   })
 })

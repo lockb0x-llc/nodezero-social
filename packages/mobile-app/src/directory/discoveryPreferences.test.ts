@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
-import type { DiscoveryManifest } from '@nodezero/solid-pod-sync'
+import type { DiscoveryConsent, DiscoveryManifest } from '@nodezero/solid-pod-sync'
 import type { UpdateDiscoveryPreferencesInput } from './discoveryPreferences'
 import { DiscoveryPreferencesError, updateDiscoveryPreferences } from './discoveryPreferences'
 
@@ -15,7 +15,7 @@ function setup(): {
 } {
   const calls: string[] = []
   const writtenManifest: DiscoveryManifest[] = []
-  let consent = {
+  let consent: DiscoveryConsent = {
     version: 1 as const,
     revision: 0,
     ownerWebId: alice,
@@ -55,10 +55,34 @@ function setup(): {
         readConsent: async () => consent,
         updateConsent: async (_root, patch, updatedAt) => {
           calls.push(`consent:${patch.publicListing}:${patch.publicIndexing}`)
+          const publicationChanged =
+            (patch.publicListing !== undefined &&
+              patch.publicListing !== consent.publicListing) ||
+            (patch.publicIndexing !== undefined &&
+              patch.publicIndexing !== consent.publicIndexing)
           consent = {
             ...consent,
             ...patch,
-            revision: consent.revision + 1,
+            revision: (consent.revision ?? 0) + 1,
+            ...(publicationChanged
+              ? {
+                  publicationRevision: (consent.publicationRevision ?? 0) + 1,
+                  publicationUpdatedAt: updatedAt ?? now.toISOString(),
+                }
+              : {}),
+            updatedAt: updatedAt ?? now.toISOString(),
+          }
+          return consent
+        },
+        reservePublicationRevision: async (_root, expected, updatedAt) => {
+          if (expected !== undefined && (consent.publicationRevision ?? 0) !== expected) {
+            throw new Error('Discovery publication changed concurrently; retry the operation.')
+          }
+          consent = {
+            ...consent,
+            revision: (consent.revision ?? 0) + 1,
+            publicationRevision: (consent.publicationRevision ?? 0) + 1,
+            publicationUpdatedAt: updatedAt,
             updatedAt: updatedAt ?? now.toISOString(),
           }
           return consent
@@ -71,8 +95,9 @@ function setup(): {
           writtenManifest.push(manifest)
           return `${podRoot}public/discovery/manifest`
         },
-        removeManifest: async () => {
+        removeManifestIfUnchanged: async () => {
           calls.push('manifest:remove')
+          return true
         },
       },
       publicTypeIndexManager: {
@@ -87,6 +112,7 @@ function setup(): {
         },
         removeDiscoveryManifestRegistration: async () => {
           calls.push('type-index:remove')
+          return true
         },
       },
       profileManager: {
@@ -116,6 +142,7 @@ void test('publishes only explicitly selected public interests and refreshes pro
 
   assert.equal(result.listed, true)
   assert.deepEqual(result.selectedPublicInterests, ['Privacy'])
+  assert.equal(writtenManifest[0]?.publicationRevision, 2)
   assert.deepEqual(writtenManifest[0]?.publicInterests, ['Privacy'])
   assert.equal(JSON.stringify(writtenManifest[0]).includes('Solid'), false)
   assert.equal(JSON.stringify(writtenManifest[0]).includes('Music'), false)
@@ -196,6 +223,8 @@ void test('keeps listing and indexing independent in the public manifest', async
   const indexed = await updateDiscoveryPreferences(indexingOnly.input)
   assert.equal(indexed.listed, false)
   assert.deepEqual(indexingOnly.writtenManifest[0]?.publicInterests, ['Privacy'])
+  assert.equal(indexingOnly.writtenManifest[0]?.publicationRevision, 2)
+  assert.equal(indexingOnly.calls.includes('type-index:register'), true)
 })
 
 void test('removes the public manifest only when both public scopes are off', async () => {
@@ -228,7 +257,7 @@ void test('refreshes authoritative opt-out when public manifest cleanup fails', 
     localBroadcasts: false,
     selectedPublicInterests: [],
   }
-  input.managers.discoveryManifestManager.removeManifest = async () => {
+  input.managers.discoveryManifestManager.removeManifestIfUnchanged = async () => {
     calls.push('manifest:remove')
     throw new Error('Pod delete failed')
   }
@@ -245,7 +274,8 @@ void test('refreshes authoritative opt-out when public manifest cleanup fails', 
     (error: unknown) =>
       error instanceof DiscoveryPreferencesError && error.code === 'manifest_cleanup_failed'
   )
-  assert.deepEqual(calls.slice(0, 3), [
+  assert.deepEqual(calls.slice(0, 4), [
+    'refresh:https://api.nodezero.example/v1/community-directory/suppress',
     'type-index:remove',
     'manifest:remove',
     'refresh:https://api.nodezero.example/v1/community-directory/refresh',
@@ -283,8 +313,10 @@ void test('preserves revocation and rolls back enablement when manifest publicat
     nearbyPresence: false,
     localBroadcasts: false,
   }
-  input.managers.discoveryConsentManager.readConsent = async () => ({
+  let consent: DiscoveryConsent = {
     version: 1,
+    revision: 0,
+    publicationRevision: 0,
     ownerWebId: alice,
     publicListing: true,
     publicIndexing: false,
@@ -292,7 +324,34 @@ void test('preserves revocation and rolls back enablement when manifest publicat
     inboundContactRequests: false,
     localBroadcasts: false,
     updatedAt: now.toISOString(),
-  })
+  }
+  input.managers.discoveryConsentManager.readConsent = async () => consent
+  input.managers.discoveryConsentManager.updateConsent = async (_root, patch, updatedAt) => {
+    calls.push(`consent:${String(patch.publicListing)}:${String(patch.publicIndexing)}`)
+    consent = {
+      ...consent,
+      ...patch,
+      revision: (consent.revision ?? 0) + 1,
+      publicationRevision: (consent.publicationRevision ?? 0) + 1,
+      publicationUpdatedAt: updatedAt,
+      updatedAt: updatedAt ?? now.toISOString(),
+    }
+    return consent
+  }
+  input.managers.discoveryConsentManager.reservePublicationRevision = async (
+    _root,
+    _expected,
+    updatedAt
+  ) => {
+    consent = {
+      ...consent,
+      revision: (consent.revision ?? 0) + 1,
+      publicationRevision: (consent.publicationRevision ?? 0) + 1,
+      publicationUpdatedAt: updatedAt,
+      updatedAt: updatedAt ?? now.toISOString(),
+    }
+    return consent
+  }
   input.preferences = {
     publicListing: false,
     publicIndexing: true,
@@ -343,6 +402,10 @@ void test('does not resurrect a fresh cross-device opt-out from stale unchanged 
     localBroadcasts: false,
     updatedAt: '2026-08-01T12:01:00.000Z',
   })
+  input.authFetch = async (url) =>
+    new Response(
+      JSON.stringify({ listed: !String(url).endsWith('/v1/community-directory/suppress') })
+    )
 
   const result = await updateDiscoveryPreferences(input)
   assert.equal(result.consent.publicListing, false)
@@ -381,4 +444,159 @@ void test('removes a manifest recreated after a concurrent full opt-out', async 
   assert.equal(result.consent.publicListing, false)
   assert.equal(calls.includes('manifest:remove'), true)
   assert.equal(calls.includes('type-index:register'), false)
+})
+
+void test('preserves a higher-revision opt-in that supersedes unpublish cleanup', async () => {
+  const { input, calls } = setup()
+  let consent: DiscoveryConsent = {
+    version: 1,
+    revision: 4,
+    publicationRevision: 4,
+    ownerWebId: alice,
+    publicListing: true,
+    publicIndexing: false,
+    nearbyPresence: false,
+    inboundContactRequests: false,
+    localBroadcasts: false,
+    updatedAt: now.toISOString(),
+  }
+  let reads = 0
+  input.baselineConsent.publicListing = true
+  input.preferences = {
+    publicListing: false,
+    publicIndexing: false,
+    nearbyPresence: false,
+    localBroadcasts: false,
+    selectedPublicInterests: [],
+  }
+  input.managers.discoveryConsentManager.readConsent = async () => {
+    reads += 1
+    if (reads === 2) {
+      consent = { ...consent, revision: 6, publicationRevision: 6, publicListing: true }
+    }
+    return consent
+  }
+  input.managers.discoveryConsentManager.updateConsent = async (_root, patch, updatedAt) => {
+    consent = {
+      ...consent,
+      ...patch,
+      revision: 5,
+      publicationRevision: 5,
+      updatedAt: updatedAt ?? now.toISOString(),
+    }
+    return consent
+  }
+  input.authFetch = async (url) => {
+    calls.push(`refresh:${String(url)}`)
+    return new Response(
+      JSON.stringify({ listed: !String(url).endsWith('/v1/community-directory/suppress') })
+    )
+  }
+
+  const result = await updateDiscoveryPreferences(input)
+  assert.equal(result.consent.revision, 6)
+  assert.equal(result.consent.publicListing, true)
+  assert.equal(result.listed, true)
+  assert.equal(calls.includes('manifest:remove'), false)
+  assert.equal(calls.includes('type-index:remove'), false)
+})
+
+void test('full opt-out wins after an indexing-only writer creates its manifest', async () => {
+  const { input, calls } = setup()
+  let consent: DiscoveryConsent = {
+    version: 1,
+    revision: 4,
+    publicationRevision: 4,
+    ownerWebId: alice,
+    publicListing: false,
+    publicIndexing: true,
+    nearbyPresence: false,
+    inboundContactRequests: false,
+    localBroadcasts: false,
+    updatedAt: now.toISOString(),
+  }
+  input.baselineConsent = {
+    publicListing: false,
+    publicIndexing: true,
+    nearbyPresence: false,
+    localBroadcasts: false,
+  }
+  input.preferences = {
+    publicListing: false,
+    publicIndexing: true,
+    nearbyPresence: false,
+    localBroadcasts: false,
+    selectedPublicInterests: [],
+  }
+  input.preserveIndependentIndexingArtifacts = true
+  input.managers.discoveryConsentManager.readConsent = async () => consent
+  input.managers.discoveryConsentManager.reservePublicationRevision = async (
+    _root,
+    expected,
+    updatedAt
+  ) => {
+    assert.equal(expected, 4)
+    consent = {
+      ...consent,
+      revision: 5,
+      publicationRevision: 5,
+      publicationUpdatedAt: updatedAt,
+      updatedAt: updatedAt ?? now.toISOString(),
+    }
+    return consent
+  }
+  input.managers.discoveryManifestManager.writeManifest = async () => {
+    calls.push('manifest:write')
+    consent = {
+      ...consent,
+      revision: 6,
+      publicationRevision: 6,
+      publicIndexing: false,
+      publicationUpdatedAt: now.toISOString(),
+    }
+    return `${podRoot}public/discovery/manifest`
+  }
+  input.authFetch = async (url) => {
+    if (String(url).endsWith('/v1/community-directory/suppress')) {
+      calls.push('projection:suppress')
+      return new Response(JSON.stringify({ listed: false }))
+    }
+    calls.push(`refresh:${String(url)}`)
+    return new Response(JSON.stringify({ listed: false }))
+  }
+
+  const result = await updateDiscoveryPreferences(input)
+  assert.equal(result.consent.publicIndexing, false)
+  assert.equal(result.listed, false)
+  assert.equal(calls.includes('manifest:write'), true)
+  assert.equal(calls.includes('manifest:remove'), true)
+  assert.equal(calls.includes('type-index:register'), false)
+  assert.equal(calls.includes('projection:suppress'), true)
+})
+
+void test('already-disabled full cleanup stops when projection suppression fails', async () => {
+  const { input, calls } = setup()
+  input.preferences = {
+    publicListing: false,
+    publicIndexing: false,
+    nearbyPresence: false,
+    localBroadcasts: false,
+    selectedPublicInterests: [],
+  }
+  input.authFetch = async (url) => {
+    calls.push(`refresh:${String(url)}`)
+    return new Response(
+      JSON.stringify({
+        code: 'directory_suppress_unavailable',
+        error: 'Community directory suppression is temporarily unavailable.',
+      }),
+      { status: 503 }
+    )
+  }
+
+  await assert.rejects(updateDiscoveryPreferences(input), (error: unknown) => {
+    return error instanceof DiscoveryPreferencesError && error.code === 'directory_suppress_unavailable'
+  })
+  assert.equal(calls.includes('type-index:remove'), false)
+  assert.equal(calls.includes('manifest:remove'), false)
 })

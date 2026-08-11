@@ -2,10 +2,15 @@
   "name": "@nodezero/jss-provisioner-runtime",
   "version": "0.0.1",
   "private": true,
+  "engines": {
+    "node": ">=22.19.0"
+  },
   "dependencies": {
     "@inrupt/solid-client": "3.0.0",
     "@stellar/stellar-sdk": "16.0.1",
-    "snarkjs": "0.7.5"
+    "rdf-parse": "5.0.0",
+    "snarkjs": "0.7.5",
+    "sparqljs": "3.7.4"
   },
   "overrides": {
     "axios": "1.19.0",
