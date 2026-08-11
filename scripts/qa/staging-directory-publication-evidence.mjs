@@ -495,6 +495,7 @@ const externalCredentialRequests = []
 const recoveryMaterialRequests = []
 const requestHeaderAudits = []
 const auditedRequests = []
+const avatarResponseAudits = []
 const requestListeners = new Map()
 for (const context of contexts) {
   const onRequest = (request) => {
@@ -510,6 +511,10 @@ for (const context of contexts) {
 const pageA = await restoreAccount(contextA, accountARecovery)
 const pageB = await restoreAccount(contextB, accountBRecovery)
 const pageControl = await restoreAccount(contextControl, controlRecovery)
+pageB.on('response', (response) => {
+  if (!response.url().includes('/v1/community-directory/avatar')) return
+  avatarResponseAudits.push({ status: response.status() })
+})
 const sessionTokens = await Promise.all(
   contexts.map(async (context) => {
     const sessions = (await context.cookies()).filter(
@@ -672,7 +677,13 @@ try {
     throw new Error('Message action appeared while transport is disabled.')
   }
   const avatar = pageB.getByLabel(`${initialName} avatar`, { exact: true })
-  await avatar.waitFor({ timeout: timeoutMs })
+  await avatar.waitFor({ timeout: timeoutMs }).catch(async (error) => {
+    throw new Error(
+      `Directory avatar did not resolve after bounded retries; response statuses: ` +
+        `${avatarResponseAudits.map(({ status }) => String(status)).join(', ') || 'none'}. ` +
+        `${String(error?.message || error)}`
+    )
+  })
   await avatar.evaluate(
     (element) =>
       new Promise((resolve, reject) => {
