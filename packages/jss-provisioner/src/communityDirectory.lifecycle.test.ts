@@ -448,6 +448,45 @@ void test('concurrent reloads share one backend scan', async () => {
   assert.equal(loadCalls, 1)
 })
 
+void test('forced reload joins an old scan and performs one follow-up scan', async () => {
+  let loadCalls = 0
+  let releaseFirstLoad!: () => void
+  const firstLoad = new Promise<void>((resolve) => {
+    releaseFirstLoad = resolve
+  })
+  const freshRecord = {
+    webId: seededWebId,
+    podUrl: 'https://solid.nodezero.social/lifecycle-user/',
+    issuer: 'https://solid.nodezero.social',
+    listed: false,
+    updatedAt: '2026-08-02T02:00:00.000Z',
+    publicationRevision: 5,
+    publicationUpdatedAt: '2026-08-02T02:00:00.000Z',
+    suppressionRevision: 5,
+    suppressedAt: '2026-08-02T02:00:00.000Z',
+  }
+  const persistence: CommunityDirectoryPersistence = {
+    loadRecords: async () => {
+      loadCalls += 1
+      const call = loadCalls
+      if (call === 1) await firstLoad
+      return call === 1 ? [] : [freshRecord]
+    },
+    loadRecord: () => Promise.resolve(null),
+    upsertRecord: () => Promise.resolve(),
+    probe: () => Promise.resolve(),
+  }
+  const store = new CommunityDirectoryStore({ persistence })
+  const oldScan = store.reload()
+  const forced = store.reload(true)
+  const duplicateForced = store.reload(true)
+  releaseFirstLoad()
+  await Promise.all([oldScan, forced, duplicateForced])
+
+  assert.equal(loadCalls, 2)
+  assert.equal(store.getDurableByWebId(seededWebId)?.suppressionRevision, 5)
+})
+
 void test('a failed durable opt-out is immediately suppressed from public pages', async () => {
   let stored = {
     webId: seededWebId,

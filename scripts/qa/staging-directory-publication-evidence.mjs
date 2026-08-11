@@ -1,6 +1,10 @@
 #!/usr/bin/env node
 
 import { chromium } from '@playwright/test'
+import {
+  DiscoveryConsentManager,
+  ProfileManager,
+} from '../../packages/solid-pod-sync/dist/index.js'
 import { createHmac } from 'node:crypto'
 import { readFile, writeFile } from 'node:fs/promises'
 import {
@@ -14,6 +18,9 @@ const baseUrl = (process.env.STAGING_BASE_URL ?? 'https://staging.nodezero.socia
   /\/$/,
   ''
 )
+const provisionerUrl = (
+  process.env.NZ_JSS_PROVISIONER_URL ?? 'https://api.nodezero.social'
+).replace(/\/$/, '')
 const accountARecoveryPath = (process.env.DIRECTORY_ACCOUNT_A_RECOVERY_BUNDLE ?? '').trim()
 const accountBRecoveryPath = (process.env.DIRECTORY_ACCOUNT_B_RECOVERY_BUNDLE ?? '').trim()
 const nonCohortRecoveryPath = (process.env.DIRECTORY_NON_COHORT_RECOVERY_BUNDLE ?? '').trim()
@@ -108,6 +115,9 @@ function captureRequestAudit(request) {
               method,
               resourceType,
               hasAuthorization: Boolean(result.value.authorization),
+              hasBrowserSessionCookie: /(?:^|;\s*)__Host-nz_browser_session=/i.test(
+                result.value.cookie ?? ''
+              ),
               surfaces: [...baseSurfaces, ...Object.values(result.value)],
             }
           : {
@@ -117,6 +127,7 @@ function captureRequestAudit(request) {
               method,
               resourceType,
               hasAuthorization: false,
+              hasBrowserSessionCookie: false,
               surfaces: baseSurfaces,
             }
       )
@@ -127,6 +138,7 @@ function captureRequestAudit(request) {
         method,
         resourceType,
         hasAuthorization: false,
+        hasBrowserSessionCookie: false,
         surfaces: baseSurfaces,
       }))
       .finally(() => clearTimeout(timeout))
@@ -138,6 +150,7 @@ function captureRequestAudit(request) {
       method,
       resourceType,
       hasAuthorization: false,
+      hasBrowserSessionCookie: false,
       surfaces: baseSurfaces,
     })
   }
@@ -296,6 +309,72 @@ async function saveProfileAndWait(page, operationTimeoutMs = publicationTimeoutM
   if (!confirmed) throw new Error(`Profile save did not confirm success: ${dialog.message()}`)
 }
 
+async function saveProfileForCleanup(page, expectedProfile, operationTimeoutMs) {
+  const saveButton = page.getByRole('button', { name: 'Save profile' })
+  await saveButton.waitFor({ state: 'visible', timeout: operationTimeoutMs })
+  const dialogPromise = page
+    .waitForEvent('dialog', { timeout: Math.min(operationTimeoutMs, 30_000) })
+    .then(async (dialog) => {
+      const message = dialog.message()
+      await dialog.accept()
+      return message
+    })
+    .catch(() => null)
+  await saveButton.click({ timeout: Math.min(operationTimeoutMs, 30_000) })
+  await dialogPromise
+  const restoredProfile = await expectedProfile.readAuthoritativeProfile()
+  const restored =
+    restoredProfile?.displayName === expectedProfile.displayName &&
+    restoredProfile?.bio === expectedProfile.bio &&
+    (restoredProfile?.avatarUrl ?? '') === expectedProfile.avatarUrl
+  if (!restored) throw new Error('Profile restoration did not persist to the Solid Pod.')
+}
+
+async function readAuthoritativePodState(page) {
+  const sessionResult = await page.evaluate(async (apiUrl) => {
+    const response = await fetch(`${apiUrl}/v1/auth/browser-session`, {
+      headers: { accept: 'application/json' },
+      credentials: 'include',
+    })
+    return { status: response.status, payload: await response.json().catch(() => ({})) }
+  }, provisionerUrl)
+  if (sessionResult.status !== 200) {
+    throw new Error(`Browser session refresh failed: HTTP ${String(sessionResult.status)}.`)
+  }
+  for (const cookie of await page.context().cookies(provisionerUrl)) {
+    if (cookie.name === '__Host-nz_browser_session' && cookie.value) {
+      browserSessionTokens.add(cookie.value)
+    }
+  }
+  const payload = sessionResult.payload
+  const accessToken = payload.session?.accessToken
+  const webId = payload.webId
+  const podUrl = payload.podUrl
+  if (!accessToken || !webId || !podUrl) {
+    throw new Error('Browser session refresh returned incomplete Pod authority.')
+  }
+  const podRoot = podUrl.endsWith('/') ? podUrl : `${podUrl}/`
+  const podOrigin = new URL(podRoot).origin
+  const podFetch = async (input, init) => {
+    const source = new URL(
+      typeof input === 'string' ? input : input instanceof URL ? input : input.url
+    )
+    if (source.origin !== podOrigin || !source.pathname.startsWith(new URL(podRoot).pathname)) {
+      throw new Error('Authoritative cleanup read escaped the account Pod.')
+    }
+    const proxyUrl = `${provisionerUrl}/v1/pod-proxy/${source.pathname.replace(/^\//, '')}${source.search}`
+    const headers = new Headers(init?.headers)
+    headers.set('authorization', `Bearer ${accessToken}`)
+    headers.set('cache-control', 'no-cache')
+    return fetch(proxyUrl, { ...init, headers })
+  }
+  const [profile, consent] = await Promise.all([
+    new ProfileManager({ fetch: podFetch }).readProfile(webId),
+    new DiscoveryConsentManager({ fetch: podFetch }).readConsent(podRoot),
+  ])
+  return { profile, consent, webId, podRoot }
+}
+
 async function drainRequestHeaderAudits() {
   let audited = 0
   while (audited < requestHeaderAudits.length) {
@@ -379,6 +458,10 @@ async function cleanupDirectoryAccount(page, directoryReader, accountWebId) {
     projectionContainsAccount: (projection) =>
       projection.members?.some((record) => record.webId === accountWebId) ?? false,
   })
+  const authoritative = await readAuthoritativePodState(page)
+  if (authoritative.webId !== accountWebId || authoritative.consent.publicListing) {
+    throw new Error('Authoritative Pod consent remained publicly listed after cleanup.')
+  }
 }
 
 const browser = await chromium.launch({ headless: true })
@@ -515,10 +598,15 @@ try {
     throw new Error('Directory cohort accounts must be absent from the derived index initially.')
   }
 
+  const originalPodState = await readAuthoritativePodState(pageA)
+  if (!originalPodState.profile || originalPodState.webId !== accountAWebId) {
+    throw new Error('Unable to read the original account A profile from its Pod.')
+  }
   originalProfile = {
-    displayName: await pageA.getByPlaceholder('Your name').inputValue(),
-    bio: await pageA.getByPlaceholder('Tell the world about yourself').inputValue(),
-    avatarUrl: await pageA.getByPlaceholder('https://…').first().inputValue(),
+    displayName: originalPodState.profile.displayName,
+    bio: originalPodState.profile.bio,
+    avatarUrl: originalPodState.profile.avatarUrl ?? '',
+    readAuthoritativeProfile: async () => (await readAuthoritativePodState(pageA)).profile,
   }
 
   await pageA.getByPlaceholder('Your name').fill(initialName)
@@ -541,8 +629,14 @@ try {
   log('PASS publish basic profile')
 
   const initialPage = await loadDirectory(pageB)
-  await pageB.getByText(initialName, { exact: true }).waitFor({ timeout: timeoutMs })
   const initialRecord = initialPage.members?.find((record) => record.displayName === initialName)
+  if (!initialRecord) {
+    throw new Error(
+      `Directory API did not expose the published account to the second cohort account; ` +
+        `received ${String(initialPage.members?.length ?? 0)} members.`
+    )
+  }
+  await pageB.getByText(initialName, { exact: true }).waitFor({ timeout: timeoutMs })
   if (
     !initialRecord ||
     initialRecord.webId !== accountAWebId ||
@@ -550,11 +644,7 @@ try {
   ) {
     throw new Error('Directory projection did not contain the published avatar URL.')
   }
-  const allowedRecordKeys = new Set([
-    'webId',
-    'displayName',
-    'avatarUrl',
-  ])
+  const allowedRecordKeys = new Set(['webId', 'displayName', 'avatarUrl'])
   const unexpectedRecordKeys = Object.keys(initialRecord).filter(
     (key) => !allowedRecordKeys.has(key)
   )
@@ -670,10 +760,9 @@ try {
         await pageA.getByPlaceholder('Tell the world about yourself').fill(originalProfile.bio)
         await pageA.getByPlaceholder('https://…').first().fill(originalProfile.avatarUrl)
       })
-      await runCleanupStage('profile save confirmation', () =>
-        saveProfileAndWait(pageA, cleanupTimeoutMs)
+      await runCleanupStage('profile save and reload', () =>
+        saveProfileForCleanup(pageA, originalProfile, cleanupTimeoutMs)
       )
-      await runCleanupStage('profile reload', () => openProfile(pageA))
       await runCleanupStage('profile read-back verification', async () => {
         if (
           (await pageA.getByPlaceholder('Your name').inputValue()) !==
@@ -701,13 +790,21 @@ try {
     ) {
       throw new Error('Browser external request credential audit was incomplete.')
     }
-    for (const { hostname, hasAuthorization, surfaces } of auditedRequests) {
+    for (const {
+      hostname,
+      hasAuthorization,
+      hasBrowserSessionCookie,
+      surfaces,
+    } of auditedRequests) {
       const containsSessionToken = [...browserSessionTokens].some((token) =>
         surfaces.some(
           (surface) => surface.includes(token) || surface.includes(encodeURIComponent(token))
         )
       )
-      if (!credentialOrigins.has(hostname) && (hasAuthorization || containsSessionToken)) {
+      if (
+        !credentialOrigins.has(hostname) &&
+        (hasAuthorization || hasBrowserSessionCookie || containsSessionToken)
+      ) {
         externalCredentialRequests.push(hostname)
       }
       if (

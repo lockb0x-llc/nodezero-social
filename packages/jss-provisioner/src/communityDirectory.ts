@@ -90,6 +90,7 @@ export class CommunityDirectoryStore {
   private readonly persistence: CommunityDirectoryPersistence | undefined
   private pendingPersistence: Promise<void> = Promise.resolve()
   private reloadInFlight: Promise<void> | null = null
+  private forcedReloadAfterInFlight: Promise<void> | null = null
   private lastReloadAtMs = 0
   private readonly reloadTtlMs = 5_000
   private probeInFlight: Promise<void> | null = null
@@ -110,7 +111,21 @@ export class CommunityDirectoryStore {
   async reload(force = false): Promise<void> {
     if (!this.persistence) return
     if (!force && Date.now() - this.lastReloadAtMs < this.reloadTtlMs) return
-    if (this.reloadInFlight) return this.reloadInFlight
+    if (this.reloadInFlight) {
+      if (!force) return this.reloadInFlight
+      if (!this.forcedReloadAfterInFlight) {
+        const currentReload = this.reloadInFlight
+        const followUp = currentReload
+          .then(() => this.reload(true))
+          .finally(() => {
+            if (this.forcedReloadAfterInFlight === followUp) {
+              this.forcedReloadAfterInFlight = null
+            }
+          })
+        this.forcedReloadAfterInFlight = followUp
+      }
+      return this.forcedReloadAfterInFlight
+    }
     this.reloadInFlight = this.persistence
       .loadRecords()
       .then((records) => {

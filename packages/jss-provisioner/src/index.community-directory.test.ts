@@ -95,6 +95,25 @@ void test('/v1/community-directory/index returns empty members initially', async
   })
 })
 
+void test('/v1/community-directory/index forces a shared persistence reload', async () => {
+  let forced: boolean | undefined
+  await withServer(
+    async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/v1/community-directory/index`, {
+        headers: { authorization: `Bearer ${directorySession.accessToken}` },
+      })
+      assert.equal(response.status, 200)
+      assert.equal(forced, true)
+    },
+    {
+      reloadCommunityDirectory: (force?: boolean): Promise<void> => {
+        forced = force
+        return Promise.resolve()
+      },
+    }
+  )
+})
+
 void test('/v1/community-directory/index sanitizes persistence reload failures', async () => {
   await withServer(
     async (baseUrl) => {

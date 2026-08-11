@@ -197,6 +197,9 @@ interest separation, pagination, and recommendation-reason suites pass.
   beyond the approved staging cohort.
 - Directory responses contain only WebID, display name, avatar URL, and explicitly selected
   public recommendation fields. Pod location and projection provenance remain internal.
+- The staging cohort index forces shared Table reloads for cross-replica freshness. This
+  partition-scan strategy is approved only for the bounded staging cohort; replace it with
+  versioned projection invalidation before expanding Directory rollout.
 
 ### Q3A local platform evidence (2026-08-02)
 

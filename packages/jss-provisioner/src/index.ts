@@ -281,7 +281,7 @@ function positiveIntegerEnvironment(name: string, fallback: number): number {
 export interface RequestHandlerOverrides {
   isRelationshipRecipientBlocked?: typeof isRelationshipRecipientBlocked
   refreshCommunityDirectoryProjection?: typeof refreshCommunityDirectoryProjection
-  reloadCommunityDirectory?: () => Promise<void>
+  reloadCommunityDirectory?: (force?: boolean) => Promise<void>
   readPublicPeerProfile?: typeof readPublicPeerProfile
   fetchDirectoryAvatar?: typeof fetchPublicResource
   readDirectoryRecord?: (webId: string) => Promise<CommunityDirectoryRecord | null>
@@ -1203,8 +1203,8 @@ export async function handleHttpRequest(
     try {
       await (
         overrides.reloadCommunityDirectory ??
-        ((): Promise<void> => communityDirectory.reload())
-      )()
+        ((force?: boolean): Promise<void> => communityDirectory.reload(force))
+      )(true)
     } catch {
       sendJson(
         req,
@@ -1419,7 +1419,7 @@ export async function handleHttpRequest(
       const record = overrides.readDirectoryRecord
         ? await overrides.readDirectoryRecord(webId)
         : await communityDirectory
-            .reload()
+            .reloadRecord(webId)
             .then(() => communityDirectory.getCommittedByWebId(webId))
       const expiresAt = record?.manifestExpiresAt
         ? Date.parse(record.manifestExpiresAt)
