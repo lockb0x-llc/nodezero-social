@@ -166,7 +166,8 @@ describe('DiscoveryConsentManager', () => {
     )
 
     expect(reserved.publicationRevision).toBe(5)
-    expect(new Headers(fetch.mock.calls[0]?.[1]?.headers).get('cache-control')).toBe('no-cache')
+  const readInit = fetch.mock.calls[0]?.[1] as RequestInit | undefined
+  expect(new Headers(readInit?.headers).get('cache-control')).toBe('no-cache')
   })
 
   it('rejects rebasing when the public intent changed', async () => {

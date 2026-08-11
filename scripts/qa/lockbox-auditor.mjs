@@ -11,9 +11,12 @@
  *   NZ_LOCKBOX_AUDIT_MAX_EVENTS (default: 500)
  *   NZ_LOCKBOX_AUDIT_REQUIRE_EVENTS (default: false)
  *   NZ_LOCKBOX_AUDIT_EXPECTED_CHILD_IDS (comma-separated contract IDs)
+ *   NZ_LOCKBOX_AUDIT_EVENT_ATTEMPTS (default: 12)
+ *   NZ_LOCKBOX_AUDIT_EVENT_RETRY_MS (default: 10000)
  */
 
 import { Contract, rpc, scValToNative } from '@stellar/stellar-sdk'
+import { waitForReleaseEvents } from './lockbox-audit-retry.mjs'
 
 const TESTNET_RPC_URL = 'https://soroban-testnet.stellar.org'
 const TESTNET_PASSPHRASE = 'Test SDF Network ; September 2015'
@@ -44,7 +47,10 @@ function readBoolean(name, fallback = false) {
 function readExpectedChildIds() {
   const raw = (process.env.NZ_LOCKBOX_AUDIT_EXPECTED_CHILD_IDS ?? '').trim()
   if (!raw) return new Set()
-  const ids = raw.split(',').map((value) => value.trim()).filter(Boolean)
+  const ids = raw
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean)
   for (const id of ids) {
     if (!CONTRACT_ID_PATTERN.test(id)) {
       throw new Error(`NZ_LOCKBOX_AUDIT_EXPECTED_CHILD_IDS contains invalid contract ID ${id}.`)
@@ -118,11 +124,15 @@ function assertTestnetEnvironment() {
 
 async function listFactoryEvents(server, factoryId, startLedger, maxEvents) {
   const events = []
-  let response = await server.getEvents({
-    startLedger,
-    filters: [{ type: 'contract', contractIds: [factoryId] }],
-    limit: Math.min(100, maxEvents),
-  })
+  let response = await withTimeout(
+    server.getEvents({
+      startLedger,
+      filters: [{ type: 'contract', contractIds: [factoryId] }],
+      limit: Math.min(100, maxEvents),
+    }),
+    20_000,
+    'Stellar event query'
+  )
 
   while (response.events.length > 0) {
     events.push(...response.events)
@@ -132,14 +142,32 @@ async function listFactoryEvents(server, factoryId, startLedger, maxEvents) {
       )
     }
     if (response.events.length < 100) break
-    response = await server.getEvents({
-      cursor: response.cursor,
-      filters: [{ type: 'contract', contractIds: [factoryId] }],
-      limit: Math.min(100, maxEvents - events.length),
-    })
+    response = await withTimeout(
+      server.getEvents({
+        cursor: response.cursor,
+        filters: [{ type: 'contract', contractIds: [factoryId] }],
+        limit: Math.min(100, maxEvents - events.length),
+      }),
+      20_000,
+      'Stellar event pagination'
+    )
   }
 
   return events
+}
+
+async function withTimeout(promise, timeoutMs, label) {
+  let timer
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} timed out.`)), timeoutMs)
+      }),
+    ])
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 async function assertInitializedBridgeAccount(server, factoryId, eventState) {
@@ -172,7 +200,10 @@ async function assertInitializedBridgeAccount(server, factoryId, eventState) {
     'ProofHash',
   ]
   const actualKeys = [...decoded.keys()].sort()
-  if (actualKeys.length !== expectedKeys.length || actualKeys.some((key, index) => key !== expectedKeys[index])) {
+  if (
+    actualKeys.length !== expectedKeys.length ||
+    actualKeys.some((key, index) => key !== expectedKeys[index])
+  ) {
     throw new Error(
       `Child instance storage keys are incomplete or unexpected: ${actualKeys.join(',')}.`
     )
@@ -210,6 +241,8 @@ async function runAudit() {
   const maxEvents = readPositiveInteger('NZ_LOCKBOX_AUDIT_MAX_EVENTS', 500)
   const requireEvents = readBoolean('NZ_LOCKBOX_AUDIT_REQUIRE_EVENTS')
   const expectedChildIds = readExpectedChildIds()
+  const eventAttempts = readPositiveInteger('NZ_LOCKBOX_AUDIT_EVENT_ATTEMPTS', 12)
+  const eventRetryMs = readPositiveInteger('NZ_LOCKBOX_AUDIT_EVENT_RETRY_MS', 10_000)
   const server = new rpc.Server(rpcUrl)
 
   const network = await server.getNetwork()
@@ -224,7 +257,21 @@ async function runAudit() {
     `[lockbox-audit] Scanning Testnet ledgers ${String(startLedger)}-${String(latestLedger.sequence)}.`
   )
 
-  const events = await listFactoryEvents(server, factoryId, startLedger, maxEvents)
+  const events = await waitForReleaseEvents({
+    loadEvents: () => listFactoryEvents(server, factoryId, startLedger, maxEvents),
+    expectedChildIds,
+    requireEvents,
+    attempts: eventAttempts,
+    delayMs: eventRetryMs,
+    readChildId: (event) => parseV3CreationEvent(event).lockboxId,
+    onRetry: ({ attempt, attempts, eventCount, missingExpected }) => {
+      console.log(
+        `[lockbox-audit] Event index not converged (${String(eventCount)} events, ` +
+          `${String(missingExpected.length)} expected children missing); retry ` +
+          `${String(attempt)}/${String(attempts)}.`
+      )
+    },
+  })
   if (events.length === 0) {
     if (requireEvents || expectedChildIds.size > 0) {
       throw new Error('No V3 child deployments were found in a release audit that requires events.')
@@ -242,7 +289,9 @@ async function runAudit() {
       await assertInitializedBridgeAccount(server, factoryId, eventState)
       auditedChildIds.add(eventState.lockboxId)
       healthy += 1
-      console.log(`[lockbox-audit] PASS ${event.id}: ${eventState.lockboxId} has exact immutable V3 bridge state.`)
+      console.log(
+        `[lockbox-audit] PASS ${event.id}: ${eventState.lockboxId} has exact immutable V3 bridge state.`
+      )
     } catch (error) {
       failed += 1
       const message = error instanceof Error ? error.message : String(error)
@@ -258,7 +307,9 @@ async function runAudit() {
   }
   const missingExpected = [...expectedChildIds].filter((id) => !auditedChildIds.has(id))
   if (missingExpected.length > 0) {
-    throw new Error(`Expected V3 child contracts were not found in the audit window: ${missingExpected.join(',')}`)
+    throw new Error(
+      `Expected V3 child contracts were not found in the audit window: ${missingExpected.join(',')}`
+    )
   }
 }
 

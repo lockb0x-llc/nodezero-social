@@ -1227,11 +1227,14 @@ jobs:
         run: pnpm qa:smoke:auth
 
       - name: Audit release-created V3 lockb0x state
+        timeout-minutes: 5
         env:
           NZ_ENV_PROFILE: staging-testnet
           NZ_LOCKBOX_FACTORY_CONTRACT_ID: CDFHCQA3YJCITWEMNLCSRGQVVFEXGTONWSQJTD5VIZO7YV4IOKZUPCGT
           NZ_LOCKBOX_AUDIT_LEDGER_WINDOW: '300'
           NZ_LOCKBOX_AUDIT_REQUIRE_EVENTS: 'true'
+          NZ_LOCKBOX_AUDIT_EVENT_ATTEMPTS: '18'
+          NZ_LOCKBOX_AUDIT_EVENT_RETRY_MS: '10000'
           NZ_LOCKBOX_AUDIT_EXPECTED_CHILD_IDS: ${{ steps.auth-e2e.outputs.lockbox_contract_id }}
         run: pnpm qa:audit:lockbox
 

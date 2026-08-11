@@ -103,6 +103,10 @@ for (const [label, pattern] of [
     'cohort deploy provenance',
     /"releaseAction": "\$\{\{ inputs\.release_action \}\}"[\s\S]*"directoryRollout": "\$\{\{ inputs\.directory_rollout \}\}"/,
   ],
+  [
+    'bounded lockbox event convergence',
+    /Audit release-created V3 lockb0x state[\s\S]*NZ_LOCKBOX_AUDIT_EVENT_ATTEMPTS:[\s\S]*NZ_LOCKBOX_AUDIT_EVENT_RETRY_MS:/,
+  ],
 ]) {
   if (!pattern.test(deployWorkflow)) failures.push(`deploy workflow: missing ${label}`)
 }
