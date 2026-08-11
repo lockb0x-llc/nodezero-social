@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   PublicResourceFetchError,
+  createPinnedLookup,
   createCredentialFreePublicFetch,
   fetchPublicResource,
   isBlockedAddress,
@@ -163,6 +164,37 @@ void test('pinned requests do not retry unclassified errors', async () => {
     /unexpected/
   )
   assert.equal(attempts, 1)
+})
+
+void test('pinned lookup honors scalar and all-address callback contracts', async () => {
+  const address = { address: '185.199.108.133', family: 4 }
+  const pinnedLookup = createPinnedLookup(address)
+
+  await new Promise<void>((resolve, reject) => {
+    pinnedLookup('raw.githubusercontent.com', { all: true }, (error, result, family) => {
+      try {
+        assert.ifError(error)
+        assert.deepEqual(result, [address])
+        assert.equal(family, undefined)
+        resolve()
+      } catch (assertionError) {
+        reject(assertionError)
+      }
+    })
+  })
+
+  await new Promise<void>((resolve, reject) => {
+    pinnedLookup('raw.githubusercontent.com', {}, (error, result, family) => {
+      try {
+        assert.ifError(error)
+        assert.equal(result, address.address)
+        assert.equal(family, address.family)
+        resolve()
+      } catch (assertionError) {
+        reject(assertionError)
+      }
+    })
+  })
 })
 
 void test('fetchPublicResource revalidates redirect targets and blocks private DNS answers', async () => {

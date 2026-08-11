@@ -1,5 +1,5 @@
 import { lookup } from 'node:dns/promises'
-import { isIP } from 'node:net'
+import { isIP, type LookupFunction } from 'node:net'
 import { request as httpsRequest } from 'node:https'
 
 export const PUBLIC_RESOURCE_CONTENT_TYPES = [
@@ -515,7 +515,7 @@ async function requestPinnedHttpsAddress(
           'user-agent': input.userAgent,
         },
         servername: input.url.hostname,
-        lookup: (_hostname, _options, callback) => callback(null, address.address, address.family),
+        lookup: createPinnedLookup(address),
       },
       (response) => {
         const chunks: Buffer[] = []
@@ -599,6 +599,16 @@ async function requestPinnedHttpsAddress(
   })
 }
 
+export function createPinnedLookup(address: { address: string; family: number }): LookupFunction {
+  return (_hostname, options, callback) => {
+    if (options.all) {
+      callback(null, [address])
+      return
+    }
+    callback(null, address.address, address.family)
+  }
+}
+
 async function requestPinnedHttpsPost(
   input: PublicResourcePostRequestInput
 ): Promise<PublicResourceRequestResult> {
@@ -628,7 +638,7 @@ async function requestPinnedHttpsWithBody(
           'user-agent': input.userAgent,
         },
         servername: input.url.hostname,
-        lookup: (_hostname, _options, callback) => callback(null, address.address, address.family),
+        lookup: createPinnedLookup(address),
       },
       (response) => {
         const chunks: Buffer[] = []
