@@ -178,10 +178,7 @@ void test('manifest projection publishes only allowlisted public fields and prov
     assert.equal('trustCircleMembers' in projected, false)
     const publicRecord = store.buildPublicPage({ now: new Date('2026-08-02T00:00:00.000Z') })
       .members[0]
-    assert.deepEqual(Object.keys(publicRecord ?? {}).sort(), [
-      'displayName',
-      'webId',
-    ])
+    assert.deepEqual(Object.keys(publicRecord ?? {}).sort(), ['displayName', 'webId'])
   })
 })
 

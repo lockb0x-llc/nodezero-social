@@ -164,6 +164,27 @@ void test('publishes only the basic persisted profile fields', async () => {
   assert.equal(JSON.stringify(manifests[0]).includes('Private biography'), false)
 })
 
+void test('publishes the just-saved profile without a cacheable Pod reread', async () => {
+  const { input, manifests } = setup()
+  input.publicProfile = {
+    displayName: 'Just Saved Alice',
+    avatarUrl: 'https://alice.example/just-saved.png',
+    bio: 'Private biography',
+    interests: [],
+    isNsfw: false,
+  }
+  input.managers.profileManager.readProfile = async () => {
+    throw new Error('Publication must not reread the just-saved profile.')
+  }
+
+  assert.deepEqual(await publishBasicDirectoryProfile(input), {
+    status: 'published',
+    listed: true,
+  })
+  assert.equal(manifests[0]?.displayName, 'Just Saved Alice')
+  assert.equal(manifests[0]?.avatarUrl, 'https://alice.example/just-saved.png')
+})
+
 void test('provisions a public Type Index when publishing a fresh profile', async () => {
   const { input, calls, manifests } = setup()
   let pointerPublicationRevision: number | undefined
@@ -204,6 +225,40 @@ void test('maintenance self-migrates a generationless public listing', async () 
     listed: true,
   })
   assert.equal(manifests[0]?.publicationRevision, 1)
+})
+
+void test('listed profile maintenance publishes the just-saved profile without rereading', async () => {
+  const staleManifest: DiscoveryManifest = {
+    version: 1,
+    webId: ownerWebId,
+    publicationRevision: 4,
+    displayName: 'Cached Old',
+    avatarUrl: 'https://alice.example/old.png',
+    publicTypeIndexUrl: `${podRoot}settings/publicTypeIndex`,
+    publishedAt: now.toISOString(),
+    expiresAt: new Date(now.getTime() + 4 * 24 * 60 * 60_000).toISOString(),
+  }
+  const { input, manifests } = setup({
+    consent: { publicListing: true, publicationRevision: 4 },
+    manifest: staleManifest,
+  })
+  input.publicProfile = {
+    displayName: 'Just Saved Update',
+    avatarUrl: 'https://alice.example/new.png',
+    bio: 'Private biography',
+    interests: [],
+    isNsfw: false,
+  }
+  input.managers.profileManager.readProfile = async () => {
+    throw new Error('Maintenance must not reread the just-saved profile.')
+  }
+
+  assert.deepEqual(await maintainDirectoryPublication(input), {
+    status: 'published',
+    listed: true,
+  })
+  assert.equal(manifests[0]?.displayName, 'Just Saved Update')
+  assert.equal(manifests[0]?.avatarUrl, 'https://alice.example/new.png')
 })
 
 void test('reports pending synchronization when public Type Index provisioning fails', async () => {
@@ -489,6 +544,49 @@ void test('coalesces duplicate background maintenance for one account', async ()
   releaseConsent?.()
   await Promise.all([first, duplicate])
   assert.equal(consentReads, 1)
+})
+
+void test('queues a saved profile update after existing background maintenance', async () => {
+  const background = setup({
+    consent: { publicListing: true, publicationRevision: 4 },
+    manifest: {
+      version: 1,
+      webId: ownerWebId,
+      publicationRevision: 4,
+      displayName: 'Cached Old',
+      avatarUrl: 'https://alice.example/old.png',
+      publicTypeIndexUrl: `${podRoot}settings/publicTypeIndex`,
+      publishedAt: now.toISOString(),
+      expiresAt: new Date(now.getTime() + 4 * 24 * 60 * 60_000).toISOString(),
+    },
+  })
+  let releaseBackground!: () => void
+  const backgroundReady = new Promise<void>((resolve) => {
+    releaseBackground = resolve
+  })
+  const readManifest = background.input.managers.discoveryManifestManager.readManifest
+  background.input.managers.discoveryManifestManager.readManifest = async (...args) => {
+    await backgroundReady
+    return readManifest(...args)
+  }
+  const existing = maintainDirectoryPublication(background.input)
+
+  const savedInput: DirectoryPublicationInput = {
+    ...background.input,
+    publicProfile: {
+      displayName: 'Just Saved Update',
+      avatarUrl: 'https://alice.example/new.png',
+      bio: '',
+      interests: [],
+      isNsfw: false,
+    },
+  }
+  const saved = maintainDirectoryPublication(savedInput)
+  assert.notEqual(saved, existing)
+  releaseBackground()
+  await Promise.all([existing, saved])
+
+  assert.equal(background.manifests.at(-1)?.displayName, 'Just Saved Update')
 })
 
 void test('stale unlisting maintenance preserves a newer concurrent opt-in', async () => {

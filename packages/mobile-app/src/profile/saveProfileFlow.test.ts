@@ -9,11 +9,11 @@ import {
 void test('derivePodRootFromWebId returns deterministic pod root', () => {
   assert.equal(
     derivePodRootFromWebId('https://solid.nodezero.social/alice/profile/card#me'),
-    'https://solid.nodezero.social/alice/',
+    'https://solid.nodezero.social/alice/'
   )
 })
 
-void test('executeProfileSaveFlow writes public/private profile and re-reads merged result', async () => {
+void test('executeProfileSaveFlow returns the validated profile payload without a cacheable reread', async () => {
   const calls: string[] = []
   const deps: ProfileSaveDependencies = {
     writePublicProfile: async (podRoot, profile) => {
@@ -61,23 +61,26 @@ void test('executeProfileSaveFlow writes public/private profile and re-reads mer
   assert.equal(result.podRoot, 'https://solid.nodezero.social/alice/')
   assert.deepEqual(result.updatedProfile.interests, ['solid', 'privacy'])
   assert.equal(result.preferencesPayload.isNsfw, true)
-  assert.equal(result.mergedSavedProfile?.displayName, 'Alice Saved')
+  assert.equal(result.mergedSavedProfile?.displayName, 'Alice')
   assert.deepEqual(result.mergedSavedProfile?.interests, ['solid', 'privacy'])
   assert.equal(result.mergedSavedInterestsInput, 'solid, privacy')
 
   assert.deepEqual(calls, [
     'writePublic:https://solid.nodezero.social/alice/',
     'writePrivate:https://solid.nodezero.social/alice/',
-    'readPublic:https://solid.nodezero.social/alice/profile/card#me',
-    'readPrivate:https://solid.nodezero.social/alice/',
   ])
 })
 
-void test('executeProfileSaveFlow returns null merged state when public re-read is missing', async () => {
+void test('executeProfileSaveFlow remains deterministic when public reread would be stale', async () => {
   const deps: ProfileSaveDependencies = {
     writePublicProfile: async () => undefined,
     writePrivatePreferences: async () => undefined,
-    readPublicProfile: async () => null,
+    readPublicProfile: async () => ({
+      displayName: 'Cached Old',
+      bio: 'Cached old bio',
+      interests: [],
+      isNsfw: false,
+    }),
     readPrivatePreferences: async () => ({ interests: ['x'], isNsfw: false }),
   }
 
@@ -93,8 +96,9 @@ void test('executeProfileSaveFlow returns null merged state when public re-read 
     deps,
   })
 
-  assert.equal(result.mergedSavedProfile, null)
-  assert.equal(result.mergedSavedInterestsInput, null)
+  assert.equal(result.mergedSavedProfile?.displayName, 'Alice')
+  assert.equal(result.mergedSavedProfile?.bio, 'Bio')
+  assert.equal(result.mergedSavedInterestsInput, 'x')
 })
 
 void test('executeProfileSaveFlow rejects invalid avatar URL before write operations', async () => {
@@ -126,7 +130,7 @@ void test('executeProfileSaveFlow rejects invalid avatar URL before write operat
         interestsInput: 'x',
         deps,
       }),
-    /Avatar URL must be an absolute http\(s\) URL\./,
+    /Avatar URL must be an absolute http\(s\) URL\./
   )
 
   assert.equal(wrotePublic, false)
@@ -154,7 +158,7 @@ void test('executeProfileSaveFlow rejects display name longer than 80 characters
         interestsInput: 'x',
         deps,
       }),
-    /Display name must be 80 characters or fewer\./,
+    /Display name must be 80 characters or fewer\./
   )
 })
 
@@ -179,7 +183,7 @@ void test('executeProfileSaveFlow rejects bio longer than 280 characters', async
         interestsInput: 'x',
         deps,
       }),
-    /Bio must be 280 characters or fewer\./,
+    /Bio must be 280 characters or fewer\./
   )
 })
 
@@ -206,7 +210,7 @@ void test('executeProfileSaveFlow rejects more than 20 interests', async () => {
         interestsInput,
         deps,
       }),
-    /You can add up to 20 interests\./,
+    /You can add up to 20 interests\./
   )
 })
 
@@ -231,6 +235,6 @@ void test('executeProfileSaveFlow rejects interests longer than 40 characters', 
         interestsInput: `${'x'.repeat(41)}`,
         deps,
       }),
-    /Each interest must be 40 characters or fewer\./,
+    /Each interest must be 40 characters or fewer\./
   )
 })

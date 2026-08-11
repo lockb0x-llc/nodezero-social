@@ -1,7 +1,4 @@
-import type {
-  PrivateProfilePreferencesDocument,
-  UserProfile,
-} from '@nodezero/solid-pod-sync'
+import type { PrivateProfilePreferencesDocument, UserProfile } from '@nodezero/solid-pod-sync'
 import {
   buildPrivatePreferencesPayload,
   buildUpdatedProfileDraft,
@@ -14,7 +11,7 @@ export interface ProfileSaveDependencies {
   writePublicProfile(podRoot: string, profile: UserProfile): Promise<void>
   writePrivatePreferences(
     podRoot: string,
-    preferences: PrivateProfilePreferencesDocument,
+    preferences: PrivateProfilePreferencesDocument
   ): Promise<void>
   readPublicProfile(webId: string): Promise<UserProfile | null>
   readPrivatePreferences(podRoot: string): Promise<PrivateProfilePreferencesDocument | null>
@@ -41,7 +38,7 @@ export function derivePodRootFromWebId(webId: string): string {
 }
 
 export async function executeProfileSaveFlow(
-  input: ExecuteProfileSaveFlowInput,
+  input: ExecuteProfileSaveFlowInput
 ): Promise<ExecuteProfileSaveFlowResult> {
   const { ownerWebId, currentProfile, interestsInput, deps } = input
   const podRoot = derivePodRootFromWebId(ownerWebId)
@@ -61,15 +58,11 @@ export async function executeProfileSaveFlow(
     privatePreferencesSaved = false
   }
 
-  const savedPublic = await deps.readPublicProfile(`${podRoot}profile/card#me`)
-  const savedPrivate = privatePreferencesSaved
-    ? await deps.readPrivatePreferences(podRoot).catch(() => null)
-    : null
-
-  const mergedSavedProfile = savedPublic ? mergeProfileData(savedPublic, savedPrivate) : null
-  const mergedSavedInterestsInput = mergedSavedProfile
-    ? interestsToInput(mergedSavedProfile.interests)
-    : null
+  const mergedSavedProfile = mergeProfileData(
+    updatedProfile,
+    privatePreferencesSaved ? preferencesPayload : null
+  )
+  const mergedSavedInterestsInput = interestsToInput(mergedSavedProfile.interests)
 
   return {
     podRoot,

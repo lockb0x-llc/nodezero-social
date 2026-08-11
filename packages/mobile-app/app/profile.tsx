@@ -266,6 +266,7 @@ export default function ProfileScreen(): JSX.Element {
       setDiscoverySaving(true)
       setDiscoveryStatus(null)
       try {
+        let publicProfileForPublication: UserProfile | undefined
         if (publish) {
           const saved = await saveProfileForScreen({
             isPeerView: false,
@@ -289,6 +290,7 @@ export default function ProfileScreen(): JSX.Element {
           })
           if (saved.status === 'error') throw saved.error
           if (saved.status !== 'saved') throw new Error(saved.message)
+          publicProfileForPublication = saved.updatedProfile
           if (saved.mergedSavedProfile) {
             setProfile(saved.mergedSavedProfile)
             setInterestsInput(
@@ -308,6 +310,9 @@ export default function ProfileScreen(): JSX.Element {
               provisionerUrl: getProvisionerUrl(),
               authFetch,
               managers,
+              ...(publicProfileForPublication
+                ? { publicProfile: publicProfileForPublication }
+                : {}),
             })
           : await unpublishDirectoryProfile({
               available: directoryAvailable,
@@ -520,6 +525,7 @@ export default function ProfileScreen(): JSX.Element {
             provisionerUrl: getProvisionerUrl(),
             authFetch,
             managers: getSolidPodSyncManagers({ fetch: authFetch }),
+            publicProfile: result.updatedProfile,
           })
           setDirectorySyncPending(outcome.status === 'pending-sync')
           if (outcome.status === 'pending-sync') {

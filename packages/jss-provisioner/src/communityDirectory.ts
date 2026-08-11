@@ -135,9 +135,7 @@ export class CommunityDirectoryStore {
           this.durableRecords.set(record.webId, { ...record })
           const local = this.records.get(record.webId)
           const publicRecord =
-            local && !local.listed && shouldReplaceDirectoryRecord(record, local)
-              ? local
-              : record
+            local && !local.listed && shouldReplaceDirectoryRecord(record, local) ? local : record
           this.committedRecords.set(record.webId, { ...publicRecord })
         }
         for (const webId of this.durableRecords.keys()) {
@@ -320,9 +318,7 @@ export class CommunityDirectoryStore {
     const existing = this.records.get(input.webId)
     const manifestIsCurrent = isBoundedCurrentManifest(input.manifest, now.getTime())
     const listed =
-      input.publicListing &&
-      typeof input.publicationRevision === 'number' &&
-      manifestIsCurrent
+      input.publicListing && typeof input.publicationRevision === 'number' && manifestIsCurrent
     const record: CommunityDirectoryRecord = {
       webId: input.webId,
       podUrl: input.podUrl,
@@ -356,10 +352,7 @@ export class CommunityDirectoryStore {
         existing?.publicationRevision ??
         existing?.suppressionRevision ??
         0
-    } else if (
-      listed &&
-      (existing?.suppressionRevision ?? -1) < (input.publicationRevision ?? 0)
-    ) {
+    } else if (listed && (existing?.suppressionRevision ?? -1) < (input.publicationRevision ?? 0)) {
       delete record.suppressedAt
       delete record.suppressionRevision
     } else if (existing?.suppressedAt) {
@@ -436,9 +429,7 @@ export class CommunityDirectoryStore {
   }
 }
 
-function toPublicDirectoryRecord(
-  record: CommunityDirectoryRecord
-): CommunityDirectoryPublicRecord {
+function toPublicDirectoryRecord(record: CommunityDirectoryRecord): CommunityDirectoryPublicRecord {
   return {
     webId: record.webId,
     ...(record.displayName ? { displayName: record.displayName } : {}),

@@ -23,8 +23,7 @@ function createDeps(overrides?: {
       overrides?.writePrivatePreferences ?? (async (_podRoot, _preferences) => {}),
     readPublicProfile: overrides?.readPublicProfile ?? (async (_webId) => sampleProfile),
     readPrivatePreferences:
-      overrides?.readPrivatePreferences ??
-      (async (_podRoot) => ({ interests: [], isNsfw: false })),
+      overrides?.readPrivatePreferences ?? (async (_podRoot) => ({ interests: [], isNsfw: false })),
   }
 }
 
@@ -81,6 +80,7 @@ void test('saveProfileForScreen returns saved outcome on happy path', async () =
   assert.equal(wrotePublic, true)
   assert.equal(wrotePrivate, true)
   if (result.status === 'saved') {
+    assert.equal(result.updatedProfile.displayName, 'Alice')
     assert.deepEqual(result.mergedSavedProfile?.interests, ['web3', 'privacy'])
   }
 })

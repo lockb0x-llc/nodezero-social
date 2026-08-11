@@ -5,6 +5,7 @@ import type {
   ProfileManager,
   ProfilePreferencesManager,
   PublicTypeIndexManager,
+  UserProfile,
 } from '@nodezero/solid-pod-sync'
 import { publishDiscoveryConsentChanged } from './discoveryConsentEvents'
 
@@ -46,6 +47,7 @@ export interface UpdateDiscoveryPreferencesInput {
     profilePreferencesManager: Pick<ProfilePreferencesManager, 'readPreferences'>
   }
   now?: Date
+  publicProfile?: UserProfile
   forcePublicIndexingOff?: boolean
   requirePublicTypeIndex?: boolean
   basicProfileOnly?: boolean
@@ -142,7 +144,8 @@ export async function updateDiscoveryPreferences(
     const previousManifest = await input.managers.discoveryManifestManager
       .readManifest(input.podRoot)
       .catch(() => null)
-    const profile = await input.managers.profileManager.readProfile(input.ownerWebId)
+    const profile =
+      input.publicProfile ?? (await input.managers.profileManager.readProfile(input.ownerWebId))
     const publicTypeIndexUrl =
       (await input.managers.publicTypeIndexManager.discoverPublicTypeIndex(input.ownerWebId)) ??
       previousManifest?.publicTypeIndexUrl ??
@@ -167,9 +170,7 @@ export async function updateDiscoveryPreferences(
       ...(previousManifest?.publicInterests
         ? { publicInterests: previousManifest.publicInterests }
         : {}),
-      ...(previousManifest?.capabilities
-        ? { capabilities: previousManifest.capabilities }
-        : {}),
+      ...(previousManifest?.capabilities ? { capabilities: previousManifest.capabilities } : {}),
       ...(previousManifest?.inboxUrl ? { inboxUrl: previousManifest.inboxUrl } : {}),
     })
     const afterManifestConsent = await input.managers.discoveryConsentManager.readConsent(
@@ -228,11 +229,12 @@ export async function updateDiscoveryPreferences(
         manifestPublicTypeIndexUrl ??
         (await input.managers.publicTypeIndexManager.discoverPublicTypeIndex(input.ownerWebId))
       if (publicTypeIndexUrl) {
-        const removed = await input.managers.publicTypeIndexManager.removeDiscoveryManifestRegistration(
-          input.podRoot,
-          publicTypeIndexUrl,
-          cleanupConsent.publicationRevision ?? consent.publicationRevision ?? 0
-        )
+        const removed =
+          await input.managers.publicTypeIndexManager.removeDiscoveryManifestRegistration(
+            input.podRoot,
+            publicTypeIndexUrl,
+            cleanupConsent.publicationRevision ?? consent.publicationRevision ?? 0
+          )
         if (!removed) cleanupFailed = true
       }
     } catch {
@@ -281,7 +283,8 @@ export async function updateDiscoveryPreferences(
   const previousManifest = await input.managers.discoveryManifestManager
     .readManifest(input.podRoot)
     .catch(() => null)
-  const profile = await input.managers.profileManager.readProfile(input.ownerWebId)
+  const profile =
+    input.publicProfile ?? (await input.managers.profileManager.readProfile(input.ownerWebId))
   const manifestUrl = `${input.podRoot.replace(/\/$/, '')}/public/discovery/manifest`
   let publicTypeIndexUrl: string | null
   try {
@@ -313,16 +316,22 @@ export async function updateDiscoveryPreferences(
       ...(profile?.displayName ? { displayName: profile.displayName } : {}),
       ...(profile?.avatarUrl ? { avatarUrl: profile.avatarUrl } : {}),
       ...(publicTypeIndexUrl ? { publicTypeIndexUrl } : {}),
-      ...(input.basicProfileOnly && publicationConsent.publicIndexing && previousManifest?.publicInterests
+      ...(input.basicProfileOnly &&
+      publicationConsent.publicIndexing &&
+      previousManifest?.publicInterests
         ? { publicInterests: previousManifest.publicInterests }
         : {}),
-      ...(input.basicProfileOnly && publicationConsent.publicIndexing && previousManifest?.capabilities
+      ...(input.basicProfileOnly &&
+      publicationConsent.publicIndexing &&
+      previousManifest?.capabilities
         ? { capabilities: previousManifest.capabilities }
         : {}),
       ...(input.basicProfileOnly && publicationConsent.publicIndexing && previousManifest?.inboxUrl
         ? { inboxUrl: previousManifest.inboxUrl }
         : {}),
-      ...(!input.basicProfileOnly && publicationConsent.publicIndexing && selectedPublicInterests.length > 0
+      ...(!input.basicProfileOnly &&
+      publicationConsent.publicIndexing &&
+      selectedPublicInterests.length > 0
         ? { publicInterests: selectedPublicInterests }
         : {}),
       ...(!input.basicProfileOnly && publicationConsent.publicIndexing
@@ -447,11 +456,12 @@ async function repairConcurrentFullOptOut(
   let cleanupFailed = false
   for (const publicTypeIndexUrl of new Set(typeIndexUrls.filter(isString))) {
     try {
-      const removed = await input.managers.publicTypeIndexManager.removeDiscoveryManifestRegistration(
-        input.podRoot,
-        publicTypeIndexUrl,
-        consent.publicationRevision ?? 0
-      )
+      const removed =
+        await input.managers.publicTypeIndexManager.removeDiscoveryManifestRegistration(
+          input.podRoot,
+          publicTypeIndexUrl,
+          consent.publicationRevision ?? 0
+        )
       if (!removed) cleanupFailed = true
     } catch {
       cleanupFailed = true

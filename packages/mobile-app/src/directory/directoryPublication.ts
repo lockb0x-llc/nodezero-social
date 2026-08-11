@@ -1,4 +1,4 @@
-import type { DiscoveryConsent, DiscoveryManifest } from '@nodezero/solid-pod-sync'
+import type { DiscoveryConsent, DiscoveryManifest, UserProfile } from '@nodezero/solid-pod-sync'
 import {
   DiscoveryPreferencesError,
   refreshDirectoryProjection,
@@ -32,6 +32,7 @@ export interface DirectoryPublicationInput {
   provisionerUrl: string
   authFetch: typeof globalThis.fetch
   managers: PublicationManagers
+  publicProfile?: UserProfile
   now?: Date
 }
 
@@ -85,6 +86,9 @@ export async function retryDirectoryProjection(
 export function maintainDirectoryPublication(
   input: DirectoryPublicationInput
 ): Promise<DirectoryPublicationOutcome> {
+  if (input.publicProfile) {
+    return enqueue(input.ownerWebId, () => maintainOnce(input))
+  }
   const existing = maintenanceQueue.get(input.ownerWebId)
   if (existing) return existing
   const maintenance = enqueue(input.ownerWebId, () => maintainOnce(input)).finally(() => {
@@ -136,7 +140,7 @@ async function maintainOnce(
   }
   const [manifest, profile, publicTypeIndexUrl] = await Promise.all([
     input.managers.discoveryManifestManager.readManifest(input.podRoot),
-    input.managers.profileManager.readProfile(input.ownerWebId),
+    input.publicProfile ?? input.managers.profileManager.readProfile(input.ownerWebId),
     input.managers.publicTypeIndexManager.discoverPublicTypeIndex(input.ownerWebId),
   ])
   if (!publicTypeIndexUrl) {
@@ -159,13 +163,7 @@ async function maintainOnce(
   if (!stale) {
     return syncExistingListing(input, reconciliationAttempt)
   }
-  return renewExistingListing(
-    input,
-    profile,
-    publicTypeIndexUrl,
-    manifest ?? undefined,
-    reconciliationAttempt
-  )
+  return renewExistingListing(input, profile, reconciliationAttempt)
 }
 
 async function repairExistingUnlisting(
@@ -204,11 +202,12 @@ async function repairExistingUnlisting(
       manifestPublicTypeIndexUrl ??
       (await input.managers.publicTypeIndexManager.discoverPublicTypeIndex(input.ownerWebId))
     if (publicTypeIndexUrl) {
-      const removed = await input.managers.publicTypeIndexManager.removeDiscoveryManifestRegistration(
-        input.podRoot,
-        publicTypeIndexUrl,
-        latestConsent.publicationRevision ?? observedConsent.publicationRevision ?? 0
-      )
+      const removed =
+        await input.managers.publicTypeIndexManager.removeDiscoveryManifestRegistration(
+          input.podRoot,
+          publicTypeIndexUrl,
+          latestConsent.publicationRevision ?? observedConsent.publicationRevision ?? 0
+        )
       if (!removed) return reconcileLatestConsent(input, latestConsent, reconciliationAttempt)
     }
   } catch (error) {
@@ -267,9 +266,7 @@ function reconcileLatestConsent(
 
 async function renewExistingListing(
   input: DirectoryPublicationInput,
-  _profile: Awaited<ReturnType<PublicationManagers['profileManager']['readProfile']>>,
-  _knownPublicTypeIndexUrl?: string,
-  _previousManifest?: DiscoveryManifest,
+  knownProfile: Awaited<ReturnType<PublicationManagers['profileManager']['readProfile']>>,
   reconciliationAttempt = 0
 ): Promise<DirectoryPublicationOutcome> {
   try {
@@ -288,7 +285,7 @@ async function renewExistingListing(
     )
     const now = input.now ?? new Date()
     const [profile, publicTypeIndexUrl, previousManifest] = await Promise.all([
-      input.managers.profileManager.readProfile(input.ownerWebId),
+      knownProfile ?? input.managers.profileManager.readProfile(input.ownerWebId),
       input.managers.publicTypeIndexManager.discoverPublicTypeIndex(input.ownerWebId),
       input.managers.discoveryManifestManager.readManifest(input.podRoot),
     ])
@@ -412,6 +409,7 @@ async function applyListing(
       requirePublicTypeIndex: listed,
       basicProfileOnly: listed,
       preserveIndependentIndexingArtifacts: !listed,
+      ...(input.publicProfile ? { publicProfile: input.publicProfile } : {}),
       ...(input.now ? { now: input.now } : {}),
     })
     if (result.listed !== listed) {

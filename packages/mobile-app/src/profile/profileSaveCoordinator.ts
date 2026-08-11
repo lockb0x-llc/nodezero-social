@@ -1,8 +1,5 @@
 import type { UserProfile } from '@nodezero/solid-pod-sync'
-import {
-  executeProfileSaveFlow,
-  type ProfileSaveDependencies,
-} from './saveProfileFlow'
+import { executeProfileSaveFlow, type ProfileSaveDependencies } from './saveProfileFlow'
 
 export type ProfileSaveOutcome =
   | {
@@ -16,6 +13,7 @@ export type ProfileSaveOutcome =
   | {
       status: 'saved'
       message: string
+      updatedProfile: UserProfile
       mergedSavedProfile: UserProfile | null
       mergedSavedInterestsInput: string | null
     }
@@ -61,11 +59,13 @@ export async function saveProfileForScreen(args: {
       message: result.privatePreferencesSaved
         ? 'Your profile has been updated in your Solid Pod.'
         : 'Your public profile has been updated in your Solid Pod.',
+      updatedProfile: result.updatedProfile,
       mergedSavedProfile: result.mergedSavedProfile,
       mergedSavedInterestsInput: result.mergedSavedInterestsInput,
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to save profile. Please try again.'
+    const message =
+      error instanceof Error ? error.message : 'Failed to save profile. Please try again.'
     return {
       status: 'error',
       message,

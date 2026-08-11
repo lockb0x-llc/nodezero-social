@@ -120,37 +120,27 @@ export async function refreshCommunityDirectoryProjection(
                 candidate.forClass === DISCOVERY_MANIFEST_CLASS &&
                 candidate.instance === manifestUrl
             )
-            if (
-              !registration ||
-              registration.publicationRevision !== consent.publicationRevision
-            ) {
+            if (!registration || registration.publicationRevision !== consent.publicationRevision) {
               manifest = null
             }
           }
         }
       }
     } catch (error) {
-      if (
-        error instanceof CommunityDirectoryRefreshError &&
-        error.code === 'session_invalid'
-      ) {
+      if (error instanceof CommunityDirectoryRefreshError && error.code === 'session_invalid') {
         throw error
       }
       manifest = null
     }
   }
 
-  if (
-    options.allowListing === false &&
-    typeof options.expectedPublicationRevision === 'number'
-  ) {
+  if (options.allowListing === false && typeof options.expectedPublicationRevision === 'number') {
     const suppressionConsent = await new DiscoveryConsentManager({ fetch: ownerFetch }).readConsent(
       podRoot.toString(),
       options.now
     )
     if (
-      (suppressionConsent.publicationRevision ?? 0) !==
-      (options.expectedPublicationRevision ?? 0)
+      (suppressionConsent.publicationRevision ?? 0) !== (options.expectedPublicationRevision ?? 0)
     ) {
       throw new CommunityDirectoryRefreshError(
         'Discovery publication changed before suppression.',
@@ -187,18 +177,12 @@ export async function refreshCommunityDirectoryProjection(
     throw error
   }
   await options.directoryStore.reloadRecord(claims.sub, true)
-  if (
-    options.allowListing === false &&
-    typeof options.expectedPublicationRevision === 'number'
-  ) {
+  if (options.allowListing === false && typeof options.expectedPublicationRevision === 'number') {
     const finalConsent = await new DiscoveryConsentManager({ fetch: ownerFetch }).readConsent(
       podRoot.toString(),
       options.now
     )
-    if (
-      (finalConsent.publicationRevision ?? 0) !==
-      (options.expectedPublicationRevision ?? 0)
-    ) {
+    if ((finalConsent.publicationRevision ?? 0) !== (options.expectedPublicationRevision ?? 0)) {
       const reconciliationOptions: CommunityDirectoryRefreshOptions = {
         ...options,
         allowListing: true,
