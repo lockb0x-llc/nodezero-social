@@ -81,6 +81,7 @@ async function loadJson(path, label) {
 }
 
 function captureRequestAudit(request) {
+  let origin = ''
   let hostname = ''
   let protocol = ''
   let method = ''
@@ -89,6 +90,7 @@ function captureRequestAudit(request) {
   try {
     const url = request.url()
     const parsedUrl = new URL(url)
+    origin = parsedUrl.origin
     hostname = parsedUrl.hostname
     protocol = parsedUrl.protocol
     const immediateHeaders =
@@ -110,6 +112,7 @@ function captureRequestAudit(request) {
         result.available
           ? {
               auditFailed: false,
+              origin,
               hostname,
               protocol,
               method,
@@ -122,6 +125,7 @@ function captureRequestAudit(request) {
             }
           : {
               auditFailed: true,
+              origin,
               hostname,
               protocol,
               method,
@@ -133,6 +137,7 @@ function captureRequestAudit(request) {
       )
       .catch(() => ({
         auditFailed: true,
+        origin,
         hostname,
         protocol,
         method,
@@ -145,6 +150,7 @@ function captureRequestAudit(request) {
   } catch {
     return Promise.resolve({
       auditFailed: true,
+      origin,
       hostname,
       protocol,
       method,
@@ -305,7 +311,6 @@ async function saveProfileAndWait(page, operationTimeoutMs = publicationTimeoutM
     page.getByRole('button', { name: 'Save profile' }).click(),
   ])
   const confirmed = dialog.type() === 'alert' && dialog.message().toLowerCase().includes('profile')
-  await dialog.accept()
   if (!confirmed) throw new Error(`Profile save did not confirm success: ${dialog.message()}`)
 }
 
@@ -314,20 +319,20 @@ async function saveProfileForCleanup(page, expectedProfile, operationTimeoutMs) 
   await saveButton.waitFor({ state: 'visible', timeout: operationTimeoutMs })
   const dialogPromise = page
     .waitForEvent('dialog', { timeout: Math.min(operationTimeoutMs, 30_000) })
-    .then(async (dialog) => {
-      const message = dialog.message()
-      await dialog.accept()
-      return message
-    })
+    .then((dialog) => dialog.message())
     .catch(() => null)
   await saveButton.click({ timeout: Math.min(operationTimeoutMs, 30_000) })
   await dialogPromise
-  const restoredProfile = await expectedProfile.readAuthoritativeProfile()
+  const restoredState = await expectedProfile.readAuthoritativeState()
+  const restoredProfile = restoredState.profile
   const restored =
     restoredProfile?.displayName === expectedProfile.displayName &&
     restoredProfile?.bio === expectedProfile.bio &&
     (restoredProfile?.avatarUrl ?? '') === expectedProfile.avatarUrl
   if (!restored) throw new Error('Profile restoration did not persist to the Solid Pod.')
+  if (restoredState.consent.publicListing) {
+    throw new Error('Profile restoration unexpectedly re-enabled Directory publication.')
+  }
 }
 
 async function readAuthoritativePodState(page) {
@@ -484,11 +489,7 @@ if (
 ) {
   throw new Error('Each Directory evidence account requires distinct recovery material.')
 }
-const credentialOrigins = new Set([
-  new URL(baseUrl).hostname,
-  'api.nodezero.social',
-  'nodezero-social-staging-testnet-provisioner.azurewebsites.net',
-])
+const credentialOrigins = new Set([new URL(baseUrl).origin, new URL(provisionerUrl).origin])
 const directCssRequests = []
 const externalCredentialRequests = []
 const recoveryMaterialRequests = []
@@ -606,7 +607,7 @@ try {
     displayName: originalPodState.profile.displayName,
     bio: originalPodState.profile.bio,
     avatarUrl: originalPodState.profile.avatarUrl ?? '',
-    readAuthoritativeProfile: async () => (await readAuthoritativePodState(pageA)).profile,
+    readAuthoritativeState: async () => readAuthoritativePodState(pageA),
   }
 
   await pageA.getByPlaceholder('Your name').fill(initialName)
@@ -785,12 +786,13 @@ try {
     await drainRequestHeaderAudits()
     if (
       auditedRequests.some(
-        ({ auditFailed, hostname }) => auditFailed && !credentialOrigins.has(hostname)
+        ({ auditFailed, origin }) => auditFailed && !credentialOrigins.has(origin)
       )
     ) {
       throw new Error('Browser external request credential audit was incomplete.')
     }
     for (const {
+      origin,
       hostname,
       hasAuthorization,
       hasBrowserSessionCookie,
@@ -802,7 +804,7 @@ try {
         )
       )
       if (
-        !credentialOrigins.has(hostname) &&
+        !credentialOrigins.has(origin) &&
         (hasAuthorization || hasBrowserSessionCookie || containsSessionToken)
       ) {
         externalCredentialRequests.push(hostname)

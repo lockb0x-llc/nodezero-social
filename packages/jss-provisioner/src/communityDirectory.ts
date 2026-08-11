@@ -129,10 +129,21 @@ export class CommunityDirectoryStore {
     this.reloadInFlight = this.persistence
       .loadRecords()
       .then((records) => {
+        const observedWebIds = new Set(records.map((record) => record.webId))
         for (const record of records) {
           this.mergeRecord(this.records, record)
-          this.mergeRecord(this.committedRecords, record)
-          this.mergeRecord(this.durableRecords, record)
+          this.durableRecords.set(record.webId, { ...record })
+          const local = this.records.get(record.webId)
+          const publicRecord =
+            local && !local.listed && shouldReplaceDirectoryRecord(record, local)
+              ? local
+              : record
+          this.committedRecords.set(record.webId, { ...publicRecord })
+        }
+        for (const webId of this.durableRecords.keys()) {
+          if (observedWebIds.has(webId)) continue
+          this.durableRecords.delete(webId)
+          this.committedRecords.delete(webId)
         }
         this.lastReloadAtMs = Date.now()
       })
@@ -146,16 +157,27 @@ export class CommunityDirectoryStore {
     await this.pendingPersistence
   }
 
-  async reloadRecord(webId: string): Promise<void> {
+  async reloadRecord(webId: string, replaceWorking = false): Promise<void> {
     if (!this.persistence) return
     const record = await this.persistence.loadRecord(webId)
     if (record) {
-      this.mergeRecord(this.records, record)
-      this.mergeRecord(this.committedRecords, record)
+      const local = this.records.get(record.webId)
+      const privacyOverlay =
+        local && !local.listed && shouldReplaceDirectoryRecord(record, local) ? local : null
+      if (replaceWorking) {
+        this.records.set(record.webId, { ...(privacyOverlay ?? record) })
+      } else {
+        this.mergeRecord(this.records, record)
+      }
+      this.committedRecords.set(record.webId, { ...(privacyOverlay ?? record) })
       this.durableRecords.set(record.webId, { ...record })
     } else {
       const working = this.records.get(webId)
-      if (!working) this.committedRecords.delete(webId)
+      if (working && !working.listed) {
+        this.committedRecords.set(webId, { ...working })
+      } else {
+        this.committedRecords.delete(webId)
+      }
       this.durableRecords.delete(webId)
     }
   }
@@ -233,9 +255,6 @@ export class CommunityDirectoryStore {
     this.pendingPersistence = this.pendingPersistence
       .catch(() => undefined)
       .then(() => this.persistence!.upsertRecord(snapshot))
-      .then(() => {
-        this.mergeRecord(this.durableRecords, snapshot)
-      })
   }
 
   private mergeRecord(

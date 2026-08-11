@@ -186,7 +186,7 @@ export async function refreshCommunityDirectoryProjection(
     await options.directoryStore.reloadRecord(claims.sub).catch(() => undefined)
     throw error
   }
-  await options.directoryStore.reloadRecord(claims.sub)
+  await options.directoryStore.reloadRecord(claims.sub, true)
   if (
     options.allowListing === false &&
     typeof options.expectedPublicationRevision === 'number'

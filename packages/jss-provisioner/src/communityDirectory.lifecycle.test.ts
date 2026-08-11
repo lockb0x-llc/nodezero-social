@@ -426,6 +426,97 @@ void test('a transient persistence failure does not poison later writes', async 
   assert.equal(upsertCalls, 2)
 })
 
+void test('authoritative targeted reload replaces an optimistic rejected listing', async () => {
+  const storedSuppression = {
+    webId: seededWebId,
+    podUrl: 'https://solid.nodezero.social/lifecycle-user/',
+    issuer: 'https://solid.nodezero.social',
+    listed: false,
+    updatedAt: '2026-08-02T02:00:00.000Z',
+    publicationRevision: 6,
+    publicationUpdatedAt: '2026-08-02T02:00:00.000Z',
+    suppressionRevision: 6,
+    suppressedAt: '2026-08-02T02:00:00.000Z',
+  }
+  const persistence: CommunityDirectoryPersistence = {
+    loadRecords: () => Promise.resolve([]),
+    loadRecord: () => Promise.resolve(storedSuppression),
+    upsertRecord: () => Promise.resolve(),
+    probe: () => Promise.resolve(),
+  }
+  const store = new CommunityDirectoryStore({ persistence })
+  store.refreshProjection({
+    webId: seededWebId,
+    podUrl: storedSuppression.podUrl,
+    issuer: storedSuppression.issuer,
+    publicListing: true,
+    publicIndexing: false,
+    publicationRevision: 6,
+    publicationUpdatedAt: '2026-08-02T03:00:00.000Z',
+    manifestUrl: `${storedSuppression.podUrl}public/discovery/manifest`,
+    manifest: {
+      publishedAt: '2026-08-02T03:00:00.000Z',
+      expiresAt: '2026-08-09T03:00:00.000Z',
+    },
+    now: new Date('2026-08-02T03:00:00.000Z'),
+  })
+  await store.flush()
+  assert.equal(store.getByWebId(seededWebId)?.listed, true)
+
+  await store.reloadRecord(seededWebId, true)
+  assert.equal(store.getByWebId(seededWebId)?.listed, false)
+  assert.equal(store.getCommittedByWebId(seededWebId)?.listed, false)
+  assert.equal(store.getDurableByWebId(seededWebId)?.listed, false)
+})
+
+void test('targeted reload preserves a newer local opt-out over stale durable listing', async () => {
+  const storedListing = {
+    webId: seededWebId,
+    podUrl: 'https://solid.nodezero.social/lifecycle-user/',
+    issuer: 'https://solid.nodezero.social',
+    listed: true,
+    updatedAt: '2026-08-02T01:00:00.000Z',
+    publicationRevision: 4,
+    publicationUpdatedAt: '2026-08-02T01:00:00.000Z',
+    manifestExpiresAt: '2026-08-09T01:00:00.000Z',
+  }
+  let releaseSuppressionWrite!: () => void
+  const suppressionWrite = new Promise<void>((resolve) => {
+    releaseSuppressionWrite = resolve
+  })
+  const persistence: CommunityDirectoryPersistence = {
+    loadRecords: () => Promise.resolve([storedListing]),
+    loadRecord: () => Promise.resolve(storedListing),
+    upsertRecord: async () => {
+      await suppressionWrite
+    },
+    probe: () => Promise.resolve(),
+  }
+  const store = new CommunityDirectoryStore({ persistence })
+  await store.reload(true)
+  store.refreshProjection({
+    webId: seededWebId,
+    podUrl: storedListing.podUrl,
+    issuer: storedListing.issuer,
+    publicListing: false,
+    publicIndexing: false,
+    publicationRevision: 5,
+    publicationUpdatedAt: '2026-08-02T02:00:00.000Z',
+    manifestUrl: `${storedListing.podUrl}public/discovery/manifest`,
+    manifest: null,
+    suppressed: true,
+    now: new Date('2026-08-02T02:00:00.000Z'),
+  })
+
+  await store.reloadRecord(seededWebId, true)
+  assert.equal(store.getByWebId(seededWebId)?.listed, false)
+  assert.equal(store.getCommittedByWebId(seededWebId)?.listed, false)
+  assert.equal(store.getDurableByWebId(seededWebId)?.listed, true)
+
+  releaseSuppressionWrite()
+  await store.flush()
+})
+
 void test('concurrent reloads share one backend scan', async () => {
   let loadCalls = 0
   let releaseLoad: (() => void) | null = null
@@ -485,6 +576,62 @@ void test('forced reload joins an old scan and performs one follow-up scan', asy
 
   assert.equal(loadCalls, 2)
   assert.equal(store.getDurableByWebId(seededWebId)?.suppressionRevision, 5)
+})
+
+void test('full reload removes public rows absent from shared persistence', async () => {
+  const storedListing = {
+    webId: seededWebId,
+    podUrl: 'https://solid.nodezero.social/lifecycle-user/',
+    issuer: 'https://solid.nodezero.social',
+    listed: true,
+    updatedAt: now.toISOString(),
+    publicationRevision: 4,
+    publicationUpdatedAt: now.toISOString(),
+    manifestExpiresAt: '2026-08-09T00:00:00.000Z',
+  }
+  let records = [storedListing]
+  const persistence: CommunityDirectoryPersistence = {
+    loadRecords: () => Promise.resolve(records),
+    loadRecord: () => Promise.resolve(null),
+    upsertRecord: () => Promise.resolve(),
+    probe: () => Promise.resolve(),
+  }
+  const store = new CommunityDirectoryStore({ persistence })
+  await store.reload(true)
+  assert.equal(store.buildPublicPage({ now }).members.length, 1)
+
+  records = []
+  await store.reload(true)
+  assert.deepEqual(store.buildPublicPage({ now }).members, [])
+  assert.equal(store.getDurableByWebId(seededWebId), null)
+})
+
+void test('targeted missing row removes a stale public listing', async () => {
+  const storedListing = {
+    webId: seededWebId,
+    podUrl: 'https://solid.nodezero.social/lifecycle-user/',
+    issuer: 'https://solid.nodezero.social',
+    listed: true,
+    updatedAt: now.toISOString(),
+    publicationRevision: 4,
+    publicationUpdatedAt: now.toISOString(),
+    manifestExpiresAt: '2026-08-09T00:00:00.000Z',
+  }
+  let record = storedListing
+  const persistence: CommunityDirectoryPersistence = {
+    loadRecords: () => Promise.resolve([storedListing]),
+    loadRecord: () => Promise.resolve(record),
+    upsertRecord: () => Promise.resolve(),
+    probe: () => Promise.resolve(),
+  }
+  const store = new CommunityDirectoryStore({ persistence })
+  await store.reload(true)
+  assert.equal(store.buildPublicPage({ now }).members.length, 1)
+
+  record = null
+  await store.reloadRecord(seededWebId, true)
+  assert.deepEqual(store.buildPublicPage({ now }).members, [])
+  assert.equal(store.getDurableByWebId(seededWebId), null)
 })
 
 void test('a failed durable opt-out is immediately suppressed from public pages', async () => {
