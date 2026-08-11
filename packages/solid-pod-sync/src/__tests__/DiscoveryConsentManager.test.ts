@@ -150,6 +150,72 @@ describe('DiscoveryConsentManager', () => {
     ).rejects.toThrow('publication changed concurrently')
     expect(fetch).toHaveBeenCalledTimes(3)
   })
+
+  it('rebases a reservation when only the generation changed', async () => {
+    const fetch = jestGlobal
+      .fn()
+      .mockResolvedValueOnce(consentResponse(5, '"current"', true, 4))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+    const manager = new DiscoveryConsentManager({ fetch })
+
+    const reserved = await manager.reservePublicationRevision(
+      'https://alice.example/',
+      3,
+      '2026-08-01T12:00:00.000Z',
+      { publicListing: false, publicIndexing: false }
+    )
+
+    expect(reserved.publicationRevision).toBe(5)
+    expect(new Headers(fetch.mock.calls[0]?.[1]?.headers).get('cache-control')).toBe('no-cache')
+  })
+
+  it('rejects rebasing when the public intent changed', async () => {
+    const fetch = jestGlobal.fn().mockResolvedValueOnce(consentResponse(5, '"current"', false, 4))
+    const manager = new DiscoveryConsentManager({ fetch })
+
+    await expect(
+      manager.reservePublicationRevision(
+        'https://alice.example/',
+        3,
+        '2026-08-01T12:00:00.000Z',
+        { publicListing: true, publicIndexing: false }
+      )
+    ).rejects.toThrow('publication changed concurrently')
+  })
+
+  it('rejects rebasing from an expected generation ahead of Pod authority', async () => {
+    const fetch = jestGlobal.fn().mockResolvedValueOnce(consentResponse(4, '"current"', false, 3))
+    const manager = new DiscoveryConsentManager({ fetch })
+
+    await expect(
+      manager.reservePublicationRevision(
+        'https://alice.example/',
+        4,
+        '2026-08-01T12:00:00.000Z',
+        { publicListing: false, publicIndexing: false }
+      )
+    ).rejects.toThrow('publication changed concurrently')
+  })
+
+  it('rebases after a 412 when the winning writer kept the same public intent', async () => {
+    const fetch = jestGlobal
+      .fn()
+      .mockResolvedValueOnce(consentResponse(4, '"first"', false, 3))
+      .mockResolvedValueOnce(new Response(null, { status: 412 }))
+      .mockResolvedValueOnce(consentResponse(5, '"winner"', false, 4))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+    const manager = new DiscoveryConsentManager({ fetch })
+
+    const reserved = await manager.reservePublicationRevision(
+      'https://alice.example/',
+      3,
+      '2026-08-01T12:00:00.000Z',
+      { publicListing: false, publicIndexing: false }
+    )
+
+    expect(reserved.publicationRevision).toBe(5)
+    expect(fetch).toHaveBeenCalledTimes(4)
+  })
 })
 
 function consentResponse(

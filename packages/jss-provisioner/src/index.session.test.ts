@@ -43,6 +43,7 @@ interface MockCssState {
   accountCreateRequests: number
   loseNextAccountCreateResponse: boolean
   tokenExchanges: number
+  lastPodCacheControl: string | null
 }
 
 const cssState: MockCssState = {
@@ -58,6 +59,7 @@ const cssState: MockCssState = {
   accountCreateRequests: 0,
   loseNextAccountCreateResponse: false,
   tokenExchanges: 0,
+  lastPodCacheControl: null,
 }
 
 let cssBaseUrl = ''
@@ -193,6 +195,8 @@ async function handleMockCss(req: IncomingMessage, res: ServerResponse): Promise
     if (!pod) return json(res, 404, { error: 'no pod' })
 
     const authHeader = req.headers.authorization ?? ''
+    cssState.lastPodCacheControl =
+      typeof req.headers['cache-control'] === 'string' ? req.headers['cache-control'] : null
     if (!authHeader.startsWith('DPoP ') || !req.headers.dpop) {
       return json(res, 401, { error: 'unauthenticated' })
     }
@@ -339,6 +343,7 @@ after(() => {
 beforeEach(() => {
   cssState.rejectTokenExchange = false
   cssState.rejectPodRequests = 0
+  cssState.lastPodCacheControl = null
   cssState.transientPodBadRequests = 0
   cssState.loseNextPodCreateResponse = false
   cssState.loseNextAccountCreateResponse = false
@@ -1270,6 +1275,32 @@ void test('proxy: rejects missing/garbage/expired bearer tokens', async () => {
     },
   })
   assert.equal(forged.status, 401)
+})
+
+void test('proxy: CORS permits authoritative no-cache consent reads', async () => {
+  const response = await fetch(`${baseUrl}/v1/pod-proxy/alice/social/consent/discovery`, {
+    method: 'OPTIONS',
+    headers: {
+      origin: 'https://staging.nodezero.social',
+      'access-control-request-method': 'GET',
+      'access-control-request-headers': 'authorization,cache-control',
+    },
+  })
+  assert.equal(response.status, 204)
+  assert.match(response.headers.get('access-control-allow-headers') ?? '', /cache-control/)
+})
+
+void test('proxy: forwards authoritative no-cache reads to the Pod', async () => {
+  const { session, podUrl } = await provisionUser()
+  const podPath = new URL(podUrl).pathname.replace(/^\//, '')
+  const response = await fetch(`${baseUrl}/v1/pod-proxy/${podPath}`, {
+    headers: {
+      authorization: `Bearer ${session.accessToken}`,
+      'cache-control': 'no-cache',
+    },
+  })
+  assert.equal(response.status, 200)
+  assert.equal(cssState.lastPodCacheControl, 'no-cache')
 })
 
 void test('relationship delivery route requires a valid session and binds actor to session subject', async () => {

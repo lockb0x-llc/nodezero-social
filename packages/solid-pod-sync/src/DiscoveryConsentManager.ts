@@ -156,7 +156,8 @@ export class DiscoveryConsentManager {
   async reservePublicationRevision(
     podRoot: string,
     expectedPublicationRevision: number | undefined,
-    updatedAt = new Date().toISOString()
+    updatedAt = new Date().toISOString(),
+    expectedPublicationState?: Pick<DiscoveryConsent, 'publicListing' | 'publicIndexing'>
   ): Promise<DiscoveryConsent> {
     await this.ensurePodLayoutIfEnabled(podRoot)
     for (let attempt = 0; attempt < MAX_WRITE_ATTEMPTS; attempt += 1) {
@@ -167,7 +168,20 @@ export class DiscoveryConsentManager {
             deriveOwnerWebId(`${podRoot.replace(/\/$/, '')}/social/consent/`),
             updatedAt
           )
-      if ((current.publicationRevision ?? 0) !== (expectedPublicationRevision ?? 0)) {
+      const generationChanged =
+        (current.publicationRevision ?? 0) !== (expectedPublicationRevision ?? 0)
+      const intentChanged =
+        expectedPublicationState !== undefined &&
+        (current.publicListing !== expectedPublicationState.publicListing ||
+          current.publicIndexing !== expectedPublicationState.publicIndexing)
+      if (intentChanged) {
+        throw new Error('Discovery publication changed concurrently; retry the operation.')
+      }
+      if (
+        generationChanged &&
+        (expectedPublicationState === undefined ||
+          (current.publicationRevision ?? 0) < (expectedPublicationRevision ?? 0))
+      ) {
         throw new Error('Discovery publication changed concurrently; retry the operation.')
       }
       const consent: DiscoveryConsent = {
@@ -231,7 +245,9 @@ export class DiscoveryConsentManager {
     const datasetUrl = consentUrl(podRoot)
     let etag: string | null = null
     const observedFetch: typeof globalThis.fetch = async (input, init) => {
-      const response = await this.session.fetch(input, init)
+      const headers = new Headers(init?.headers)
+      headers.set('cache-control', 'no-cache')
+      const response = await this.session.fetch(input, { ...init, headers })
       const target =
         typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
       if ((init?.method ?? 'GET').toUpperCase() === 'GET' && target === datasetUrl && response.ok) {

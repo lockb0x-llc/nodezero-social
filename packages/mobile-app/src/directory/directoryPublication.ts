@@ -280,7 +280,11 @@ async function renewExistingListing(
     const consent = await input.managers.discoveryConsentManager.reservePublicationRevision(
       input.podRoot,
       observedConsent.publicationRevision,
-      (input.now ?? new Date()).toISOString()
+      (input.now ?? new Date()).toISOString(),
+      {
+        publicListing: observedConsent.publicListing,
+        publicIndexing: observedConsent.publicIndexing,
+      }
     )
     const now = input.now ?? new Date()
     const [profile, publicTypeIndexUrl, previousManifest] = await Promise.all([

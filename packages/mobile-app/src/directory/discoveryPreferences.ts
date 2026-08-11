@@ -132,7 +132,11 @@ export async function updateDiscoveryPreferences(
       await input.managers.discoveryConsentManager.reservePublicationRevision(
         input.podRoot,
         consent.publicationRevision,
-        now.toISOString()
+        now.toISOString(),
+        {
+          publicListing: consent.publicListing,
+          publicIndexing: consent.publicIndexing,
+        }
       )
     publishDiscoveryConsentChanged(publicationConsent)
     const previousManifest = await input.managers.discoveryManifestManager
@@ -267,7 +271,11 @@ export async function updateDiscoveryPreferences(
     await input.managers.discoveryConsentManager.reservePublicationRevision(
       input.podRoot,
       consent.publicationRevision,
-      now.toISOString()
+      now.toISOString(),
+      {
+        publicListing: consent.publicListing,
+        publicIndexing: consent.publicIndexing,
+      }
     )
   publishDiscoveryConsentChanged(publicationConsent)
   const previousManifest = await input.managers.discoveryManifestManager

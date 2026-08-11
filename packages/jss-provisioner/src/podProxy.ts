@@ -43,6 +43,7 @@ const ALLOWED_METHODS = new Set(['GET', 'HEAD', 'PUT', 'POST', 'PATCH', 'DELETE'
 const FORWARDED_REQUEST_HEADERS = [
   'accept',
   'accept-language',
+  'cache-control',
   'content-type',
   'if-match',
   'if-none-match',

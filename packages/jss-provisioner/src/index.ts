@@ -394,7 +394,7 @@ function corsHeaders(req: IncomingMessage): Record<string, string> {
     ...(isAllowedOrigin ? { 'access-control-allow-credentials': 'true' } : {}),
     'access-control-allow-methods': 'GET,HEAD,POST,PUT,PATCH,DELETE,OPTIONS',
     'access-control-allow-headers':
-      'content-type,authorization,idempotency-key,x-nz-internal-key,x-nodezero-publication-revision,accept,if-match,if-none-match,slug,link',
+      'content-type,authorization,idempotency-key,x-nz-internal-key,x-nodezero-publication-revision,accept,cache-control,if-match,if-none-match,slug,link',
     'access-control-expose-headers': 'etag,location,link,wac-allow,accept-patch,allow',
     vary: 'origin',
   }
