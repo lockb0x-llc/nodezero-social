@@ -4,7 +4,7 @@
   "description": "JSS provisioning and custody attestation API",
   "license": "MIT",
   "engines": {
-    "node": ">=22.19.0"
+    "node": ">=22.19.0 <23"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

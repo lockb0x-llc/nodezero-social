@@ -455,6 +455,7 @@ void test('a failed durable opt-out is immediately suppressed from public pages'
     issuer: 'https://solid.nodezero.social',
     listed: true,
     updatedAt: '2026-08-02T01:00:00.000Z',
+    publicationRevision: 4,
     publicationUpdatedAt: '2026-08-02T01:00:00.000Z',
     manifestExpiresAt: '2026-08-09T01:00:00.000Z',
   }
@@ -472,6 +473,7 @@ void test('a failed durable opt-out is immediately suppressed from public pages'
     issuer: stored.issuer,
     publicListing: false,
     publicIndexing: false,
+    publicationRevision: 5,
     publicationUpdatedAt: '2026-08-02T02:00:00.000Z',
     manifest: null,
     manifestUrl: `${stored.podUrl}public/discovery/manifest`,
@@ -480,6 +482,9 @@ void test('a failed durable opt-out is immediately suppressed from public pages'
   assert.deepEqual(store.buildPublicPage({ now }).members, [])
   await assert.rejects(store.flush(), /table outage/)
   assert.deepEqual(store.buildPublicPage({ now }).members, [])
+  assert.equal(store.getDurableByWebId(seededWebId)?.listed, true)
+  assert.equal(store.getDurableByWebId(seededWebId)?.publicationRevision, 4)
+  assert.equal(store.getDurableByWebId(seededWebId)?.suppressedAt, undefined)
   stored = { ...stored }
 })
 

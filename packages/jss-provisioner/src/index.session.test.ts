@@ -250,6 +250,7 @@ let mockCss: ReturnType<typeof createServer>
 let provisioner: ReturnType<typeof createServer>
 let baseUrl = ''
 let routeBlockedRecipient: string | null = null
+let podProxySuppressionRevision: number | null = null
 
 before(async () => {
   mockCss = createServer((req, res) => {
@@ -315,6 +316,13 @@ before(async () => {
   provisioner = createServer(mod.createRequestHandler({
     isRelationshipRecipientBlocked: (_claims, recipientWebId) =>
       Promise.resolve(recipientWebId === routeBlockedRecipient),
+    readPodProxyPublicationConsent: () =>
+      Promise.resolve({
+        publicationRevision: 1,
+        publicListing: true,
+        publicIndexing: false,
+      }),
+    getPodProxySuppressionRevision: () => Promise.resolve(podProxySuppressionRevision),
   }))
   provisioner.listen(0, '127.0.0.1')
   await once(provisioner, 'listening')
@@ -335,6 +343,7 @@ beforeEach(() => {
   cssState.loseNextPodCreateResponse = false
   cssState.loseNextAccountCreateResponse = false
   routeBlockedRecipient = null
+  podProxySuppressionRevision = null
 })
 
 async function postJson(
@@ -441,6 +450,19 @@ void test('solid-account: returns a session that immediately proxies Pod writes'
 
 void test('proxy: protected publication mutations require a generation and HTTP precondition', async () => {
   const { session, podUrl, webId } = await provisionUser()
+  const podName = new URL(podUrl).pathname.split('/').filter(Boolean)[0] ?? ''
+  cssState.pods.get(podName)?.set('social/consent/discovery', {
+    contentType: 'text/turtle',
+    body: `
+      @prefix nz: <https://nodezero.social/ns#> .
+      <${podUrl}social/consent/discovery#consent> a nz:DiscoveryConsent ;
+        nz:version 1 ; nz:publicationRevision 1 ;
+        nz:publicationUpdatedAt "2026-08-02T00:00:00.000Z" ;
+        nz:ownerWebId <${webId}> ; nz:publicListing true ; nz:publicIndexing false ;
+        nz:nearbyPresence false ; nz:inboundContactRequests false ;
+        nz:localBroadcasts false ; nz:updatedAt "2026-08-02T00:00:00.000Z" .
+    `,
+  })
   const podPath = new URL(podUrl).pathname.replace(/^\//, '')
   const target = `${baseUrl}/v1/pod-proxy/${podPath}public/discovery/manifest`
 
@@ -515,14 +537,93 @@ void test('proxy: protected publication mutations require a generation and HTTP 
   assert.equal(markerFreeReplacement.status, 428)
 
   const commaEtag = await fetch(target, {
-    method: 'DELETE',
+    method: 'PATCH',
     headers: {
       authorization: `Bearer ${session.accessToken}`,
+      'content-type': 'application/sparql-update',
       'if-match': '"v1,part"',
       'x-nodezero-publication-revision': '1',
     },
+    body: 'INSERT DATA { <#manifest> <https://nodezero.social/ns#displayName> "Alice" . }',
   })
   assert.equal(commaEtag.status, 205)
+})
+
+void test('proxy: rejects encoded aliases for protected publication paths', async () => {
+  const { session, podUrl } = await provisionUser()
+  const podPath = new URL(podUrl).pathname.replace(/^\//, '')
+  const response = await fetch(
+    `${baseUrl}/v1/pod-proxy/${podPath}public/%64iscovery/manifest`,
+    {
+      method: 'DELETE',
+      headers: {
+        authorization: `Bearer ${session.accessToken}`,
+        'if-match': '"v1"',
+        'x-nodezero-publication-revision': '1',
+      },
+    }
+  )
+  assert.equal(response.status, 403)
+  assert.equal(((await response.json()) as { code?: string }).code, 'pod_path_invalid')
+
+  const doubleEncoded = await fetch(
+    `${baseUrl}/v1/pod-proxy/${podPath}public/%2564iscovery/manifest`,
+    {
+      method: 'DELETE',
+      headers: {
+        authorization: `Bearer ${session.accessToken}`,
+        'if-match': '"v1"',
+        'x-nodezero-publication-revision': '1',
+      },
+    }
+  )
+  assert.equal(doubleEncoded.status, 403)
+  assert.equal(((await doubleEncoded.json()) as { code?: string }).code, 'pod_path_invalid')
+})
+
+void test('proxy: destructive publication cleanup requires matching authority and suppression', async () => {
+  const { session, podUrl } = await provisionUser()
+  const podName = new URL(podUrl).pathname.split('/').filter(Boolean)[0] ?? ''
+  const pod = cssState.pods.get(podName)
+  assert.ok(pod)
+  const manifestPath = 'public/discovery/manifest'
+  const manifestBody = '<#manifest> a <https://nodezero.social/ns#DiscoveryManifest> .'
+  pod.set(manifestPath, { contentType: 'text/turtle', body: manifestBody })
+  const target = `${baseUrl}/v1/pod-proxy/${podName}/${manifestPath}`
+
+  const wrongGeneration = await fetch(target, {
+    method: 'DELETE',
+    headers: {
+      authorization: `Bearer ${session.accessToken}`,
+      'if-match': '"v1"',
+      'x-nodezero-publication-revision': '999',
+    },
+  })
+  assert.equal(wrongGeneration.status, 409)
+  assert.equal(pod.get(manifestPath)?.body, manifestBody)
+
+  const unsuppressed = await fetch(target, {
+    method: 'DELETE',
+    headers: {
+      authorization: `Bearer ${session.accessToken}`,
+      'if-match': '"v1"',
+      'x-nodezero-publication-revision': '1',
+    },
+  })
+  assert.equal(unsuppressed.status, 409)
+  assert.equal(pod.get(manifestPath)?.body, manifestBody)
+
+  podProxySuppressionRevision = 1
+  const suppressed = await fetch(target, {
+    method: 'DELETE',
+    headers: {
+      authorization: `Bearer ${session.accessToken}`,
+      'if-match': '"v1"',
+      'x-nodezero-publication-revision': '1',
+    },
+  })
+  assert.equal(suppressed.status, 205)
+  assert.equal(pod.has(manifestPath), false)
 })
 
 void test('proxy: fails closed on a manifest-referenced Type Index after its WebID pointer disappears', async () => {
@@ -865,6 +966,22 @@ void test('proxy: ordinary JSON resources are not classified as publication RDF'
     body: '{"version":1,"members":["alice"]}',
   })
   assert.equal(update.status, 201)
+})
+
+void test('proxy: rejects request bodies larger than the parser boundary', async () => {
+  const { session, podUrl } = await provisionUser()
+  const podPath = new URL(podUrl).pathname.replace(/^\//, '')
+  const response = await fetch(`${baseUrl}/v1/pod-proxy/${podPath}oversized.bin`, {
+    method: 'PUT',
+    headers: {
+      authorization: `Bearer ${session.accessToken}`,
+      'content-type': 'application/octet-stream',
+      'if-none-match': '*',
+    },
+    body: Buffer.alloc(5 * 1024 * 1024 + 1),
+  })
+  assert.equal(response.status, 413)
+  assert.equal(((await response.json()) as { code?: string }).code, 'payload_too_large')
 })
 
 void test('solid-account: retries a transient CSS Pod creation 400', async () => {
@@ -1440,9 +1557,10 @@ void test('proxy: publication guard remints once, then invalidates persistent Po
     },
   })
   assert.equal(recoveredGuard.status, 428)
-  assert.equal(cssState.tokenExchanges, mintsBeforeRecovery + 1)
+  assert.equal(cssState.tokenExchanges, mintsBeforeRecovery + 2)
 
   cssState.rejectPodRequests = 2
+  const mintsBeforePersistentRejection = cssState.tokenExchanges
   const persistentRejection = await fetch(`${baseUrl}/v1/pod-proxy/${typeIndexPath}`, {
     method: 'DELETE',
     headers: {
@@ -1455,6 +1573,7 @@ void test('proxy: publication guard remints once, then invalidates persistent Po
     ((await persistentRejection.json()) as { code?: string }).code,
     'session_invalid'
   )
+  assert.equal(cssState.tokenExchanges, mintsBeforePersistentRejection + 1)
 })
 
 // ---------------------------------------------------------------------------

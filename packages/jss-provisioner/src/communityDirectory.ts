@@ -85,6 +85,7 @@ const MAX_MANIFEST_CLOCK_SKEW_MS = 5 * 60_000
 export class CommunityDirectoryStore {
   private readonly records = new Map<string, CommunityDirectoryRecord>()
   private readonly committedRecords = new Map<string, CommunityDirectoryRecord>()
+  private readonly durableRecords = new Map<string, CommunityDirectoryRecord>()
   private readonly persistenceFilePath: string
   private readonly persistence: CommunityDirectoryPersistence | undefined
   private pendingPersistence: Promise<void> = Promise.resolve()
@@ -116,6 +117,7 @@ export class CommunityDirectoryStore {
         for (const record of records) {
           this.mergeRecord(this.records, record)
           this.mergeRecord(this.committedRecords, record)
+          this.mergeRecord(this.durableRecords, record)
         }
         this.lastReloadAtMs = Date.now()
       })
@@ -135,9 +137,11 @@ export class CommunityDirectoryStore {
     if (record) {
       this.mergeRecord(this.records, record)
       this.mergeRecord(this.committedRecords, record)
+      this.durableRecords.set(record.webId, { ...record })
     } else {
       const working = this.records.get(webId)
       if (!working) this.committedRecords.delete(webId)
+      this.durableRecords.delete(webId)
     }
   }
 
@@ -166,6 +170,7 @@ export class CommunityDirectoryStore {
         if (!record) continue
         this.records.set(record.webId, record)
         this.committedRecords.set(record.webId, { ...record })
+        this.durableRecords.set(record.webId, { ...record })
       }
     } catch {
       // Missing or malformed file should not block provisioning startup.
@@ -197,8 +202,10 @@ export class CommunityDirectoryStore {
       }
     }
     this.committedRecords.clear()
+    this.durableRecords.clear()
     for (const record of this.records.values()) {
       this.committedRecords.set(record.webId, { ...record })
+      this.durableRecords.set(record.webId, { ...record })
     }
   }
 
@@ -211,6 +218,9 @@ export class CommunityDirectoryStore {
     this.pendingPersistence = this.pendingPersistence
       .catch(() => undefined)
       .then(() => this.persistence!.upsertRecord(snapshot))
+      .then(() => {
+        this.mergeRecord(this.durableRecords, snapshot)
+      })
   }
 
   private mergeRecord(
@@ -385,6 +395,10 @@ export class CommunityDirectoryStore {
 
   getCommittedByWebId(webId: string): CommunityDirectoryRecord | null {
     return this.committedRecords.get(webId) ?? null
+  }
+
+  getDurableByWebId(webId: string): CommunityDirectoryRecord | null {
+    return this.durableRecords.get(webId) ?? null
   }
 }
 

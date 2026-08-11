@@ -22,7 +22,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { createHash } from 'node:crypto'
 import { Readable } from 'node:stream'
 import type { Quad } from '@rdfjs/types'
-import { PublicTypeIndexManager } from '@nodezero/solid-pod-sync'
+import { DiscoveryConsentManager, PublicTypeIndexManager } from '@nodezero/solid-pod-sync'
 import { DiscoveryManifestManager } from '@nodezero/solid-pod-sync'
 import { Parser as SparqlParser } from 'sparqljs'
 import { rdfParser } from 'rdf-parse'
@@ -35,6 +35,7 @@ export const POD_PROXY_PREFIX = '/v1/pod-proxy/'
 /** Access tokens are re-minted this many ms before their reported expiry. */
 const TOKEN_EXPIRY_SLACK_MS = 30_000
 const SOLID_PUBLIC_TYPE_INDEX = 'http://www.w3.org/ns/solid/terms#publicTypeIndex'
+const MAX_PROXY_BODY_BYTES = 5 * 1024 * 1024
 
 const ALLOWED_METHODS = new Set(['GET', 'HEAD', 'PUT', 'POST', 'PATCH', 'DELETE'])
 
@@ -79,6 +80,12 @@ export interface PodProxyDeps {
   corsHeaders: (req: IncomingMessage) => Record<string, string>
   /** Injectable for tests. */
   mintToken?: typeof mintPodAccessToken
+  readPublicationConsent?: (webId: string) => Promise<{
+    publicationRevision?: number
+    publicListing: boolean
+    publicIndexing: boolean
+  }>
+  getSuppressionRevision?: (webId: string) => Promise<number | null>
   auditLog?: (event: string, detail: Record<string, unknown>) => void
 }
 
@@ -88,6 +95,8 @@ interface CachedToken {
 }
 
 class PublicationGuardAuthenticationError extends Error {}
+class ProxyBodyTooLargeError extends Error {}
+class PublicationAuthorityError extends Error {}
 
 const tokenCache = new Map<string, CachedToken>()
 
@@ -147,7 +156,7 @@ export function buildPodProxyTarget(
     rawPath.startsWith('/') ||
     rawPath.includes('\\') ||
     /(?:^|\/)\.\.?($|\/)/.test(rawPath) ||
-    /%(?:2f|5c|2e)/i.test(rawPath)
+    rawPath.includes('%')
   ) {
     throw new PodProxyTargetError('Pod proxy path is not allowed.', 'pod_path_invalid')
   }
@@ -196,8 +205,12 @@ function readBearerToken(req: IncomingMessage): string | null {
 
 async function readRawBody(req: IncomingMessage): Promise<Buffer> {
   const chunks: Buffer[] = []
+  let size = 0
   for await (const chunk of req as AsyncIterable<Buffer | string>) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+    size += buffer.length
+    if (size > MAX_PROXY_BODY_BYTES) throw new ProxyBodyTooLargeError()
+    chunks.push(buffer)
   }
   return Buffer.concat(chunks)
 }
@@ -287,7 +300,19 @@ export async function handlePodProxyRequest(
     return true
   }
 
-  const body = method === 'GET' || method === 'HEAD' ? null : await readRawBody(req)
+  let body: Buffer | null
+  try {
+    body = method === 'GET' || method === 'HEAD' ? null : await readRawBody(req)
+  } catch (error) {
+    if (error instanceof ProxyBodyTooLargeError) {
+      sendProxyJson(req, res, deps.corsHeaders, 413, {
+        error: 'Pod proxy request body is too large.',
+        code: 'payload_too_large',
+      })
+      return true
+    }
+    throw error
+  }
 
   let attemptedFresh = false
   for (;;) {
@@ -314,7 +339,7 @@ export async function handlePodProxyRequest(
       return true
     }
 
-    let protectedPublicationMutation: boolean
+    let protectedPublicationMutation: 'none' | 'consent' | 'artifact'
     try {
       protectedPublicationMutation = await isProtectedPublicationMutation(
         targetUrl,
@@ -350,7 +375,7 @@ export async function handlePodProxyRequest(
       })
       return true
     }
-    if (protectedPublicationMutation) {
+    if (protectedPublicationMutation !== 'none') {
       const publicationRevision = req.headers['x-nodezero-publication-revision']
       const hasRevision =
         typeof publicationRevision === 'string' && /^\d+$/.test(publicationRevision)
@@ -362,6 +387,39 @@ export async function handlePodProxyRequest(
           code: 'publication_precondition_required',
         })
         return true
+      }
+      if (protectedPublicationMutation === 'artifact') {
+        try {
+          await assertArtifactPublicationAuthority(
+            claims,
+            token,
+            Number(publicationRevision),
+            method,
+            deps
+          )
+        } catch (error) {
+          if (error instanceof PublicationGuardAuthenticationError && !attemptedFresh) {
+            attemptedFresh = true
+            tokenCache.delete(claims.sub)
+            continue
+          }
+          if (error instanceof PublicationGuardAuthenticationError) {
+            tokenCache.delete(claims.sub)
+            sendProxyJson(req, res, deps.corsHeaders, 401, {
+              error: 'Solid access was rejected for this session.',
+              code: 'session_invalid',
+            })
+            return true
+          }
+          if (error instanceof PublicationAuthorityError) {
+            sendProxyJson(req, res, deps.corsHeaders, 409, {
+              error: error.message,
+              code: 'publication_authority_mismatch',
+            })
+            return true
+          }
+          throw error
+        }
       }
     }
 
@@ -441,28 +499,24 @@ async function isProtectedPublicationMutation(
   contentType: string,
   claims: SessionClaims,
   token: PodAccessToken
-): Promise<boolean> {
-  if (!['PUT', 'PATCH', 'DELETE'].includes(method)) return false
+): Promise<'none' | 'consent' | 'artifact'> {
+  if (!['PUT', 'PATCH', 'DELETE'].includes(method)) return 'none'
   const target = new URL(targetUrl)
   const pathname = target.pathname
   const profileUrl = claims.sub.split('#')[0] ?? ''
   const targetsProfile = sameResourcePath(target, new URL(profileUrl))
-  if (
-    pathname.endsWith('/social/consent/discovery') ||
-    pathname.endsWith('/public/discovery/manifest')
-  ) {
-    return true
-  }
+  if (pathname.endsWith('/social/consent/discovery')) return 'consent'
+  if (pathname.endsWith('/public/discovery/manifest')) return 'artifact'
   const text = body?.toString('utf8') ?? ''
   if (
     isRdfMutationContentType(contentType) &&
     (text.includes('nodezero-discovery-manifest') ||
       text.includes('https://nodezero.social/ns#DiscoveryManifest'))
   ) {
-    return true
+    return 'artifact'
   }
   if (method !== 'DELETE' && !isRdfMutationContentType(contentType) && !targetsProfile) {
-    return false
+    return 'none'
   }
   const ownerFetch: typeof globalThis.fetch = (input, init) => {
     const url =
@@ -479,13 +533,15 @@ async function isProtectedPublicationMutation(
   const typeIndexManager = new PublicTypeIndexManager({ fetch: ownerFetch })
   const publicTypeIndexUrl = await typeIndexManager.discoverPublicTypeIndex(claims.sub)
   if (targetsProfile) {
-    if (method === 'DELETE') return publicTypeIndexUrl !== null
+    if (method === 'DELETE') return publicTypeIndexUrl !== null ? 'artifact' : 'none'
     if (method === 'PATCH') {
       return sparqlUpdateTouchesOrMayRemovePredicate(text, SOLID_PUBLIC_TYPE_INDEX)
+        ? 'artifact'
+        : 'none'
     }
     if (method === 'PUT') {
       if (!isRdfRepresentationContentType(contentType)) {
-        return publicTypeIndexUrl !== null
+        return publicTypeIndexUrl !== null ? 'artifact' : 'none'
       }
       const replacementTypeIndexUrls = await parseRdfPredicateObjects(
         body ?? Buffer.alloc(0),
@@ -494,14 +550,15 @@ async function isProtectedPublicationMutation(
         SOLID_PUBLIC_TYPE_INDEX,
         target.toString()
       )
-      return publicTypeIndexUrl === null
+      const changed = publicTypeIndexUrl === null
         ? replacementTypeIndexUrls.length > 0
         : replacementTypeIndexUrls.length !== 1 ||
             replacementTypeIndexUrls[0] !== publicTypeIndexUrl
+      return changed ? 'artifact' : 'none'
     }
   }
   if (publicTypeIndexUrl !== null && sameResourcePath(target, new URL(publicTypeIndexUrl))) {
-    return true
+    return 'artifact'
   }
   const podRoot = claims.pod.endsWith('/') ? claims.pod : `${claims.pod}/`
   const manifest = await new DiscoveryManifestManager({ fetch: ownerFetch }).readManifest(podRoot)
@@ -509,9 +566,46 @@ async function isProtectedPublicationMutation(
     manifest?.publicTypeIndexUrl &&
     sameResourcePath(target, new URL(manifest.publicTypeIndexUrl))
   ) {
-    return true
+    return 'artifact'
   }
-  return false
+  return 'none'
+}
+
+async function assertArtifactPublicationAuthority(
+  claims: SessionClaims,
+  token: PodAccessToken,
+  publicationRevision: number,
+  method: string,
+  deps: PodProxyDeps
+): Promise<void> {
+  const ownerFetch: typeof globalThis.fetch = async (input, init) => {
+    const url =
+      typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+    const requestMethod = (init?.method ?? 'GET').toUpperCase()
+    const headers = new Headers(init?.headers)
+    headers.set('authorization', `DPoP ${token.accessToken}`)
+    headers.set('dpop', token.proof(url, requestMethod))
+    const response = await fetch(url, { ...init, method: requestMethod, headers })
+    if (response.status === 401) throw new PublicationGuardAuthenticationError()
+    return response
+  }
+  const podRoot = claims.pod.endsWith('/') ? claims.pod : `${claims.pod}/`
+  const consent = deps.readPublicationConsent
+    ? await deps.readPublicationConsent(claims.sub)
+    : await new DiscoveryConsentManager({ fetch: ownerFetch }).readConsent(podRoot)
+  if ((consent.publicationRevision ?? 0) !== publicationRevision) {
+    throw new PublicationAuthorityError('Publication generation does not match Pod authority.')
+  }
+  const requiresSuppression =
+    method === 'DELETE' || (!consent.publicListing && !consent.publicIndexing)
+  if (requiresSuppression) {
+    const suppressionRevision = await deps.getSuppressionRevision?.(claims.sub)
+    if (suppressionRevision !== publicationRevision) {
+      throw new PublicationAuthorityError(
+        'Directory projection is not suppressed at this publication generation.'
+      )
+    }
+  }
 }
 
 function sameResourcePath(left: URL, right: URL): boolean {

@@ -554,7 +554,6 @@ try {
     'webId',
     'displayName',
     'avatarUrl',
-    'publicInterests',
   ])
   const unexpectedRecordKeys = Object.keys(initialRecord).filter(
     (key) => !allowedRecordKeys.has(key)
@@ -562,7 +561,11 @@ try {
   if (unexpectedRecordKeys.length > 0) {
     throw new Error(`Directory record exposed unexpected fields: ${unexpectedRecordKeys.join(',')}`)
   }
-  if (initialRecord.publicInterests || initialRecord.capabilities || initialRecord.inboxUrl) {
+  if (
+    Object.hasOwn(initialRecord, 'publicInterests') ||
+    Object.hasOwn(initialRecord, 'capabilities') ||
+    Object.hasOwn(initialRecord, 'inboxUrl')
+  ) {
     throw new Error('Listing-only projection exposed indexed metadata.')
   }
   if (await pageB.getByText(privateBio, { exact: true }).count()) {

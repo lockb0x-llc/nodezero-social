@@ -262,6 +262,36 @@ void test('stale suppression cannot tombstone a newer publication generation', a
   }
 })
 
+void test('cohort-disabled refresh suppresses the authoritative current generation', async () => {
+  const consentUrl = `${podRoot}social/consent/discovery`
+  const originalFetch = globalThis.fetch
+  const store = createTestStore()
+  const { options } = baseOptions(() =>
+    Promise.resolve(
+      response(
+        `
+      @prefix nz: <https://nodezero.social/ns#> .
+      <${consentUrl}#consent> a nz:DiscoveryConsent ; nz:version 1 ;
+        nz:publicationRevision 5 ; nz:publicationUpdatedAt "2026-08-02T00:00:00.000Z" ;
+        nz:ownerWebId <${alice}> ; nz:publicListing true ; nz:publicIndexing false ;
+        nz:nearbyPresence false ; nz:inboundContactRequests false ;
+        nz:localBroadcasts false ; nz:updatedAt "2026-08-02T00:00:00.000Z" .
+    `,
+        consentUrl
+      )
+    ), store)
+  try {
+    const record = await refreshCommunityDirectoryProjection(claims, {
+      ...options,
+      allowListing: false,
+    })
+    assert.equal(record.listed, false)
+    assert.equal(record.suppressionRevision, 5)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
 void test('suppression reconciles a publication committed during persistence', async () => {
   const consentUrl = `${podRoot}social/consent/discovery`
   const manifestUrl = `${podRoot}public/discovery/manifest`
@@ -428,7 +458,7 @@ void test('manifest 401 propagates session invalidation without mutating project
     reloadRecord: store.reloadRecord.bind(store),
     flush: store.flush.bind(store),
     getByWebId: store.getByWebId.bind(store),
-    refreshProjection: (input) => {
+    refreshProjection: (input): ReturnType<CommunityDirectoryStore['refreshProjection']> => {
       projectionMutated = true
       return store.refreshProjection(input)
     },

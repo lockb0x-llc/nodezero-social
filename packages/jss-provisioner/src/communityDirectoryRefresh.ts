@@ -140,7 +140,10 @@ export async function refreshCommunityDirectoryProjection(
     }
   }
 
-  if (options.allowListing === false) {
+  if (
+    options.allowListing === false &&
+    typeof options.expectedPublicationRevision === 'number'
+  ) {
     const suppressionConsent = await new DiscoveryConsentManager({ fetch: ownerFetch }).readConsent(
       podRoot.toString(),
       options.now
@@ -184,7 +187,10 @@ export async function refreshCommunityDirectoryProjection(
     throw error
   }
   await options.directoryStore.reloadRecord(claims.sub)
-  if (options.allowListing === false) {
+  if (
+    options.allowListing === false &&
+    typeof options.expectedPublicationRevision === 'number'
+  ) {
     const finalConsent = await new DiscoveryConsentManager({ fetch: ownerFetch }).readConsent(
       podRoot.toString(),
       options.now

@@ -192,6 +192,9 @@ interest separation, pagination, and recommendation-reason suites pass.
   publication mutations. Durable suppression tombstones prevent same- or older-generation
   refreshes from re-listing an opted-out owner while allowing incomplete same-generation
   publication to finish.
+- The provisioner uses `sparqljs` only for bounded profile-update classification. Replace
+  the deprecated parser with a maintained SPARQL 1.1 parser before Directory rollout expands
+  beyond the approved staging cohort.
 - Directory responses contain only WebID, display name, avatar URL, and explicitly selected
   public recommendation fields. Pod location and projection provenance remain internal.
 

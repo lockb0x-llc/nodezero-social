@@ -285,6 +285,12 @@ export interface RequestHandlerOverrides {
   readPublicPeerProfile?: typeof readPublicPeerProfile
   fetchDirectoryAvatar?: typeof fetchPublicResource
   readDirectoryRecord?: (webId: string) => Promise<CommunityDirectoryRecord | null>
+  readPodProxyPublicationConsent?: (webId: string) => Promise<{
+    publicationRevision?: number
+    publicListing: boolean
+    publicIndexing: boolean
+  }>
+  getPodProxySuppressionRevision?: (webId: string) => Promise<number | null>
 }
 const knownSolidAccountEmails = new Set<string>()
 const notificationPublisher = createNotificationEventPublisherFromEnv()
@@ -1019,6 +1025,16 @@ export async function handleHttpRequest(
       credentialStore,
       sessions,
       corsHeaders,
+      ...(overrides.readPodProxyPublicationConsent
+        ? { readPublicationConsent: overrides.readPodProxyPublicationConsent }
+        : {}),
+      getSuppressionRevision:
+        overrides.getPodProxySuppressionRevision ??
+        (async (webId): Promise<number | null> => {
+          await communityDirectory.reloadRecord(webId)
+          const record = communityDirectory.getDurableByWebId(webId)
+          return record?.suppressedAt ? (record.suppressionRevision ?? null) : null
+        }),
       auditLog: (event, detail) => {
         console.log(`[pod-proxy:audit] ${event}`, JSON.stringify(detail))
       },
