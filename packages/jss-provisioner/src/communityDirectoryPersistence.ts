@@ -80,11 +80,15 @@ export class AzureTableCommunityDirectoryPersistence implements CommunityDirecto
   }
 
   async upsertRecord(record: CommunityDirectoryRecord): Promise<void> {
+    const sanitized = sanitizeCommunityDirectoryRecord(record)
+    if (!sanitized) {
+      throw new Error('Community Directory record is invalid and cannot be persisted.')
+    }
     const rowKey = createHash('sha256').update(record.webId).digest('hex')
     const entityUrl = `${this.tableUrl}(PartitionKey='${DIRECTORY_PARTITION}',RowKey='${rowKey}')?${this.sasQuery}`
     for (let attempt = 1; attempt <= MAX_WRITE_ATTEMPTS; attempt += 1) {
       const current = await this.readVersionedRecord(entityUrl)
-      if (current && !shouldReplaceDirectoryRecord(current.record, record)) return
+      if (current && !shouldReplaceDirectoryRecord(current.record, sanitized)) return
       const response = await this.fetchWithTimeout(current ? entityUrl : this.tableRequestUrl(), {
         method: current ? 'PUT' : 'POST',
         headers: {
@@ -96,7 +100,7 @@ export class AzureTableCommunityDirectoryPersistence implements CommunityDirecto
         body: JSON.stringify({
           PartitionKey: DIRECTORY_PARTITION,
           RowKey: rowKey,
-          recordJson: JSON.stringify(record),
+          recordJson: JSON.stringify(sanitized),
         }),
       })
       if (response.ok) return
@@ -213,10 +217,7 @@ export function shouldReplaceDirectoryRecord(
   const currentSuppressionRevision = current.suppressionRevision
   const incomingSuppressionRevision = incoming.suppressionRevision
   if (typeof incomingSuppressionRevision === 'number') {
-    if (
-      typeof currentRevision === 'number' &&
-      incomingSuppressionRevision < currentRevision
-    ) {
+    if (typeof currentRevision === 'number' && incomingSuppressionRevision < currentRevision) {
       return false
     }
     if (

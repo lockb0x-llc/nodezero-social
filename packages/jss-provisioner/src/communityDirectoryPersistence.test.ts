@@ -62,6 +62,37 @@ void test('upserts one hashed WebID row without credential fields', async () => 
   assert.equal(entity.recordJson, JSON.stringify(record))
 })
 
+void test('upsert sanitizes the persisted record payload at write time', async () => {
+  let requestBody = ''
+  let requestCount = 0
+  const persistence = new AzureTableCommunityDirectoryPersistence(
+    sasUrl,
+    (_input, init): Promise<Response> => {
+      requestCount += 1
+      if (requestCount === 1) return Promise.resolve(new Response(null, { status: 404 }))
+      requestBody = String(init?.body)
+      return Promise.resolve(new Response(null, { status: 201 }))
+    }
+  )
+
+  await persistence.upsertRecord({
+    ...(record as Record<string, unknown>),
+    clientCredentialsSecret: 'must not persist',
+    blockedWebIds: ['must not persist'],
+    publicInterests: ['must not persist'],
+    capabilities: ['must not persist'],
+    inboxUrl: 'https://solid.nodezero.social/alice/social/inbox/',
+  } as unknown as typeof record)
+
+  const entity = JSON.parse(requestBody) as { recordJson?: string }
+  const persisted = JSON.parse(String(entity.recordJson)) as Record<string, unknown>
+  assert.equal('clientCredentialsSecret' in persisted, false)
+  assert.equal('blockedWebIds' in persisted, false)
+  assert.equal('publicInterests' in persisted, false)
+  assert.equal('capabilities' in persisted, false)
+  assert.equal('inboxUrl' in persisted, false)
+})
+
 void test('stale opt-in cannot replace a newer opt-out', () => {
   const newerOptOut = {
     ...record,

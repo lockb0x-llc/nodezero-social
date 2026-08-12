@@ -207,9 +207,12 @@ export class CommunityDirectoryStore {
 
   private persistToDisk(): void {
     if (this.persistence) return
+    const records = Array.from(this.records.values())
+      .map((record) => sanitizeCommunityDirectoryRecord(record))
+      .filter((record): record is CommunityDirectoryRecord => record !== null)
     const payload: PersistedCommunityDirectory = {
       version: 1,
-      records: Array.from(this.records.values()),
+      records,
     }
 
     const directory = dirname(this.persistenceFilePath)
@@ -238,11 +241,13 @@ export class CommunityDirectoryStore {
   }
 
   private persistRecord(record: CommunityDirectoryRecord): void {
+    const sanitized = sanitizeCommunityDirectoryRecord(record)
+    if (!sanitized) return
     if (!this.persistence) {
       this.persistToDisk()
       return
     }
-    const snapshot = { ...record }
+    const snapshot = { ...sanitized }
     this.pendingPersistence = this.pendingPersistence
       .catch(() => undefined)
       .then(() => this.persistence!.upsertRecord(snapshot))

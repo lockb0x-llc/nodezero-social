@@ -721,14 +721,14 @@ void test('/v1/public-profile/read delegates peer WebID to credential-free servi
   )
 })
 
-void test('/v1/community-directory/opt-in is retired even with the legacy internal key', async () => {
+void test('/v1/community-directory/opt-in is no longer exposed', async () => {
   await withServer(async (baseUrl) => {
     const response = await fetch(`${baseUrl}/v1/community-directory/opt-in`, {
       method: 'POST',
       headers: { 'x-nz-internal-key': 'test-internal-key' },
     })
-    const payload = (await response.json()) as { code?: string }
-    assert.equal(response.status, 410)
-    assert.equal(payload.code, 'directory_mutation_retired')
+    const payload = (await response.json()) as { error?: string }
+    assert.equal(response.status, 404)
+    assert.equal(payload.error, 'Not found')
   })
 })

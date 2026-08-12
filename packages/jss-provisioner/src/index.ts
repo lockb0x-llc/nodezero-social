@@ -1792,18 +1792,6 @@ export async function handleHttpRequest(
     return
   }
 
-  if (
-    req.method === 'POST' &&
-    (url.pathname === '/v1/community-directory/opt-in' ||
-      url.pathname === '/v1/community-directory/opt-out')
-  ) {
-    sendJson(req, res, 410, {
-      error: 'Legacy directory mutation is retired. Use the authenticated refresh endpoint.',
-      code: 'directory_mutation_retired',
-    })
-    return
-  }
-
   if (req.method === 'POST' && url.pathname === '/v1/docustream/rss-fetch') {
     const body = await readJsonBody<{ url?: string }>(req)
     if (!isNonEmpty(body.url)) {
