@@ -1,6 +1,34 @@
 import { createHash } from 'node:crypto'
 import { createPublicKey, verify as verifySignature } from 'node:crypto'
-import type { BootstrapChallenge, ProvisionRequest } from './types.js'
+
+interface BootstrapChallenge {
+  challengeId: string
+  nonce: string
+  domain: string
+  expiresAt: string
+  envProfile: string
+  handle: string
+  webId: string
+  podUrl: string
+}
+
+interface ProvisionRequest {
+  handle: string
+  podSlug: string
+  webId: string
+  podUrl: string
+  stellarPublicKey: string
+  identityContractId: string
+  lockboxFactoryContractId: string
+  challengeId: string
+  signatureBase64: string
+  proofVersion: number
+  claimHash: string
+  proofHex: string
+  proofHashHex: string
+  proofRootHex: string
+  publicSignals: string[]
+}
 
 const STELLAR_ACCOUNT_VERSION_BYTE = 6 << 3
 const BASE32_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
@@ -108,9 +136,11 @@ export function canonicalizePodOwnershipClaim(
   return [
     'NZ_POD_OWNER_V1',
     challenge.envProfile.trim(),
-    (process.env.JSS_STELLAR_NETWORK_PASSPHRASE ??
+    (
+      process.env.JSS_STELLAR_NETWORK_PASSPHRASE ??
       process.env.NZ_STELLAR_NETWORK_PASSPHRASE ??
-      'Test SDF Network ; September 2015').trim(),
+      'Test SDF Network ; September 2015'
+    ).trim(),
     challenge.webId.trim(),
     canonicalPodUrl(challenge.podUrl),
     request.stellarPublicKey.trim(),
@@ -133,7 +163,7 @@ function decodeSignatureBase64(signatureBase64: string): Buffer {
 function verifyStellarSignature(
   stellarPublicKey: string,
   payload: Buffer,
-  signatureBytes: Buffer,
+  signatureBytes: Buffer
 ): boolean {
   const rawPublicKey = decodeStellarEd25519PublicKey(stellarPublicKey)
   const spki = ed25519PublicKeyToSpki(rawPublicKey)

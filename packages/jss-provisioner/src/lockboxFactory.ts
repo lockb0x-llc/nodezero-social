@@ -114,10 +114,6 @@ async function runStellarInvoke(args: string[]): Promise<string> {
   })
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
 async function createViaSoroban(params: {
   factoryContractId: string
   operatorAddress: string
@@ -322,210 +318,6 @@ export async function probeBridgeIdentityLinkageOnChain(params: {
   }
 }
 
-async function readLockboxWasmHash(factoryContractId: string): Promise<string> {
-  const sourceAccount = getDeployerSourceAccount()
-  if (!sourceAccount) {
-    throw new Error(
-      'Deployer source account is required for soroban mode (JSS_DEPLOYER_SOURCE_ACCOUNT).'
-    )
-  }
-
-  const configuredWasmHash = process.env.JSS_LOCKBOX_WASM_HASH?.trim()
-  if (configuredWasmHash && /^[a-fA-F0-9]{64}$/.test(configuredWasmHash)) {
-    return configuredWasmHash.toLowerCase()
-  }
-
-  const referenceLockboxContractId = process.env.JSS_LOCKBOX_REFERENCE_CONTRACT_ID?.trim()
-  if (referenceLockboxContractId) {
-    const infoArgs = [
-      'contract',
-      'info',
-      'hash',
-      '--contract-id',
-      referenceLockboxContractId,
-      '--network',
-      DEFAULT_NETWORK,
-    ]
-
-    const infoOutput = await runStellarInvoke(infoArgs)
-    const infoHash = firstHex64(infoOutput)
-    if (!infoHash) {
-      throw new Error(
-        `Could not parse lockbox wasm hash from reference lockbox contract. Raw output: ${infoOutput}`
-      )
-    }
-
-    return infoHash
-  }
-
-  const args = [
-    'contract',
-    'invoke',
-    '--id',
-    factoryContractId,
-    '--rpc-url',
-    process.env.JSS_STELLAR_RPC_URL ?? DEFAULT_RPC_URL,
-    '--network-passphrase',
-    process.env.JSS_STELLAR_NETWORK_PASSPHRASE ??
-      (DEFAULT_NETWORK === 'testnet'
-        ? 'Test SDF Network ; September 2015'
-        : 'Public Global Stellar Network ; September 2015'),
-    '--source-account',
-    sourceAccount,
-    '--',
-    'get_lockbox_wasm_hash',
-  ]
-
-  const output = await runStellarInvoke(args)
-  const wasmHash = firstHex64(output)
-  if (!wasmHash) {
-    throw new Error(
-      `Could not parse lockbox wasm hash from factory response. Raw output: ${output}`
-    )
-  }
-
-  return wasmHash
-}
-
-async function deployLockboxContract(wasmHash: string): Promise<string> {
-  const sourceAccount = getDeployerSourceAccount()
-  if (!sourceAccount) {
-    throw new Error(
-      'Deployer source account is required for soroban mode (JSS_DEPLOYER_SOURCE_ACCOUNT).'
-    )
-  }
-
-  const args = [
-    'contract',
-    'deploy',
-    '--wasm-hash',
-    wasmHash,
-    '--rpc-url',
-    process.env.JSS_STELLAR_RPC_URL ?? DEFAULT_RPC_URL,
-    '--network-passphrase',
-    process.env.JSS_STELLAR_NETWORK_PASSPHRASE ??
-      (DEFAULT_NETWORK === 'testnet'
-        ? 'Test SDF Network ; September 2015'
-        : 'Public Global Stellar Network ; September 2015'),
-    '--source-account',
-    sourceAccount,
-  ]
-
-  const maxAttempts = 4
-  let lastError: unknown = null
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    try {
-      const output = await runStellarInvoke(args)
-      const contractId = firstContractId(output)
-      if (!contractId) {
-        throw new Error(
-          'Could not parse deployed lockbox contract ID from Soroban deploy response.'
-        )
-      }
-
-      return contractId
-    } catch (err) {
-      lastError = err
-      const message = err instanceof Error ? err.message : String(err)
-      const transientTimeout = message.toLowerCase().includes('request timeout')
-
-      if (transientTimeout && attempt < maxAttempts) {
-        await sleep(1200 * attempt)
-        continue
-      }
-
-      throw err
-    }
-  }
-
-  throw lastError instanceof Error ? lastError : new Error('Lockbox deploy failed.')
-}
-
-async function initializeLockboxContract(params: {
-  lockboxContractId: string
-  operatorAddress: string
-  initialRootHex: string
-}): Promise<void> {
-  const sourceAccount = getDeployerSourceAccount()
-  if (!sourceAccount) {
-    throw new Error(
-      'Deployer source account is required for soroban mode (JSS_DEPLOYER_SOURCE_ACCOUNT).'
-    )
-  }
-
-  const args = [
-    'contract',
-    'invoke',
-    '--id',
-    params.lockboxContractId,
-    '--rpc-url',
-    process.env.JSS_STELLAR_RPC_URL ?? DEFAULT_RPC_URL,
-    '--network-passphrase',
-    process.env.JSS_STELLAR_NETWORK_PASSPHRASE ??
-      (DEFAULT_NETWORK === 'testnet'
-        ? 'Test SDF Network ; September 2015'
-        : 'Public Global Stellar Network ; September 2015'),
-    '--source-account',
-    sourceAccount,
-    '--',
-    'initialize',
-    '--operator',
-    params.operatorAddress,
-    '--initial_root',
-    params.initialRootHex,
-  ]
-
-  const maxAttempts = 8
-  let lastError: unknown = null
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    try {
-      await runStellarInvoke(args)
-      return
-    } catch (err) {
-      lastError = err
-      const message = err instanceof Error ? err.message : String(err)
-      const normalized = message.toLowerCase()
-      const transientMissingValue = message.includes('Error(Storage, MissingValue)')
-      const transientTimeout = normalized.includes('request timeout')
-      // A freshly deployed contract can be briefly invisible to the RPC node
-      // simulating the initialize call (ledger state propagation lag), surfacing
-      // as "Contract not found". This is transient and resolves on retry.
-      const transientContractNotFound = normalized.includes('contract not found')
-
-      if (
-        (transientMissingValue || transientTimeout || transientContractNotFound) &&
-        attempt < maxAttempts
-      ) {
-        await sleep(1200 * attempt)
-        continue
-      }
-
-      throw err
-    }
-  }
-
-  throw lastError instanceof Error ? lastError : new Error('Lockbox initialize failed.')
-}
-
-async function createDirectPerUserLockbox(params: {
-  factoryContractId: string
-  operatorAddress: string
-  initialRootHex: string
-}): Promise<string> {
-  const wasmHash = await readLockboxWasmHash(params.factoryContractId)
-  const lockboxContractId = await deployLockboxContract(wasmHash)
-  // Give the RPC node a brief moment to propagate the newly deployed contract
-  // before initializing it, reducing the transient "Contract not found" window.
-  await sleep(2000)
-  await initializeLockboxContract({
-    lockboxContractId,
-    operatorAddress: params.operatorAddress,
-    initialRootHex: params.initialRootHex,
-  })
-
-  return lockboxContractId
-}
-
 export class LockboxFactoryProvisioner {
   private userLockboxes = new Map<string, string>()
 
@@ -638,23 +430,13 @@ export class LockboxFactoryProvisioner {
           bridgeProof: input.bridgeProof,
         })
       } else {
-        try {
-          created = await createViaSoroban({
-            factoryContractId: factoryContractId.trim(),
-            operatorAddress: operatorAddress.trim(),
-            userAddress: canonical(input.stellarPublicKey),
-            saltHex: toBytes32Hex(`salt:${idempotencyKey}`),
-            initialRootHex: canonical(input.proofRootHex),
-          })
-        } catch {
-          // Legacy v2 behavior remains available only until the fresh Factory
-          // v3 TestNet deployment is configured. V3 itself never falls back.
-          created = await createDirectPerUserLockbox({
-            factoryContractId: factoryContractId.trim(),
-            operatorAddress: operatorAddress.trim(),
-            initialRootHex: canonical(input.proofRootHex),
-          })
-        }
+        created = await createViaSoroban({
+          factoryContractId: factoryContractId.trim(),
+          operatorAddress: operatorAddress.trim(),
+          userAddress: canonical(input.stellarPublicKey),
+          saltHex: toBytes32Hex(`salt:${idempotencyKey}`),
+          initialRootHex: canonical(input.proofRootHex),
+        })
       }
 
       this.userLockboxes.set(idempotencyKey, created)

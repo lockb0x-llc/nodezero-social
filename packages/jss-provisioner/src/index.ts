@@ -8,7 +8,6 @@ import { join } from 'node:path'
 import { readFileSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { ProvisionStore } from './store.js'
-import { verifyAttestation } from './attestation.js'
 import {
   createSolidAccount,
   mintPodAccessToken,
@@ -92,14 +91,7 @@ async function verifyStellarEd25519(
     return false
   }
 }
-import type {
-  BootstrapChallengeRequest,
-  ProvisionRequest,
-  ProvisionResult,
-  StellarChallengeRequest,
-  StellarTokenRequest,
-  LockboxProvisioning,
-} from './types.js'
+import type { StellarChallengeRequest, StellarTokenRequest, LockboxProvisioning } from './types.js'
 import type { CreateSolidAccountResult } from './solidAccount.js'
 
 const PORT = Number(process.env.PORT ?? process.env.JSS_PROVISIONER_PORT ?? 8181)
@@ -984,31 +976,6 @@ function hasValidInternalKey(req: IncomingMessage): boolean {
   return timingSafeEqual(a, b)
 }
 
-function validateChallengeRequest(body: BootstrapChallengeRequest): void {
-  if (!isNonEmpty(body.handle)) throw new Error('handle is required.')
-  if (!isNonEmpty(body.webId)) throw new Error('webId is required.')
-  if (!isNonEmpty(body.podUrl)) throw new Error('podUrl is required.')
-}
-
-function validateProvisionRequest(body: ProvisionRequest): void {
-  if (!isNonEmpty(body.handle)) throw new Error('handle is required.')
-  if (!isNonEmpty(body.podSlug)) throw new Error('podSlug is required.')
-  if (!isNonEmpty(body.webId)) throw new Error('webId is required.')
-  if (!isNonEmpty(body.podUrl)) throw new Error('podUrl is required.')
-  if (!isNonEmpty(body.stellarPublicKey)) throw new Error('stellarPublicKey is required.')
-  if (!isNonEmpty(body.identityContractId)) throw new Error('identityContractId is required.')
-  if (!isNonEmpty(body.lockboxFactoryContractId))
-    throw new Error('lockboxFactoryContractId is required.')
-  if (!isNonEmpty(body.challengeId)) throw new Error('challengeId is required.')
-  if (!isNonEmpty(body.signatureBase64)) throw new Error('signatureBase64 is required.')
-  if (body.proofVersion !== 1) throw new Error('proofVersion=1 is required.')
-  if (!isNonEmpty(body.claimHash)) throw new Error('claimHash is required.')
-  if (!isNonEmpty(body.proofHex)) throw new Error('proofHex is required.')
-  if (!isNonEmpty(body.proofHashHex)) throw new Error('proofHashHex is required.')
-  if (!isNonEmpty(body.proofRootHex)) throw new Error('proofRootHex is required.')
-  if (!Array.isArray(body.publicSignals)) throw new Error('publicSignals is required.')
-}
-
 /**
  * Fail-closed session issuance: mints a live Solid token from stored client
  * credentials and probes the Pod BEFORE any NodeZero session is created.
@@ -1138,14 +1105,6 @@ export async function handleHttpRequest(
       'cache-control': 'public, max-age=60, must-revalidate',
       etag: `"${descriptor.configFingerprint}"`,
     })
-    return
-  }
-
-  if (req.method === 'POST' && url.pathname === '/v1/bootstrap-challenge') {
-    const body = await readJsonBody<BootstrapChallengeRequest>(req)
-    validateChallengeRequest(body)
-    const challenge = store.issueChallenge(body)
-    sendJson(req, res, 200, challenge)
     return
   }
 
@@ -2003,7 +1962,7 @@ export async function handleHttpRequest(
       const headerIdempotencyKey = Array.isArray(req.headers['idempotency-key'])
         ? req.headers['idempotency-key'][0]
         : req.headers['idempotency-key']
-      const idempotencyKey = headerIdempotencyKey?.trim() || `legacy:${requestDigest}`
+      const idempotencyKey = headerIdempotencyKey?.trim() || `nz-onboarding-v1:${requestDigest}`
       if (idempotencyKey.length > 256) {
         sendJson(req, res, 400, { error: 'Idempotency-Key must not exceed 256 characters.' })
         return
@@ -2906,102 +2865,6 @@ export async function handleHttpRequest(
       const message = err instanceof Error ? err.message : 'Treasury account creation failed.'
       sendJson(req, res, 502, { error: message })
     }
-    return
-  }
-
-  if (req.method === 'POST' && url.pathname === '/v1/provision') {
-    const body = await readJsonBody<ProvisionRequest>(req)
-    validateProvisionRequest(body)
-
-    const challenge = store.consumeChallenge(body.challengeId)
-    if (!challenge) {
-      sendJson(req, res, 400, { error: 'Challenge is invalid or expired.' })
-      return
-    }
-
-    const jobId = store.createPendingJob()
-
-    try {
-      const receipt = verifyAttestation(body, challenge)
-      const lockbox = await store.provisionLockbox({
-        webId: body.webId,
-        stellarPublicKey: body.stellarPublicKey,
-        podBindingHash: receipt.podBindingHash,
-        proofRootHex: receipt.proofRootHex,
-      })
-
-      if (
-        lockbox.status !== 'ready' ||
-        lockbox.mode !== 'soroban' ||
-        !lockbox.userLockboxContractId
-      ) {
-        throw new Error(lockbox.error ?? 'Per-user lockbox provisioning failed.')
-      }
-
-      store.resolveJob(jobId, {
-        handle: body.handle.trim(),
-        webId: body.webId.trim(),
-        podUrl: body.podUrl.trim(),
-        issuer: ISSUER,
-        stellarPublicKey: body.stellarPublicKey.trim(),
-        challengeId: challenge.challengeId,
-        claimHash: receipt.claimHash,
-        proofHashHex: receipt.proofHashHex,
-        proofRootHex: receipt.proofRootHex,
-        lockbox,
-      })
-
-      const result: ProvisionResult = {
-        status: 'ready',
-        jobId,
-        lockbox,
-      }
-
-      sendJson(req, res, 200, {
-        ...result,
-        challengeMessage: receipt.challengeMessage,
-        podBindingHash: receipt.podBindingHash,
-        canonicalClaim: receipt.canonicalClaim,
-        claimHash: receipt.claimHash,
-        proofHashHex: receipt.proofHashHex,
-        proofRootHex: receipt.proofRootHex,
-      })
-
-      emitLifecycleEvent('provision.ready', {
-        webId: body.webId.trim(),
-        podUrl: body.podUrl.trim(),
-        stellarPublicKey: body.stellarPublicKey.trim(),
-        lockboxContractId: lockbox.userLockboxContractId,
-        metadata: {
-          challengeId: challenge.challengeId,
-          claimHash: receipt.claimHash,
-          proofHashHex: receipt.proofHashHex,
-          proofRootHex: receipt.proofRootHex,
-        },
-      })
-      return
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Provisioning verification failed.'
-      store.failJob(jobId, message)
-      sendJson(req, res, 400, { error: message, jobId })
-      return
-    }
-  }
-
-  if (req.method === 'GET' && url.pathname.startsWith('/v1/provision/')) {
-    const jobId = url.pathname.replace('/v1/provision/', '').trim()
-    if (!jobId) {
-      sendJson(req, res, 400, { error: 'Missing jobId.' })
-      return
-    }
-
-    const status = store.getJob(jobId)
-    if (!status) {
-      sendJson(req, res, 404, { error: 'Provision job not found.' })
-      return
-    }
-
-    sendJson(req, res, 200, status)
     return
   }
 
