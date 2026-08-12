@@ -134,21 +134,21 @@ void test('memory store: conditional rows reject duplicate creates and stale ETa
   const firstEtag = await store.createVersionedRow('operation-1', { state: 'reserved' })
   await assert.rejects(
     store.createVersionedRow('operation-1', { state: 'reserved' }),
-    (error: unknown) => error instanceof ConditionalWriteError && error.code === 'already_exists',
+    (error: unknown) => error instanceof ConditionalWriteError && error.code === 'already_exists'
   )
 
   const secondEtag = await store.replaceVersionedRow(
     'operation-1',
     { state: 'proof_verified' },
-    firstEtag,
+    firstEtag
   )
   await assert.rejects(
     store.replaceVersionedRow('operation-1', { state: 'completed' }, firstEtag),
-    (error: unknown) => error instanceof ConditionalWriteError && error.code === 'etag_mismatch',
+    (error: unknown) => error instanceof ConditionalWriteError && error.code === 'etag_mismatch'
   )
   await assert.rejects(
     store.deleteVersionedRow('operation-1', firstEtag),
-    (error: unknown) => error instanceof ConditionalWriteError && error.code === 'etag_mismatch',
+    (error: unknown) => error instanceof ConditionalWriteError && error.code === 'etag_mismatch'
   )
   assert.equal(await store.deleteVersionedRow('operation-1', secondEtag), true)
 })
@@ -168,11 +168,11 @@ void test('file store: ETags persist across instances and fence stale writers', 
     const currentEtag = await second.replaceVersionedRow(
       'operation-2',
       { state: 'proof_verified' },
-      originalEtag,
+      originalEtag
     )
     await assert.rejects(
       first.replaceVersionedRow('operation-2', { state: 'completed' }, originalEtag),
-      (error: unknown) => error instanceof ConditionalWriteError && error.code === 'etag_mismatch',
+      (error: unknown) => error instanceof ConditionalWriteError && error.code === 'etag_mismatch'
     )
     assert.equal(await second.deleteVersionedRow('operation-2', currentEtag), true)
   } finally {
@@ -180,21 +180,36 @@ void test('file store: ETags persist across instances and fence stale writers', 
   }
 })
 
+void test('memory store: ignores obsolete stellar-key index shapes', async () => {
+  const store = new CredentialStore({ encryptionKey: KEY_B64 })
+  await store.createVersionedRow('spk:GLEGACY', {
+    webId: 'https://pods.example/legacy/profile/card#me',
+    webIds: ['https://pods.example/legacy/profile/card#me'],
+  })
+
+  assert.equal(await store.findByStellarPublicKey('GLEGACY'), null)
+  assert.deepEqual(await store.findAllByStellarPublicKey('GLEGACY'), [])
+})
+
 void test('durable backend without an encryption key fails closed at construction', () => {
   assert.throws(
     () => new CredentialStore({ filePath: 'c:/tmp/never-created.json' }),
-    /JSS_CREDENTIALS_ENC_KEY/,
+    /JSS_CREDENTIALS_ENC_KEY/
   )
   assert.throws(
     () => new CredentialStore({ tableSasUrl: 'https://acct.table.core.windows.net/creds?sig=abc' }),
-    /JSS_CREDENTIALS_ENC_KEY/,
+    /JSS_CREDENTIALS_ENC_KEY/
   )
 })
 
 void test('table backend requires a signed SAS URL', () => {
   assert.throws(
-    () => new CredentialStore({ encryptionKey: KEY_B64, tableSasUrl: 'https://acct.table.core.windows.net/creds' }),
-    /SAS/,
+    () =>
+      new CredentialStore({
+        encryptionKey: KEY_B64,
+        tableSasUrl: 'https://acct.table.core.windows.net/creds',
+      }),
+    /SAS/
   )
 })
 
@@ -203,7 +218,10 @@ void test('table backend requires a signed SAS URL', () => {
 // ---------------------------------------------------------------------------
 
 void test('session: issue/verify round-trip carries identity claims', () => {
-  const manager = new SessionTokenManager({ signingKey: 'k'.repeat(32), issuer: 'https://staging.nodezero.social' })
+  const manager = new SessionTokenManager({
+    signingKey: 'k'.repeat(32),
+    issuer: 'https://staging.nodezero.social',
+  })
   const session = manager.issue({
     webId: 'https://pods.example/carol/profile/card#me',
     podUrl: 'https://pods.example/carol/',
@@ -225,8 +243,9 @@ void test('session: verification rejects tampered, foreign, and expired tokens',
 
   // Tampered payload.
   const [h, , s] = session.accessToken.split('.')
-  const forgedPayload = Buffer.from(JSON.stringify({ sub: 'https://evil', aud: 'nz-session-v1', exp: 9999999999 }))
-    .toString('base64url')
+  const forgedPayload = Buffer.from(
+    JSON.stringify({ sub: 'https://evil', aud: 'nz-session-v1', exp: 9999999999 })
+  ).toString('base64url')
   assert.equal(manager.verify(`${h}.${forgedPayload}.${s}`), null)
 
   // Signed by a different key.

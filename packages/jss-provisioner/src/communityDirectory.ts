@@ -16,9 +16,6 @@ export interface CommunityDirectoryRecord {
   updatedAt: string
   displayName?: string
   avatarUrl?: string
-  publicInterests?: string[]
-  capabilities?: string[]
-  inboxUrl?: string
   manifestUrl?: string
   manifestPublishedAt?: string
   manifestExpiresAt?: string
@@ -44,9 +41,6 @@ export interface CommunityDirectoryProjectionInput {
     expiresAt: string
     displayName?: string
     avatarUrl?: string
-    publicInterests?: string[]
-    capabilities?: string[]
-    inboxUrl?: string
   } | null
   manifestUrl: string
   sourceRevision?: string
@@ -63,7 +57,6 @@ export interface CommunityDirectoryPublicRecord {
   webId: string
   displayName?: string
   avatarUrl?: string
-  publicInterests?: string[]
 }
 
 export interface CommunityDirectoryPage {
@@ -434,7 +427,6 @@ function toPublicDirectoryRecord(record: CommunityDirectoryRecord): CommunityDir
     webId: record.webId,
     ...(record.displayName ? { displayName: record.displayName } : {}),
     ...(record.avatarUrl ? { avatarUrl: record.avatarUrl } : {}),
-    ...(record.publicInterests?.length ? { publicInterests: [...record.publicInterests] } : {}),
   }
 }
 

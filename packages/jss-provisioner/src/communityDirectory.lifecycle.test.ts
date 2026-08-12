@@ -160,18 +160,12 @@ void test('manifest projection publishes only allowlisted public fields and prov
         publishedAt: '2026-08-01T12:00:00.000Z',
         expiresAt: '2026-08-08T12:00:00.000Z',
         displayName: 'Alice',
-        publicInterests: ['solid'],
-        capabilities: ['relationship-requests'],
-        inboxUrl: 'https://solid.nodezero.social/lifecycle-user/social/inbox/',
       },
       now: new Date('2026-08-02T00:00:00.000Z'),
     })
 
     assert.equal(projected.listed, true)
     assert.equal(projected.displayName, 'Alice')
-    assert.equal(projected.publicInterests, undefined)
-    assert.equal(projected.capabilities, undefined)
-    assert.equal(projected.inboxUrl, undefined)
     assert.equal(projected.sourceRevision, '"manifest-v1"')
     assert.equal('privateInterests' in projected, false)
     assert.equal('blockedWebIds' in projected, false)
@@ -196,7 +190,6 @@ void test('consent opt-out immediately removes the projection and clears public 
         publishedAt: '2026-08-01T12:00:00.000Z',
         expiresAt: '2026-08-08T12:00:00.000Z',
         displayName: 'Alice',
-        publicInterests: ['solid'],
       },
       now: new Date('2026-08-02T00:00:00.000Z'),
     }
@@ -209,7 +202,6 @@ void test('consent opt-out immediately removes the projection and clears public 
 
     assert.equal(removed.listed, false)
     assert.equal(removed.displayName, undefined)
-    assert.equal(removed.publicInterests, undefined)
     assert.deepEqual(store.buildPublicIndex().members, [])
   })
 })
@@ -289,8 +281,6 @@ void test('listing and indexing independently control membership and projected m
         publishedAt: '2026-08-01T12:00:00.000Z',
         expiresAt: '2026-08-08T12:00:00.000Z',
         displayName: 'Alice',
-        publicInterests: ['solid'],
-        capabilities: ['relationship-requests'],
       },
       now,
     }
@@ -301,8 +291,6 @@ void test('listing and indexing independently control membership and projected m
     })
     assert.equal(listingOnly.listed, true)
     assert.equal(listingOnly.displayName, 'Alice')
-    assert.equal(listingOnly.publicInterests, undefined)
-    assert.equal(listingOnly.capabilities, undefined)
 
     const indexingOnly = store.refreshProjection({
       ...base,
@@ -371,7 +359,6 @@ void test('removal tombstones remain internal and never appear in public pages',
         publishedAt: '2026-08-01T12:00:00.000Z',
         expiresAt: '2026-08-08T12:00:00.000Z',
         displayName: 'Alice',
-        publicInterests: ['solid'],
       },
       now,
     })

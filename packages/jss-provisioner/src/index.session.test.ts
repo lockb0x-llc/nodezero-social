@@ -277,9 +277,7 @@ before(async () => {
   process.env.JSS_Q_TRANSPORT_ENABLED = 'true'
   process.env.JSS_Q_COHORT_KEY = 'session-route-test-cohort-key'
   const cohortWebIds = [
-    ...Array.from({ length: 100 }, (_, index) =>
-      `${cssBaseUrl}/alice${index + 1}/profile/card#me`
-    ),
+    ...Array.from({ length: 100 }, (_, index) => `${cssBaseUrl}/alice${index + 1}/profile/card#me`),
     'https://alice.example/profile/card#me',
     'https://bob.example/profile/card#me',
     'https://rate-limited.example/profile/card#me',
@@ -303,7 +301,8 @@ before(async () => {
   process.env.JSS_SOLID_CSS_POD_LOCK_RETRY_BASE_DELAY_MS = '1'
   process.env.JSS_IDENTITY_CONTRACT_ID = 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM'
   process.env.JSS_LOCKBOX_FACTORY_VERSION = 'v2'
-  process.env.JSS_LOCKBOX_FACTORY_CONTRACT_ID = 'CBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAG4'
+  process.env.JSS_LOCKBOX_FACTORY_CONTRACT_ID =
+    'CBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAG4'
   process.env.JSS_LOCKBOX_BRIDGE_V3_MANIFEST_URL = 'https://artifacts.example/manifest.json'
   process.env.JSS_LOCKBOX_BRIDGE_V3_MANIFEST_SHA256 = 'b'.repeat(64)
   process.env.JSS_LOCKBOX_BRIDGE_V3_WASM_URL = 'https://artifacts.example/prover.wasm'
@@ -317,17 +316,19 @@ before(async () => {
   delete process.env.JSS_CREDENTIALS_ENC_KEY
 
   const mod = await import('./index.js')
-  provisioner = createServer(mod.createRequestHandler({
-    isRelationshipRecipientBlocked: (_claims, recipientWebId) =>
-      Promise.resolve(recipientWebId === routeBlockedRecipient),
-    readPodProxyPublicationConsent: () =>
-      Promise.resolve({
-        publicationRevision: 1,
-        publicListing: true,
-        publicIndexing: false,
-      }),
-    getPodProxySuppressionRevision: () => Promise.resolve(podProxySuppressionRevision),
-  }))
+  provisioner = createServer(
+    mod.createRequestHandler({
+      isRelationshipRecipientBlocked: (_claims, recipientWebId) =>
+        Promise.resolve(recipientWebId === routeBlockedRecipient),
+      readPodProxyPublicationConsent: () =>
+        Promise.resolve({
+          publicationRevision: 1,
+          publicListing: true,
+          publicIndexing: false,
+        }),
+      getPodProxySuppressionRevision: () => Promise.resolve(podProxySuppressionRevision),
+    })
+  )
   provisioner.listen(0, '127.0.0.1')
   await once(provisioner, 'listening')
   const address = provisioner.address()
@@ -480,7 +481,10 @@ void test('proxy: protected publication mutations require a generation and HTTP 
     body: '<#manifest> a <https://nodezero.social/ns#DiscoveryManifest> .',
   })
   assert.equal(missing.status, 428)
-  assert.equal((await missing.json() as { code?: string }).code, 'publication_precondition_required')
+  assert.equal(
+    ((await missing.json()) as { code?: string }).code,
+    'publication_precondition_required'
+  )
 
   const emptyIfMatch = await fetch(target, {
     method: 'DELETE',
@@ -557,17 +561,14 @@ void test('proxy: protected publication mutations require a generation and HTTP 
 void test('proxy: rejects encoded aliases for protected publication paths', async () => {
   const { session, podUrl } = await provisionUser()
   const podPath = new URL(podUrl).pathname.replace(/^\//, '')
-  const response = await fetch(
-    `${baseUrl}/v1/pod-proxy/${podPath}public/%64iscovery/manifest`,
-    {
-      method: 'DELETE',
-      headers: {
-        authorization: `Bearer ${session.accessToken}`,
-        'if-match': '"v1"',
-        'x-nodezero-publication-revision': '1',
-      },
-    }
-  )
+  const response = await fetch(`${baseUrl}/v1/pod-proxy/${podPath}public/%64iscovery/manifest`, {
+    method: 'DELETE',
+    headers: {
+      authorization: `Bearer ${session.accessToken}`,
+      'if-match': '"v1"',
+      'x-nodezero-publication-revision': '1',
+    },
+  })
   assert.equal(response.status, 403)
   assert.equal(((await response.json()) as { code?: string }).code, 'pod_path_invalid')
 
@@ -1040,7 +1041,7 @@ void test('solid-account: same idempotency key replays without another CSS accou
   const drifted = await postJson(
     '/v1/solid-account',
     { ...request, email: `drifted${counter}@example.com` },
-    headers,
+    headers
   )
   assert.equal(drifted.status, 409)
   assert.equal(drifted.json.code, 'idempotency_payload_conflict')
@@ -1085,11 +1086,13 @@ void test('browser session bootstraps a fresh staging-local session and logout r
   )
   assert.equal(created.status, 200)
   const setCookie = created.headers.get('set-cookie')
-  assert.ok(setCookie?.includes('__Host-nz_browser_session='), 'expected host-only opaque browser-session cookie')
+  assert.ok(
+    setCookie?.includes('__Host-nz_browser_session='),
+    'expected host-only opaque browser-session cookie'
+  )
   assert.ok(setCookie?.includes('HttpOnly'))
   assert.ok(!setCookie?.match(/__Host-nz_browser_session=[^,]*Domain=/))
   assert.ok(setCookie?.includes('Path=/'))
-  assert.ok(setCookie?.includes('nz_browser_session=; Path=/; Domain=.nodezero.social; Max-Age=0'))
   assert.ok(!setCookie?.includes((created.json.session as SessionShape).accessToken))
 
   const cookie = setCookie?.split(';', 1)[0] ?? ''
@@ -1419,11 +1422,9 @@ void test('relationship delivery route rate limits authenticated floods with Ret
     },
   }
 
-  await postJson(
-    '/v1/social/relationship-delivery',
-    body,
-    { authorization: `Bearer ${session.accessToken}` }
-  )
+  await postJson('/v1/social/relationship-delivery', body, {
+    authorization: `Bearer ${session.accessToken}`,
+  })
   const limited = await fetch(`${baseUrl}/v1/social/relationship-delivery`, {
     method: 'POST',
     headers: {
@@ -1434,7 +1435,10 @@ void test('relationship delivery route rate limits authenticated floods with Ret
   })
   assert.equal(limited.status, 429)
   assert.equal(limited.headers.get('retry-after'), '60')
-  assert.equal(((await limited.json()) as { code?: string }).code, 'relationship_delivery_rate_limited')
+  assert.equal(
+    ((await limited.json()) as { code?: string }).code,
+    'relationship_delivery_rate_limited'
+  )
 })
 
 void test('relationship delivery route enforces the authenticated owner Pod block before discovery', async () => {
@@ -1476,17 +1480,15 @@ void test('relationship verification route rate limits authenticated floods with
     webId: 'https://verify-rate.example/profile/card#me',
     podUrl: 'https://verify-rate.example/',
   })
-  const request = (): Promise<Response> => fetch(
-    `${baseUrl}/v1/social/relationship-delivery/verify`,
-    {
+  const request = (): Promise<Response> =>
+    fetch(`${baseUrl}/v1/social/relationship-delivery/verify`, {
       method: 'POST',
       headers: {
         authorization: `Bearer ${session.accessToken}`,
         'content-type': 'application/json',
       },
       body: JSON.stringify({ activity: {} }),
-    }
-  )
+    })
 
   assert.equal((await request()).status, 422)
   assert.equal((await request()).status, 422)
@@ -1510,9 +1512,12 @@ void test('proxy: rejects sibling Pod paths before forwarding to CSS', async () 
   assert.equal(denied.status, 403)
   assert.equal(((await denied.json()) as { code?: string }).code, 'pod_scope_denied')
 
-  const traversal = await fetch(`${baseUrl}/v1/pod-proxy/${new URL(first.podUrl).pathname.replace(/^\//, '')}%2e%2e/${secondPodPath}`, {
-    headers: { authorization: `Bearer ${first.session.accessToken}` },
-  })
+  const traversal = await fetch(
+    `${baseUrl}/v1/pod-proxy/${new URL(first.podUrl).pathname.replace(/^\//, '')}%2e%2e/${secondPodPath}`,
+    {
+      headers: { authorization: `Bearer ${first.session.accessToken}` },
+    }
+  )
   assert.equal(traversal.status, 403)
   assert.equal(((await traversal.json()) as { code?: string }).code, 'pod_scope_denied')
 })
@@ -1600,10 +1605,7 @@ void test('proxy: publication guard remints once, then invalidates persistent Po
     },
   })
   assert.equal(persistentRejection.status, 401)
-  assert.equal(
-    ((await persistentRejection.json()) as { code?: string }).code,
-    'session_invalid'
-  )
+  assert.equal(((await persistentRejection.json()) as { code?: string }).code, 'session_invalid')
   assert.equal(cssState.tokenExchanges, mintsBeforePersistentRejection + 1)
 })
 

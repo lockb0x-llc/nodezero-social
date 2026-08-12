@@ -204,7 +204,10 @@ class MemoryBackend implements CredentialBackend {
     return this.serialize(() => {
       const existing = this.records.get(rowKey)
       if (!existing || existing.etag !== ifMatch) {
-        throw new ConditionalWriteError('etag_mismatch', `Row ${rowKey} changed before replacement.`)
+        throw new ConditionalWriteError(
+          'etag_mismatch',
+          `Row ${rowKey} changed before replacement.`
+        )
       }
       const etag = this.nextEtag()
       this.records.set(rowKey, { value: { ...record }, etag })
@@ -310,11 +313,15 @@ class FileBackend implements CredentialBackend {
     return this.serialize(async () => {
       const data = await this.load()
       const existing = data[rowKey]
-      const existingEtag = typeof existing?.[FileBackend.ETAG_FIELD] === 'string'
-        ? existing[FileBackend.ETAG_FIELD]
-        : '"legacy"'
+      const existingEtag =
+        typeof existing?.[FileBackend.ETAG_FIELD] === 'string'
+          ? existing[FileBackend.ETAG_FIELD]
+          : '"legacy"'
       if (!existing || existingEtag !== ifMatch) {
-        throw new ConditionalWriteError('etag_mismatch', `Row ${rowKey} changed before replacement.`)
+        throw new ConditionalWriteError(
+          'etag_mismatch',
+          `Row ${rowKey} changed before replacement.`
+        )
       }
       const etag = this.nextEtag()
       data[rowKey] = { ...record, [FileBackend.ETAG_FIELD]: etag }
@@ -338,9 +345,10 @@ class FileBackend implements CredentialBackend {
       const data = await this.load()
       const existing = data[rowKey]
       if (!existing) return false
-      const existingEtag = typeof existing[FileBackend.ETAG_FIELD] === 'string'
-        ? existing[FileBackend.ETAG_FIELD]
-        : '"legacy"'
+      const existingEtag =
+        typeof existing[FileBackend.ETAG_FIELD] === 'string'
+          ? existing[FileBackend.ETAG_FIELD]
+          : '"legacy"'
       if (existingEtag !== ifMatch) {
         throw new ConditionalWriteError('etag_mismatch', `Row ${rowKey} changed before deletion.`)
       }
@@ -405,7 +413,9 @@ class AzureTableBackend implements CredentialBackend {
       if (key === 'PartitionKey' || key === 'RowKey' || key.startsWith('odata.')) continue
       row[key] = value === '' ? null : value
     }
-    const etag = res.headers.get('etag') ?? (typeof entity['odata.etag'] === 'string' ? entity['odata.etag'] : null)
+    const etag =
+      res.headers.get('etag') ??
+      (typeof entity['odata.etag'] === 'string' ? entity['odata.etag'] : null)
     if (!etag) throw new Error('Credential store read did not return an ETag.')
     return { value: row, etag }
   }
@@ -525,7 +535,11 @@ export class CredentialStore {
 
   constructor(options: CredentialStoreOptions = {}) {
     const rawKey = (options.encryptionKey ?? process.env.JSS_CREDENTIALS_ENC_KEY ?? '').trim()
-    const tableSasUrl = (options.tableSasUrl ?? process.env.JSS_CREDENTIALS_TABLE_SAS_URL ?? '').trim()
+    const tableSasUrl = (
+      options.tableSasUrl ??
+      process.env.JSS_CREDENTIALS_TABLE_SAS_URL ??
+      ''
+    ).trim()
     const filePath = (options.filePath ?? process.env.JSS_CREDENTIALS_FILE ?? '').trim()
 
     if (rawKey) {
@@ -536,7 +550,7 @@ export class CredentialStore {
         // Durable backends require a stable key — fail closed rather than
         // writing records that can never be decrypted after a restart.
         throw new Error(
-          'JSS_CREDENTIALS_ENC_KEY is required when a durable credential backend is configured.',
+          'JSS_CREDENTIALS_ENC_KEY is required when a durable credential backend is configured.'
         )
       }
       this.key = randomBytes(32)
@@ -582,11 +596,7 @@ export class CredentialStore {
     return this.backend.create(rowKey, { ...value })
   }
 
-  async replaceVersionedRow(
-    rowKey: string,
-    value: object,
-    ifMatch: string,
-  ): Promise<string> {
+  async replaceVersionedRow(rowKey: string, value: object, ifMatch: string): Promise<string> {
     return this.backend.replace(rowKey, { ...value }, ifMatch)
   }
 
@@ -618,9 +628,15 @@ export class CredentialStore {
       const existingIndex = await this.backend.get(stellarKeyRowKey(persisted.stellarPublicKey))
       const previousIds = this.readIndexedWebIds(existingIndex)
       const index: PersistedIndexRecord = {
-        webIdsJson: JSON.stringify([persisted.webId, ...previousIds.filter((id) => id !== persisted.webId)]),
+        webIdsJson: JSON.stringify([
+          persisted.webId,
+          ...previousIds.filter((id) => id !== persisted.webId),
+        ]),
       }
-      await this.backend.put(stellarKeyRowKey(persisted.stellarPublicKey), index as unknown as BackendRow)
+      await this.backend.put(
+        stellarKeyRowKey(persisted.stellarPublicKey),
+        index as unknown as BackendRow
+      )
     }
   }
 
@@ -628,12 +644,24 @@ export class CredentialStore {
     return {
       webId: String(persisted.webId ?? ''),
       podUrl: String(persisted.podUrl ?? ''),
-      stellarPublicKey: typeof persisted.stellarPublicKey === 'string' && persisted.stellarPublicKey ? persisted.stellarPublicKey : null,
+      stellarPublicKey:
+        typeof persisted.stellarPublicKey === 'string' && persisted.stellarPublicKey
+          ? persisted.stellarPublicKey
+          : null,
       clientCredentialsId: String(persisted.clientCredentialsId ?? ''),
       clientCredentialsSecret: decryptSecret(this.key, String(persisted.secretCiphertextB64 ?? '')),
-      userLockboxContractId: typeof persisted.userLockboxContractId === 'string' && persisted.userLockboxContractId ? persisted.userLockboxContractId : null,
-      lockboxFactoryContractId: typeof persisted.lockboxFactoryContractId === 'string' && persisted.lockboxFactoryContractId ? persisted.lockboxFactoryContractId : null,
-      proofRootHex: typeof persisted.proofRootHex === 'string' && persisted.proofRootHex ? persisted.proofRootHex : null,
+      userLockboxContractId:
+        typeof persisted.userLockboxContractId === 'string' && persisted.userLockboxContractId
+          ? persisted.userLockboxContractId
+          : null,
+      lockboxFactoryContractId:
+        typeof persisted.lockboxFactoryContractId === 'string' && persisted.lockboxFactoryContractId
+          ? persisted.lockboxFactoryContractId
+          : null,
+      proofRootHex:
+        typeof persisted.proofRootHex === 'string' && persisted.proofRootHex
+          ? persisted.proofRootHex
+          : null,
       createdAt: String(persisted.createdAt ?? ''),
       updatedAt: String(persisted.updatedAt ?? ''),
     }
@@ -666,7 +694,7 @@ export class CredentialStore {
 
   async saveBrowserSession(
     token: string,
-    record: Omit<StoredBrowserSessionRecord, 'createdAt'>,
+    record: Omit<StoredBrowserSessionRecord, 'createdAt'>
   ): Promise<void> {
     const rowKey = browserSessionRowKey(token)
     const persisted: StoredBrowserSessionRecord = {
@@ -695,16 +723,31 @@ export class CredentialStore {
     if (!persisted) return null
     const expiresAt = typeof persisted.expiresAt === 'string' ? persisted.expiresAt : ''
     if (!expiresAt || new Date(expiresAt).getTime() <= Date.now()) {
-      await this.deleteBrowserSessionByRowKey(rowKey, typeof persisted.webId === 'string' ? persisted.webId : '')
+      await this.deleteBrowserSessionByRowKey(
+        rowKey,
+        typeof persisted.webId === 'string' ? persisted.webId : ''
+      )
       return null
     }
     return {
       webId: String(persisted.webId ?? ''),
       podUrl: String(persisted.podUrl ?? ''),
-      stellarPublicKey: typeof persisted.stellarPublicKey === 'string' && persisted.stellarPublicKey ? persisted.stellarPublicKey : null,
-      userLockboxContractId: typeof persisted.userLockboxContractId === 'string' && persisted.userLockboxContractId ? persisted.userLockboxContractId : null,
-      lockboxFactoryContractId: typeof persisted.lockboxFactoryContractId === 'string' && persisted.lockboxFactoryContractId ? persisted.lockboxFactoryContractId : null,
-      proofRootHex: typeof persisted.proofRootHex === 'string' && persisted.proofRootHex ? persisted.proofRootHex : null,
+      stellarPublicKey:
+        typeof persisted.stellarPublicKey === 'string' && persisted.stellarPublicKey
+          ? persisted.stellarPublicKey
+          : null,
+      userLockboxContractId:
+        typeof persisted.userLockboxContractId === 'string' && persisted.userLockboxContractId
+          ? persisted.userLockboxContractId
+          : null,
+      lockboxFactoryContractId:
+        typeof persisted.lockboxFactoryContractId === 'string' && persisted.lockboxFactoryContractId
+          ? persisted.lockboxFactoryContractId
+          : null,
+      proofRootHex:
+        typeof persisted.proofRootHex === 'string' && persisted.proofRootHex
+          ? persisted.proofRootHex
+          : null,
       expiresAt,
       createdAt: String(persisted.createdAt ?? ''),
     }
@@ -713,7 +756,10 @@ export class CredentialStore {
   async revokeBrowserSession(token: string): Promise<boolean> {
     const rowKey = browserSessionRowKey(token)
     const existing = await this.backend.get(rowKey)
-    return this.deleteBrowserSessionByRowKey(rowKey, typeof existing?.webId === 'string' ? existing.webId : '')
+    return this.deleteBrowserSessionByRowKey(
+      rowKey,
+      typeof existing?.webId === 'string' ? existing.webId : ''
+    )
   }
 
   async revokeBrowserSessionsByWebId(webId: string): Promise<number> {
@@ -729,11 +775,14 @@ export class CredentialStore {
   async revokeByWebId(webId: string): Promise<boolean> {
     const existing = await this.backend.get(webIdRowKey(webId))
     const removed = await this.backend.delete(webIdRowKey(webId))
-    const spk = existing && typeof existing.stellarPublicKey === 'string' ? existing.stellarPublicKey : ''
+    const spk =
+      existing && typeof existing.stellarPublicKey === 'string' ? existing.stellarPublicKey : ''
     if (spk) {
       const keyRow = stellarKeyRowKey(spk)
       const existingIndex = await this.backend.get(keyRow)
-      const remaining = this.readIndexedWebIds(existingIndex).filter((indexedWebId) => indexedWebId !== webId)
+      const remaining = this.readIndexedWebIds(existingIndex).filter(
+        (indexedWebId) => indexedWebId !== webId
+      )
       if (remaining.length === 0) {
         await this.backend.delete(keyRow).catch(() => false)
       } else {
@@ -763,7 +812,10 @@ export class CredentialStore {
     try {
       const parsed: unknown = JSON.parse(index.tokenRowsJson)
       return Array.isArray(parsed)
-        ? parsed.filter((value): value is string => typeof value === 'string' && value.startsWith(BROWSER_SESSION_ROW_PREFIX))
+        ? parsed.filter(
+            (value): value is string =>
+              typeof value === 'string' && value.startsWith(BROWSER_SESSION_ROW_PREFIX)
+          )
         : []
     } catch {
       return []
@@ -776,18 +828,13 @@ export class CredentialStore {
       try {
         const parsed: unknown = JSON.parse(index.webIdsJson)
         if (Array.isArray(parsed)) {
-          return parsed.filter((item): item is string => typeof item === 'string' && item.length > 0)
+          return parsed.filter(
+            (item): item is string => typeof item === 'string' && item.length > 0
+          )
         }
       } catch {
-        // Ignore malformed index rows and continue with compatibility fallbacks.
+        return []
       }
-    }
-    if (Array.isArray(index.webIds)) {
-      return index.webIds.filter((item): item is string => typeof item === 'string' && item.length > 0)
-    }
-    if (typeof index.webId === 'string' && index.webId.length > 0) {
-      // Backward-compatible migration path from the legacy single-webId index shape.
-      return [index.webId]
     }
     return []
   }

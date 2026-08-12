@@ -538,14 +538,10 @@ function readCookie(req: IncomingMessage, name: string): string | null {
   return null
 }
 
-const LEGACY_BROWSER_SESSION_COOKIE_CLEAR =
-  'nz_browser_session=; Path=/; Domain=.nodezero.social; Max-Age=0; HttpOnly; Secure; SameSite=Lax'
-
 function clearBrowserSessionCookie(): Record<string, string[]> {
   return {
     'set-cookie': [
       `${BROWSER_SESSION_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax`,
-      LEGACY_BROWSER_SESSION_COOKIE_CLEAR,
     ],
   }
 }
@@ -582,7 +578,6 @@ async function issueBrowserSessionCookie(input: {
   return {
     'set-cookie': [
       `${BROWSER_SESSION_COOKIE_NAME}=${token}; Path=/; Max-Age=${maxAgeSeconds}; HttpOnly; Secure; SameSite=Lax`,
-      LEGACY_BROWSER_SESSION_COOKIE_CLEAR,
     ],
   }
 }
