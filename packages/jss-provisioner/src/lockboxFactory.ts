@@ -15,6 +15,12 @@ export interface BridgeProofPayload {
   circuitVersion: number
 }
 
+export interface OnChainBridgeLinkageProbe {
+  linked: boolean
+  lockboxContractId: string | null
+  accountCommitmentHex: string | null
+}
+
 const DEFAULT_RPC_URL = process.env.STELLAR_RPC_URL ?? 'https://soroban-testnet.stellar.org'
 const DEFAULT_NETWORK = process.env.STELLAR_NETWORK ?? 'testnet'
 
@@ -43,6 +49,13 @@ function firstHex64(value: string): string | null {
   return match ? match[0].toLowerCase() : null
 }
 
+function isMissingContractMessage(message: string): boolean {
+  const normalized = message.toLowerCase()
+  return (
+    normalized.includes('contract not found') || normalized.includes('error(storage, missingvalue)')
+  )
+}
+
 function normalizeHex(value: string, label: string, length: number): string {
   const normalized = value.trim().toLowerCase().replace(/^0x/, '')
   if (!new RegExp(`^[0-9a-f]{${String(length)}}$`).test(normalized)) {
@@ -59,7 +72,9 @@ function normalizeBoundedHex(value: string, label: string, maximumBytes: number)
     normalized.length > maximumBytes * 2 ||
     !/^[0-9a-f]+$/.test(normalized)
   ) {
-    throw new Error(`${label} must be non-empty, even-length hex up to ${String(maximumBytes)} bytes.`)
+    throw new Error(
+      `${label} must be non-empty, even-length hex up to ${String(maximumBytes)} bytes.`
+    )
   }
   return normalized
 }
@@ -112,7 +127,9 @@ async function createViaSoroban(params: {
 }): Promise<string> {
   const sourceAccount = getDeployerSourceAccount()
   if (!sourceAccount) {
-    throw new Error('Deployer source account is required for soroban mode (JSS_DEPLOYER_SOURCE_ACCOUNT).')
+    throw new Error(
+      'Deployer source account is required for soroban mode (JSS_DEPLOYER_SOURCE_ACCOUNT).'
+    )
   }
 
   const args = [
@@ -199,10 +216,118 @@ async function createViaBridgeFactoryV3(params: {
   return contractId
 }
 
+async function predictBridgeLockboxAddress(params: {
+  factoryContractId: string
+  accountCommitmentHex: string
+}): Promise<string> {
+  const sourceAccount = getDeployerSourceAccount()
+  if (!sourceAccount) {
+    throw new Error('Deployer source account is required for Lockb0x Bridge Factory v3.')
+  }
+
+  const output = await runStellarInvoke([
+    'contract',
+    'invoke',
+    '--id',
+    params.factoryContractId,
+    '--rpc-url',
+    process.env.JSS_STELLAR_RPC_URL ?? DEFAULT_RPC_URL,
+    '--network-passphrase',
+    process.env.JSS_STELLAR_NETWORK_PASSPHRASE ??
+      (DEFAULT_NETWORK === 'testnet'
+        ? 'Test SDF Network ; September 2015'
+        : 'Public Global Stellar Network ; September 2015'),
+    '--source-account',
+    sourceAccount,
+    '--',
+    'predict_lockbox_address',
+    '--account_commitment',
+    normalizeHex(params.accountCommitmentHex, 'accountCommitmentHex', 64),
+  ])
+  const predicted = firstContractId(output)
+  if (!predicted) {
+    throw new Error(`Could not parse predicted Lockb0x Bridge v3 address. Raw output: ${output}`)
+  }
+  return predicted
+}
+
+async function readBridgeAccountCommitment(lockboxContractId: string): Promise<string> {
+  const sourceAccount = getDeployerSourceAccount()
+  if (!sourceAccount) {
+    throw new Error('Deployer source account is required for Lockb0x Bridge Factory v3.')
+  }
+
+  const output = await runStellarInvoke([
+    'contract',
+    'invoke',
+    '--id',
+    lockboxContractId,
+    '--rpc-url',
+    process.env.JSS_STELLAR_RPC_URL ?? DEFAULT_RPC_URL,
+    '--network-passphrase',
+    process.env.JSS_STELLAR_NETWORK_PASSPHRASE ??
+      (DEFAULT_NETWORK === 'testnet'
+        ? 'Test SDF Network ; September 2015'
+        : 'Public Global Stellar Network ; September 2015'),
+    '--source-account',
+    sourceAccount,
+    '--',
+    'get_account_commitment',
+  ])
+  const commitment = firstHex64(output)
+  if (!commitment) {
+    throw new Error(
+      `Could not parse Lockb0x Bridge v3 account commitment from on-chain state. Raw output: ${output}`
+    )
+  }
+  return commitment
+}
+
+export async function probeBridgeIdentityLinkageOnChain(params: {
+  factoryContractId: string
+  accountCommitmentHex: string
+  enabled: boolean
+}): Promise<OnChainBridgeLinkageProbe> {
+  if (!params.enabled) {
+    return {
+      linked: false,
+      lockboxContractId: null,
+      accountCommitmentHex: null,
+    }
+  }
+
+  const lockboxContractId = await predictBridgeLockboxAddress({
+    factoryContractId: params.factoryContractId,
+    accountCommitmentHex: params.accountCommitmentHex,
+  })
+
+  try {
+    const onChainCommitment = await readBridgeAccountCommitment(lockboxContractId)
+    const normalizedExpected = normalizeHex(params.accountCommitmentHex, 'accountCommitmentHex', 64)
+    return {
+      linked: onChainCommitment === normalizedExpected,
+      lockboxContractId,
+      accountCommitmentHex: onChainCommitment,
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (isMissingContractMessage(message)) {
+      return {
+        linked: false,
+        lockboxContractId,
+        accountCommitmentHex: null,
+      }
+    }
+    throw error
+  }
+}
+
 async function readLockboxWasmHash(factoryContractId: string): Promise<string> {
   const sourceAccount = getDeployerSourceAccount()
   if (!sourceAccount) {
-    throw new Error('Deployer source account is required for soroban mode (JSS_DEPLOYER_SOURCE_ACCOUNT).')
+    throw new Error(
+      'Deployer source account is required for soroban mode (JSS_DEPLOYER_SOURCE_ACCOUNT).'
+    )
   }
 
   const configuredWasmHash = process.env.JSS_LOCKBOX_WASM_HASH?.trim()
@@ -226,7 +351,7 @@ async function readLockboxWasmHash(factoryContractId: string): Promise<string> {
     const infoHash = firstHex64(infoOutput)
     if (!infoHash) {
       throw new Error(
-        `Could not parse lockbox wasm hash from reference lockbox contract. Raw output: ${infoOutput}`,
+        `Could not parse lockbox wasm hash from reference lockbox contract. Raw output: ${infoOutput}`
       )
     }
 
@@ -254,7 +379,9 @@ async function readLockboxWasmHash(factoryContractId: string): Promise<string> {
   const output = await runStellarInvoke(args)
   const wasmHash = firstHex64(output)
   if (!wasmHash) {
-    throw new Error(`Could not parse lockbox wasm hash from factory response. Raw output: ${output}`)
+    throw new Error(
+      `Could not parse lockbox wasm hash from factory response. Raw output: ${output}`
+    )
   }
 
   return wasmHash
@@ -263,7 +390,9 @@ async function readLockboxWasmHash(factoryContractId: string): Promise<string> {
 async function deployLockboxContract(wasmHash: string): Promise<string> {
   const sourceAccount = getDeployerSourceAccount()
   if (!sourceAccount) {
-    throw new Error('Deployer source account is required for soroban mode (JSS_DEPLOYER_SOURCE_ACCOUNT).')
+    throw new Error(
+      'Deployer source account is required for soroban mode (JSS_DEPLOYER_SOURCE_ACCOUNT).'
+    )
   }
 
   const args = [
@@ -289,7 +418,9 @@ async function deployLockboxContract(wasmHash: string): Promise<string> {
       const output = await runStellarInvoke(args)
       const contractId = firstContractId(output)
       if (!contractId) {
-        throw new Error('Could not parse deployed lockbox contract ID from Soroban deploy response.')
+        throw new Error(
+          'Could not parse deployed lockbox contract ID from Soroban deploy response.'
+        )
       }
 
       return contractId
@@ -317,7 +448,9 @@ async function initializeLockboxContract(params: {
 }): Promise<void> {
   const sourceAccount = getDeployerSourceAccount()
   if (!sourceAccount) {
-    throw new Error('Deployer source account is required for soroban mode (JSS_DEPLOYER_SOURCE_ACCOUNT).')
+    throw new Error(
+      'Deployer source account is required for soroban mode (JSS_DEPLOYER_SOURCE_ACCOUNT).'
+    )
   }
 
   const args = [
@@ -416,7 +549,9 @@ export class LockboxFactoryProvisioner {
     const idempotencyKey = `${canonical(input.webId)}|${canonical(input.stellarPublicKey)}`
     const mode = parseFactoryMode(process.env.JSS_LOCKBOX_FACTORY_MODE ?? 'mock')
     const factoryContractId =
-      process.env.JSS_LOCKBOX_FACTORY_CONTRACT_ID ?? process.env.NZ_LOCKBOX_FACTORY_CONTRACT_ID ?? ''
+      process.env.JSS_LOCKBOX_FACTORY_CONTRACT_ID ??
+      process.env.NZ_LOCKBOX_FACTORY_CONTRACT_ID ??
+      ''
 
     if (mode !== 'soroban') {
       // Test/dev-only escape hatch, double-gated so no staging/production

@@ -76,16 +76,30 @@ export interface CreateNodeResult {
   accountDocumentUrl: string | null
   /** Ready NodeZero session — fail-closed verified before issuance. */
   session: SessionTokens
-  lockbox: (SessionLockboxInfo & {
-    status: string
-    userLockboxContractId: string | null
-    factoryContractId: string | null
-    proofRootHex?: string
-  }) | null
+  lockbox:
+    | (SessionLockboxInfo & {
+        status: string
+        userLockboxContractId: string | null
+        factoryContractId: string | null
+        proofRootHex?: string
+      })
+    | null
   attestation: {
     accountCommitmentHex: string
     ciphertextSha256Hex: string
   } | null
+}
+
+export class SeamlessSignupApiError extends Error {
+  readonly code: string | null
+  readonly details: Record<string, unknown> | null
+
+  constructor(message: string, code: string | null, details: Record<string, unknown> | null) {
+    super(message)
+    this.name = 'SeamlessSignupApiError'
+    this.code = code
+    this.details = details
+  }
 }
 
 interface CheckEmailResult {
@@ -95,7 +109,11 @@ interface CheckEmailResult {
 const CHECK_EMAIL_TIMEOUT_MS = 8000
 const ONBOARDING_NETWORK_RETRY_DELAYS_MS = [1_000, 2_000]
 
-async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number
+): Promise<Response> {
   if (typeof AbortController === 'undefined') {
     return fetch(url, init)
   }
@@ -113,17 +131,16 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: numbe
 }
 
 async function fetchOnboardingWithRetry(url: string, init: RequestInit): Promise<Response> {
-  return retryNetworkOperation(
-    () => fetch(url, init),
-    ONBOARDING_NETWORK_RETRY_DELAYS_MS,
-  )
+  return retryNetworkOperation(() => fetch(url, init), ONBOARDING_NETWORK_RETRY_DELAYS_MS)
 }
 
 function isStagingOnboardingHost(): boolean {
   if (typeof window === 'undefined' || !window.location?.hostname) return false
 
   const host = window.location.hostname.toLowerCase()
-  return host === 'staging.nodezero.social' || host === 'mango-glacier-0abee9e0f.7.azurestaticapps.net'
+  return (
+    host === 'staging.nodezero.social' || host === 'mango-glacier-0abee9e0f.7.azurestaticapps.net'
+  )
 }
 
 export function getSeamlessSignupConfig(): SeamlessSignupConfig {
@@ -135,7 +152,9 @@ export function getSeamlessSignupConfig(): SeamlessSignupConfig {
     ? 'https://nodezero-social-staging-testnet-provisioner.azurewebsites.net'
     : ''
   return {
-    enabled: (enabled || hostFallbackEnabled) && (provisionerUrl.length > 0 || fallbackProvisionerUrl.length > 0),
+    enabled:
+      (enabled || hostFallbackEnabled) &&
+      (provisionerUrl.length > 0 || fallbackProvisionerUrl.length > 0),
     provisionerUrl: provisionerUrl.length > 0 ? provisionerUrl : fallbackProvisionerUrl,
   }
 }
@@ -145,7 +164,9 @@ export function getProvisionerBaseUrl(): string {
 }
 
 function bytesToHex(bytes: Uint8Array): string {
-  return Array.from(bytes).map((byte) => byte.toString(16).padStart(2, '0')).join('')
+  return Array.from(bytes)
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('')
 }
 
 async function sha256Text(value: string): Promise<string> {
@@ -162,7 +183,7 @@ export async function getCompatibleOnboardingConfig(): Promise<OnboardingConfigD
   const response = await fetchWithTimeout(
     `${config.provisionerUrl}/v1/onboarding/config`,
     { headers: { accept: 'application/json' }, credentials: 'include' },
-    CHECK_EMAIL_TIMEOUT_MS,
+    CHECK_EMAIL_TIMEOUT_MS
   )
   if (!response.ok) {
     throw new Error(`Onboarding configuration is unavailable (${response.status}).`)
@@ -184,7 +205,7 @@ export async function getCompatibleOnboardingConfig(): Promise<OnboardingConfigD
     lockboxFactoryVersion: `v${extra?.lockboxFactoryVersion ?? ''}`,
   }
   const matchesBuild = Object.entries(expected).every(
-    ([key, value]) => descriptor[key as keyof typeof expected] === value,
+    ([key, value]) => descriptor[key as keyof typeof expected] === value
   )
   if (
     descriptor.ready !== true ||
@@ -193,7 +214,7 @@ export async function getCompatibleOnboardingConfig(): Promise<OnboardingConfigD
     !/^[0-9a-f]{64}$/.test(descriptor.configFingerprint)
   ) {
     throw new Error(
-      'This app release does not match the active Testnet onboarding configuration. Refresh the page before creating a node.',
+      'This app release does not match the active Testnet onboarding configuration. Refresh the page before creating a node.'
     )
   }
   const fingerprintInput = {
@@ -211,14 +232,17 @@ export async function getCompatibleOnboardingConfig(): Promise<OnboardingConfigD
     lockboxFactoryVersion: descriptor.lockboxFactoryVersion,
     artifacts: descriptor.artifacts,
   }
-  if (await sha256Text(JSON.stringify(fingerprintInput)) !== descriptor.configFingerprint) {
+  if ((await sha256Text(JSON.stringify(fingerprintInput))) !== descriptor.configFingerprint) {
     throw new Error('The onboarding configuration fingerprint could not be verified.')
   }
   return descriptor as OnboardingConfigDescriptor
 }
 
 function normalizeHandle(raw: string): string {
-  return raw.trim().toLowerCase().replace(/[^a-z0-9-]/g, '')
+  return raw
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, '')
 }
 
 /**
@@ -304,13 +328,19 @@ export async function createSeamlessNode(input: CreateNodeInput): Promise<Create
   const text = await res.text()
   if (!res.ok) {
     let message = `Node creation failed (${res.status}).`
+    let code: string | null = null
+    let details: Record<string, unknown> | null = null
     try {
-      const parsed = JSON.parse(text) as { error?: string }
+      const parsed = JSON.parse(text) as { error?: string; code?: string } & Record<string, unknown>
       if (parsed.error) message = parsed.error
+      if (typeof parsed.code === 'string' && parsed.code.trim()) {
+        code = parsed.code.trim()
+      }
+      details = parsed
     } catch {
       // keep default message
     }
-    throw new Error(message)
+    throw new SeamlessSignupApiError(message, code, details)
   }
 
   return JSON.parse(text) as CreateNodeResult
@@ -341,7 +371,7 @@ export async function checkSeamlessEmailExists(email: string): Promise<boolean |
         headers: { 'content-type': 'application/json', accept: 'application/json' },
         body: JSON.stringify({ email: normalizedEmail }),
       },
-      CHECK_EMAIL_TIMEOUT_MS,
+      CHECK_EMAIL_TIMEOUT_MS
     )
 
     if (res.status === 404 || res.status === 405 || res.status === 501) {

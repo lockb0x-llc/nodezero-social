@@ -32,6 +32,7 @@ import {
   createSeamlessNode,
   getCompatibleOnboardingConfig,
   getSeamlessSignupConfig,
+  SeamlessSignupApiError,
 } from '../src/onboarding/seamlessSignup'
 import { ProgressStepLadder, type ProgressStep } from '../src/components/ProgressStepLadder'
 import {
@@ -81,7 +82,10 @@ function mapCreateNodeError(err: unknown): string {
       'contact support and mention "ZK artifact access".'
     )
   }
-  if (lower.includes('lock expired after') || lower.includes('pod provisioning is temporarily busy')) {
+  if (
+    lower.includes('lock expired after') ||
+    lower.includes('pod provisioning is temporarily busy')
+  ) {
     return 'Pod provisioning is temporarily busy. Please wait a few seconds and tap Create Your Node again.'
   }
   if (lower.includes('bridge proof claimhash does not match')) {
@@ -100,7 +104,9 @@ function isEmailAlreadyRegisteredError(err: unknown): boolean {
   return (
     lower.includes('already is a login for this e-mail address') ||
     lower.includes('already is a login for this email address') ||
-    (lower.includes('badrequesthttperror') && lower.includes('login/password') && lower.includes('h400'))
+    (lower.includes('badrequesthttperror') &&
+      lower.includes('login/password') &&
+      lower.includes('h400'))
   )
 }
 
@@ -162,10 +168,11 @@ function LandingAuthCard({
   onSignIn,
   onCreateNode,
 }: LandingAuthCardProps): JSX.Element {
-
   void source
   const needsIdentity = !isWalletLoading && !walletReady
-  const unavailableLabel = isWalletLoading ? 'Loading secure wallet…' : 'Create or restore an identity first'
+  const unavailableLabel = isWalletLoading
+    ? 'Loading secure wallet…'
+    : 'Create or restore an identity first'
   return (
     <View style={styles.signInPanel}>
       <View style={styles.signInBrand}>
@@ -226,7 +233,10 @@ function LandingAuthCard({
         ) : null}
       </View>
       <TouchableOpacity
-        style={[styles.btnPrimary, (isSigningIn || isIdentityBusy || !walletReady) && styles.btnDisabled]}
+        style={[
+          styles.btnPrimary,
+          (isSigningIn || isIdentityBusy || !walletReady) && styles.btnDisabled,
+        ]}
         onPress={() => void onSignIn()}
         disabled={isSigningIn || isIdentityBusy || !walletReady}
         activeOpacity={PRESS_OPACITY}
@@ -234,7 +244,7 @@ function LandingAuthCard({
         accessibilityLabel="Sign In"
       >
         {isSigningIn ? (
-            <ActivityIndicator color="#FFF" />
+          <ActivityIndicator color="#FFF" />
         ) : (
           <Text style={styles.btnPrimaryText}>{walletReady ? 'Sign In' : unavailableLabel}</Text>
         )}
@@ -266,11 +276,14 @@ function LandingAuthCard({
             accessibilityLabel="Notification email"
           />
           <Text style={styles.createHintText}>
-            Your device wallet is your key. There is no account password — keep
-            your recovery bundle safe to restore access on a new device.
+            Your device wallet is your key. There is no account password — keep your recovery bundle
+            safe to restore access on a new device.
           </Text>
           <TouchableOpacity
-            style={[styles.btnPrimary, (isCreating || isIdentityBusy || !walletReady) && styles.btnDisabled]}
+            style={[
+              styles.btnPrimary,
+              (isCreating || isIdentityBusy || !walletReady) && styles.btnDisabled,
+            ]}
             onPress={() => void onCreateNode()}
             disabled={isCreating || isIdentityBusy || !walletReady}
             activeOpacity={PRESS_OPACITY}
@@ -381,7 +394,8 @@ function AccountSelectionModal({
         <View style={styles.accountModalCard}>
           <Text style={styles.accountModalTitle}>Choose an account</Text>
           <Text style={styles.accountModalBody}>
-            This device identity has more than one NodeZero account. Select the one you want to sign into.
+            This device identity has more than one NodeZero account. Select the one you want to sign
+            into.
           </Text>
           <View style={styles.accountModalList}>
             {accounts.map((account) => {
@@ -418,7 +432,11 @@ function AccountSelectionModal({
               activeOpacity={PRESS_OPACITY}
               disabled={isSubmitting || !selectedWebId}
             >
-              {isSubmitting ? <ActivityIndicator color="#FFF" /> : <Text style={styles.accountActionPrimaryText}>Continue</Text>}
+              {isSubmitting ? (
+                <ActivityIndicator color="#FFF" />
+              ) : (
+                <Text style={styles.accountActionPrimaryText}>Continue</Text>
+              )}
             </TouchableOpacity>
           </View>
         </View>
@@ -468,7 +486,7 @@ export default function LandingScreen(): JSX.Element {
     if (reason === 'legacy-attestation') {
       setError(
         'This device belongs to a legacy Testnet node without a V3 on-chain attestation. ' +
-        'It cannot sign in to this release. Create a new test node with a new identity.',
+          'It cannot sign in to this release. Create a new test node with a new identity.'
       )
       setErrorAction(null)
     }
@@ -487,7 +505,8 @@ export default function LandingScreen(): JSX.Element {
       if (doneIndex === -1) return steps
       return steps.map((step, index) => {
         if (index <= doneIndex) return step.status === 'done' ? step : { ...step, status: 'done' }
-        if (index === doneIndex + 1 && step.status === 'pending') return { ...step, status: 'active' }
+        if (index === doneIndex + 1 && step.status === 'pending')
+          return { ...step, status: 'active' }
         return step
       })
     })
@@ -496,7 +515,7 @@ export default function LandingScreen(): JSX.Element {
   /** Marks whichever step is currently running as failed. */
   const failActiveCreateStep = (): void => {
     setCreateSteps((steps) =>
-      steps.map((step) => (step.status === 'active' ? { ...step, status: 'error' } : step)),
+      steps.map((step) => (step.status === 'active' ? { ...step, status: 'error' } : step))
     )
   }
 
@@ -517,7 +536,7 @@ export default function LandingScreen(): JSX.Element {
 
   const completeSignIn = async (
     identity: { keyId: string; stellarPublicKey: string },
-    webId?: string,
+    webId?: string
   ): Promise<void> => {
     const result = await stellarSignIn({ ...identity, ...(webId ? { webId } : {}) })
     await selectIdentity(identity.keyId)
@@ -544,15 +563,16 @@ export default function LandingScreen(): JSX.Element {
         throw new Error(
           damaged
             ? 'Stored wallet identities were found, but their secret keys are unavailable. Import a recovery bundle to continue.'
-            : 'No wallet identities are stored on this device.',
+            : 'No wallet identities are stored on this device.'
         )
       }
 
       for (const identity of usable) {
         try {
-          await completeSignIn(
-            { keyId: identity.keyId, stellarPublicKey: identity.stellarPublicKey },
-          )
+          await completeSignIn({
+            keyId: identity.keyId,
+            stellarPublicKey: identity.stellarPublicKey,
+          })
           return
         } catch (identityError) {
           if (identityError instanceof NoAccountError) continue
@@ -568,7 +588,9 @@ export default function LandingScreen(): JSX.Element {
       throw new NoAccountError()
     } catch (err) {
       if (err instanceof NoAccountError) {
-        setError('Wallet identities were found on this device, but none are linked to a NodeZero account. Restore the original identity if this node was created elsewhere.')
+        setError(
+          'Wallet identities were found on this device, but none are linked to a NodeZero account. Restore the original identity if this node was created elsewhere.'
+        )
       } else if (err instanceof AccountSelectionRequiredError) {
         setAccountChoices(err.accounts)
         setSelectedAccountWebId(err.accounts[0]?.webId ?? null)
@@ -588,7 +610,9 @@ export default function LandingScreen(): JSX.Element {
 
     const normalizedEmail = notificationEmail.trim().toLowerCase()
     if (normalizedEmail && knownExistingEmailsRef.current.has(normalizedEmail)) {
-      setError('This email address is already registered. If this is your account, sign in with the device that created it.')
+      setError(
+        'This email address is already registered. If this is your account, sign in with the device that created it.'
+      )
       return
     }
 
@@ -607,7 +631,10 @@ export default function LandingScreen(): JSX.Element {
       return
     }
 
-    const normalizedHandle = nodeHandle.trim().toLowerCase().replace(/[^a-z0-9-]/g, '')
+    const normalizedHandle = nodeHandle
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, '')
     if (!normalizedHandle) {
       setError('Choose a node handle using letters and numbers.')
       return
@@ -619,7 +646,7 @@ export default function LandingScreen(): JSX.Element {
         key,
         label,
         status: key === 'wallet' ? 'done' : key === 'proof' ? 'active' : 'pending',
-      })),
+      }))
     )
     setCreateNotice('Checking account availability…')
 
@@ -633,7 +660,9 @@ export default function LandingScreen(): JSX.Element {
         const emailAlreadyRegistered = await checkSeamlessEmailExists(normalizedEmail)
         if (emailAlreadyRegistered) {
           knownExistingEmailsRef.current.add(normalizedEmail)
-          setError('This email address is already registered. If this is your account, sign in with the device that created it.')
+          setError(
+            'This email address is already registered. If this is your account, sign in with the device that created it.'
+          )
           return
         }
       }
@@ -649,7 +678,7 @@ export default function LandingScreen(): JSX.Element {
         expectedWebId,
         expectedPodUrl,
         walletInfo.publicKey,
-        onboardingConfig,
+        onboardingConfig
       )
       advanceCreateStep('proof')
       setCreateNotice('Creating your Pod on the Node Zero Community Server…')
@@ -675,7 +704,9 @@ export default function LandingScreen(): JSX.Element {
       const anchored = result.lockbox?.userLockboxContractId
       if (!result.lockbox || result.lockbox.status !== 'ready' || !anchored) {
         failActiveCreateStep()
-        setError('Node created, but on-chain lockb0x provisioning did not complete. Please try again.')
+        setError(
+          'Node created, but on-chain lockb0x provisioning did not complete. Please try again.'
+        )
         setErrorAction(null)
         return
       }
@@ -701,7 +732,7 @@ export default function LandingScreen(): JSX.Element {
 
       const root = result.lockbox.proofRootHex
       setCreateNotice(
-        `Node created. WebID: ${result.webId}\nStellar key: ${result.stellarPublicKey}\nLockb0x (on-chain): ${anchored}\nIdentity anchor: ${result.attestation.accountCommitmentHex}${root ? `\nPairing root: ${root}` : ''}\nSigning you in…`,
+        `Node created. WebID: ${result.webId}\nStellar key: ${result.stellarPublicKey}\nLockb0x (on-chain): ${anchored}\nIdentity anchor: ${result.attestation.accountCommitmentHex}${root ? `\nPairing root: ${root}` : ''}\nSigning you in…`
       )
 
       advanceCreateStep('signin')
@@ -729,7 +760,22 @@ export default function LandingScreen(): JSX.Element {
           knownExistingEmailsRef.current.add(normalizedEmail)
         }
         setError(
-          'This email address is already registered. If this is your account, sign in with the device that created it.',
+          'This email address is already registered. If this is your account, sign in with the device that created it.'
+        )
+        setErrorAction(null)
+      } else if (err instanceof SeamlessSignupApiError && err.code === 'identity_already_linked') {
+        const accounts = Array.isArray(err.details?.accounts)
+          ? err.details.accounts.filter(
+              (entry): entry is { webId: string } =>
+                typeof entry === 'object' &&
+                entry !== null &&
+                typeof (entry as { webId?: unknown }).webId === 'string'
+            )
+          : []
+        setError(
+          accounts.length > 0
+            ? `This device identity is already linked on-chain to ${accounts.length === 1 ? 'an existing node account' : 'existing node accounts'}. Sign in instead, or create a new device identity for another test account.`
+            : 'This device identity is already linked on-chain. Sign in instead, or create a new device identity for another test account.'
         )
         setErrorAction(null)
       } else {
@@ -770,13 +816,14 @@ export default function LandingScreen(): JSX.Element {
       setError(null)
       setErrorAction(null)
       setCreateNotice('Validating recovery bundle…')
-      void file.text()
+      void file
+        .text()
         .then((json) => {
           const extra = Constants.expoConfig?.extra as Record<string, string> | undefined
           return parseRecoveryBundle(
             json,
             extra?.envProfile ?? 'local',
-            extra?.stellarNetworkPassphrase ?? '',
+            extra?.stellarNetworkPassphrase ?? ''
           )
         })
         .then((identity) => importRecoveryIdentity(identity))
@@ -824,146 +871,163 @@ export default function LandingScreen(): JSX.Element {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+          {/* ── Top nav ─────────────────────────────────── */}
+          <View style={styles.nav}>
+            <Text style={styles.navLogo}>⊙ NodeZero</Text>
+          </View>
 
-        {/* ── Top nav ─────────────────────────────────── */}
-        <View style={styles.nav}>
-          <Text style={styles.navLogo}>⊙ NodeZero</Text>
-        </View>
+          {/* ── Hero ────────────────────────────────────── */}
+          <View style={styles.hero}>
+            {showMarketingContent ? (
+              <>
+                <Text style={styles.heroEyebrow}>Local · Private · Human</Text>
+                <Text style={styles.heroHeadline}>
+                  A calmer social network{`\n`}for real communities.
+                </Text>
+                <Text style={styles.heroBody}>
+                  {
+                    'Sign in with your device key in one tap. New here? Create your node in seconds and you are ready to post.'
+                  }
+                </Text>
+                <Text style={styles.heroBody}>
+                  {
+                    'NodeZero keeps the experience simple up front: chronological feed, optional nearby discovery, and privacy controls that you can change anytime.'
+                  }
+                </Text>
+              </>
+            ) : (
+              <>
+                <Text style={styles.heroEyebrow}>NodeZero Staging</Text>
+                <Text style={styles.heroHeadline}>Continue to your node</Text>
+                <Text style={styles.heroBody}>
+                  {'Returning user: sign in with your device key — one tap, no passwords.'}
+                </Text>
+                <Text style={styles.heroBody}>
+                  {
+                    'New user: create your node with the streamlined flow below. Your Pod is created and you are signed in immediately.'
+                  }
+                </Text>
+              </>
+            )}
+          </View>
 
-        {/* ── Hero ────────────────────────────────────── */}
-        <View style={styles.hero}>
+          {/* ── Sign-in panel (always visible) ───────────── */}
+          <LandingAuthCard
+            source="card"
+            error={error}
+            errorAction={errorAction}
+            isSigningIn={isSigningIn}
+            isIdentityBusy={isIdentityBusy}
+            isWalletLoading={isWalletLoading}
+            seamlessEnabled={seamlessConfig.enabled}
+            nodeHandle={nodeHandle}
+            notificationEmail={notificationEmail}
+            isCreating={isCreating}
+            walletReady={Boolean(walletInfo?.publicKey)}
+            createNotice={createNotice}
+            createSteps={createSteps}
+            onNodeHandleChange={setNodeHandle}
+            onNotificationEmailChange={setNotificationEmail}
+            onCreateIdentity={handleCreateIdentity}
+            onRestoreIdentity={handleRestoreIdentity}
+            onSignIn={handleSignIn}
+            onCreateNode={handleCreateNode}
+          />
+
           {showMarketingContent ? (
             <>
-              <Text style={styles.heroEyebrow}>Local · Private · Human</Text>
-              <Text style={styles.heroHeadline}>A calmer social network{`\n`}for real communities.</Text>
-              <Text style={styles.heroBody}>
-                {'Sign in with your device key in one tap. New here? Create your node in seconds and you are ready to post.'}
-              </Text>
-              <Text style={styles.heroBody}>
-                {'NodeZero keeps the experience simple up front: chronological feed, optional nearby discovery, and privacy controls that you can change anytime.'}
-              </Text>
-            </>
-          ) : (
-            <>
-              <Text style={styles.heroEyebrow}>NodeZero Staging</Text>
-              <Text style={styles.heroHeadline}>Continue to your node</Text>
-              <Text style={styles.heroBody}>
-                {'Returning user: sign in with your device key — one tap, no passwords.'}
-              </Text>
-              <Text style={styles.heroBody}>
-                {'New user: create your node with the streamlined flow below. Your Pod is created and you are signed in immediately.'}
-              </Text>
-            </>
-          )}
-        </View>
-
-        {/* ── Sign-in panel (always visible) ───────────── */}
-        <LandingAuthCard
-          source="card"
-          error={error}
-          errorAction={errorAction}
-          isSigningIn={isSigningIn}
-          isIdentityBusy={isIdentityBusy}
-          isWalletLoading={isWalletLoading}
-          seamlessEnabled={seamlessConfig.enabled}
-          nodeHandle={nodeHandle}
-          notificationEmail={notificationEmail}
-          isCreating={isCreating}
-          walletReady={Boolean(walletInfo?.publicKey)}
-          createNotice={createNotice}
-          createSteps={createSteps}
-          onNodeHandleChange={setNodeHandle}
-          onNotificationEmailChange={setNotificationEmail}
-          onCreateIdentity={handleCreateIdentity}
-          onRestoreIdentity={handleRestoreIdentity}
-          onSignIn={handleSignIn}
-          onCreateNode={handleCreateNode}
-        />
-
-        {showMarketingContent ? (
-          <>
-            {/* ── How it works ────────────────────────────── */}
-            <View style={styles.section}>
-              <Text style={styles.sectionEyebrow}>Three steps</Text>
-              <Text style={styles.sectionTitle}>Get started in minutes</Text>
-              {STEPS.map((s, i) => (
-                <View key={i} style={styles.stepRow}>
-                  <View style={styles.stepNumber}>
-                    <Text style={styles.stepNumberText}>{i + 1}</Text>
-                  </View>
-                  <View style={styles.stepContent}>
-                    <Text style={styles.stepTitle}>{s.title}</Text>
-                    <Text style={styles.stepDesc}>{s.desc}</Text>
-                  </View>
-                </View>
-              ))}
-            </View>
-
-            <View style={styles.section}>
-              <Text style={styles.sectionEyebrow}>Node Zero model</Text>
-              <Text style={styles.sectionTitle}>One identity, multiple devices</Text>
-              <NodeZeroConceptDiagram />
-            </View>
-
-            {/* ── Features ────────────────────────────────── */}
-            <View style={styles.section}>
-              <Text style={styles.sectionEyebrow}>Why NodeZero</Text>
-              <Text style={styles.sectionTitle}>Built on different principles</Text>
-              <View style={styles.featureGrid}>
-                {FEATURES.map((f) => (
-                  <View key={f.title} style={styles.featureCard}>
-                    <Text style={styles.featureIcon}>{f.icon}</Text>
-                    <Text style={styles.featureTitle}>{f.title}</Text>
-                    <Text style={styles.featureDesc}>{f.desc}</Text>
+              {/* ── How it works ────────────────────────────── */}
+              <View style={styles.section}>
+                <Text style={styles.sectionEyebrow}>Three steps</Text>
+                <Text style={styles.sectionTitle}>Get started in minutes</Text>
+                {STEPS.map((s, i) => (
+                  <View key={i} style={styles.stepRow}>
+                    <View style={styles.stepNumber}>
+                      <Text style={styles.stepNumberText}>{i + 1}</Text>
+                    </View>
+                    <View style={styles.stepContent}>
+                      <Text style={styles.stepTitle}>{s.title}</Text>
+                      <Text style={styles.stepDesc}>{s.desc}</Text>
+                    </View>
                   </View>
                 ))}
               </View>
-            </View>
 
-            {/* ── Trust statement ─────────────────────────── */}
-            <View style={styles.trustBlock}>
-              <Text style={styles.trustStatement}>
-                "Built for real communities, not engagement hacks."
-              </Text>
-              <Text style={styles.trustSub}>Chronological by default. Local by choice.</Text>
-            </View>
+              <View style={styles.section}>
+                <Text style={styles.sectionEyebrow}>Node Zero model</Text>
+                <Text style={styles.sectionTitle}>One identity, multiple devices</Text>
+                <NodeZeroConceptDiagram />
+              </View>
 
-            {/* ── Final CTA ───────────────────────────────── */}
-            <View style={styles.finalCta}>
-              <Text style={styles.finalCtaTitle}>Ready to join your local NodeZero community?</Text>
-              <LandingAuthCard
-                source="footer"
-                error={error}
-                errorAction={errorAction}
-                isSigningIn={isSigningIn}
-                isIdentityBusy={isIdentityBusy}
-                isWalletLoading={isWalletLoading}
-                seamlessEnabled={seamlessConfig.enabled}
-                nodeHandle={nodeHandle}
-                notificationEmail={notificationEmail}
-                isCreating={isCreating}
-                walletReady={Boolean(walletInfo?.publicKey)}
-                createNotice={createNotice}
-                createSteps={createSteps}
-                onNodeHandleChange={setNodeHandle}
-                onNotificationEmailChange={setNotificationEmail}
-                onCreateIdentity={handleCreateIdentity}
-                onRestoreIdentity={handleRestoreIdentity}
-                onSignIn={handleSignIn}
-                onCreateNode={handleCreateNode}
-              />
-              <Text style={styles.finalCtaSub}>
-                Powered by{' '}
-                <Text style={styles.link} onPress={() => void Linking.openURL('https://solidproject.org')}>Solid</Text>
-                {' '}·{' '}
-                <Text style={styles.link} onPress={() => void Linking.openURL('https://stellar.org')}>Stellar</Text>
-                {' '}·{' '}
-                {'Open source'}
-              </Text>
-            </View>
-          </>
-        ) : null}
+              {/* ── Features ────────────────────────────────── */}
+              <View style={styles.section}>
+                <Text style={styles.sectionEyebrow}>Why NodeZero</Text>
+                <Text style={styles.sectionTitle}>Built on different principles</Text>
+                <View style={styles.featureGrid}>
+                  {FEATURES.map((f) => (
+                    <View key={f.title} style={styles.featureCard}>
+                      <Text style={styles.featureIcon}>{f.icon}</Text>
+                      <Text style={styles.featureTitle}>{f.title}</Text>
+                      <Text style={styles.featureDesc}>{f.desc}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
 
+              {/* ── Trust statement ─────────────────────────── */}
+              <View style={styles.trustBlock}>
+                <Text style={styles.trustStatement}>
+                  "Built for real communities, not engagement hacks."
+                </Text>
+                <Text style={styles.trustSub}>Chronological by default. Local by choice.</Text>
+              </View>
+
+              {/* ── Final CTA ───────────────────────────────── */}
+              <View style={styles.finalCta}>
+                <Text style={styles.finalCtaTitle}>
+                  Ready to join your local NodeZero community?
+                </Text>
+                <LandingAuthCard
+                  source="footer"
+                  error={error}
+                  errorAction={errorAction}
+                  isSigningIn={isSigningIn}
+                  isIdentityBusy={isIdentityBusy}
+                  isWalletLoading={isWalletLoading}
+                  seamlessEnabled={seamlessConfig.enabled}
+                  nodeHandle={nodeHandle}
+                  notificationEmail={notificationEmail}
+                  isCreating={isCreating}
+                  walletReady={Boolean(walletInfo?.publicKey)}
+                  createNotice={createNotice}
+                  createSteps={createSteps}
+                  onNodeHandleChange={setNodeHandle}
+                  onNotificationEmailChange={setNotificationEmail}
+                  onCreateIdentity={handleCreateIdentity}
+                  onRestoreIdentity={handleRestoreIdentity}
+                  onSignIn={handleSignIn}
+                  onCreateNode={handleCreateNode}
+                />
+                <Text style={styles.finalCtaSub}>
+                  Powered by{' '}
+                  <Text
+                    style={styles.link}
+                    onPress={() => void Linking.openURL('https://solidproject.org')}
+                  >
+                    Solid
+                  </Text>{' '}
+                  ·{' '}
+                  <Text
+                    style={styles.link}
+                    onPress={() => void Linking.openURL('https://stellar.org')}
+                  >
+                    Stellar
+                  </Text>{' '}
+                  · {'Open source'}
+                </Text>
+              </View>
+            </>
+          ) : null}
         </ScrollView>
       </KeyboardAvoidingView>
     </>

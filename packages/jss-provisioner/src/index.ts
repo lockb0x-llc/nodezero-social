@@ -34,7 +34,7 @@ import {
 } from './notificationEvents.js'
 import { CommunityDirectoryStore, type CommunityDirectoryRecord } from './communityDirectory.js'
 import { AzureTableCommunityDirectoryPersistence } from './communityDirectoryPersistence.js'
-import type { BridgeProofPayload } from './lockboxFactory.js'
+import { probeBridgeIdentityLinkageOnChain, type BridgeProofPayload } from './lockboxFactory.js'
 import { verifyBridgeProof } from './bridgeProofVerifier.js'
 import { buildPodOwnershipClaim } from './podOwnershipClaim.js'
 import { RelationshipDeliveryError, deliverRelationshipActivity } from './relationshipDelivery.js'
@@ -382,6 +382,30 @@ function isDuplicateEmailProvisioningMessage(message: string): boolean {
     lower.includes('already is a login for this e-mail address') ||
     lower.includes('already is a login for this email address')
   )
+}
+
+function isBridgeMismatchProvisioningMessage(message: string): boolean {
+  const lower = message.toLowerCase()
+  return (
+    lower.includes('create_or_get_bridge_lockbox') &&
+    (lower.includes('error(contract, #5)') || lower.includes('error(contract,#5)'))
+  )
+}
+
+function firstContractIdFromMessage(message: string): string | null {
+  const match = message.match(/C[A-Z0-9]{55}/)
+  return match ? match[0] : null
+}
+
+class IdentityLinkageConflictError extends Error {
+  readonly code = 'identity_already_linked'
+  readonly lockboxContractId: string | null
+
+  constructor(message: string, lockboxContractId: string | null = null) {
+    super(message)
+    this.name = 'IdentityLinkageConflictError'
+    this.lockboxContractId = lockboxContractId
+  }
 }
 
 function corsHeaders(req: IncomingMessage): Record<string, string> {
@@ -1941,6 +1965,26 @@ export async function handleHttpRequest(
         LOCKBOX_FACTORY_VERSION === 'v3'
           ? parseBridgeProof(body, accountCommitmentHex, ciphertextHex)
           : undefined
+      if (bridgeProof && LOCKBOX_FACTORY_MODE === 'soroban') {
+        const linkage = await probeBridgeIdentityLinkageOnChain({
+          factoryContractId: LOCKBOX_FACTORY_CONTRACT_ID,
+          accountCommitmentHex: bridgeProof.accountCommitmentHex,
+          enabled: Boolean(LOCKBOX_FACTORY_CONTRACT_ID.trim()),
+        })
+        if (linkage.linked) {
+          const accounts = await credentialStore
+            .findAllByStellarPublicKey(stellarPublicKey)
+            .catch(() => [])
+          sendJson(req, res, 409, {
+            error:
+              'This device identity is already linked on-chain. Sign in with the existing node account, or create a new device identity before creating another node.',
+            code: 'identity_already_linked',
+            lockboxContractId: linkage.lockboxContractId,
+            accounts: accounts.map((record) => ({ webId: record.webId, podUrl: record.podUrl })),
+          })
+          return
+        }
+      }
       const expectedPodUrl = `${SOLID_CSS_BASE_URL}/${normalizedName}/`
       const expectedWebId = `${expectedPodUrl}profile/card#me`
       const requestDigest = computeProvisioningRequestDigest({
@@ -2228,6 +2272,14 @@ export async function handleHttpRequest(
             { resumeMaterial }
           )
         } catch (lockboxError) {
+          const message =
+            lockboxError instanceof Error ? lockboxError.message : String(lockboxError)
+          if (isBridgeMismatchProvisioningMessage(message)) {
+            throw new IdentityLinkageConflictError(
+              'This device identity is already linked on-chain. Sign in with the existing node account, or create a new device identity before creating another node.',
+              firstContractIdFromMessage(message)
+            )
+          }
           sagaOperation = await provisioningStore
             .markManualReview(sagaOperation, 'lockbox_result_unknown')
             .catch(() => sagaOperation)
@@ -2433,6 +2485,19 @@ export async function handleHttpRequest(
         sendJson(req, res, 409, {
           error: 'Provisioning changed concurrently. Retry the request.',
           code: 'provisioning_in_progress',
+          ...(sagaOperation ? { operationId: sagaOperation.operation.operationId } : {}),
+        })
+        return
+      }
+      if (err instanceof IdentityLinkageConflictError) {
+        const accounts = await credentialStore
+          .findAllByStellarPublicKey(stellarPublicKey)
+          .catch(() => [])
+        sendJson(req, res, 409, {
+          error: err.message,
+          code: err.code,
+          ...(err.lockboxContractId ? { lockboxContractId: err.lockboxContractId } : {}),
+          accounts: accounts.map((record) => ({ webId: record.webId, podUrl: record.podUrl })),
           ...(sagaOperation ? { operationId: sagaOperation.operation.operationId } : {}),
         })
         return
