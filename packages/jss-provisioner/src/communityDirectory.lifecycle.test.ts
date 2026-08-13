@@ -119,7 +119,7 @@ void test('store persists records across re-initialization', () => {
   })
 })
 
-void test('rehydrated generationless legacy listings remain private', () => {
+void test('rehydrated generationless listings remain private', () => {
   withStore((_store, path) => {
     writeFileSync(
       path,

@@ -182,13 +182,13 @@ void test('file store: ETags persist across instances and fence stale writers', 
 
 void test('memory store: ignores obsolete stellar-key index shapes', async () => {
   const store = new CredentialStore({ encryptionKey: KEY_B64 })
-  await store.createVersionedRow('spk:GLEGACY', {
-    webId: 'https://pods.example/legacy/profile/card#me',
-    webIds: ['https://pods.example/legacy/profile/card#me'],
+  await store.createVersionedRow('spk:GOLDSTYLE', {
+    webId: 'https://pods.example/oldstyle/profile/card#me',
+    webIds: ['https://pods.example/oldstyle/profile/card#me'],
   })
 
-  assert.equal(await store.findByStellarPublicKey('GLEGACY'), null)
-  assert.deepEqual(await store.findAllByStellarPublicKey('GLEGACY'), [])
+  assert.equal(await store.findByStellarPublicKey('GOLDSTYLE'), null)
+  assert.deepEqual(await store.findAllByStellarPublicKey('GOLDSTYLE'), [])
 })
 
 void test('durable backend without an encryption key fails closed at construction', () => {

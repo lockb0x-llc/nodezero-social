@@ -283,7 +283,7 @@ class FileBackend implements CredentialBackend {
       const { [FileBackend.ETAG_FIELD]: rawEtag, ...value } = stored
       return {
         value,
-        etag: typeof rawEtag === 'string' ? rawEtag : '"legacy"',
+        etag: typeof rawEtag === 'string' ? rawEtag : '"missing-etag"',
       }
     })
   }
@@ -316,7 +316,7 @@ class FileBackend implements CredentialBackend {
       const existingEtag =
         typeof existing?.[FileBackend.ETAG_FIELD] === 'string'
           ? existing[FileBackend.ETAG_FIELD]
-          : '"legacy"'
+          : '"missing-etag"'
       if (!existing || existingEtag !== ifMatch) {
         throw new ConditionalWriteError(
           'etag_mismatch',
@@ -348,7 +348,7 @@ class FileBackend implements CredentialBackend {
       const existingEtag =
         typeof existing[FileBackend.ETAG_FIELD] === 'string'
           ? existing[FileBackend.ETAG_FIELD]
-          : '"legacy"'
+          : '"missing-etag"'
       if (existingEtag !== ifMatch) {
         throw new ConditionalWriteError('etag_mismatch', `Row ${rowKey} changed before deletion.`)
       }

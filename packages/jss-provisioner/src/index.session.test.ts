@@ -731,7 +731,7 @@ void test('proxy: marker-free WebID profile replacement and deletion require pub
   assert.equal(remove.status, 428)
 })
 
-void test('proxy: ordinary ETag-fenced profile patches remain compatible', async () => {
+void test('proxy: ordinary ETag-fenced profile patches remain allowed', async () => {
   const { session, webId } = await provisionUser()
   const profilePath = new URL(webId.split('#')[0] ?? '').pathname.replace(/^\//, '')
   const update = await fetch(`${baseUrl}/v1/pod-proxy/${profilePath}`, {
@@ -1174,7 +1174,7 @@ void test('login: valid signature + stored credentials issues a working session'
   assert.ok(lockbox.userLockboxContractId, 'lockbox metadata missing from login response')
 })
 
-void test('login: unknown identity gets 401 no_account (no migration path)', async () => {
+void test('login: unknown identity gets 401 no_account', async () => {
   const stranger = Keypair.random()
   const result = await loginWith(stranger)
   assert.equal(result.status, 401)

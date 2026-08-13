@@ -10,7 +10,9 @@
 
 import { spawn } from 'node:child_process'
 
-export const HORIZON_URL = (process.env.JSS_HORIZON_URL ?? 'https://horizon-testnet.stellar.org').replace(/\/+$/, '')
+export const HORIZON_URL = (
+  process.env.JSS_HORIZON_URL ?? 'https://horizon-testnet.stellar.org'
+).replace(/\/+$/, '')
 export const NETWORK = process.env.JSS_STELLAR_NETWORK ?? process.env.STELLAR_NETWORK ?? 'testnet'
 export const STROOPS_PER_XLM = 10_000_000
 
@@ -71,12 +73,20 @@ export async function accountExists(publicKey: string): Promise<boolean> {
   return true
 }
 
-/** Resolves the Deployer CLI alias (falls back to the legacy single source account). */
+/** Resolves the Deployer CLI alias (defaults to the shared source account when unset). */
 export function getDeployerSourceAccount(): string {
-  return (process.env.JSS_DEPLOYER_SOURCE_ACCOUNT ?? process.env.JSS_STELLAR_SOURCE_ACCOUNT ?? '').trim()
+  return (
+    process.env.JSS_DEPLOYER_SOURCE_ACCOUNT ??
+    process.env.JSS_STELLAR_SOURCE_ACCOUNT ??
+    ''
+  ).trim()
 }
 
-/** Resolves the Treasury CLI alias (falls back to the legacy single source account). */
+/** Resolves the Treasury CLI alias (defaults to the shared source account when unset). */
 export function getTreasurySourceAccount(): string {
-  return (process.env.JSS_TREASURY_SOURCE_ACCOUNT ?? process.env.JSS_STELLAR_SOURCE_ACCOUNT ?? '').trim()
+  return (
+    process.env.JSS_TREASURY_SOURCE_ACCOUNT ??
+    process.env.JSS_STELLAR_SOURCE_ACCOUNT ??
+    ''
+  ).trim()
 }

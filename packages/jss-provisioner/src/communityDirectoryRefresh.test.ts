@@ -114,9 +114,10 @@ void test('refreshes an owner projection from consent and an unexpired manifest'
           consentUrl
         )
       )
-    if (url === manifestUrl) return Promise.resolve(
-      response(
-        `
+    if (url === manifestUrl)
+      return Promise.resolve(
+        response(
+          `
       @prefix nz: <https://nodezero.social/ns#> .
       <${manifestUrl}#manifest> a nz:DiscoveryManifest ; nz:version 1 ;
         nz:publicationRevision 4 ;
@@ -125,10 +126,10 @@ void test('refreshes an owner projection from consent and an unexpired manifest'
         <http://www.w3.org/ns/solid/terms#publicTypeIndex> <${publicTypeIndexUrl}> ;
         nz:publicInterest "solid" .
     `,
-        manifestUrl,
-        '"manifest-v1"'
+          manifestUrl,
+          '"manifest-v1"'
+        )
       )
-    )
     if (url === profileUrl) {
       return Promise.resolve(
         response(
@@ -231,10 +232,11 @@ void test('stale suppression cannot tombstone a newer publication generation', a
     },
     now,
   })
-  const { options } = baseOptions(() =>
-    Promise.resolve(
-      response(
-        `
+  const { options } = baseOptions(
+    () =>
+      Promise.resolve(
+        response(
+          `
       @prefix nz: <https://nodezero.social/ns#> .
       <${consentUrl}#consent> a nz:DiscoveryConsent ; nz:version 1 ;
         nz:publicationRevision 5 ;
@@ -243,9 +245,11 @@ void test('stale suppression cannot tombstone a newer publication generation', a
         nz:nearbyPresence false ; nz:inboundContactRequests false ;
         nz:localBroadcasts false ; nz:updatedAt "2026-08-02T00:00:00.000Z" .
     `,
-        consentUrl
-      )
-    ), store)
+          consentUrl
+        )
+      ),
+    store
+  )
   try {
     await assert.rejects(
       refreshCommunityDirectoryProjection(claims, {
@@ -266,10 +270,11 @@ void test('cohort-disabled refresh suppresses the authoritative current generati
   const consentUrl = `${podRoot}social/consent/discovery`
   const originalFetch = globalThis.fetch
   const store = createTestStore()
-  const { options } = baseOptions(() =>
-    Promise.resolve(
-      response(
-        `
+  const { options } = baseOptions(
+    () =>
+      Promise.resolve(
+        response(
+          `
       @prefix nz: <https://nodezero.social/ns#> .
       <${consentUrl}#consent> a nz:DiscoveryConsent ; nz:version 1 ;
         nz:publicationRevision 5 ; nz:publicationUpdatedAt "2026-08-02T00:00:00.000Z" ;
@@ -277,9 +282,11 @@ void test('cohort-disabled refresh suppresses the authoritative current generati
         nz:nearbyPresence false ; nz:inboundContactRequests false ;
         nz:localBroadcasts false ; nz:updatedAt "2026-08-02T00:00:00.000Z" .
     `,
-        consentUrl
-      )
-    ), store)
+          consentUrl
+        )
+      ),
+    store
+  )
   try {
     const record = await refreshCommunityDirectoryProjection(claims, {
       ...options,
@@ -577,7 +584,7 @@ void test('does not project a manifest authorized by a different consent revisio
   }
 })
 
-void test('does not project generationless legacy publication artifacts', async () => {
+void test('does not project generationless publication artifacts', async () => {
   const consentUrl = `${podRoot}social/consent/discovery`
   const manifestUrl = `${podRoot}public/discovery/manifest`
   const originalFetch = globalThis.fetch
@@ -599,7 +606,7 @@ void test('does not project generationless legacy publication artifacts', async 
         )
       )
     }
-    throw new Error(`Legacy projection must not read ${url}.`)
+    throw new Error(`Projection must not read ${url}.`)
   })
   try {
     const projected = await refreshCommunityDirectoryProjection(claims, options)

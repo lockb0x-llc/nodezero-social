@@ -17,7 +17,9 @@ import {
 
 const KEY_B64 = randomBytes(32).toString('base64')
 
-function reservationInput(overrides: Partial<ProvisioningReservationInput> = {}): ProvisioningReservationInput {
+function reservationInput(
+  overrides: Partial<ProvisioningReservationInput> = {}
+): ProvisioningReservationInput {
   return {
     idempotencyKey: 'signup-request-1',
     requestDigest: 'a'.repeat(64),
@@ -56,7 +58,7 @@ void test('reservation registry chunks round-trip below Azure property limits', 
         disposition: 'committed',
         expiresAt: null,
       },
-    ]),
+    ])
   )
   const encoded = encodeReservationRegistry(reservations)
   assert.equal(encoded.schemaVersion, 2)
@@ -69,9 +71,9 @@ void test('reservation registry chunks round-trip below Azure property limits', 
   assert.deepEqual(decodeReservationRegistry(encoded), reservations)
 })
 
-void test('legacy near-limit reservation registry migrates on the next claim', async () => {
+void test('old-format near-limit reservation registry upgrades on the next claim', async () => {
   const credentials = new CredentialStore({ encryptionKey: KEY_B64 })
-  const legacyReservations = Object.fromEntries(
+  const oldFormatReservations = Object.fromEntries(
     Array.from({ length: 112 }, (_, index) => [
       `handle:${String(index).padStart(64, '0')}`,
       {
@@ -80,23 +82,25 @@ void test('legacy near-limit reservation registry migrates on the next claim', a
         disposition: 'committed',
         expiresAt: null,
       },
-    ]),
+    ])
   )
   await credentials.createVersionedRow('provisioning-reservations-v1', {
     schemaVersion: 1,
-    reservationsJson: JSON.stringify(legacyReservations),
+    reservationsJson: JSON.stringify(oldFormatReservations),
     updatedAt: new Date().toISOString(),
   })
 
   const store = new ProvisioningStore(credentials)
-  await store.reserveOrLoad(reservationInput({
-    idempotencyKey: 'chunk-migration',
-    requestDigest: '9'.repeat(64),
-    normalizedHandle: 'chunk-migration',
-    normalizedEmail: 'chunk-migration@example.com',
-    expectedWebId: 'https://solid.nodezero.social/chunk-migration/profile/card#me',
-    expectedPodUrl: 'https://solid.nodezero.social/chunk-migration/',
-  }))
+  await store.reserveOrLoad(
+    reservationInput({
+      idempotencyKey: 'chunk-upgrade',
+      requestDigest: '9'.repeat(64),
+      normalizedHandle: 'chunk-upgrade',
+      normalizedEmail: 'chunk-upgrade@example.com',
+      expectedWebId: 'https://solid.nodezero.social/chunk-upgrade/profile/card#me',
+      expectedPodUrl: 'https://solid.nodezero.social/chunk-upgrade/',
+    })
+  )
 
   const migrated = await credentials.readVersionedRow('provisioning-reservations-v1')
   assert.equal(migrated?.value.schemaVersion, 2)
@@ -106,12 +110,13 @@ void test('legacy near-limit reservation registry migrates on the next claim', a
 
 void test('chunked registry fails closed when a chunk is missing', () => {
   assert.throws(
-    () => decodeReservationRegistry({
-      schemaVersion: 2,
-      reservationsChunkCount: 2,
-      reservationsJson000: '{}',
-    }),
-    /chunk is missing/i,
+    () =>
+      decodeReservationRegistry({
+        schemaVersion: 2,
+        reservationsChunkCount: 2,
+        reservationsJson000: '{}',
+      }),
+    /chunk is missing/i
   )
 })
 
@@ -126,7 +131,7 @@ void test('reserveOrLoad replays the same request and rejects idempotency payloa
   await assert.rejects(
     store.reserveOrLoad({ ...input, requestDigest: 'c'.repeat(64) }),
     (error: unknown) =>
-      error instanceof ProvisioningConflictError && error.code === 'idempotency_payload_conflict',
+      error instanceof ProvisioningConflictError && error.code === 'idempotency_payload_conflict'
   )
 })
 
@@ -143,10 +148,10 @@ void test('reservations exclude duplicate handles without reserving Stellar iden
         normalizedEmail: 'different@example.com',
         expectedWebId: 'https://solid.nodezero.social/different/profile/card#me',
         expectedPodUrl: 'https://solid.nodezero.social/different/',
-      }),
+      })
     ),
     (error: unknown) =>
-      error instanceof ProvisioningConflictError && error.code === 'reservation_conflict',
+      error instanceof ProvisioningConflictError && error.code === 'reservation_conflict'
   )
 
   const second = await store.reserveOrLoad(
@@ -157,7 +162,7 @@ void test('reservations exclude duplicate handles without reserving Stellar iden
       normalizedEmail: 'alice-second@example.com',
       expectedWebId: 'https://solid.nodezero.social/alice-second/profile/card#me',
       expectedPodUrl: 'https://solid.nodezero.social/alice-second/',
-    }),
+    })
   )
   assert.equal(second.operation.stellarPublicKey, firstInput.stellarPublicKey)
 })
@@ -184,22 +189,18 @@ void test('leases fence concurrent and stale writers and enforce legal transitio
   await assert.rejects(
     store.acquireLease(acquired.operation, 'worker-b', 60_000),
     (error: unknown) =>
-      error instanceof ProvisioningConflictError && error.code === 'provisioning_in_progress',
+      error instanceof ProvisioningConflictError && error.code === 'provisioning_in_progress'
   )
 
-  const proofVerified = await store.transition(
-    acquired.operation,
-    acquired.lease,
-    'proof_verified',
-  )
+  const proofVerified = await store.transition(acquired.operation, acquired.lease, 'proof_verified')
   await assert.rejects(
     store.transition(proofVerified, acquired.lease, 'completed'),
     (error: unknown) =>
-      error instanceof ProvisioningConflictError && error.code === 'illegal_transition',
+      error instanceof ProvisioningConflictError && error.code === 'illegal_transition'
   )
   await assert.rejects(
     store.transition(acquired.operation, acquired.lease, 'failed_terminal'),
-    (error: unknown) => error instanceof ConditionalWriteError && error.code === 'etag_mismatch',
+    (error: unknown) => error instanceof ConditionalWriteError && error.code === 'etag_mismatch'
   )
 })
 
@@ -217,14 +218,14 @@ void test('an expired CSS-pending lease enters manual review and cannot be reacq
   await credentials.replaceVersionedRow(
     `provisioning-operation-${expiredOperation.idempotencyKeyHash}`,
     expiredOperation,
-    cssPending.etag,
+    cssPending.etag
   )
   const reloaded = await store.findByIdempotencyKey('signup-request-1')
   assert.ok(reloaded)
 
   await assert.rejects(
     store.acquireLease(reloaded, 'worker-b', 60_000),
-    (error: unknown) => error instanceof ProvisioningConflictError && error.code === 'lease_lost',
+    (error: unknown) => error instanceof ProvisioningConflictError && error.code === 'lease_lost'
   )
   const manualReview = await store.findByIdempotencyKey('signup-request-1')
   assert.equal(manualReview?.operation.state, 'manual_review')
@@ -252,10 +253,10 @@ void test('file backend preserves operations, reservations, and encrypted resume
           idempotencyKey: 'signup-request-after-restart',
           requestDigest: 'f'.repeat(64),
           normalizedEmail: 'restart@example.com',
-        }),
+        })
       ),
       (error: unknown) =>
-        error instanceof ProvisioningConflictError && error.code === 'reservation_conflict',
+        error instanceof ProvisioningConflictError && error.code === 'reservation_conflict'
     )
   } finally {
     await rm(dir, { recursive: true, force: true })
@@ -269,17 +270,21 @@ void test('file backend permits only one concurrent claimant for the same handle
     const first = new ProvisioningStore(new CredentialStore({ encryptionKey: KEY_B64, filePath }))
     const second = new ProvisioningStore(new CredentialStore({ encryptionKey: KEY_B64, filePath }))
     const results = await Promise.allSettled([
-      first.reserveOrLoad(reservationInput({
-        idempotencyKey: 'race-1',
-        requestDigest: '1'.repeat(64),
-      })),
-      second.reserveOrLoad(reservationInput({
-        idempotencyKey: 'race-2',
-        requestDigest: '2'.repeat(64),
-        normalizedEmail: 'race-2@example.com',
-        expectedWebId: 'https://solid.nodezero.social/race-2/profile/card#me',
-        expectedPodUrl: 'https://solid.nodezero.social/race-2/',
-      })),
+      first.reserveOrLoad(
+        reservationInput({
+          idempotencyKey: 'race-1',
+          requestDigest: '1'.repeat(64),
+        })
+      ),
+      second.reserveOrLoad(
+        reservationInput({
+          idempotencyKey: 'race-2',
+          requestDigest: '2'.repeat(64),
+          normalizedEmail: 'race-2@example.com',
+          expectedWebId: 'https://solid.nodezero.social/race-2/profile/card#me',
+          expectedPodUrl: 'https://solid.nodezero.social/race-2/',
+        })
+      ),
     ])
     assert.equal(results.filter((result) => result.status === 'fulfilled').length, 1)
     const rejected = results.find((result) => result.status === 'rejected')
@@ -313,12 +318,12 @@ void test('credential commit can scrub temporary password and client secret chec
   const clientCredentialsCreated = await store.transition(
     podCreated,
     acquired.lease,
-    'client_credentials_created',
+    'client_credentials_created'
   )
   const lockboxReady = await store.transition(
     clientCredentialsCreated,
     acquired.lease,
-    'lockbox_ready',
+    'lockbox_ready'
   )
   const committed = await store.transition(lockboxReady, acquired.lease, 'credential_committed', {
     resumeMaterial: {
