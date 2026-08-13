@@ -834,6 +834,7 @@ export default function LandingScreen(): JSX.Element {
         })
     }
     input.click()
+    await Promise.resolve()
   }
 
   const handleCancelAccountSelection = (): void => {

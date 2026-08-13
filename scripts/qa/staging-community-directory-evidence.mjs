@@ -5,24 +5,31 @@
  *
  * Coverage:
  * - Tab sequence contract in source (`Feed` -> `Directory` -> `Backpack`).
- * - Optional live staging verification using an authenticated Playwright
- *   storage state file.
+ * - Live staging verification using an authenticated Playwright storage
+ *   state file.
  *
  * Usage:
  *   node scripts/qa/staging-community-directory-evidence.mjs
  *
- * Optional live check (requires authenticated storage state JSON):
+ * Optional override for live check storage state:
  *   STAGING_BASE_URL=https://staging.nodezero.social \
  *   COMMUNITY_DIRECTORY_STORAGE_STATE=./playwright/.auth/staging.json \
  *   node scripts/qa/staging-community-directory-evidence.mjs
+ *
+ * If COMMUNITY_DIRECTORY_STORAGE_STATE is not provided, this script generates
+ * one automatically by running scripts/qa/staging-auth-evidence.mjs with
+ * AUTH_E2E_STOP_AFTER_STORAGE_STATE=1.
  */
 
-import { readFile } from 'node:fs/promises'
+import { spawn } from 'node:child_process'
+import { access, mkdir, readFile } from 'node:fs/promises'
+import { dirname } from 'node:path'
 import { chromium } from '@playwright/test'
 
 const baseUrl = (process.env.STAGING_BASE_URL || 'https://staging.nodezero.social').replace(/\/$/, '')
 const layoutPath = 'packages/mobile-app/app/_layout.tsx'
-const storageStatePath = (process.env.COMMUNITY_DIRECTORY_STORAGE_STATE || '').trim()
+const configuredStorageStatePath = (process.env.COMMUNITY_DIRECTORY_STORAGE_STATE || '').trim()
+const defaultStorageStatePath = 'playwright/.auth/staging-community-directory.json'
 
 function log(message) {
   console.log(`[community-directory-evidence] ${message}`)
@@ -57,11 +64,102 @@ async function runSourceTabSequenceCheck() {
   log('PASS source tab sequence: Feed -> Directory -> Backpack')
 }
 
-async function runOptionalLiveCheck() {
-  if (!storageStatePath) {
-    log('SKIP live staging nav check (COMMUNITY_DIRECTORY_STORAGE_STATE not provided).')
+async function fileExists(path) {
+  try {
+    await access(path)
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function runAuthEvidenceForStorageState(storageStatePath) {
+  await mkdir(dirname(storageStatePath), { recursive: true })
+  log(`Generating authenticated storage state at ${storageStatePath}...`)
+  await new Promise((resolve, reject) => {
+    const child = spawn(
+      process.execPath,
+      ['scripts/qa/staging-auth-evidence.mjs'],
+      {
+        stdio: 'inherit',
+        env: {
+          ...process.env,
+          STAGING_BASE_URL: baseUrl,
+          AUTH_E2E_STORAGE_STATE_OUT: storageStatePath,
+          AUTH_E2E_STOP_AFTER_STORAGE_STATE: '1',
+        },
+      }
+    )
+
+    child.on('error', reject)
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve(undefined)
+        return
+      }
+      reject(new Error(`staging-auth-evidence exited with code ${String(code)}`))
+    })
+  })
+
+  if (!(await fileExists(storageStatePath))) {
+    fail(`Auth evidence completed but did not produce storage state: ${storageStatePath}`)
+  }
+  log(`PASS authenticated storage state ready: ${storageStatePath}`)
+}
+
+async function runAuthEvidenceForDirectoryTabCheck() {
+  log('No COMMUNITY_DIRECTORY_STORAGE_STATE provided; using auth evidence fallback with inline Directory tab assertion...')
+  await new Promise((resolve, reject) => {
+    const child = spawn(
+      process.execPath,
+      ['scripts/qa/staging-auth-evidence.mjs'],
+      {
+        stdio: 'inherit',
+        env: {
+          ...process.env,
+          STAGING_BASE_URL: baseUrl,
+          AUTH_E2E_CHECK_DIRECTORY_TABS: '1',
+        },
+      }
+    )
+
+    child.on('error', reject)
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve(undefined)
+        return
+      }
+      reject(new Error(`staging-auth-evidence fallback exited with code ${String(code)}`))
+    })
+  })
+
+  log('PASS live staging tab sequence via auth evidence fallback: Feed -> Directory -> Backpack')
+}
+
+async function resolveStorageStatePath() {
+  if (configuredStorageStatePath) {
+    if (!(await fileExists(configuredStorageStatePath))) {
+      fail(`Configured COMMUNITY_DIRECTORY_STORAGE_STATE does not exist: ${configuredStorageStatePath}`)
+    }
+    return configuredStorageStatePath
+  }
+
+  if (await fileExists(defaultStorageStatePath)) {
+    log(`Using existing authenticated storage state: ${defaultStorageStatePath}`)
+    return defaultStorageStatePath
+  }
+
+  await runAuthEvidenceForStorageState(defaultStorageStatePath)
+  return defaultStorageStatePath
+}
+
+async function runLiveCheck() {
+  if (!configuredStorageStatePath) {
+    await runAuthEvidenceForDirectoryTabCheck()
     return
   }
+
+  const storageStatePath = await resolveStorageStatePath()
 
   const browser = await chromium.launch({ headless: true })
   const context = await browser.newContext({ storageState: storageStatePath })
@@ -98,5 +196,5 @@ async function runOptionalLiveCheck() {
 }
 
 await runSourceTabSequenceCheck()
-await runOptionalLiveCheck()
+await runLiveCheck()
 log('All community directory evidence checks completed.')

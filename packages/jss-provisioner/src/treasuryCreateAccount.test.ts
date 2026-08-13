@@ -42,14 +42,14 @@ void test('retries a transient Stellar connection failure and succeeds', async (
   let submissions = 0
   const txHash = 'a'.repeat(64)
   const result = await treasuryCreateAccount(VALID_G, 1, {
-    accountExists: async () => false,
+    accountExists: () => Promise.resolve(false),
     getTreasurySourceAccount: () => 'treasury-test',
-    runStellar: async () => {
+    runStellar: () => {
       submissions += 1
-      if (submissions === 1) throw new Error('error: client error (Connect)')
-      return txHash
+      if (submissions === 1) return Promise.reject(new Error('error: client error (Connect)'))
+      return Promise.resolve(txHash)
     },
-    sleep: async () => undefined,
+    sleep: () => Promise.resolve(),
     retryAttempts: 3,
     retryBaseDelayMs: 0,
   })
@@ -63,16 +63,16 @@ void test('treats an existing account after response loss as success', async () 
   let existenceChecks = 0
   let submissions = 0
   const result = await treasuryCreateAccount(VALID_G, 1, {
-    accountExists: async () => {
+    accountExists: () => {
       existenceChecks += 1
-      return existenceChecks > 1
+      return Promise.resolve(existenceChecks > 1)
     },
     getTreasurySourceAccount: () => 'treasury-test',
-    runStellar: async () => {
+    runStellar: () => {
       submissions += 1
-      throw new Error('error: client error (Connect)')
+      return Promise.reject(new Error('error: client error (Connect)'))
     },
-    sleep: async () => undefined,
+    sleep: () => Promise.resolve(),
     retryAttempts: 3,
     retryBaseDelayMs: 0,
   })
@@ -86,13 +86,13 @@ void test('fails closed after bounded transient connection retries', async () =>
   let submissions = 0
   await assert.rejects(
     () => treasuryCreateAccount(VALID_G, 1, {
-      accountExists: async () => false,
+      accountExists: () => Promise.resolve(false),
       getTreasurySourceAccount: () => 'treasury-test',
-      runStellar: async () => {
+      runStellar: () => {
         submissions += 1
-        throw new Error('error: client error (Connect)')
+        return Promise.reject(new Error('error: client error (Connect)'))
       },
-      sleep: async () => undefined,
+      sleep: () => Promise.resolve(),
       retryAttempts: 3,
       retryBaseDelayMs: 0,
     }),

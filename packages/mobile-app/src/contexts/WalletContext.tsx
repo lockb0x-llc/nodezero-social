@@ -555,12 +555,11 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
           setAttestationDetails(details({}))
           return
         }
-        let deviceCommitment: string
         const secret = await _adapter?.loadOrCreate(walletInfo?.keyId)
         if (!secret) throw new Error('wallet secret unavailable')
         const { deriveAccountCommitmentHex } =
           await import('@nodezero/zk-crypto/attestation-cipher')
-        deviceCommitment = await deriveAccountCommitmentHex(secret)
+        const deviceCommitment: string = await deriveAccountCommitmentHex(secret)
         const norm = (h: string): string => h.trim().toLowerCase().replace(/^0x/, '')
         if (norm(deviceCommitment) === norm(onchain)) {
           advanceVerificationStep('identity')

@@ -28,7 +28,8 @@
 
 import { chromium } from '@playwright/test'
 import { Contract, Keypair, rpc, scValToNative } from '@stellar/stellar-sdk'
-import { appendFile } from 'node:fs/promises'
+import { appendFile, mkdir } from 'node:fs/promises'
+import { dirname } from 'node:path'
 
 const baseUrl = (process.env.STAGING_BASE_URL || 'https://staging.nodezero.social').replace(/\/$/, '')
 const solidHost = (process.env.SOLID_HOST || 'solid.nodezero.social').toLowerCase()
@@ -46,6 +47,13 @@ const expectCrossHostHandoff = /^(1|true|yes)$/i.test(
   process.env.NZ_EXPECT_INTERNAL_STAGING_HANDOFF ?? 'false'
 )
 const stellarRpcUrl = process.env.NZ_STELLAR_RPC_URL || 'https://soroban-testnet.stellar.org'
+const storageStateOut = (process.env.AUTH_E2E_STORAGE_STATE_OUT || '').trim()
+const stopAfterStorageState = /^(1|true|yes)$/i.test(
+  process.env.AUTH_E2E_STOP_AFTER_STORAGE_STATE ?? 'false'
+)
+const checkDirectoryTabs = /^(1|true|yes)$/i.test(
+  process.env.AUTH_E2E_CHECK_DIRECTORY_TABS ?? 'false'
+)
 
 const SESSION_STORAGE_KEY = 'nz.session.v2'
 
@@ -299,6 +307,38 @@ async function maybeSelectAccountForReturningSignIn(page, expectedWebId) {
   return true
 }
 
+async function maybeWriteStorageState(context) {
+  if (!storageStateOut) return
+  await mkdir(dirname(storageStateOut), { recursive: true })
+  await context.storageState({ path: storageStateOut })
+  await publishOutput('auth_storage_state_path', storageStateOut)
+  log(`Saved authenticated browser storage state: ${storageStateOut}`)
+}
+
+async function maybeAssertDirectoryTabSequence(page) {
+  if (!checkDirectoryTabs) return
+  await page.goto(`${baseUrl}/profile`, { waitUntil: 'networkidle', timeout: 60_000 })
+  const labels = await page
+    .locator('a')
+    .evaluateAll((anchors) =>
+      anchors
+        .map((a) => (a.textContent || '').trim())
+        .filter((text) => Boolean(text))
+    )
+
+  const feedIndex = labels.indexOf('Feed')
+  const directoryIndex = labels.indexOf('Directory')
+  const backpackIndex = labels.indexOf('Backpack')
+
+  if (feedIndex === -1 || directoryIndex === -1 || backpackIndex === -1) {
+    fail(`Directory tab check failed: required labels missing. Labels seen: ${JSON.stringify(labels)}`)
+  }
+  if (!(feedIndex < directoryIndex && directoryIndex < backpackIndex)) {
+    fail(`Directory tab check failed: order mismatch. Labels seen: ${JSON.stringify(labels)}`)
+  }
+  log('Directory tab check PASS: Feed -> Directory -> Backpack')
+}
+
 function assertNoLegacyLegs(navigations, cssRequests) {
   for (const url of navigations) {
     if (/nz_oidc_bridge|nz_bridge_return|nz_stellar_token|[?&]code=|[?&]state=/.test(url)) {
@@ -527,6 +567,15 @@ async function main() {
   }
   await assertNoPersistedBrowserSession(page, 'Browser-session bootstrap')
   log('Journey 2b PASS: retained session verified after wallet initialization')
+
+  await maybeAssertDirectoryTabSequence(page)
+
+  await maybeWriteStorageState(context)
+  if (stopAfterStorageState) {
+    await browser.close()
+    log('PASS: exported authenticated storage state and stopped before negative journey by request')
+    return
+  }
 
   await publishOutput('docustream_pane_passed', String(await probeDocustreamPane(page)))
 
