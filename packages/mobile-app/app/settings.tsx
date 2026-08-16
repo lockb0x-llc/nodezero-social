@@ -69,43 +69,105 @@ export default function SettingsScreen(): JSX.Element {
     await writeContentPreferences({ showNsfw: val })
   }, [])
 
-  const clearCache = useCallback((): void => {
-    Alert.alert(
-      'Clear Local Cache',
-      'This will delete all locally cached data. Your Solid Pod data will not be affected.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Clear',
-          style: 'destructive',
-          onPress: (): void => {
-            void AsyncStorage.clear().then(() => {
-              Alert.alert('Done', 'Local cache cleared.')
-            })
-          },
-        },
-      ]
-    )
+  const performClearCache = useCallback(async (): Promise<void> => {
+    try {
+      await AsyncStorage.clear()
+      setDataActionStatus('Local cache cleared.')
+      if (Platform.OS === 'web' && typeof globalThis.alert === 'function') {
+        globalThis.alert('Local cache cleared.')
+      } else {
+        Alert.alert('Done', 'Local cache cleared.')
+      }
+    } catch (err) {
+      setDataActionStatus(
+        err instanceof Error ? `Clear cache failed: ${err.message}` : 'Clear cache failed.'
+      )
+    }
   }, [])
 
-  const handleSignOut = useCallback(async () => {
+  const clearCache = useCallback((): void => {
+    const message =
+      'This will delete all locally cached data. Your Solid Pod data will not be affected.'
+    if (Platform.OS === 'web' && typeof globalThis.confirm === 'function') {
+      if (globalThis.confirm(`Clear Local Cache\n\n${message}`)) {
+        void performClearCache()
+      }
+      return
+    }
+    Alert.alert('Clear Local Cache', message, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Clear',
+        style: 'destructive',
+        onPress: (): void => {
+          void performClearCache()
+        },
+      },
+    ])
+  }, [performClearCache])
+
+  const handleSignOut = useCallback(async (): Promise<void> => {
     await signOut()
     router.replace('/')
   }, [router, signOut])
 
-  const deliverBundle = useCallback((fileName: string, json: string): void => {
-    if (Platform.OS === 'web' && typeof document !== 'undefined') {
-      const blob = new Blob([json], { type: 'application/json' })
-      const href = URL.createObjectURL(blob)
-      const anchor = document.createElement('a')
-      anchor.href = href
-      anchor.download = fileName
-      document.body.appendChild(anchor)
-      anchor.click()
-      document.body.removeChild(anchor)
-      URL.revokeObjectURL(href)
-      return
+  const deliverBundle = useCallback(async (fileName: string, json: string): Promise<void> => {
+    if (Platform.OS === 'web') {
+      // 1. Try Web Share API with file if supported on mobile browsers
+      if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+        try {
+          if (
+            typeof File !== 'undefined' &&
+            navigator.canShare &&
+            navigator.canShare({ files: [new File([json], fileName, { type: 'application/json' })] })
+          ) {
+            const file = new File([json], fileName, { type: 'application/json' })
+            await navigator.share({
+              title: fileName,
+              files: [file],
+            })
+            return
+          }
+        } catch (shareErr) {
+          if (shareErr instanceof Error && shareErr.name === 'AbortError') return
+        }
+      }
+
+      // 2. Try anchor download
+      let downloadTriggered = false
+      if (typeof document !== 'undefined') {
+        try {
+          const blob = new Blob([json], { type: 'application/json' })
+          const href = URL.createObjectURL(blob)
+          const anchor = document.createElement('a')
+          anchor.href = href
+          anchor.download = fileName
+          document.body.appendChild(anchor)
+          anchor.click()
+          document.body.removeChild(anchor)
+          URL.revokeObjectURL(href)
+          downloadTriggered = true
+        } catch (dlErr) {
+          console.warn('[Settings] Anchor download failed:', dlErr)
+        }
+      }
+
+      // 3. Fallback: Copy to clipboard if on web
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        try {
+          await navigator.clipboard.writeText(json)
+          if (!downloadTriggered) {
+            setDataActionStatus('Recovery bundle copied to clipboard (file download unavailable).')
+            return
+          }
+        } catch {
+          // clipboard unavailable
+        }
+      }
+
+      if (downloadTriggered) return
     }
+
     void Share.share({ title: fileName, message: json })
   }, [])
 
@@ -113,8 +175,8 @@ export default function SettingsScreen(): JSX.Element {
     setIsExporting(true)
     setDataActionStatus(null)
     void exportRecoveryBundle()
-      .then(({ fileName, json }) => {
-        deliverBundle(fileName, json)
+      .then(async ({ fileName, json }) => {
+        await deliverBundle(fileName, json)
         setDataActionStatus('Recovery bundle exported.')
       })
       .catch((err: unknown) => {
@@ -134,58 +196,131 @@ export default function SettingsScreen(): JSX.Element {
     ])
   }, [performRecoveryExport])
 
-  const deleteData = useCallback(() => {
-    Alert.alert(
-      'Delete Node Data',
-      'This unlinks your identity on-chain, destroys your local wallet key, and clears local node state. A new wallet and lockb0x are provisioned on next sign-in. This cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: (): void => {
-            setIsDeleting(true)
-            setDataActionStatus(null)
-            void deleteNodeData({ unlinkIdentity: true, clearAllLocalCache: true })
-              .then(async ({ unlinkedIdentity, walletDestroyed, localStateCleared, warnings }) => {
-                const status =
-                  walletDestroyed && localStateCleared
-                    ? (unlinkedIdentity ? 'Node deleted and identity unlinked.' : 'Node deleted (local unlink only).')
-                    : 'Node delete completed with partial cleanup.'
-                const warningSuffix = warnings.length > 0 ? ` Warning: ${warnings.join(' ')}` : ''
-                setDataActionStatus(`${status}${warningSuffix}`)
-                await signOut()
-                router.replace('/')
-              })
-              .catch((err: unknown) => {
-                setDataActionStatus(err instanceof Error ? `Delete failed: ${err.message}` : 'Delete failed.')
-              })
-              .finally(() => setIsDeleting(false))
-          },
-        },
-      ]
-    )
+  const performDeleteData = useCallback((): void => {
+    setIsDeleting(true)
+    setDataActionStatus(null)
+    void deleteNodeData({ unlinkIdentity: true, clearAllLocalCache: true })
+      .then(async ({ unlinkedIdentity, walletDestroyed, localStateCleared, warnings }) => {
+        const status =
+          walletDestroyed && localStateCleared
+            ? (unlinkedIdentity ? 'Node deleted and identity unlinked.' : 'Node deleted (local unlink only).')
+            : 'Node delete completed with partial cleanup.'
+        const warningSuffix = warnings.length > 0 ? ` Warning: ${warnings.join(' ')}` : ''
+        setDataActionStatus(`${status}${warningSuffix}`)
+        await signOut()
+        router.replace('/')
+      })
+      .catch((err: unknown) => {
+        setDataActionStatus(err instanceof Error ? `Delete failed: ${err.message}` : 'Delete failed.')
+      })
+      .finally(() => setIsDeleting(false))
   }, [deleteNodeData, router, signOut])
 
-  const createIdentityFromSettings = useCallback(async () => {
-    setDataActionStatus(null)
-    try {
-      await createIdentity()
-      setDataActionStatus('New identity created and selected.')
-    } catch (err) {
-      setDataActionStatus(err instanceof Error ? `Identity create failed: ${err.message}` : 'Identity create failed.')
+  const deleteData = useCallback(() => {
+    const message =
+      'This unlinks your identity on-chain, destroys your local wallet key, and clears local node state. A new wallet and lockb0x are provisioned on next sign-in. This cannot be undone.'
+    if (Platform.OS === 'web' && typeof globalThis.confirm === 'function') {
+      if (globalThis.confirm(`Delete Node Data\n\n${message}`)) {
+        performDeleteData()
+      }
+      return
     }
-  }, [createIdentity])
+    Alert.alert('Delete Node Data', message, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: performDeleteData,
+      },
+    ])
+  }, [performDeleteData])
 
-  const switchIdentityFromSettings = useCallback(async (keyId: string) => {
+  const createIdentityFromSettings = useCallback((): void => {
     setDataActionStatus(null)
-    try {
-      await selectIdentity(keyId)
-      setDataActionStatus('Identity switched.')
-    } catch (err) {
-      setDataActionStatus(err instanceof Error ? `Identity switch failed: ${err.message}` : 'Identity switch failed.')
+    const proceed = (): void => {
+      void (async (): Promise<void> => {
+        try {
+          await createIdentity()
+          if (webId) {
+            setDataActionStatus(
+              'New identity created. Signing out so you can onboard or sign in with your new identity…'
+            )
+            await signOut()
+            router.replace('/')
+          } else {
+            setDataActionStatus('New identity created and selected.')
+          }
+        } catch (err) {
+          setDataActionStatus(
+            err instanceof Error ? `Identity create failed: ${err.message}` : 'Identity create failed.'
+          )
+        }
+      })()
     }
-  }, [selectIdentity])
+
+    if (webId) {
+      const message =
+        'Creating and activating a new device identity will sign you out of your current node so you can create or sign in with the new identity.'
+      if (Platform.OS === 'web' && typeof globalThis.confirm === 'function') {
+        if (globalThis.confirm(`Create New Identity\n\n${message}`)) {
+          proceed()
+        }
+        return
+      }
+      Alert.alert('Create New Identity', message, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Create & Sign Out', onPress: proceed },
+      ])
+      return
+    }
+
+    proceed()
+  }, [createIdentity, router, signOut, webId])
+
+  const switchIdentityFromSettings = useCallback(
+    (keyId: string): void => {
+      setDataActionStatus(null)
+      const proceed = (): void => {
+        void (async (): Promise<void> => {
+          try {
+            await selectIdentity(keyId)
+            if (webId) {
+              setDataActionStatus(
+                'Identity switched. Signing out so you can sign in to your selected identity…'
+              )
+              await signOut()
+              router.replace('/')
+            } else {
+              setDataActionStatus('Identity switched.')
+            }
+          } catch (err) {
+            setDataActionStatus(
+              err instanceof Error ? `Identity switch failed: ${err.message}` : 'Identity switch failed.'
+            )
+          }
+        })()
+      }
+
+      if (webId) {
+        const message =
+          'Switching your active device identity will sign you out of your current node so you can sign in with the selected identity.'
+        if (Platform.OS === 'web' && typeof globalThis.confirm === 'function') {
+          if (globalThis.confirm(`Switch Identity\n\n${message}`)) {
+            proceed()
+          }
+          return
+        }
+        Alert.alert('Switch Identity', message, [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Switch & Sign Out', onPress: proceed },
+        ])
+        return
+      }
+
+      proceed()
+    },
+    [router, selectIdentity, signOut, webId]
+  )
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
