@@ -94,7 +94,31 @@ function mapCreateNodeError(err: unknown): string {
       'Refresh the page to load the current release, then create a new test node.'
     )
   }
+  if (
+    isBridgeMismatchError(err) ||
+    (err instanceof SeamlessSignupApiError && err.code === 'identity_already_linked')
+  ) {
+    return (
+      'This device identity is already linked to a node on-chain. ' +
+      'Sign in with your device key, or tap "Create a new identity" above to start a new account.'
+    )
+  }
   return err.message || 'Could not create your node. Try again.'
+}
+
+function isBridgeMismatchError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false
+  const lower = (err.message ?? '').toLowerCase()
+  return (
+    (lower.includes('error(contract, #5)') ||
+      lower.includes('error(contract,#5)') ||
+      lower.includes('error 5') ||
+      lower.includes('bridgemismatch') ||
+      lower.includes('hosterror: error(contract, #5)')) &&
+    (lower.includes('create_or_get_bridge_lockbox') ||
+      lower.includes('cdfhcqa3yjcitwemnlcsrgqvvfexgtonwsqjtd5vizo7yv4iokzupcgt') ||
+      lower.includes('transaction simulation failed'))
+  )
 }
 
 function isEmailAlreadyRegisteredError(err: unknown): boolean {
@@ -763,9 +787,14 @@ export default function LandingScreen(): JSX.Element {
           'This email address is already registered. If this is your account, sign in with the device that created it.'
         )
         setErrorAction(null)
-      } else if (err instanceof SeamlessSignupApiError && err.code === 'identity_already_linked') {
-        const accounts = Array.isArray(err.details?.accounts)
-          ? err.details.accounts.filter(
+      } else if (
+        (err instanceof SeamlessSignupApiError && err.code === 'identity_already_linked') ||
+        isBridgeMismatchError(err)
+      ) {
+        const rawAccounts =
+          err instanceof SeamlessSignupApiError ? err.details?.accounts : undefined
+        const accounts = Array.isArray(rawAccounts)
+          ? rawAccounts.filter(
               (entry): entry is { webId: string } =>
                 typeof entry === 'object' &&
                 entry !== null &&
@@ -774,8 +803,8 @@ export default function LandingScreen(): JSX.Element {
           : []
         setError(
           accounts.length > 0
-            ? `This device identity is already linked on-chain to ${accounts.length === 1 ? 'an existing node account' : 'existing node accounts'}. Sign in instead, or create a new device identity for another test account.`
-            : 'This device identity is already linked on-chain. Sign in instead, or create a new device identity for another test account.'
+            ? `This device identity is already linked on-chain to ${accounts.length === 1 ? 'an existing node account' : 'existing node accounts'}. Sign in with your device key, or tap "Create a new identity" above to start a new account.`
+            : 'This device identity is already linked on-chain. Sign in with your device key, or tap "Create a new identity" above to start a new account.'
         )
         setErrorAction(null)
       } else {
@@ -794,7 +823,7 @@ export default function LandingScreen(): JSX.Element {
     setCreateNotice('Preparing a new local identity…')
     try {
       await createIdentity()
-      setCreateNotice('New identity ready. You can sign in or create your node with it.')
+      setCreateNotice('New identity ready. You can now sign in or create your node with it.')
     } catch (err) {
       setCreateNotice(null)
       setError(err instanceof Error ? err.message : 'Failed to create a new identity.')

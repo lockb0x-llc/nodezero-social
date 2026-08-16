@@ -379,8 +379,13 @@ function isDuplicateEmailProvisioningMessage(message: string): boolean {
 function isBridgeMismatchProvisioningMessage(message: string): boolean {
   const lower = message.toLowerCase()
   return (
-    lower.includes('create_or_get_bridge_lockbox') &&
-    (lower.includes('error(contract, #5)') || lower.includes('error(contract,#5)'))
+    (lower.includes('create_or_get_bridge_lockbox') ||
+      lower.includes('lockb0x-bridge-factory') ||
+      lower.includes('cdfhcqa3yjcitwemnlcsrgqvvfexgtonwsqjtd5vizo7yv4iokzupcgt')) &&
+    (lower.includes('error(contract, #5)') ||
+      lower.includes('error(contract,#5)') ||
+      lower.includes('error 5') ||
+      lower.includes('bridgemismatch'))
   )
 }
 
@@ -1907,11 +1912,15 @@ export async function handleHttpRequest(
         LOCKBOX_FACTORY_VERSION === 'v3'
           ? parseBridgeProof(body, accountCommitmentHex, ciphertextHex)
           : undefined
-      if (bridgeProof && LOCKBOX_FACTORY_MODE === 'soroban') {
+      const targetCommitmentHex = bridgeProof?.accountCommitmentHex || accountCommitmentHex
+      if (targetCommitmentHex && LOCKBOX_FACTORY_MODE === 'soroban') {
         const linkage = await probeBridgeIdentityLinkageOnChain({
           factoryContractId: LOCKBOX_FACTORY_CONTRACT_ID,
-          accountCommitmentHex: bridgeProof.accountCommitmentHex,
+          accountCommitmentHex: targetCommitmentHex,
           enabled: Boolean(LOCKBOX_FACTORY_CONTRACT_ID.trim()),
+        }).catch((err) => {
+          console.warn('[solid-account] on-chain linkage pre-check warning:', err)
+          return { linked: false, lockboxContractId: null, accountCommitmentHex: null }
         })
         if (linkage.linked) {
           const accounts = await credentialStore
@@ -2431,14 +2440,19 @@ export async function handleHttpRequest(
         })
         return
       }
-      if (err instanceof IdentityLinkageConflictError) {
+      if (err instanceof IdentityLinkageConflictError || isBridgeMismatchProvisioningMessage(message)) {
+        const lockboxContractId =
+          err instanceof IdentityLinkageConflictError
+            ? err.lockboxContractId
+            : firstContractIdFromMessage(message)
         const accounts = await credentialStore
           .findAllByStellarPublicKey(stellarPublicKey)
           .catch(() => [])
         sendJson(req, res, 409, {
-          error: err.message,
-          code: err.code,
-          ...(err.lockboxContractId ? { lockboxContractId: err.lockboxContractId } : {}),
+          error:
+            'This device identity is already linked on-chain. Sign in with the existing node account, or create a new device identity before creating another node.',
+          code: 'identity_already_linked',
+          ...(lockboxContractId ? { lockboxContractId } : {}),
           accounts: accounts.map((record) => ({ webId: record.webId, podUrl: record.podUrl })),
           ...(sagaOperation ? { operationId: sagaOperation.operation.operationId } : {}),
         })
