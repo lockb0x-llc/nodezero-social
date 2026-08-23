@@ -231,6 +231,10 @@ Completed 2026-08-23 as a repository-maintenance change:
 
 The history rewrite is complete on GitHub. Existing clones must re-clone or reset their local branches to the rewritten remote history before contributing. The remaining 2.4 MiB `.agents/shared-inbox/inbox.md` file is operational handoff history, not a generated build artifact; it should be rotated separately if its growth becomes a concern.
 
+### Dependency security follow-up
+
+On 2026-08-23, the pnpm audit result was reduced from nine advisories to one low-severity advisory. Patched overrides for `send`, `fast-xml-parser`, `postcss`, `nanoid`, `undici@6`, and `uuid` are maintained in `pnpm-workspace.yaml`; the `undici` override is scoped to version 6 so Comunica's required version 8 runtime remains compatible. The remaining `elliptic` advisory is upstream-blocked: `circomlibjs@0.1.7` brings `ethers@5.8.0` and `elliptic@6.6.1`, while the registry currently offers no patched `elliptic` release. Replacing that legacy cryptography chain requires a separate ZK compatibility review.
+
 ## 9. Source Index (for follow-up verification)
 
 - Identity/session: `packages/jss-provisioner/src/index.ts`, `sessionTokens.ts`, `credentialStore.ts`; `packages/mobile-app/src/auth/useStellarSignIn.ts`, `src/contexts/NodeZeroSessionContext.tsx`, `app/index.tsx`
