@@ -2,7 +2,7 @@
  * GlobalFeedScreen
  *
  * Displays a strictly chronological timeline of posts pulled from the
- * WebIDs the authenticated user follows (their `foaf:knows` graph).
+ * WebIDs the authenticated user has explicitly accepted in their Pod.
  *
  * NodeZero principle: no engagement-farming algorithm. Newest first. Period.
  */
@@ -100,8 +100,21 @@ export default function GlobalFeedScreen(): JSX.Element {
 
     try {
       const podRoot = webId.split('/profile/')[0] + '/'
-      const { socialGraph, profileManager, docustreamManager } = getSolidPodSyncManagers({ fetch: authFetch })
-      const connections = await socialGraph.listConnections(podRoot)
+      const { relationshipManager, moderationManager, profileManager, docustreamManager } =
+        getSolidPodSyncManagers({ fetch: authFetch })
+      const [relationships, moderation] = await Promise.all([
+        relationshipManager.listRelationships(podRoot),
+        moderationManager.listModeration(podRoot),
+      ])
+      const blockedWebIds = new Set(
+        moderation
+          .filter((record) => record.action === 'block')
+          .map((record) => record.subjectWebId)
+      )
+      const connections = relationships
+        .filter((relationship) => relationship.state === 'accepted')
+        .filter((relationship) => !blockedWebIds.has(relationship.peerWebId))
+        .map((relationship) => ({ webId: relationship.peerWebId }))
 
       const authorNames = new Map<string, string>()
       const authorMetadata: Array<{ authorWebId: string; externalUrl?: string; avatarUrl?: string }> = []

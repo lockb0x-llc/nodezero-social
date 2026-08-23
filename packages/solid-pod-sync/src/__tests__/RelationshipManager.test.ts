@@ -9,7 +9,7 @@ const activityId = 'https://alice.example/social/outbox/follow-bob'
 function responseWithUrl(body: string, url: string): Response {
   const response = new Response(body, {
     status: 200,
-    headers: { 'content-type': 'text/turtle' },
+    headers: { 'content-type': 'text/turtle', etag: '"relationships-v1"' },
   })
   Object.defineProperty(response, 'url', { value: url })
   return response

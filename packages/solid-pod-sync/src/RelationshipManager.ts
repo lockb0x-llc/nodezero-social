@@ -3,13 +3,12 @@ import {
   createSolidDataset,
   createThing,
   getInteger,
-  getSolidDataset,
   getStringNoLocale,
   getThing,
   getThingAll,
   getUrl,
   removeThing,
-  saveSolidDatasetAt,
+  solidDatasetAsTurtle,
   setThing,
   type SolidDataset,
   type WithServerResourceInfo,
@@ -26,6 +25,10 @@ import {
   deriveOwnerWebId,
   type PodPolicyMatrix,
 } from './PodLayoutManager.js'
+import {
+  getSolidDatasetSnapshot,
+  saveSolidDatasetWithPatchFallback,
+} from './saveSolidDatasetCompat.js'
 
 interface AuthenticatedSession {
   fetch: typeof globalThis.fetch
@@ -80,7 +83,7 @@ export class RelationshipManager {
   ) {}
 
   async listRelationships(podRoot: string): Promise<RelationshipRecord[]> {
-    const dataset = await this.readDataset(podRoot)
+    const { dataset } = await this.readSnapshot(podRoot)
     if (!dataset) return []
 
     const records: RelationshipRecord[] = []
@@ -95,7 +98,7 @@ export class RelationshipManager {
   }
 
   async getRelationship(podRoot: string, peerWebId: string): Promise<RelationshipRecord | null> {
-    const dataset = await this.readDataset(podRoot)
+    const { dataset } = await this.readSnapshot(podRoot)
     if (!dataset) return null
     const thing = getThing(dataset, relationshipThingUrl(podRoot, peerWebId))
     if (!thing) return null
@@ -111,23 +114,30 @@ export class RelationshipManager {
     await this.ensurePodLayoutIfEnabled(podRoot)
 
     const ownerWebId = deriveOwnerWebId(`${podRoot.replace(/\/$/, '')}/social/relationships/`)
-    const existing = await this.getRelationship(podRoot, input.peerWebId)
-    const from = existing?.state ?? 'none'
-    if (!canTransitionRelationship(from, input.to)) {
-      throw new Error(`Invalid relationship transition: ${from} -> ${input.to}`)
-    }
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const existing = await this.getRelationship(podRoot, input.peerWebId)
+      const from = existing?.state ?? 'none'
+      if (!canTransitionRelationship(from, input.to)) {
+        throw new Error(`Invalid relationship transition: ${from} -> ${input.to}`)
+      }
 
-    const record: RelationshipRecord = {
-      version: 1,
-      ownerWebId,
-      peerWebId: input.peerWebId,
-      state: input.to,
-      updatedAt: input.updatedAt ?? new Date().toISOString(),
+      const record: RelationshipRecord = {
+        version: 1,
+        ownerWebId,
+        peerWebId: input.peerWebId,
+        state: input.to,
+        updatedAt: input.updatedAt ?? new Date().toISOString(),
+      }
+      if (input.activityId !== undefined) record.activityId = input.activityId
+      assertValidRelationshipRecord(record)
+      try {
+        await this.writeRecord(podRoot, record)
+        return record
+      } catch (error) {
+        if (!isConflictError(error) || attempt === 2) throw error
+      }
     }
-    if (input.activityId !== undefined) record.activityId = input.activityId
-    assertValidRelationshipRecord(record)
-    await this.writeRecord(podRoot, record)
-    return record
+    throw new Error('Relationships changed concurrently; retry the operation.')
   }
 
   async importLegacyConnection(
@@ -145,18 +155,25 @@ export class RelationshipManager {
   }
 
   async removeRelationship(podRoot: string, peerWebId: string): Promise<void> {
-    const dataset = await this.readDataset(podRoot)
+    const snapshot = await this.readSnapshot(podRoot)
+    const dataset = snapshot.dataset
     if (!dataset) return
     const thingUrl = relationshipThingUrl(podRoot, peerWebId)
     if (!getThing(dataset, thingUrl)) return
     const updated = removeThing(dataset, thingUrl)
-    await saveSolidDatasetAt(relationshipsUrl(podRoot), updated, { fetch: this.session.fetch })
+    await saveSolidDatasetWithPatchFallback(
+      relationshipsUrl(podRoot),
+      updated,
+      this.session.fetch,
+      snapshot.etag
+    )
   }
 
   private async writeRecord(podRoot: string, record: RelationshipRecord): Promise<void> {
     const datasetUrl = relationshipsUrl(podRoot)
     const thingUrl = relationshipThingUrl(podRoot, record.peerWebId)
-    const dataset = (await this.readDataset(podRoot)) ?? createSolidDataset()
+    const snapshot = await this.readSnapshot(podRoot)
+    const dataset = snapshot.dataset ?? createSolidDataset()
     const existing = getThing(dataset, thingUrl) ?? createThing({ url: thingUrl })
     let builder = buildThing(existing)
     for (const predicate of OWNED_PREDICATES) builder = builder.removeAll(predicate)
@@ -170,18 +187,38 @@ export class RelationshipManager {
       .setStringNoLocale(NZ_UPDATED_AT, record.updatedAt)
     if (record.activityId) builder = builder.setUrl(NZ_ACTIVITY_ID, record.activityId)
 
-    await saveSolidDatasetAt(datasetUrl, setThing(dataset, builder.build()), {
-      fetch: this.session.fetch,
+    const updated = setThing(dataset, builder.build())
+    if (snapshot.dataset) {
+      await saveSolidDatasetWithPatchFallback(datasetUrl, updated, this.session.fetch, snapshot.etag)
+      return
+    }
+    await this.session.fetch(datasetUrl, {
+      method: 'PUT',
+      headers: {
+        'content-type': 'text/turtle',
+        'if-none-match': '*',
+      },
+      body: await solidDatasetAsTurtle(updated),
+    }).then((response) => {
+      if (!response.ok && response.status !== 412 && response.status !== 409) {
+        throw new Error(`Failed to create relationships dataset: HTTP ${response.status}`)
+      }
+      if (response.status === 412 || response.status === 409) {
+        throw new Error('Relationships changed concurrently; retry the operation.')
+      }
     })
   }
 
-  private async readDataset(
+  private async readSnapshot(
     podRoot: string
-  ): Promise<(SolidDataset & Partial<WithServerResourceInfo>) | null> {
+  ): Promise<{
+    dataset: (SolidDataset & Partial<WithServerResourceInfo>) | null
+    etag: string | null
+  }> {
     try {
-      return await getSolidDataset(relationshipsUrl(podRoot), { fetch: this.session.fetch })
+      return await getSolidDatasetSnapshot(relationshipsUrl(podRoot), this.session.fetch)
     } catch (error) {
-      if (isNotFoundError(error)) return null
+      if (isNotFoundError(error)) return { dataset: null, etag: null }
       throw error
     }
   }
@@ -215,6 +252,14 @@ function isNotFoundError(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false
   const candidate = error as { statusCode?: unknown; status?: unknown; response?: { status?: unknown } }
   return candidate.statusCode === 404 || candidate.status === 404 || candidate.response?.status === 404
+}
+
+function isConflictError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const candidate = error as { statusCode?: unknown; status?: unknown; response?: { status?: unknown } }
+  return candidate.statusCode === 409 || candidate.statusCode === 412 ||
+    candidate.status === 409 || candidate.status === 412 ||
+    candidate.response?.status === 409 || candidate.response?.status === 412
 }
 
 export const RELATIONSHIPS_DATASET_PATH = 'social/relationships/index'

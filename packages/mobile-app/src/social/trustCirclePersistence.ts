@@ -26,6 +26,8 @@ interface PodTrustCircleState {
   exists: boolean
 }
 
+type TrustCircleMutation = 'add' | 'remove'
+
 function normalizeMembers(members: string[]): string[] {
   return Array.from(
     new Set(
@@ -75,7 +77,7 @@ export function createTrustCircleStore(local: TrustCircleLocalAdapter): TrustCir
   async function readPodState(
     ownerWebId: string,
     fetcher: typeof globalThis.fetch
-  ): Promise<PodTrustCircleState | null> {
+  ): Promise<PodTrustCircleState> {
     const docUrl = deriveTrustCircleDocumentUrl(ownerWebId)
     const response = await fetcher(docUrl, {
       headers: { Accept: 'application/json' },
@@ -91,7 +93,7 @@ export function createTrustCircleStore(local: TrustCircleLocalAdapter): TrustCir
       return { members: [], etag: null, exists: false }
     }
 
-    return null
+    throw new Error(`Unable to read Trust Circle from Pod: HTTP ${response.status}`)
   }
 
   async function writePodState(
@@ -106,6 +108,8 @@ export function createTrustCircleStore(local: TrustCircleLocalAdapter): TrustCir
     }
     if (etag) {
       headers['If-Match'] = etag
+    } else {
+      headers['If-None-Match'] = '*'
     }
 
     try {
@@ -124,68 +128,54 @@ export function createTrustCircleStore(local: TrustCircleLocalAdapter): TrustCir
   }
 
   async function list(ownerWebId: string, options: TrustCircleStoreOptions = {}): Promise<string[]> {
-    const localMembers = normalizeMembers(await local.readLocal(ownerWebId))
     const fetcher = options.fetch
-    if (!fetcher) return localMembers
+    if (!fetcher) return normalizeMembers(await local.readLocal(ownerWebId))
 
-    try {
-      const podState = await readPodState(ownerWebId, fetcher)
-      if (!podState) return localMembers
-
-      if (podState.exists) {
-        const podMembers = podState.members
-        await local.writeLocal(ownerWebId, podMembers)
-        return podMembers
-      }
-
-      if (!podState.exists) {
-        if (localMembers.length > 0) {
-          await writePodState(ownerWebId, localMembers, fetcher, null)
-        }
-        return localMembers
-      }
-    } catch {
-      return localMembers
+    const podState = await readPodState(ownerWebId, fetcher)
+    if (podState.exists) {
+      await local.writeLocal(ownerWebId, podState.members)
+      return podState.members
     }
 
-    return localMembers
+    await local.writeLocal(ownerWebId, [])
+    return []
   }
 
-  async function writePod(ownerWebId: string, members: string[], options: TrustCircleStoreOptions = {}): Promise<void> {
+  async function writePod(
+    ownerWebId: string,
+    targetWebId: string,
+    mutation: TrustCircleMutation,
+    options: TrustCircleStoreOptions = {}
+  ): Promise<string[]> {
     const fetcher = options.fetch
-    if (!fetcher) return
-
-    try {
-      const podState = await readPodState(ownerWebId, fetcher)
-      if (!podState) return
-
-      const firstWrite = await writePodState(ownerWebId, members, fetcher, podState.etag)
-      if (firstWrite !== 'conflict') return
-
-      const latestState = await readPodState(ownerWebId, fetcher)
-      if (!latestState) return
-      const mergedMembers = normalizeMembers([...latestState.members, ...members])
-      await writePodState(ownerWebId, mergedMembers, fetcher, latestState.etag)
-      await local.writeLocal(ownerWebId, mergedMembers)
-    } catch {
-      // Keep local state when Pod write is unavailable.
+    if (!fetcher) {
+      throw new Error('Trust Circle mutations require an authenticated Pod fetch.')
     }
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const podState = await readPodState(ownerWebId, fetcher)
+      const nextMembers = mutation === 'add'
+        ? normalizeMembers([...podState.members, targetWebId])
+        : podState.members.filter((member) => member !== targetWebId)
+      const result = await writePodState(ownerWebId, nextMembers, fetcher, podState.etag)
+      if (result === 'ok') {
+        await local.writeLocal(ownerWebId, nextMembers)
+        return nextMembers
+      }
+      if (result === 'error') {
+        throw new Error('Unable to write Trust Circle to Pod.')
+      }
+    }
+
+    throw new Error('Trust Circle changed concurrently; retry the operation.')
   }
 
   async function add(ownerWebId: string, targetWebId: string, options: TrustCircleStoreOptions = {}): Promise<string[]> {
-    const members = await list(ownerWebId, options)
-    const updated = normalizeMembers([...members, targetWebId])
-    await local.writeLocal(ownerWebId, updated)
-    await writePod(ownerWebId, updated, options)
-    return updated
+    return writePod(ownerWebId, targetWebId, 'add', options)
   }
 
   async function remove(ownerWebId: string, targetWebId: string, options: TrustCircleStoreOptions = {}): Promise<string[]> {
-    const members = await list(ownerWebId, options)
-    const updated = normalizeMembers(members.filter((member) => member !== targetWebId))
-    await local.writeLocal(ownerWebId, updated)
-    await writePod(ownerWebId, updated, options)
-    return updated
+    return writePod(ownerWebId, targetWebId, 'remove', options)
   }
 
   async function has(ownerWebId: string, targetWebId: string, options: TrustCircleStoreOptions = {}): Promise<boolean> {

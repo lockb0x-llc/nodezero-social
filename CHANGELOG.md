@@ -10,6 +10,37 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Pod-authoritative Trust Circle persistence with conditional creation, fail-closed
+  reads and writes, and operation-specific conflict retries.
+- ETag-fenced relationship dataset mutations with bounded retries for concurrent
+  Pod writers.
+- Feed relationship reads now use accepted and unblocked Pod relationships instead
+  of unilateral `foaf:knows` connections.
+
+### Changed
+
+- Local Trust Circle storage is now a cache only; a missing or unreachable Pod no
+  longer grants local cached membership or reports a successful mutation.
+- Relationship and Feed integration changes are locally validated but remain behind
+  the existing staging feature gates pending two-account deployment evidence.
+
+### Validation
+
+- Solid Pod Sync: 32 suites, 194 tests pass.
+- Trust Circle persistence: 9 tests pass.
+- Mobile package type-check and lint pass.
+- Repository hygiene policy passes.
+
+### Known Gaps
+
+- Directory, Profile, and Local still create separate screen-level `useConnections`
+  snapshots; a shared mobile social authority provider remains the next integration
+  slice.
+- Durable message history, non-local broadcast delivery, and social notification
+  event wiring remain incomplete and require separate staging validation.
+
+### Existing Features
+
 - Pod-authoritative discovery consent, public manifest, relationship, moderation,
   replay, receipt, quarantine, and Type Index contracts.
 - Owner-controlled Community Directory listing/indexing with explicitly selected

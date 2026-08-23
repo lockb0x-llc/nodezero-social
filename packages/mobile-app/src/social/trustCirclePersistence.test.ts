@@ -40,7 +40,7 @@ void test('parseTrustCircleDocument parses legacy array and versioned document p
   assert.deepEqual(parseTrustCircleDocument('{"version":1,"members":["z","x"]}'), ['x', 'z'])
 })
 
-void test('list migrates local members to pod when pod document is missing', async () => {
+void test('list treats a missing pod document as an empty authoritative circle', async () => {
   const ownerWebId = 'https://pod.example/alice/profile/card#me'
   const readLocal = async () => ['https://pod.example/bob#me']
   const writeLocal = async () => undefined
@@ -55,14 +55,13 @@ void test('list migrates local members to pod when pod document is missing', asy
   const store = createTrustCircleStore({ readLocal, writeLocal })
   const members = await store.list(ownerWebId, { fetch: fetchMock as typeof globalThis.fetch })
 
-  assert.deepEqual(members, ['https://pod.example/bob#me'])
-  assert.equal(calls.length, 2)
+  assert.deepEqual(members, [])
+  assert.equal(calls.length, 1)
   assert.equal(calls[0].url, 'https://pod.example/alice/backpack/preferences/trust-circle.json')
   assert.deepEqual(calls[0].init?.headers, { Accept: 'application/json' })
-  assert.equal(calls[1].init?.method, 'PUT')
 })
 
-void test('list falls back to local members when pod read fails', async () => {
+void test('list surfaces pod read failures instead of using local members', async () => {
   const ownerWebId = 'https://pod.example/alice/profile/card#me'
   const readLocal = async () => ['https://pod.example/charlie#me']
   let writeLocalCalls = 0
@@ -74,9 +73,10 @@ void test('list falls back to local members when pod read fails', async () => {
   }
 
   const store = createTrustCircleStore({ readLocal, writeLocal })
-  const members = await store.list(ownerWebId, { fetch: fetchMock as typeof globalThis.fetch })
-
-  assert.deepEqual(members, ['https://pod.example/charlie#me'])
+  await assert.rejects(
+    store.list(ownerWebId, { fetch: fetchMock as typeof globalThis.fetch }),
+    /network down/
+  )
   assert.equal(writeLocalCalls, 0)
 })
 
@@ -109,7 +109,12 @@ void test('add/remove update local state and write to pod', async () => {
   })
   assert.deepEqual(localState, [])
   assert.equal(writeLocalCalls, 2)
-  assert.equal(calls.filter((entry) => entry.init?.method === 'PUT').length, 3)
+  assert.equal(calls.filter((entry) => entry.init?.method === 'PUT').length, 2)
+  const firstPut = calls.find((entry) => entry.init?.method === 'PUT')
+  assert.deepEqual(firstPut?.init?.headers, {
+    'Content-Type': 'application/json',
+    'If-None-Match': '*',
+  })
 })
 
 void test('writePod merges members and retries once on ETag conflict', async () => {
@@ -128,9 +133,6 @@ void test('writePod merges members and retries once on ETag conflict', async () 
     if (init?.method !== 'PUT') {
       readStep += 1
       if (readStep === 1) {
-        return responseWithEtag(200, 'W/"etag-v1"', '{"version":1,"members":["https://pod.example/alice#me"]}')
-      }
-      if (readStep === 2) {
         return responseWithEtag(200, 'W/"etag-v1"', '{"version":1,"members":["https://pod.example/alice#me"]}')
       }
       return responseWithEtag(
@@ -157,13 +159,12 @@ void test('writePod merges members and retries once on ETag conflict', async () 
     'https://pod.example/bob#me',
     'https://pod.example/charlie#me',
   ])
-  assert.equal(writes.length >= 2, true)
+  assert.equal(writes.length >= 1, true)
 })
 
 void test('writePod merges members and retries once on 409 conflict', async () => {
   const ownerWebId = 'https://pod.example/alice/profile/card#me'
   let localState: string[] = []
-  let readStep = 0
   let putStep = 0
 
   const readLocal = async () => localState
@@ -172,10 +173,6 @@ void test('writePod merges members and retries once on 409 conflict', async () =
   }
   const fetchMock = async (_url: string | URL | Request, init?: RequestInit) => {
     if (init?.method !== 'PUT') {
-      readStep += 1
-      if (readStep <= 2) {
-        return responseWithEtag(200, 'W/"etag-v1"', '{"version":1,"members":["https://pod.example/alice#me"]}')
-      }
       return responseWithEtag(
         200,
         'W/"etag-v2"',
