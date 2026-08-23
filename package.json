@@ -16,6 +16,7 @@
     "type-check": "pnpm -r type-check",
     "clean": "pnpm -r clean && node -e \"require('fs').rmSync('node_modules',{recursive:true,force:true})\"",
     "policy:validate-env": "bash ./scripts/policy/validate-env-isolation.sh",
+    "policy:validate-repository-hygiene": "node ./scripts/policy/validate-repository-hygiene.mjs",
     "policy:validate-attestation-fail-closed": "node ./scripts/policy/validate-attestation-fail-closed.mjs",
     "policy:validate-docustream-enabled": "node ./scripts/policy/validate-docustream-enabled.mjs",
     "policy:validate-consentful-discovery": "node ./scripts/policy/validate-consentful-discovery.mjs",

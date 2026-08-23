@@ -31,6 +31,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Validate repository hygiene
+        run: pnpm policy:validate-repository-hygiene
+
       - name: Validate environment isolation policy
         run: pnpm policy:validate-env
 
