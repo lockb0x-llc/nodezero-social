@@ -1913,7 +1913,7 @@ export async function handleHttpRequest(
           ? parseBridgeProof(body, accountCommitmentHex, ciphertextHex)
           : undefined
       const targetCommitmentHex = bridgeProof?.accountCommitmentHex || accountCommitmentHex
-      if (targetCommitmentHex && LOCKBOX_FACTORY_MODE === 'soroban') {
+      if (targetCommitmentHex && LOCKBOX_FACTORY_MODE === 'soroban' && LOCKBOX_FACTORY_VERSION === 'v3') {
         const linkage = await probeBridgeIdentityLinkageOnChain({
           factoryContractId: LOCKBOX_FACTORY_CONTRACT_ID,
           accountCommitmentHex: targetCommitmentHex,
