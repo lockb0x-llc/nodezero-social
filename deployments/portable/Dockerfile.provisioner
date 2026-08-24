@@ -16,6 +16,6 @@ WORKDIR /workspace/packages/jss-provisioner
 COPY deployments/portable/provisioner-entrypoint.sh /usr/local/bin/provisioner-entrypoint.sh
 ENV NODE_ENV=production
 ENV HOME=/var/lib/nodezero
-RUN mkdir -p /var/lib/nodezero
+RUN chmod 0755 /usr/local/bin/provisioner-entrypoint.sh && mkdir -p /var/lib/nodezero
 EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/provisioner-entrypoint.sh"]
