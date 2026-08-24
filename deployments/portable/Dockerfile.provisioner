@@ -11,7 +11,7 @@ COPY packages/jss-provisioner/src packages/jss-provisioner/src
 RUN pnpm --filter @nodezero/jss-provisioner build
 
 FROM node:26-bookworm-slim
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl libdbus-1-3 \
 	&& rm -rf /var/lib/apt/lists/*
 COPY --from=build /workspace /workspace
 WORKDIR /workspace/packages/jss-provisioner
