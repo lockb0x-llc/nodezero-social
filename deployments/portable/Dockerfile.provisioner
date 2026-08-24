@@ -13,8 +13,9 @@ RUN pnpm --filter @nodezero/jss-provisioner build
 FROM node:26-bookworm-slim
 COPY --from=build /workspace /workspace
 WORKDIR /workspace/packages/jss-provisioner
+COPY deployments/portable/provisioner-entrypoint.sh /usr/local/bin/provisioner-entrypoint.sh
 ENV NODE_ENV=production
 ENV HOME=/var/lib/nodezero
 RUN mkdir -p /var/lib/nodezero
 EXPOSE 8080
-CMD ["node", "dist/index.js"]
+ENTRYPOINT ["/usr/local/bin/provisioner-entrypoint.sh"]
