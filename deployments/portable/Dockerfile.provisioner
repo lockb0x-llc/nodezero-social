@@ -11,6 +11,8 @@ COPY packages/jss-provisioner/src packages/jss-provisioner/src
 RUN pnpm --filter @nodezero/jss-provisioner build
 
 FROM node:26-bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \
+	&& rm -rf /var/lib/apt/lists/*
 COPY --from=build /workspace /workspace
 WORKDIR /workspace/packages/jss-provisioner
 COPY deployments/portable/provisioner-entrypoint.sh /usr/local/bin/provisioner-entrypoint.sh
