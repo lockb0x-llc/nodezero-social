@@ -1,0 +1,25 @@
+{
+  email {$ACME_EMAIL}
+}
+
+{$PUBLIC_HOST} {
+  reverse_proxy web:80
+  header {
+    Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
+    Referrer-Policy "strict-origin-when-cross-origin"
+    X-Content-Type-Options "nosniff"
+    Content-Security-Policy "frame-ancestors 'none'; manifest-src 'self'; worker-src 'self' blob:"
+  }
+}
+
+{$API_HOST} {
+  reverse_proxy provisioner:8080
+}
+
+{$SOLID_HOST} {
+  reverse_proxy solid:3000
+}
+
+{$RELAY_HOST} {
+  reverse_proxy relay:8080
+}

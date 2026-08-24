@@ -16,6 +16,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
   Pod writers.
 - Feed relationship reads now use accepted and unblocked Pod relationships instead
   of unilateral `foaf:knows` connections.
+- Vendor-neutral portable staging deployment shape under `deployments/portable/`:
+  Docker Compose, Caddy, web, provisioner, Solid Pod, relay, health, backup, and
+  migration operations.
 
 ### Changed
 
@@ -23,16 +26,17 @@ Versions follow [Semantic Versioning](https://semver.org/).
   longer grants local cached membership or reports a successful mutation.
 - Relationship and Feed integration changes are locally validated but remain behind
   the existing staging feature gates pending two-account deployment evidence.
+- Portable containers use pinned Node 26/pnpm 11.8 runtimes and a root
+  `.dockerignore` to keep local build artifacts out of Docker contexts. Azure
+  remains available as the rollback environment until portable staging is accepted.
 
 ### Validation
-
 - Solid Pod Sync: 32 suites, 194 tests pass.
 - Trust Circle persistence: 9 tests pass.
 - Mobile package type-check and lint pass.
 - Repository hygiene policy passes.
 
 ### Known Gaps
-
 - Directory, Profile, and Local still create separate screen-level `useConnections`
   snapshots; a shared mobile social authority provider remains the next integration
   slice.

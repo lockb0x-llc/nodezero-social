@@ -1,0 +1,122 @@
+name: nodezero
+
+services:
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      PUBLIC_HOST: ${PUBLIC_HOST:?PUBLIC_HOST is required}
+      API_HOST: ${API_HOST:?API_HOST is required}
+      SOLID_HOST: ${SOLID_HOST:?SOLID_HOST is required}
+      RELAY_HOST: ${RELAY_HOST:?RELAY_HOST is required}
+      ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL is required}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      web:
+        condition: service_healthy
+      provisioner:
+        condition: service_healthy
+      solid:
+        condition: service_healthy
+      relay:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ../..
+      dockerfile: deployments/portable/Dockerfile.web
+      args:
+        NZ_ENV_PROFILE: ${NZ_ENV_PROFILE:-staging-testnet}
+        NZ_RELAY_URL: ${NZ_RELAY_URL:?NZ_RELAY_URL is required}
+        NZ_STELLAR_RPC_URL: ${NZ_STELLAR_RPC_URL:-https://soroban-testnet.stellar.org}
+        NZ_STELLAR_NETWORK_PASSPHRASE: ${NZ_STELLAR_NETWORK_PASSPHRASE:-Test SDF Network ; September 2015}
+        NZ_IDENTITY_CONTRACT_ID: ${NZ_IDENTITY_CONTRACT_ID:?NZ_IDENTITY_CONTRACT_ID is required}
+        NZ_LOCKBOX_CONTRACT_ID: ${NZ_LOCKBOX_CONTRACT_ID:?NZ_LOCKBOX_CONTRACT_ID is required}
+        NZ_LOCKBOX_FACTORY_CONTRACT_ID: ${NZ_LOCKBOX_FACTORY_CONTRACT_ID:?NZ_LOCKBOX_FACTORY_CONTRACT_ID is required}
+        NZ_ZK_ARTIFACTS_URL: ${NZ_ZK_ARTIFACTS_URL:?NZ_ZK_ARTIFACTS_URL is required}
+        NZ_ZK_MANIFEST_URL: ${NZ_ZK_MANIFEST_URL:?NZ_ZK_MANIFEST_URL is required}
+        NZ_NODEZERO_ISSUER_URL: ${NZ_NODEZERO_ISSUER_URL:?NZ_NODEZERO_ISSUER_URL is required}
+        NZ_JSS_PROVISIONER_URL: ${NZ_JSS_PROVISIONER_URL:?NZ_JSS_PROVISIONER_URL is required}
+        NZ_APP_ORIGIN: ${NZ_APP_ORIGIN:?NZ_APP_ORIGIN is required}
+    command: ["caddy", "file-server", "--root", "/export", "--listen", ":80"]
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://127.0.0.1:80/" ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  provisioner:
+    build:
+      context: ../..
+      dockerfile: deployments/portable/Dockerfile.provisioner
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 8080
+      JSS_ENV_PROFILE: ${NZ_ENV_PROFILE:-staging-testnet}
+      JSS_STELLAR_NETWORK: ${STELLAR_NETWORK_NAME:-testnet}
+      JSS_STELLAR_RPC_URL: ${NZ_STELLAR_RPC_URL:-https://soroban-testnet.stellar.org}
+      JSS_STELLAR_NETWORK_PASSPHRASE: ${NZ_STELLAR_NETWORK_PASSPHRASE:-Test SDF Network ; September 2015}
+      JSS_STELLAR_SOURCE_ACCOUNT: ${JSS_STELLAR_SOURCE_ACCOUNT:?JSS_STELLAR_SOURCE_ACCOUNT is required}
+      JSS_TREASURY_SOURCE_ACCOUNT: ${JSS_TREASURY_SOURCE_ACCOUNT:?JSS_TREASURY_SOURCE_ACCOUNT is required}
+      JSS_DEPLOYER_SOURCE_ACCOUNT: ${JSS_DEPLOYER_SOURCE_ACCOUNT:?JSS_DEPLOYER_SOURCE_ACCOUNT is required}
+      JSS_TREASURY_SECRET: ${JSS_TREASURY_SECRET:?JSS_TREASURY_SECRET is required}
+      JSS_DEPLOYER_SECRET: ${JSS_DEPLOYER_SECRET:?JSS_DEPLOYER_SECRET is required}
+      JSS_CREDENTIALS_ENC_KEY: ${JSS_CREDENTIALS_ENC_KEY:?JSS_CREDENTIALS_ENC_KEY is required}
+      JSS_NODEZERO_ISSUER_URL: ${NZ_NODEZERO_ISSUER_URL:?NZ_NODEZERO_ISSUER_URL is required}
+      JSS_LOCKBOX_FACTORY_CONTRACT_ID: ${NZ_LOCKBOX_FACTORY_CONTRACT_ID:?NZ_LOCKBOX_FACTORY_CONTRACT_ID is required}
+      JSS_IDENTITY_CONTRACT_ID: ${NZ_IDENTITY_CONTRACT_ID:?NZ_IDENTITY_CONTRACT_ID is required}
+      JSS_LOCKBOX_CONTRACT_ID: ${NZ_LOCKBOX_CONTRACT_ID:?NZ_LOCKBOX_CONTRACT_ID is required}
+      JSS_ZK_ARTIFACTS_URL: ${NZ_ZK_ARTIFACTS_URL:?NZ_ZK_ARTIFACTS_URL is required}
+      JSS_ZK_MANIFEST_URL: ${NZ_ZK_MANIFEST_URL:?NZ_ZK_MANIFEST_URL is required}
+      JSS_SOLID_SERVER_URL: http://solid:3000
+      JSS_RELAY_URL: ${NZ_RELAY_URL:?NZ_RELAY_URL is required}
+    volumes:
+      - provisioner-state:/var/lib/nodezero
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  solid:
+    image: ${CSS_IMAGE:-solidproject/community-server:7.1.9}
+    restart: unless-stopped
+    command: ["-b", "https://${SOLID_HOST:?SOLID_HOST is required}/", "-c", "@css:config/file.json", "-f", "/data", "-p", "3000", "--loggingLevel", "info"]
+    environment:
+      NZ_STELLAR_AUTH_SHARED_SECRET: ${NZ_STELLAR_AUTH_SHARED_SECRET:?NZ_STELLAR_AUTH_SHARED_SECRET is required}
+      NZ_STELLAR_AUTH_PROVISIONER_ORIGINS: https://${API_HOST:?API_HOST is required}
+    volumes:
+      - solid-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://127.0.0.1:3000/" ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  relay:
+    build:
+      context: ../..
+      dockerfile: packages/relay-service/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      RELAY_PORT: 8080
+      RELAY_PROVISIONER_URL: http://provisioner:8080
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://127.0.0.1:8080/healthz" ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  caddy-data:
+  caddy-config:
+  provisioner-state:
+  solid-data:

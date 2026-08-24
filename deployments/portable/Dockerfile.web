@@ -1,0 +1,44 @@
+FROM node:26-bookworm-slim AS build
+
+WORKDIR /workspace
+RUN npm install --global pnpm@11.8.0
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+COPY packages/*/package.json packages/*/
+COPY packages/metro-image-size packages/metro-image-size
+RUN pnpm install --filter @nodezero/mobile-app... --frozen-lockfile --ignore-scripts
+COPY packages/mobile-app packages/mobile-app
+COPY packages/embedded-wallet packages/embedded-wallet
+COPY packages/geo-discovery packages/geo-discovery
+COPY packages/p2p-comms packages/p2p-comms
+COPY packages/solid-pod-sync packages/solid-pod-sync
+COPY packages/waku-comms packages/waku-comms
+COPY packages/zk-crypto packages/zk-crypto
+COPY scripts/pwa scripts/pwa
+ARG NZ_ENV_PROFILE
+ARG NZ_RELAY_URL
+ARG NZ_STELLAR_RPC_URL
+ARG NZ_STELLAR_NETWORK_PASSPHRASE
+ARG NZ_IDENTITY_CONTRACT_ID
+ARG NZ_LOCKBOX_CONTRACT_ID
+ARG NZ_LOCKBOX_FACTORY_CONTRACT_ID
+ARG NZ_ZK_ARTIFACTS_URL
+ARG NZ_ZK_MANIFEST_URL
+ARG NZ_NODEZERO_ISSUER_URL
+ARG NZ_JSS_PROVISIONER_URL
+ARG NZ_APP_ORIGIN
+ENV NZ_ENV_PROFILE=$NZ_ENV_PROFILE
+ENV NZ_RELAY_URL=$NZ_RELAY_URL
+ENV NZ_STELLAR_RPC_URL=$NZ_STELLAR_RPC_URL
+ENV NZ_STELLAR_NETWORK_PASSPHRASE=$NZ_STELLAR_NETWORK_PASSPHRASE
+ENV NZ_IDENTITY_CONTRACT_ID=$NZ_IDENTITY_CONTRACT_ID
+ENV NZ_LOCKBOX_CONTRACT_ID=$NZ_LOCKBOX_CONTRACT_ID
+ENV NZ_LOCKBOX_FACTORY_CONTRACT_ID=$NZ_LOCKBOX_FACTORY_CONTRACT_ID
+ENV NZ_ZK_ARTIFACTS_URL=$NZ_ZK_ARTIFACTS_URL
+ENV NZ_ZK_MANIFEST_URL=$NZ_ZK_MANIFEST_URL
+ENV NZ_NODEZERO_ISSUER_URL=$NZ_NODEZERO_ISSUER_URL
+ENV NZ_JSS_PROVISIONER_URL=$NZ_JSS_PROVISIONER_URL
+ENV NZ_APP_ORIGIN=$NZ_APP_ORIGIN
+RUN pnpm --filter @nodezero/mobile-app build:web
+
+FROM caddy:2.10-alpine
+COPY --from=build /workspace/packages/mobile-app/dist /export

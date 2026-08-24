@@ -1,0 +1,24 @@
+FROM node:26-bookworm-slim AS build
+
+WORKDIR /workspace
+RUN npm install --global pnpm@11.8.0
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+COPY packages/solid-pod-sync/package.json packages/solid-pod-sync/tsconfig.json packages/solid-pod-sync/
+COPY packages/jss-provisioner/package.json packages/jss-provisioner/tsconfig.json packages/jss-provisioner/
+RUN pnpm install --filter @nodezero/jss-provisioner... --frozen-lockfile --ignore-scripts
+COPY packages/solid-pod-sync/src packages/solid-pod-sync/src
+COPY packages/jss-provisioner/src packages/jss-provisioner/src
+RUN pnpm --filter @nodezero/jss-provisioner build
+
+FROM node:26-bookworm-slim
+WORKDIR /app
+COPY --from=build /workspace/node_modules ./node_modules
+COPY --from=build /workspace/packages/solid-pod-sync/dist ./node_modules/@nodezero/solid-pod-sync/dist
+COPY --from=build /workspace/packages/solid-pod-sync/package.json ./node_modules/@nodezero/solid-pod-sync/package.json
+COPY --from=build /workspace/packages/jss-provisioner/dist ./dist
+COPY packages/jss-provisioner/package.json ./package.json
+ENV NODE_ENV=production
+ENV HOME=/var/lib/nodezero
+RUN mkdir -p /var/lib/nodezero
+EXPOSE 8080
+CMD ["node", "dist/index.js"]
