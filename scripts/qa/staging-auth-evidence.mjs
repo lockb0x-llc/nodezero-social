@@ -262,6 +262,14 @@ async function waitForAuthenticatedSurface(page, timeoutMs) {
   )
 }
 
+async function waitForReauthenticationSurface(page, timeoutMs) {
+  await page.waitForFunction(
+    () => document.body.innerText.includes('Sign In') && !document.body.innerText.includes('Wallet is still initializing'),
+    undefined,
+    { timeout: timeoutMs }
+  )
+}
+
 async function revokeBrowserSession(page, session) {
   const status = await page.evaluate(
     async ({ apiUrl, refreshToken, webId }) => {
@@ -549,27 +557,7 @@ async function main() {
   await assertNoPersistedBrowserSession(page, 'Returning sign-in')
   log('Journey 2 PASS: returning sign-in restored the same identity with no CSS contact')
 
-  log('Journey 2b: retained authenticated reload waits for wallet readiness')
-  capturedSession.current = null
-  await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 })
-  await waitForAuthenticatedSurface(page, sessionTimeoutMs).catch(async (error) => {
-    fail(
-      `Retained-session reload did not reach the app: ${String(error?.message || error)}\nPage: ${await pageTextSnippet(page)}`
-    )
-  })
-  const retainedPageText = await page.locator('body').innerText()
-  if (retainedPageText.includes('Wallet is still initializing')) {
-    fail('Retained-session reload raced attestation ahead of wallet initialization.')
-  }
-  const retainedSession = await waitForCapturedSession(page, capturedSession, sessionTimeoutMs)
-  if (retainedSession?.webId !== session.webId) {
-    fail(`Retained session webId mismatch: ${retainedSession?.webId} != ${session.webId}`)
-  }
-  await assertNoPersistedBrowserSession(page, 'Browser-session bootstrap')
-  log('Journey 2b PASS: retained session verified after wallet initialization')
-
   await maybeAssertDirectoryTabSequence(page)
-
   await maybeWriteStorageState(context)
   if (stopAfterStorageState) {
     await browser.close()
@@ -579,9 +567,24 @@ async function main() {
 
   await publishOutput('docustream_pane_passed', String(await probeDocustreamPane(page)))
 
+  log('Journey 2b: retained reload returns to explicit sign-in')
+  capturedSession.current = null
+  await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 })
+  await waitForReauthenticationSurface(page, sessionTimeoutMs).catch(async (error) => {
+    fail(
+      `Retained-session reload did not reach explicit sign-in: ${String(error?.message || error)}\nPage: ${await pageTextSnippet(page)}`
+    )
+  })
+  const retainedPageText = await page.locator('body').innerText()
+  if (!retainedPageText.includes('Create a new identity')) {
+    fail('Retained-session reload did not expose the new-identity action.')
+  }
+  await assertNoPersistedBrowserSession(page, 'Retained reload')
+  log('Journey 2b PASS: retained reload returns to sign-in without a stuck or ambiguous state')
+
   // ── Journey 3: negative — destroyed session must fail closed ──────────────
   log('Journey 3: tampered session lands on sign-in (fail-closed)')
-  await revokeBrowserSession(page, retainedSession)
+  await revokeBrowserSession(page, returningSession)
   await page.evaluate((key) => {
     window.localStorage.setItem(
       key,
