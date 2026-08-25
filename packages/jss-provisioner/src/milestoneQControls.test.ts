@@ -77,3 +77,36 @@ void test('enabled features fail closed when cohort hashes or key are missing', 
     false
   )
 })
+
+void test('allowAll enables features for all authenticated users without cohort hashes', () => {
+  const controls = new MilestoneQControls({
+    directoryEnabled: true,
+    relationshipEnabled: true,
+    transportEnabled: true,
+    peerProfileEnabled: true,
+    allowAll: true,
+  })
+  assert.equal(controls.isEnabled('directory', alice), true)
+  assert.equal(
+    controls.isEnabled('directory', 'https://solid.nodezero.social/bob/profile/card#me'),
+    true
+  )
+  assert.deepEqual(controls.availability(alice), {
+    directory: true,
+    peerProfile: true,
+    relationship: true,
+    transport: true,
+  })
+})
+
+void test('wildcard cohort hash enables features for all users', () => {
+  const controls = new MilestoneQControls({
+    directoryEnabled: true,
+    cohortHashes: ['*'],
+  })
+  assert.equal(controls.isEnabled('directory', alice), true)
+  assert.equal(
+    controls.isEnabled('directory', 'https://solid.nodezero.social/charlie/profile/card#me'),
+    true
+  )
+})

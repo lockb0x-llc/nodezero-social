@@ -78,6 +78,11 @@ export default function ComposeScreen(): JSX.Element {
             ? firstError
             : new Error('Broadcast was not accepted by the local mesh.');
         }
+        if (Platform.OS === 'web' && typeof globalThis.alert === 'function') {
+          globalThis.alert('Broadcast published to your local mesh.');
+        } else {
+          Alert.alert('Broadcast Sent', 'Published to your local mesh.');
+        }
       } else if (audience === 'foaf' || audience === 'verified' || audience === 'trust-circle') {
         // Write payload to Pod /outbox/ container via the authenticated proxy fetch.
         // Verified mode applies an extra per-recipient PoH gate.
@@ -101,35 +106,73 @@ export default function ComposeScreen(): JSX.Element {
           blockedWebIds,
         });
         const payload = JSON.stringify({ text: postText, audience, ts: Date.now() });
-        await Promise.allSettled(
-          recipientIds.map(async (recipientWebId) => {
-            if (audience === 'verified') {
-              const isVerified = await verifyPoH(recipientWebId);
-              if (!isVerified) {
-                console.warn('[compose] skipping unverified recipient', recipientWebId);
-                return;
-              }
-            }
 
-            return authFetch(
-              podRoot +
-                'outbox/' +
-                Date.now() +
-                '-' +
-                Math.random().toString(36).slice(2) +
-                '.json',
-              {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: payload,
+        // Always save to the user's own Pod outbox container:
+        await authFetch(
+          podRoot +
+            'outbox/' +
+            Date.now() +
+            '-' +
+            Math.random().toString(36).slice(2) +
+            '.json',
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: payload,
+          }
+        ).catch((err) => {
+          console.warn('[compose] failed saving to own outbox:', err);
+        });
+
+        if (recipientIds.length > 0) {
+          await Promise.allSettled(
+            recipientIds.map(async (recipientWebId) => {
+              if (audience === 'verified') {
+                const isVerified = await verifyPoH(recipientWebId);
+                if (!isVerified) {
+                  console.warn('[compose] skipping unverified recipient', recipientWebId);
+                  return;
+                }
               }
-            );
-          })
-        );
+
+              return authFetch(
+                podRoot +
+                  'outbox/' +
+                  Date.now() +
+                  '-' +
+                  Math.random().toString(36).slice(2) +
+                  '.json',
+                {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: payload,
+                }
+              );
+            })
+          );
+          const sentMsg = `Broadcast posted and delivered to ${recipientIds.length} ${recipientIds.length === 1 ? 'connection' : 'connections'}.`;
+          if (Platform.OS === 'web' && typeof globalThis.alert === 'function') {
+            globalThis.alert(sentMsg);
+          } else {
+            Alert.alert('Broadcast Sent', sentMsg);
+          }
+        } else {
+          const emptyMsg =
+            'Broadcast saved to your Pod outbox.\n\nYou have no accepted connections in this audience yet — connect with other nodes in the Directory tab to share posts.';
+          if (Platform.OS === 'web' && typeof globalThis.alert === 'function') {
+            globalThis.alert(emptyMsg);
+          } else {
+            Alert.alert('Broadcast Saved', emptyMsg);
+          }
+        }
       }
       setPostText('');
     } catch (err) {
-      Alert.alert('Broadcast Failed', err instanceof Error ? err.message : 'Unknown error');
+      if (Platform.OS === 'web' && typeof globalThis.alert === 'function') {
+        globalThis.alert(err instanceof Error ? err.message : 'Broadcast failed.');
+      } else {
+        Alert.alert('Broadcast Failed', err instanceof Error ? err.message : 'Unknown error');
+      }
     } finally {
       setSending(false);
     }

@@ -14,6 +14,7 @@ export interface MilestoneQControlsOptions {
   peerProfileEnabled?: boolean
   transportEnabled?: boolean
   relationshipEnabled?: boolean
+  allowAll?: boolean
   cohortHashes?: string[]
   cohortKey?: string
   metricSink?: (metric: string, value: number) => void
@@ -21,6 +22,7 @@ export interface MilestoneQControlsOptions {
 
 export class MilestoneQControls {
   private readonly enabled: Record<MilestoneQFeature, boolean>
+  private readonly allowAll: boolean
   private readonly cohortHashes: Set<string>
   private readonly cohortKey: string
   private readonly counters = new Map<string, number>()
@@ -33,6 +35,7 @@ export class MilestoneQControls {
       relationship: options.relationshipEnabled ?? false,
       transport: options.transportEnabled ?? false,
     }
+    this.allowAll = options.allowAll ?? false
     this.cohortHashes = new Set(
       (options.cohortHashes ?? []).map((value) => value.trim().toLowerCase()).filter(Boolean)
     )
@@ -42,11 +45,14 @@ export class MilestoneQControls {
 
   isEnabled(feature: MilestoneQFeature, webId?: string): boolean {
     if (!this.isConfigured(feature) || !webId) return false
+    if (this.allowAll || this.cohortHashes.has('*')) return true
     return this.cohortHashes.has(hashCohortIdentity(webId, this.cohortKey))
   }
 
   isConfigured(feature: MilestoneQFeature): boolean {
-    return this.enabled[feature] && this.cohortHashes.size > 0 && Boolean(this.cohortKey)
+    if (!this.enabled[feature]) return false
+    if (this.allowAll || this.cohortHashes.has('*')) return true
+    return this.cohortHashes.size > 0 && Boolean(this.cohortKey)
   }
 
   availability(webId: string): MilestoneQAvailability {
@@ -76,6 +82,7 @@ export function createMilestoneQControlsFromEnv(): MilestoneQControls {
     peerProfileEnabled: enabled(process.env.JSS_Q_PEER_PROFILE_ENABLED),
     relationshipEnabled: enabled(process.env.JSS_Q_RELATIONSHIP_ENABLED),
     transportEnabled: enabled(process.env.JSS_Q_TRANSPORT_ENABLED),
+    allowAll: enabled(process.env.JSS_Q_ALLOW_ALL),
     cohortHashes: (process.env.JSS_Q_COHORT_HASHES ?? '').split(','),
     ...(process.env.JSS_Q_COHORT_KEY ? { cohortKey: process.env.JSS_Q_COHORT_KEY } : {}),
     metricSink: defaultMetricSink,

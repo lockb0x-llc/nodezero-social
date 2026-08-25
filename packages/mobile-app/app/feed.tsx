@@ -310,7 +310,7 @@ export default function GlobalFeedScreen(): JSX.Element {
         ListEmptyComponent={
           <View style={styles.centred}>
             <Text style={styles.emptyText}>
-              Your feed is quiet. Follow people from Profile to start your timeline.
+              Your feed is quiet. Discover and connect with nodes in the Directory tab, or add RSS sources in DocuStream to build your timeline.
             </Text>
           </View>
         }
