@@ -10,13 +10,13 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- Pod-authoritative Trust Circle persistence with conditional creation, fail-closed
   reads and writes, and operation-specific conflict retries.
-- ETag-fenced relationship dataset mutations with bounded retries for concurrent
   Pod writers.
 - Feed relationship reads now use accepted and unblocked Pod relationships instead
-  of unilateral `foaf:knows` connections.
 - Vendor-neutral portable staging deployment shape under `deployments/portable/`:
+- PWA navigation now guarantees a valid network, cached-shell, or retryable 503
+  response when a retained authenticated reload encounters a transient transport
+  failure; this prevents users from getting trapped by `ERR_INVALID_RESPONSE`.
   Docker Compose, Caddy, web, provisioner, Solid Pod, relay, health, backup, and
   migration operations.
 

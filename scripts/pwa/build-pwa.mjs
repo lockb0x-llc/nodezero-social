@@ -213,7 +213,20 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
   if (request.mode === 'navigate') {
-    event.respondWith(fetch(request).catch(() => caches.match('/index.html')));
+    event.respondWith((async () => {
+      try {
+        const networkResponse = await fetch(request);
+        if (networkResponse.ok) return networkResponse;
+      } catch {
+        // Fall through to the cached shell when the navigation transport fails.
+      }
+      const cachedShell = await caches.match('/index.html');
+      if (cachedShell) return cachedShell;
+      return new Response('NodeZero is temporarily unavailable. Please retry.', {
+        status: 503,
+        headers: { 'content-type': 'text/plain; charset=utf-8' },
+      });
+    })());
     return;
   }
   if (!PRECACHE_URLS.includes(url.pathname)) return;
