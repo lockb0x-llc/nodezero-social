@@ -567,24 +567,28 @@ async function main() {
 
   await publishOutput('docustream_pane_passed', String(await probeDocustreamPane(page)))
 
-  log('Journey 2b: retained reload returns to explicit sign-in')
+  log('Journey 2b: retained authenticated reload waits for wallet readiness')
   capturedSession.current = null
   await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 })
-  await waitForReauthenticationSurface(page, sessionTimeoutMs).catch(async (error) => {
+  await waitForAuthenticatedSurface(page, sessionTimeoutMs).catch(async (error) => {
     fail(
-      `Retained-session reload did not reach explicit sign-in: ${String(error?.message || error)}\nPage: ${await pageTextSnippet(page)}`
+      `Retained-session reload did not reach the app: ${String(error?.message || error)}\nPage: ${await pageTextSnippet(page)}`
     )
   })
   const retainedPageText = await page.locator('body').innerText()
-  if (!retainedPageText.includes('Create a new identity')) {
-    fail('Retained-session reload did not expose the new-identity action.')
+  if (retainedPageText.includes('Wallet is still initializing')) {
+    fail('Retained-session reload raced attestation ahead of wallet initialization.')
   }
-  await assertNoPersistedBrowserSession(page, 'Retained reload')
-  log('Journey 2b PASS: retained reload returns to sign-in without a stuck or ambiguous state')
+  const retainedSession = await waitForCapturedSession(page, capturedSession, sessionTimeoutMs)
+  if (retainedSession?.webId !== session.webId) {
+    fail(`Retained session webId mismatch: ${retainedSession?.webId} != ${session.webId}`)
+  }
+  await assertNoPersistedBrowserSession(page, 'Browser-session bootstrap')
+  log('Journey 2b PASS: retained session verified after wallet initialization')
 
   // ── Journey 3: negative — destroyed session must fail closed ──────────────
   log('Journey 3: tampered session lands on sign-in (fail-closed)')
-  await revokeBrowserSession(page, returningSession)
+  await revokeBrowserSession(page, retainedSession)
   await page.evaluate((key) => {
     window.localStorage.setItem(
       key,
