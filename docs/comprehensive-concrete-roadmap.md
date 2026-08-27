@@ -15,12 +15,13 @@
 ├────────────────────────────────────────────────────────────────────────────────────────┤
 │ PHASE 1: Complete Non-Local Communication & Social Notifications                       │
 │   • M1.1: Remote LDN Outbox Delivery Worker           🟢 Complete (2026-08-27)         │
-│   • M1.2: Waku Message Store Sync on reconnect        � Complete (2026-08-27)         │
+│   • M1.2: Waku Message Store Sync on reconnect        🟢 Complete (2026-08-27)         │
 │   • M1.3: In-App Social Notification Badges & Toasts  🟢 Complete (2026-08-27)         │
 ├────────────────────────────────────────────────────────────────────────────────────────┤
 │ PHASE 2: Infrastructure Hardening & Physical Device Certification                      │
-│   • M2.1: Codify Signaling Relay in Azure Bicep IaC   🟡 In Progress / Next Up         │
-│   • M2.2: Automated Zero-Retry Two-Device Matrix      ⚪ Scheduled                     │
+│   • M2.1: Codify Signaling Relay in Azure Bicep IaC   🟢 Complete (2026-08-27)         │
+│   • M2.2: Automated Zero-Retry Two-Device Matrix      🟢 Complete (2026-08-27)         │
+│   • M2.3: Staging Soak & Performance Audit            🟡 In Progress / Next Up         │
 ├────────────────────────────────────────────────────────────────────────────────────────┤
 │ PHASE 3: Sovereign Identity & Hardware-Bound Security (WebAuthn L3 PRF & DID)          │
 │   • M3.1: WebAuthn Level 3 PRF Passkey Hardware Vault ⚪ Spec Defined / Queued         │

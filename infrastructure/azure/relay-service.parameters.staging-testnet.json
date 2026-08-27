@@ -1,0 +1,36 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": {
+      "value": "eastus2"
+    },
+    "environmentName": {
+      "value": "staging-testnet"
+    },
+    "appName": {
+      "value": "nodezero-social"
+    },
+    "appServicePlanName": {
+      "value": "asp-nodezero-staging-relay"
+    },
+    "appServicePlanSkuName": {
+      "value": "B1"
+    },
+    "appServicePlanSkuTier": {
+      "value": "Basic"
+    },
+    "provisionerBaseUrl": {
+      "value": "https://api.nodezero.social"
+    },
+    "relayPort": {
+      "value": 8080
+    },
+    "appCommandLine": {
+      "value": "node dist/index.js"
+    },
+    "linuxFxVersion": {
+      "value": "NODE|22-lts"
+    }
+  }
+}

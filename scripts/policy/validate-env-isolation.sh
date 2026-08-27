@@ -122,4 +122,17 @@ grep -q 'NZ_WAKU_BOOTSTRAP_PEERS' "$APP_CONFIG" || fail "Mobile app config missi
 grep -q 'targets the production Waku host' "$APP_CONFIG" || fail "Mobile app config missing Waku cross-environment bootstrap guard."
 pass "Waku messaging backbone guardrails validated."
 
+# 9) Relay service infrastructure guardrails: staging deploy script must require
+#    what-if preflight + explicit environment + parameters-file, refuse production
+#    direct deploy, and Bicep module must constrain environmentName values.
+RELAY_DEPLOY_SCRIPT="$REPO_ROOT/scripts/azure/deploy-relay-service.sh"
+RELAY_BICEP="$REPO_ROOT/infrastructure/azure/relay-service.bicep"
+grep -q 'AZURE_BICEP_PARAMETERS_FILE is required' "$RELAY_DEPLOY_SCRIPT" || fail "Relay deploy script missing explicit parameters-file requirement guard."
+grep -q 'AZURE_ENVIRONMENT_NAME is required' "$RELAY_DEPLOY_SCRIPT" || fail "Relay deploy script missing environment requirement guard."
+grep -q 'az deployment group what-if' "$RELAY_DEPLOY_SCRIPT" || fail "Relay deploy script missing mandatory what-if preflight."
+grep -q 'Refusing production-mainnet deployment' "$RELAY_DEPLOY_SCRIPT" || fail "Relay deploy script missing production-mainnet refusal guard."
+file_contains_literal "$RELAY_BICEP" "'staging-testnet'" || fail "relay-service.bicep missing staging-testnet allowed environment value."
+file_contains_literal "$RELAY_BICEP" "'production-mainnet'" || fail "relay-service.bicep missing production-mainnet allowed environment value."
+pass "Relay service infrastructure guardrails validated."
+
 echo "[policy] All environment-isolation policy checks passed."

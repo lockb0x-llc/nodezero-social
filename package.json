@@ -44,7 +44,8 @@
     "qa:q4:candidate": "node ./scripts/qa/q4-release-preflight.mjs --phase=candidate",
     "qa:q4:published": "node ./scripts/qa/q4-release-preflight.mjs --phase=published",
     "qa:q4:deployed": "node ./scripts/qa/q4-release-preflight.mjs --phase=deployed",
-    "test:device-evidence": "node --test ./scripts/qa/validate-device-evidence.test.mjs ./scripts/qa/q4-release-preflight.test.mjs ./scripts/qa/extract-expo-assets.test.mjs ./scripts/qa/fetch-exact.test.mjs ./scripts/qa/hash-milestone-q-cohort.test.mjs ./scripts/qa/validate-directory-cohort-states.test.mjs ./scripts/qa/bootstrap-directory-cohort.test.mjs ./scripts/qa/directory-evidence-failures.test.mjs",
+    "qa:matrix:two-device": "node ./scripts/qa/two-device-e2e-matrix.mjs",
+    "test:device-evidence": "node --test ./scripts/qa/validate-device-evidence.test.mjs ./scripts/qa/q4-release-preflight.test.mjs ./scripts/qa/extract-expo-assets.test.mjs ./scripts/qa/fetch-exact.test.mjs ./scripts/qa/hash-milestone-q-cohort.test.mjs ./scripts/qa/validate-directory-cohort-states.test.mjs ./scripts/qa/bootstrap-directory-cohort.test.mjs ./scripts/qa/directory-evidence-failures.test.mjs ./scripts/qa/two-device-e2e-matrix.test.mjs",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
     "pm:dispatch": "pwsh -NoProfile -File ./scripts/agents/dispatch-parallel.ps1",
@@ -69,6 +70,7 @@
     "waku:spike": "node ./packages/waku-comms/spike/local-spike.mjs",
     "deploy:stellar:testnet": "bash ./scripts/stellar/deploy-testnet.sh",
     "deploy:azure": "bash ./scripts/azure/deploy.sh",
+    "deploy:azure:relay": "bash ./scripts/azure/deploy-relay-service.sh",
     "deploy:azure:notifications": "bash ./scripts/azure/deploy-notification-infra.sh"
   },
   "devDependencies": {
