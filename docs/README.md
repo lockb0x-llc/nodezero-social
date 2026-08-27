@@ -12,6 +12,9 @@
 
 ## Living Plans And Status
 
+- [Comprehensive Concrete Roadmap: Diagnostics & Requirements](comprehensive-concrete-roadmap.md)
+- [Strategic Architecture: Status, Waku, Solid & Pakana Lockb0x DID](strategic-architecture-status-waku-pakana-solid.md)
+- [Featureset Status Review and Production Roadmap](featureset-status-and-roadmap-review.md)
 - [Staging runtime implementation roadmap](staging-runtime-implementation-roadmap.md)
 - [Consentful Pod-owner discovery and communication plan](consentful-pod-owner-discovery-and-communication-plan.md)
 - [Staging deployment blueprint](staging-deployment-blueprint.md)

@@ -220,7 +220,29 @@ Phases A and B directly execute the user's stated priority (ship the Directory/C
 
 ---
 
-## 8. Repository Hygiene and Artifact Cleanup
+## 8. Strategic Ecosystem Symbiosis: Status, Logos/Waku, Solid Pods, and Pakana DID
+
+For detailed architectural integration models, diagrams, and DID document specifications, see the dedicated strategic architecture blueprint:
+**[`docs/strategic-architecture-status-waku-pakana-solid.md`](strategic-architecture-status-waku-pakana-solid.md)**.
+
+### 8.1 Key Strategic Pillars
+1. **Symbiosis over Competition (Status & NodeZero):**
+   - **Status App / Waku:** Secure transport, mobile communications, and Ethereum/Linea L2 execution.
+   - **NodeZero / Solid Pods:** Structured, semantic web data plane (RDF graphs, FOAF trust circles, DocuStream, granular WAC ACLs, and AI Agent memory/AgentCards).
+   - **Stellar / Pakana:** High-throughput micro-fee financial settlement and verifiable DID registry anchored via the Lockb0x Soroban smart contract.
+2. **W3C WebAuthn Level 3 PRF Extension:**
+   - Evaluated as a hardware-derived master Key Encryption Key (KEK) wrapper inside `EnclaveAdapter` on web/PWA clients.
+   - Preserves all on-chain Soroban Ed25519 signatures and ZK Poseidon identity commitments while allowing biometric unlocking of the client's sovereign state.
+3. **Storage Tiering (Solid Pods vs. Logos Codex):**
+   - **Solid Pods:** The authoritative semantic control plane for structured linked data, queries, and permissions.
+   - **Logos Codex:** The decentralized blob storage plane for heavy media archives, encrypted chat backups, and ZK circuit artifacts.
+4. **Agent Exchange Multi-Rail Settlement:**
+   - Waku handles decentralized agent capability discovery and RFQ negotiation.
+   - Execution Adapters settle agreements across Stellar Soroban (primary lane), Base EVM Lockb0x, and Status Network L2 (Linea zkEVM).
+
+---
+
+## 9. Repository Hygiene and Artifact Cleanup
 
 Completed 2026-08-23 as a repository-maintenance change:
 
