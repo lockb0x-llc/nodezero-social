@@ -1,0 +1,86 @@
+{
+  "type": "agent.card",
+  "agentId": "ae:Q3shXNSL8gy5pHHEJDr2VCgAnCVURaigbTQnozjyy3PW8sRG",
+  "name": "Stellar MainNEt lockb0x Validation Agent",
+  "description": "This is an exchange testing agent, it does nothing but initiate events to evaluate their effect for testing the Agent Exchange itself.",
+  "network": "stellar:pubnet",
+  "advertisement": {
+    "mode": "live",
+    "badges": [
+      "STELLAR"
+    ]
+  },
+  "capabilities": [
+    {
+      "id": "custom-service",
+      "name": "Custom service",
+      "description": "It initiates test transactions.",
+      "tags": [
+        "network",
+        "test"
+      ],
+      "inputSchema": {
+        "mediaTypes": [
+          "application/json"
+        ]
+      },
+      "outputSchema": {
+        "mediaTypes": [
+          "application/json"
+        ]
+      }
+    }
+  ],
+  "pricing": {
+    "currency": "CREDIT",
+    "model": "fixed",
+    "minimum": "0.01"
+  },
+  "constraints": {
+    "maxConcurrentTasks": 1,
+    "supportedMediaTypes": [
+      "application/json"
+    ]
+  },
+  "availability": {
+    "status": "available",
+    "validUntil": "2026-08-27T16:21:22.818Z"
+  },
+  "protocol": {
+    "versions": [
+      "0.2"
+    ],
+    "extensions": []
+  },
+  "identity": {
+    "publicKey": "ApP6nKWznCRCe9kj6vB5YIE9MEPAtO2lqRifu0P21tyv",
+    "signingAlgorithm": "ES256K"
+  },
+  "certifications": [
+    {
+      "type": "pakana.certification.reference.v1",
+      "certificateId": "urn:pakana:agent-control:e43594161ea83534c9d6ac6039726fb7b38cfa311bf7e494be5236c5fa5266b4",
+      "subjectId": "ae:Q3shXNSL8gy5pHHEJDr2VCgAnCVURaigbTQnozjyy3PW8sRG",
+      "credentialType": "pakana.agent-control.credential.v1",
+      "issuerVerificationMethod": "GCF57EPJ46ESGCEK6D7YJZTNJJI45ISHOQV3JVQDH3CICYTBMB3X4L3E",
+      "digest": {
+        "algorithm": "sha256-pakana-json-v1",
+        "value": "ab8c69670939f8210b7c21d295ffea22d4810c551026d33f9b7e8d4ee8992106"
+      }
+    },
+    {
+      "type": "pakana.certification.reference.v1",
+      "certificateId": "urn:pakana:agent-control:23b41012903c693b590a7b8f4f7d27eccb0083217dff487e1f3aa71e80f6231f",
+      "subjectId": "ae:Q3shXNSL8gy5pHHEJDr2VCgAnCVURaigbTQnozjyy3PW8sRG",
+      "credentialType": "pakana.agent-control.credential.v1",
+      "issuerVerificationMethod": "GDIUXWCOVY3T2SGLWPKORRONWJMRNJLXJYKI6BUE3WRUOJDT3ODUKJGP",
+      "digest": {
+        "algorithm": "sha256-pakana-json-v1",
+        "value": "ad8ce2084cfbfd1bf7cd620805122bff9d3b2b5b8955abac1ee48e95d05fde50"
+      }
+    }
+  ],
+  "presentation": {
+    "iconUrl": "https://turbodex.ai/assets/agent-exchange/participants/insightsynth.webp"
+  }
+}
