@@ -123,6 +123,27 @@ export default function GlobalFeedScreen(): JSX.Element {
         items: Array<StreamItem & { authorWebId: string }>
       }> = []
 
+      // Include user's own published posts in timeline:
+      try {
+        const ownerProfile = await profileManager.readProfile(webId).catch(() => null)
+        const ownerDisplayName = ownerProfile?.displayName?.trim() || deriveNameFromWebId(webId)
+        authorNames.set(webId, ownerDisplayName)
+        authorMetadata.push({
+          authorWebId: webId,
+          externalUrl: ownerProfile?.externalUrl,
+          avatarUrl: ownerProfile?.avatarUrl,
+        })
+        const myStreamItems = await docustreamManager.listActivities(podRoot)
+        if (myStreamItems.length > 0) {
+          activityBatches.push({
+            sourceWebId: webId,
+            items: myStreamItems.map((item) => ({ ...item, authorWebId: webId })),
+          })
+        }
+      } catch (ownerErr) {
+        console.warn('[feed] error loading owner stream items:', ownerErr)
+      }
+
       const connectionPosts = await Promise.all(
         connections.map(async (connection, index) => {
           try {

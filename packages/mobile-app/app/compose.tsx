@@ -84,10 +84,31 @@ export default function ComposeScreen(): JSX.Element {
           Alert.alert('Broadcast Sent', 'Published to your local mesh.');
         }
       } else if (audience === 'foaf' || audience === 'verified' || audience === 'trust-circle') {
-        // Write payload to Pod /outbox/ container via the authenticated proxy fetch.
+        // Write payload to Pod /outbox/ container and public DocuStream stream via authenticated proxy fetch.
         // Verified mode applies an extra per-recipient PoH gate.
         const podRoot = (webId ?? '').split('/profile/')[0] + '/';
-        const { relationshipManager, moderationManager } = getSolidPodSyncManagers({ fetch: authFetch });
+        const { relationshipManager, moderationManager, docustreamManager, profileManager } =
+          getSolidPodSyncManagers({ fetch: authFetch });
+
+        // Read author profile to attach display name:
+        const profile = await profileManager.readProfile(webId ?? '').catch(() => null);
+        const authorDisplayName = profile?.displayName?.trim() || webId || 'Node';
+
+        // 1. Publish to user's public DocuStream activity feed on their Solid Pod:
+        const streamItemId = 'broadcast-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+        await docustreamManager
+          .appendActivity(podRoot, {
+            id: streamItemId,
+            source: 'nodezero',
+            author: authorDisplayName,
+            title: 'Broadcast',
+            content: postText.trim(),
+            timestamp: new Date().toISOString(),
+          })
+          .catch((err) => {
+            console.warn('[compose] failed saving to docustream:', err);
+          });
+
         const [relationships, moderation] = await Promise.all([
           relationshipManager.listRelationships(podRoot),
           moderationManager.listModeration(podRoot),
@@ -107,7 +128,7 @@ export default function ComposeScreen(): JSX.Element {
         });
         const payload = JSON.stringify({ text: postText, audience, ts: Date.now() });
 
-        // Always save to the user's own Pod outbox container:
+        // 2. Always save to the user's own Pod outbox container:
         await authFetch(
           podRoot +
             'outbox/' +
