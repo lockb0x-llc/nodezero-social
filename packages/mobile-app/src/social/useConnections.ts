@@ -10,6 +10,7 @@ import {
 } from './relationshipRequestFlow'
 import { respondToRelationshipRequest } from './relationshipRequestFlow'
 import { syncRelationshipInbox } from './relationshipInboxSync'
+import { syncRelationshipOutbox } from './relationshipOutboxSync'
 import type {
   ModerationAction,
   ModerationRecord,
@@ -144,6 +145,14 @@ export function useConnections({
         .filter((item) => item !== effectiveWebId))
       setConnectionAuthorityReady(true)
       await syncIncomingRequests()
+      void syncRelationshipOutbox({
+        podRoot,
+        provisionerUrl: getProvisionerUrl(),
+        authFetch,
+        managers,
+      }).catch((outboxErr) => {
+        console.warn('[useConnections] outbox sync warning:', outboxErr)
+      })
     } catch {
       setConnections([])
       setRelationships([])

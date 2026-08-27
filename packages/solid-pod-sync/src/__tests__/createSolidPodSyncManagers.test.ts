@@ -22,6 +22,7 @@ describe('createSolidPodSyncManagers', () => {
     expect(managers.relationshipQuarantineManager).toBeDefined()
     expect(managers.discoveryConsentManager).toBeDefined()
     expect(managers.relationshipInboxReader).toBeDefined()
+    expect(managers.outboxDeliveryWorker).toBeDefined()
     expect(managers.profilePreferencesManager).toBeDefined()
     expect(typeof managers.notificationManager.getPreferences).toBe('function')
     expect(typeof managers.profilePreferencesManager.readPreferences).toBe('function')
@@ -38,6 +39,8 @@ describe('createSolidPodSyncManagers', () => {
     expect(typeof managers.relationshipQuarantineManager.quarantine).toBe('function')
     expect(typeof managers.discoveryConsentManager.readConsent).toBe('function')
     expect(typeof managers.relationshipInboxReader.listResourceUrls).toBe('function')
+    expect(typeof managers.outboxDeliveryWorker.deliverSingleActivity).toBe('function')
+    expect(typeof managers.outboxDeliveryWorker.processPendingReceipts).toBe('function')
   })
 
   it('applies shared bootstrap hook to all write managers when enabled', async () => {

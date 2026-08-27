@@ -43,6 +43,10 @@ import {
 } from './DiscoveryConsentManager.js'
 import { RelationshipInboxReader } from './RelationshipInboxReader.js'
 import {
+  OutboxDeliveryWorker,
+  type OutboxDeliveryWorkerOptions,
+} from './OutboxDeliveryWorker.js'
+import {
   DEFAULT_POLICY_MATRIX,
   PodLayoutManager,
   type PodPolicyMatrix,
@@ -72,6 +76,7 @@ export interface SolidPodSyncManagers {
   relationshipQuarantineManager: RelationshipQuarantineManager
   discoveryConsentManager: DiscoveryConsentManager
   relationshipInboxReader: RelationshipInboxReader
+  outboxDeliveryWorker: OutboxDeliveryWorker
   podLayoutManager: {
     ensureDefaultLayoutAndPolicies: PodLayoutManager['ensureDefaultLayoutAndPolicies']
     ensureDocustreamLayoutAndPolicy?: PodLayoutManager['ensureDocustreamLayoutAndPolicy']
@@ -86,6 +91,7 @@ export interface SolidPodSyncFactoryOptions {
     ensureDocustreamLayoutAndPolicy?: PodLayoutManager['ensureDocustreamLayoutAndPolicy']
   }
   nsfwScanner?: NsfwScanner
+  outboxDeliveryWorkerOptions?: OutboxDeliveryWorkerOptions
 }
 
 export function createSolidPodSyncManagers(
@@ -120,8 +126,17 @@ export function createSolidPodSyncManagers(
   const relationshipManager = new RelationshipManager(session, sharedBootstrapOptions)
   const processedActivityManager = new ProcessedActivityManager(session, sharedBootstrapOptions)
   const moderationManager = new ModerationManager(session, sharedBootstrapOptions)
+  const deliveryReceiptManager = new DeliveryReceiptManager(session, sharedBootstrapOptions)
+  const relationshipOutboxManager = new RelationshipOutboxManager(session, sharedBootstrapOptions)
 
   const socialGraph = new SocialGraph(session, sharedBootstrapOptions)
+
+  const outboxDeliveryWorker = new OutboxDeliveryWorker(
+    deliveryReceiptManager,
+    relationshipOutboxManager,
+    moderationManager,
+    options.outboxDeliveryWorkerOptions
+  )
 
   return {
     profileManager: new ProfileManager(
@@ -145,18 +160,19 @@ export function createSolidPodSyncManagers(
       moderationManager
     ),
     relationshipFoafProjector: new RelationshipFoafProjector(socialGraph),
-    deliveryReceiptManager: new DeliveryReceiptManager(session, sharedBootstrapOptions),
+    deliveryReceiptManager,
     legacyRelationshipMigrator: new LegacyRelationshipMigrator(
       socialGraph,
       relationshipManager
     ),
-    relationshipOutboxManager: new RelationshipOutboxManager(session, sharedBootstrapOptions),
+    relationshipOutboxManager,
     relationshipQuarantineManager: new RelationshipQuarantineManager(
       session,
       sharedBootstrapOptions
     ),
     discoveryConsentManager: new DiscoveryConsentManager(session, sharedBootstrapOptions),
     relationshipInboxReader: new RelationshipInboxReader(session),
+    outboxDeliveryWorker,
     podLayoutManager,
   }
 }

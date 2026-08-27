@@ -77,6 +77,11 @@ export {
 	RelationshipInboxReaderError,
 	RELATIONSHIP_INBOX_PATH,
 } from './RelationshipInboxReader.js'
+export {
+	OutboxDeliveryWorker,
+	OutboxDeliveryError,
+	createProvisionerActivityDeliverer,
+} from './OutboxDeliveryWorker.js'
 export { createSolidPodSyncManagers } from './createSolidPodSyncManagers.js'
 export { mergeAndQueryActivities } from './DocustreamAggregation.js'
 export { buildQueryIndex, queryStreamItems } from './QueryApi.js'
@@ -226,6 +231,13 @@ export type {
 	RelationshipInboxReaderOptions,
 	RelationshipInboxResource,
 } from './RelationshipInboxReader.js'
+export type {
+	OutboxDeliveryWorkerOptions,
+	OutboxDeliveryItemResult,
+	OutboxDeliveryBatchResult,
+	ActivityDeliverer,
+	ActivityDelivererResult,
+} from './OutboxDeliveryWorker.js'
 export type { ProfileManagerOptions } from './ProfileManager.js'
 export type { SocialGraphOptions } from './SocialGraph.js'
 export type { ContractValidationIssue, StreamSource } from './contracts/DocustreamContract.js'
