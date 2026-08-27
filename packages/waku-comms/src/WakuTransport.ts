@@ -53,7 +53,10 @@ interface ActiveSubscription {
   contentTopics: string[]
   handler: InboundMessageHandler
   unsubscribe: (() => Promise<void>) | null
+  lastDeliveredTimestamp?: Date
 }
+
+const DEFAULT_RECONNECT_CATCHUP_MS = 5 * 60_000
 
 /** Pub/sub transport over Waku with reconnect-aware resubscription. */
 export class WakuTransport implements MessageTransport {
@@ -118,9 +121,14 @@ export class WakuTransport implements MessageTransport {
     handler: InboundMessageHandler,
   ): Promise<() => Promise<void>> {
     this.assertStarted()
-    const subscription: ActiveSubscription = { contentTopics, handler, unsubscribe: null }
+    const subscription: ActiveSubscription = {
+      contentTopics,
+      handler,
+      unsubscribe: null,
+      lastDeliveredTimestamp: new Date(),
+    }
     subscription.unsubscribe = await this.node.filterSubscribe(contentTopics, (message) =>
-      this.deliver(handler, message),
+      this.deliver(subscription, message),
     )
     this.subscriptions.add(subscription)
     return async () => {
@@ -150,11 +158,18 @@ export class WakuTransport implements MessageTransport {
   }
 
   /** Decode, verify, and forward one raw transport message. */
-  private deliver(handler: InboundMessageHandler, message: WakuDecodedMessage): void {
+  private deliver(
+    target: InboundMessageHandler | ActiveSubscription,
+    message: WakuDecodedMessage,
+  ): void {
     const envelope = decodeEnvelope(message.payload)
     if (!envelope) {
       // Junk on a public topic is expected; drop silently.
       return
+    }
+    const handler = typeof target === 'function' ? target : target.handler
+    if (typeof target !== 'function') {
+      target.lastDeliveredTimestamp = new Date()
     }
     try {
       handler({
@@ -167,7 +182,7 @@ export class WakuTransport implements MessageTransport {
     }
   }
 
-  /** Re-establish filter subscriptions after a reconnect. */
+  /** Re-establish filter subscriptions and catch up from message store after a reconnect. */
   private async resubscribeAll(): Promise<void> {
     for (const subscription of this.subscriptions) {
       try {
@@ -176,8 +191,17 @@ export class WakuTransport implements MessageTransport {
         }
         subscription.unsubscribe = await this.node.filterSubscribe(
           subscription.contentTopics,
-          (message) => this.deliver(subscription.handler, message),
+          (message) => this.deliver(subscription, message),
         )
+
+        const since =
+          subscription.lastDeliveredTimestamp ??
+          new Date(Date.now() - DEFAULT_RECONNECT_CATCHUP_MS)
+        for (const topic of subscription.contentTopics) {
+          void this.node
+            .storeQuery(topic, since, (message) => this.deliver(subscription, message))
+            .catch(() => undefined)
+        }
       } catch (error) {
         this.emitter.emit('error', error instanceof Error ? error : new Error(String(error)))
       }

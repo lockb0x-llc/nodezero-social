@@ -1,9 +1,41 @@
 # NodeZero.social — Comprehensive Concrete Roadmap: Diagnostic & Requirements Analysis
 
-**Document Version:** 1.0.0  
+**Document Version:** 1.1.0  
 **Date:** August 2026  
 **Status:** Canonical Engineering Roadmap & Implementation Plan  
 **Target Architecture:** NodeZero Web/PWA & Mobile App, Solid Pod Semantic Layer, Logos/Waku P2P Mesh, Stellar/Pakana Soroban Lockb0x DID, and Multi-Rail Agent Exchange
+
+---
+
+## 0. Executive Status Dashboard
+
+```
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                             ROADMAP EXECUTION DASHBOARD                                │
+├────────────────────────────────────────────────────────────────────────────────────────┤
+│ PHASE 1: Complete Non-Local Communication & Social Notifications                       │
+│   • M1.1: Remote LDN Outbox Delivery Worker           🟢 Complete (2026-08-27)         │
+│   • M1.2: Waku Message Store Sync on reconnect        � Complete (2026-08-27)         │
+│   • M1.3: In-App Social Notification Badges & Toasts  🟢 Complete (2026-08-27)         │
+├────────────────────────────────────────────────────────────────────────────────────────┤
+│ PHASE 2: Infrastructure Hardening & Physical Device Certification                      │
+│   • M2.1: Codify Signaling Relay in Azure Bicep IaC   🟡 In Progress / Next Up         │
+│   • M2.2: Automated Zero-Retry Two-Device Matrix      ⚪ Scheduled                     │
+├────────────────────────────────────────────────────────────────────────────────────────┤
+│ PHASE 3: Sovereign Identity & Hardware-Bound Security (WebAuthn L3 PRF & DID)          │
+│   • M3.1: WebAuthn Level 3 PRF Passkey Hardware Vault ⚪ Spec Defined / Queued         │
+│   • M3.2: Formal W3C did:pkn Soroban Lockb0x Resolver ⚪ Spec Defined / Queued         │
+├────────────────────────────────────────────────────────────────────────────────────────┤
+│ PHASE 4: Dual-Storage Tiering & Multi-Rail Agent Commerce                              │
+│   • M4.1: Logos Codex Decentralized Blob Adapter      ⚪ Architecture Defined          │
+│   • M4.2: Status Network L2 (Linea zkEVM) Rail        ⚪ Architecture Defined          │
+├────────────────────────────────────────────────────────────────────────────────────────┤
+│ PHASE 5: Production Mainnet Launch & Public Domain Cutover                             │
+│   • M5.1: Stellar Mainnet Contracts & Treasury        🔴 Gated on Phase 1–4            │
+│   • M5.2: Production Azure Infrastructure Pipeline    🔴 Gated on Phase 1–4            │
+│   • M5.3: Security Audit & Public Apex Launch         🔴 Gated on Phase 1–4            │
+└────────────────────────────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
@@ -67,21 +99,21 @@ gantt
     title NodeZero.social Engineering Roadmap
     dateFormat  YYYY-MM-DD
     section Phase 1: Comms & Notifications
-    Remote Inbox Delivery Engine             :active, p1_1, 2026-09-01, 2026-09-18
-    Waku Store & Offline Sync                :p1_2, 2026-09-10, 2026-09-25
-    Social Notification Orchestration        :p1_3, 2026-09-15, 2026-09-30
+    Remote Inbox Delivery Engine             :done, p1_1, 2026-08-27, 2026-08-27
+    Waku Store & Offline Sync                :done, p1_2, 2026-08-27, 2026-08-27
+    Social Notification Orchestration        :done, p1_3, 2026-08-27, 2026-08-27
     section Phase 2: Infra & Physical UAT
-    Codify Relay in Bicep IaC               :p2_1, 2026-10-01, 2026-10-10
-    Automated Two-Device Zero-Retry Suite   :p2_2, 2026-10-05, 2026-10-20
-    Staging Soak & Performance Audit        :p2_3, 2026-10-15, 2026-10-31
+    Codify Relay in Bicep IaC               :active, p2_1, 2026-08-27, 2026-09-10
+    Automated Two-Device Zero-Retry Suite   :p2_2, 2026-09-10, 2026-09-25
+    Staging Soak & Performance Audit        :p2_3, 2026-09-25, 2026-10-10
     section Phase 3: Identity & DID (L3 PRF)
-    WebAuthn L3 PRF Passkey Hardware Vault  :p3_1, 2026-11-01, 2026-11-20
-    W3C `did:pkn` Soroban DID Resolver      :p3_2, 2026-11-15, 2026-12-05
+    WebAuthn L3 PRF Passkey Hardware Vault  :p3_1, 2026-10-10, 2026-10-31
+    W3C `did:pkn` Soroban DID Resolver      :p3_2, 2026-11-01, 2026-11-20
     section Phase 4: Storage Tiering & Agent Exchange
-    Logos Codex Decentralized Blob Adapter  :p4_1, 2026-12-01, 2026-12-20
-    Status Network L2 (Linea zkEVM) Rail    :p4_2, 2026-12-15, 2027-01-10
+    Logos Codex Decentralized Blob Adapter  :p4_1, 2026-11-20, 2026-12-10
+    Status Network L2 (Linea zkEVM) Rail    :p4_2, 2026-12-10, 2027-01-05
     section Phase 5: Production Mainnet
-    Mainnet Soroban Contracts Deployment    :p5_1, 2027-01-10, 2027-01-25
+    Mainnet Soroban Contracts Deployment    :p5_1, 2027-01-05, 2027-01-20
     Production Bicep Infrastructure Cutover :p5_2, 2027-01-20, 2027-02-05
     Public DNS Domain Launch                :p5_3, 2027-02-05, 2027-02-15
 ```

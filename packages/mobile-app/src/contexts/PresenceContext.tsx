@@ -248,6 +248,12 @@ export function PresenceProvider({ children }: { children: ReactNode }): JSX.Ele
         }
         unsubscribe = unsub
         setPresenceError(null)
+
+        // Catch up on recent presence beacons from the Waku store:
+        const since = new Date(Date.now() - 2 * 60_000)
+        for (const topic of topics) {
+          void transport.querySince(topic, since, handler).catch(() => undefined)
+        }
       })
       .catch((err: unknown) => {
         if (!cancelled) {

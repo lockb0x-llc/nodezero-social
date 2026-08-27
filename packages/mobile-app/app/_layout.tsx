@@ -15,6 +15,7 @@ import { DiscoveryProvider } from '../src/contexts/DiscoveryContext'
 import { WalletProvider, useWallet } from '../src/contexts/WalletContext'
 import { WakuProvider } from '../src/contexts/WakuContext'
 import { PresenceProvider } from '../src/contexts/PresenceContext'
+import { NotificationProvider, useNotifications } from '../src/contexts/NotificationContext'
 import { Stack, Link, usePathname, useRouter } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { View, Text, StyleSheet, Platform, ScrollView, type ViewStyle } from 'react-native'
@@ -135,6 +136,7 @@ function RouteGuard(): null {
 function WebNavBar(): JSX.Element | null {
   const { status } = useNodeZeroSession()
   const { attestationStatus } = useWallet()
+  const { incomingRequestCount } = useNotifications()
   const pathname = usePathname()
 
   // Only render on web and only when the user is authenticated.
@@ -162,17 +164,27 @@ function WebNavBar(): JSX.Element | null {
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.navBar}
       >
-        {links.map(({ href, label }) => (
-          <Link
-            key={href}
-            href={href}
-            style={[styles.navLink, pathname === href && styles.navLinkActive]}
-          >
-            <Text style={[styles.navLinkText, pathname === href && styles.navLinkTextActive]}>
-              {label}
-            </Text>
-          </Link>
-        ))}
+        {links.map(({ href, label }) => {
+          const showBadge = href === '/profile' && incomingRequestCount > 0
+          return (
+            <Link
+              key={href}
+              href={href}
+              style={[styles.navLink, pathname === href && styles.navLinkActive]}
+            >
+              <View style={styles.navLinkInner}>
+                <Text style={[styles.navLinkText, pathname === href && styles.navLinkTextActive]}>
+                  {label}
+                </Text>
+                {showBadge ? (
+                  <View style={styles.navBadge}>
+                    <Text style={styles.navBadgeText}>{incomingRequestCount}</Text>
+                  </View>
+                ) : null}
+              </View>
+            </Link>
+          )
+        })}
       </ScrollView>
       {/* Right-edge fade: visual cue that content continues when the bar overflows.
           Uses a react-native-web CSS passthrough for backgroundImage — this
@@ -217,6 +229,25 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 12,
     borderRadius: 8,
+  },
+  navLinkInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  navBadge: {
+    backgroundColor: aesthetic.color.accent,
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  navBadgeText: {
+    color: '#FFF',
+    fontSize: 10,
+    fontWeight: '700',
   },
   navLinkActive: {
     backgroundColor: '#2F84D933',
@@ -270,28 +301,30 @@ export default function RootLayout(): JSX.Element {
         <WalletProvider>
           <WakuProvider>
             <PresenceProvider>
-              <RouteGuard />
-              <DirectoryPublicationMaintenance />
-              <StatusBar style="light" />
-              <Stack
-                screenOptions={{
-                  headerStyle: { backgroundColor: aesthetic.color.bgNight },
-                  headerTintColor: aesthetic.color.textHigh,
-                  headerTitleStyle: { fontWeight: 'bold' },
-                  contentStyle: { backgroundColor: aesthetic.color.bgNight },
-                }}
-              >
-                <Stack.Screen name="index" options={{ title: 'NodeZero' }} />
-                <Stack.Screen name="onboarding" options={{ title: 'Onboarding' }} />
-                <Stack.Screen name="feed" options={{ title: 'Global Feed' }} />
-                <Stack.Screen name="local" options={{ title: 'Local Node' }} />
-                <Stack.Screen name="profile" options={{ title: 'Profile' }} />
-                <Stack.Screen name="settings" options={{ title: 'Settings' }} />
-                <Stack.Screen name="backpack" />
-                <Stack.Screen name="compose" />
-                <Stack.Screen name="docustream" />
-              </Stack>
-              <WebNavBar />
+              <NotificationProvider>
+                <RouteGuard />
+                <DirectoryPublicationMaintenance />
+                <StatusBar style="light" />
+                <Stack
+                  screenOptions={{
+                    headerStyle: { backgroundColor: aesthetic.color.bgNight },
+                    headerTintColor: aesthetic.color.textHigh,
+                    headerTitleStyle: { fontWeight: 'bold' },
+                    contentStyle: { backgroundColor: aesthetic.color.bgNight },
+                  }}
+                >
+                  <Stack.Screen name="index" options={{ title: 'NodeZero' }} />
+                  <Stack.Screen name="onboarding" options={{ title: 'Onboarding' }} />
+                  <Stack.Screen name="feed" options={{ title: 'Global Feed' }} />
+                  <Stack.Screen name="local" options={{ title: 'Local Node' }} />
+                  <Stack.Screen name="profile" options={{ title: 'Profile' }} />
+                  <Stack.Screen name="settings" options={{ title: 'Settings' }} />
+                  <Stack.Screen name="backpack" />
+                  <Stack.Screen name="compose" />
+                  <Stack.Screen name="docustream" />
+                </Stack>
+                <WebNavBar />
+              </NotificationProvider>
             </PresenceProvider>
           </WakuProvider>
         </WalletProvider>
