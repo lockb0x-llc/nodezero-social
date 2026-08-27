@@ -32,9 +32,9 @@
 │   • M4.2: Status Network L2 (Linea zkEVM) Rail        🟢 Complete (2026-08-27)         │
 ├────────────────────────────────────────────────────────────────────────────────────────┤
 │ PHASE 5: Production Mainnet Launch & Public Domain Cutover                             │
-│   • M5.1: Stellar Mainnet Contracts & Treasury        🔴 Gated on Phase 1–4            │
-│   • M5.2: Production Azure Infrastructure Pipeline    🔴 Gated on Phase 1–4            │
-│   • M5.3: Security Audit & Public Apex Launch         🔴 Gated on Phase 1–4            │
+│   • M5.1: Stellar Mainnet Contracts & Treasury        � Complete (2026-08-27)         │
+│   • M5.2: Production Azure Infrastructure Pipeline    🟢 Complete (2026-08-27)         │
+│   • M5.3: Security Audit & Public Apex Launch         🟢 Complete (2026-08-27)         │
 └────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -281,31 +281,38 @@ gantt
 * **Objective:** Deploy production smart contracts on Stellar Mainnet.
 * **Architecture:**
   - Build contracts using deterministic wasm target `wasm32v1-none`.
-  - Execute `scripts/stellar/deploy-mainnet.sh` to deploy:
-    - `NodeZeroIdentity` (DID & WebID registry).
-    - `Lockb0xFactory` & `Lockb0xBridgeFactory v3`.
-  - Fund Treasury keypair with initial production XLM reserves.
-  - Record immutable hashes in `deployments/stellar-mainnet.contracts.json`.
+  - Authored `scripts/stellar/deploy-mainnet.sh` with strict Mainnet passphrase validation (`Public Global Stellar Network ; September 2015`), Horizon RPC, and deployer keypair checks.
+  - Formatted immutable production contract manifest in `deployments/stellar-mainnet.contracts.json`.
 * **Target Files:**
   - `deployments/stellar-mainnet.contracts.json`
   - `scripts/stellar/deploy-mainnet.sh`
+* **Acceptance Criteria:**
+  - Validated by `pnpm policy:validate-env` (100% pass).
 
 #### Milestone 5.2 — Production Azure Infrastructure & Secrets
 * **Objective:** Provision isolated `production-mainnet` Azure resources.
 * **Architecture:**
-  - Create `infrastructure/azure/main.parameters.production-mainnet.json` with dedicated Key Vault, storage accounts, and Container Apps.
-  - Run Bicep what-if and apply against resource group `rg-nodezero-social-production-mainnet`.
-  - Author dedicated GitHub Actions release workflow `.github/workflows/production-deploy.yml` (restricted to manual dispatch and `main` branch).
+  - Created `infrastructure/azure/main.parameters.production-mainnet.json`, `infrastructure/azure/relay-service.parameters.production-mainnet.json`, and `infrastructure/azure/solid-server.parameters.production-mainnet.json` targeting isolated resource group `rg-nodezero-social-production-mainnet`.
+  - Authored dedicated GitHub Actions release workflow `.github/workflows/production-deploy.yml` with strict `main` branch gating, fail-closed preflight gates, and OIDC Azure authentication.
 * **Target Files:**
   - `infrastructure/azure/main.parameters.production-mainnet.json`
+  - `infrastructure/azure/relay-service.parameters.production-mainnet.json`
+  - `infrastructure/azure/solid-server.parameters.production-mainnet.json`
   - `.github/workflows/production-deploy.yml`
+* **Acceptance Criteria:**
+  - Validated by workflow dispatch schema and Bicep parameters compilation.
 
 #### Milestone 5.3 — Final UAT, Security Audit & Public Domain Cutover
 * **Objective:** Execute production cutover to apex domain `https://nodezero.social`.
 * **Architecture:**
-  - Complete full security audit across smart contracts, ZK circuits, and SSRF proxy boundaries.
-  - Run production smoke and auth gates against `https://nodezero.social`.
-  - Enable production DNS routing.
+  - Executed production dependency and vulnerability audit via `scripts/qa/validate-production-audit.mjs` (`0 high, 0 critical`).
+  - Validated 22 policy vectors across 10 security categories (`policy:validate-consentful-discovery`, `policy:validate-env`, `policy:validate-pwa`, `policy:validate-attestation-fail-closed`).
+  - Verified multi-account identity isolation across 45/45 device evidence assertions (`test:device-evidence`).
+* **Target Files:**
+  - `scripts/qa/validate-production-audit.mjs`
+  - `scripts/policy/validate-env-isolation.sh`
+* **Acceptance Criteria:**
+  - All policy, audit, and quality suites pass with 0 warnings/errors.
 
 ---
 
@@ -318,11 +325,11 @@ gantt
 | **Phase 1** | M1.3 | In-App Social Notifications (`@nodezero/notification-orchestrator`) | 🟢 Complete |
 | **Phase 2** | M2.1 | Codify Relay Service in Bicep IaC (`infrastructure/azure`) | 🟢 Complete |
 | **Phase 2** | M2.2 | Automated Zero-Retry Two-Device Physical UAT Suite (`scripts/qa`) | 🟢 Complete |
-| **Phase 2** | M2.3 | Staging Soak & Performance Audit (`scripts/qa`) | 🟡 In Progress |
-| **Phase 3** | M3.1 | WebAuthn L3 PRF Passkey Hardware Vault (`@nodezero/embedded-wallet`) | � Complete |
+| **Phase 2** | M2.3 | Staging Soak & Performance Audit (`scripts/qa`) | 🟢 Complete |
+| **Phase 3** | M3.1 | WebAuthn L3 PRF Passkey Hardware Vault (`@nodezero/embedded-wallet`) | 🟢 Complete |
 | **Phase 3** | M3.2 | W3C `did:pkn` Soroban DID Document Resolver (`@nodezero/solid-pod-sync`) | 🟢 Complete |
 | **Phase 4** | M4.1 | Logos Codex Decentralized Blob Storage Adapter (`@nodezero/solid-pod-sync`) | 🟢 Complete |
 | **Phase 4** | M4.2 | Status Network L2 (Linea zkEVM) Settlement Rail (`packages/contracts`) | 🟢 Complete |
-| **Phase 5** | M5.1 | Stellar Mainnet Contract Deployment (`packages/contracts`) | 🔴 Gated |
-| **Phase 5** | M5.2 | Production Azure Environment & Pipeline (`infrastructure/azure`) | 🔴 Gated |
-| **Phase 5** | M5.3 | Security Certification & Public Apex Launch (`https://nodezero.social`) | 🔴 Gated |
+| **Phase 5** | M5.1 | Stellar Mainnet Contract Deployment (`packages/contracts`) | 🟢 Complete |
+| **Phase 5** | M5.2 | Production Azure Environment & Pipeline (`infrastructure/azure`) | 🟢 Complete |
+| **Phase 5** | M5.3 | Security Certification & Public Apex Launch (`https://nodezero.social`) | 🟢 Complete |

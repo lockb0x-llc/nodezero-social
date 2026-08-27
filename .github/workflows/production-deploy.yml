@@ -1,0 +1,118 @@
+name: Production Mainnet Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_production_mainnet:
+        description: Explicit confirmation that this operation targets production-mainnet
+        required: true
+        default: false
+        type: boolean
+      production_action:
+        description: Production release phase action
+        required: true
+        default: plan-what-if
+        type: choice
+        options:
+          - plan-what-if
+          - deploy-production
+      target_commit_sha:
+        description: Exact verified Git commit SHA to deploy to production
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  id-token: write
+
+concurrency:
+  group: production-mainnet-deploy
+  cancel-in-progress: false
+
+jobs:
+  validate-dispatch:
+    name: Validate Production Release Dispatch
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate production dispatch guards
+        env:
+          CONFIRM_PROD: ${{ inputs.confirm_production_mainnet }}
+          PROD_ACTION: ${{ inputs.production_action }}
+          TARGET_SHA: ${{ inputs.target_commit_sha }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [ "$CONFIRM_PROD" != "true" ]; then
+            echo "::error::Production deployment requires explicit confirm_production_mainnet=true."
+            exit 1
+          fi
+          if [ "$REF_NAME" != "main" ]; then
+            echo "::error::Production deployment is only permitted from the 'main' branch."
+            exit 1
+          fi
+          if [[ ! "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::target_commit_sha must be a 40-character commit SHA."
+            exit 1
+          fi
+          echo "Production dispatch validated for commit $TARGET_SHA with action $PROD_ACTION."
+
+  preflight-gates:
+    name: Production Pre-flight Gates
+    needs: validate-dispatch
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout target commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target_commit_sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate environment isolation policy
+        run: pnpm policy:validate-env
+
+      - name: Run workspace type-check
+        run: pnpm type-check
+
+      - name: Run workspace unit & integration tests
+        run: pnpm test
+
+      - name: Run two-device identity matrix assertions
+        run: pnpm test:device-evidence
+
+  deploy-infra:
+    name: Deploy Production Azure Infrastructure
+    needs: preflight-gates
+    if: inputs.production_action == 'deploy-production'
+    runs-on: ubuntu-latest
+    environment: production-mainnet
+    steps:
+      - name: Checkout target commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target_commit_sha }}
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Execute Bicep Deployment
+        env:
+          AZURE_RESOURCE_GROUP: rg-nodezero-social-production-mainnet
+          AZURE_BICEP_PARAMETERS_FILE: infrastructure/azure/main.parameters.production-mainnet.json
+          AZURE_ENVIRONMENT_NAME: production-mainnet
+        run: |
+          bash ./scripts/azure/deploy.sh

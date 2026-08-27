@@ -1,0 +1,24 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": { "value": "eastus2" },
+    "environmentName": { "value": "production-mainnet" },
+    "appName": { "value": "nodezero-social" },
+    "cssImage": { "value": "nzsolidui77938.azurecr.io/solid/community-server-nodezero-auth-ui@sha256:8db7c381fb34220ec8e56347e68c44b2fb1fb1ea38d1bafa0c2d98d95ce793cf" },
+    "cssConfigArg": { "value": "/community-server/config/nodezero.json" },
+    "fileShareQuotaGb": { "value": 500 },
+    "containerCpu": { "value": "2.0" },
+    "containerMemory": { "value": "4Gi" },
+    "cssCustomDomain": { "value": "solid.nodezero.social" },
+    "emailProviderMode": { "value": "smtp" },
+    "emailFromAddress": { "value": "admin@nodezero.social" },
+    "emailFromName": { "value": "Node Zero Security" },
+    "smtpHost": { "value": "smtp.azurecomm.net" },
+    "smtpPort": { "value": 587 },
+    "smtpStartTls": { "value": true },
+    "logAnalyticsRetentionDays": { "value": 90 },
+    "logAnalyticsDailyQuotaGb": { "value": 5 },
+    "stellarAuthProvisionerOrigins": { "value": "https://api.nodezero.social,https://nodezero-social-production-mainnet-provisioner.azurewebsites.net" }
+  }
+}

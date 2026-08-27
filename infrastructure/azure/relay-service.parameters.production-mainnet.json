@@ -1,0 +1,36 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": {
+      "value": "eastus2"
+    },
+    "environmentName": {
+      "value": "production-mainnet"
+    },
+    "appName": {
+      "value": "nodezero-social"
+    },
+    "appServicePlanName": {
+      "value": "asp-nodezero-production-relay"
+    },
+    "appServicePlanSkuName": {
+      "value": "P1v3"
+    },
+    "appServicePlanSkuTier": {
+      "value": "PremiumV3"
+    },
+    "provisionerBaseUrl": {
+      "value": "https://api.nodezero.social"
+    },
+    "relayPort": {
+      "value": 8080
+    },
+    "appCommandLine": {
+      "value": "node dist/index.js"
+    },
+    "linuxFxVersion": {
+      "value": "NODE|22-lts"
+    }
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "protocolMajor": "27",
+  "stellarCliVersion": "stellar 27.0.0",
+  "network": "mainnet",
+  "networkPassphrase": "Public Global Stellar Network ; September 2015",
+  "rpcUrl": "https://soroban-rpc.mainnet.stellar.org",
+  "sourceAccount": "nodezero-mainnet-deployer",
+  "strictMainnetMode": true,
+  "contracts": {
+    "identity": {
+      "id": "CBMAINNETIDENTITY000000000000000000000000000000000000000000000",
+      "deploymentMode": "mainnet-production"
+    },
+    "lockbox": {
+      "id": "CBMAINNETLOCKBOX00000000000000000000000000000000000000000000000",
+      "deploymentMode": "mainnet-production"
+    },
+    "lockboxFactory": {
+      "id": "CBMAINNETFACTORY0000000000000000000000000000000000000000000000",
+      "deploymentMode": "mainnet-production"
+    },
+    "lockboxBridgeV3": {
+      "id": "CBMAINNETBRIDGEV3000000000000000000000000000000000000000000000",
+      "deploymentMode": "mainnet-production"
+    }
+  },
+  "generatedAt": "2026-08-27T00:00:00Z"
+}

@@ -1,0 +1,45 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": {
+      "value": "eastus2"
+    },
+    "environmentName": {
+      "value": "production-mainnet"
+    },
+    "appName": {
+      "value": "nodezero-social"
+    },
+    "staticWebAppLocation": {
+      "value": "eastus2"
+    },
+    "logAnalyticsRetentionDays": {
+      "value": 90
+    },
+    "logAnalyticsDailyQuotaGb": {
+      "value": 5
+    },
+    "alertEmailAddress": {
+      "value": "ops@nodezero.social"
+    },
+    "identityContractId": {
+      "value": "CBMAINNETIDENTITY000000000000000000000000000000000000000000000"
+    },
+    "lockboxContractId": {
+      "value": "CBMAINNETLOCKBOX00000000000000000000000000000000000000000000000"
+    },
+    "zkArtifactsUrl": {
+      "value": "https://nodezerosocialprod.blob.core.windows.net/zk-artifacts/"
+    },
+    "zkManifestUrl": {
+      "value": "https://nodezerosocialprod.blob.core.windows.net/zk-artifacts/zk-mainnet-artifacts.json"
+    },
+    "apiHostLabel": {
+      "value": "api"
+    },
+    "provisionerPublicHostName": {
+      "value": "nodezero-social-production-mainnet-provisioner.azurewebsites.net"
+    }
+  }
+}
