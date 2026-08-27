@@ -14,6 +14,23 @@
 
 export { EnclaveAdapter, MissingIdentitySecretError } from './EnclaveAdapter.js'
 export { IndexedDbSecureStore, IndexedDbStorageError } from './IndexedDbSecureStore.js'
+export {
+  checkWebAuthnPrfSupport,
+  deriveKeyFromPrfSecret,
+  WebAuthnPrfKeyProvider,
+  createHardwareBoundSecureStore,
+  type WebAuthnCapabilities,
+  type WebAuthnPrfOptions,
+} from './WebAuthnPrfStore.js'
+export {
+  StatusL2Adapter,
+  StatusL2Error,
+  type StatusL2Network,
+  type EscrowState,
+  type AgentCapabilityEscrowParams,
+  type EscrowStatusResult,
+  type StatusL2AdapterOptions,
+} from './StatusL2Adapter.js'
 export { WalletService } from './WalletService.js'
 export type {
 	WalletInfo,

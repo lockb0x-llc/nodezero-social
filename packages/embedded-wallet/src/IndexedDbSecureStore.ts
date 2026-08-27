@@ -34,9 +34,10 @@ export class IndexedDbStorageError extends Error {
 
 export interface IndexedDbSecureStoreOptions {
   profile: string
-  databaseName?: string
-  indexedDB?: IDBFactory
-  crypto?: Crypto
+  databaseName?: string | undefined
+  indexedDB?: IDBFactory | undefined
+  crypto?: Crypto | undefined
+  wrappingKeyProvider?: ((database: IDBDatabase, crypto: Crypto) => Promise<CryptoKey>) | undefined
 }
 
 function requestResult<T>(request: IDBRequest<T>): Promise<T> {
@@ -59,6 +60,7 @@ export class IndexedDbSecureStore implements ISecureStore {
   private readonly profile: string
   private readonly indexedDbFactory: IDBFactory
   private readonly cryptoProvider: Crypto
+  private readonly wrappingKeyProvider?: ((database: IDBDatabase, crypto: Crypto) => Promise<CryptoKey>) | undefined
   private databasePromise: Promise<IDBDatabase> | null = null
 
   constructor(options: IndexedDbSecureStoreOptions) {
@@ -78,6 +80,7 @@ export class IndexedDbSecureStore implements ISecureStore {
     this.databaseName = options.databaseName ?? `nodezero-wallet-${profile}-v1`
     this.indexedDbFactory = indexedDbFactory
     this.cryptoProvider = cryptoProvider
+    this.wrappingKeyProvider = options.wrappingKeyProvider
   }
 
   async getItemAsync(key: string): Promise<string | null> {
@@ -190,6 +193,10 @@ export class IndexedDbSecureStore implements ISecureStore {
   }
 
   private async getWrappingKey(database: IDBDatabase): Promise<CryptoKey> {
+    if (this.wrappingKeyProvider) {
+      return this.wrappingKeyProvider(database, this.cryptoProvider)
+    }
+
     const readTransaction = database.transaction(KEY_STORE, 'readonly')
     const existing = await requestResult(
       readTransaction.objectStore(KEY_STORE).get(WRAPPING_KEY_ID) as IDBRequest<StoredWrappingKey | undefined>,

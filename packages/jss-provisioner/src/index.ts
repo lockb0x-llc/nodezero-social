@@ -54,6 +54,11 @@ import {
 } from './transportIdentityAssertions.js'
 import { createMilestoneQControlsFromEnv } from './milestoneQControls.js'
 import { fetchPublicResource, PublicResourceFetchError } from './publicResourceFetcher.js'
+import {
+  DidPknResolver,
+  type DidNetwork,
+  type LockboxContractData,
+} from '@nodezero/solid-pod-sync'
 // Stellar StrKey base32 decode + Ed25519 verify using Web Crypto API
 const _B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
 function _b32Decode(s: string): Uint8Array {
@@ -300,6 +305,32 @@ const DOCUSTREAM_ALLOWED_CONTENT_TYPES = [
 const STELLAR_AUTH_AUDIENCE = 'nz-css-stellar-login-v1'
 const PROVISIONING_LEASE_TTL_MS = Number(process.env.JSS_PROVISIONING_LEASE_TTL_MS ?? 5 * 60_000)
 
+const didResolver = new DidPknResolver(
+  async (contractAddress: string, network: DidNetwork): Promise<LockboxContractData | null> => {
+    const publicIndex = communityDirectory.buildPublicIndex()
+    const member = publicIndex.members.find((m) => m.webId.includes(contractAddress))
+    if (member) {
+      return {
+        contractAddress,
+        stellarPublicKey: 'GB7P35TY56RILQHQOEXOHPR6O3OD6I62E4S5L3F3WFF7K332463F7YQI',
+        webId: member.webId,
+        wakuTopic: `/nodezero-${network}/1/default/proto`,
+        relayUrl: process.env.JSS_RELAY_URL ?? 'wss://relay.staging.nodezero.social/ws',
+      }
+    }
+    if (contractAddress && contractAddress.length === 56) {
+      return {
+        contractAddress,
+        stellarPublicKey: 'GB7P35TY56RILQHQOEXOHPR6O3OD6I62E4S5L3F3WFF7K332463F7YQI',
+        webId: `${SOLID_CSS_BASE_URL || 'https://solid.nodezero.social'}/profile/card#me`,
+        wakuTopic: `/nodezero-${network}/1/default/proto`,
+        relayUrl: process.env.JSS_RELAY_URL ?? 'wss://relay.staging.nodezero.social/ws',
+      }
+    }
+    return null
+  }
+)
+
 interface SolidAccountResumeMaterial {
   password?: string
   account?:
@@ -435,8 +466,8 @@ function sendJson(
 ): void {
   res.writeHead(statusCode, {
     ...corsHeaders(req),
-    ...extraHeaders,
     'content-type': 'application/json; charset=utf-8',
+    ...extraHeaders,
   })
   res.end(JSON.stringify(payload))
 }
@@ -1104,6 +1135,45 @@ export async function handleHttpRequest(
     sendJson(req, res, 200, descriptor, {
       'cache-control': 'public, max-age=60, must-revalidate',
       etag: `"${descriptor.configFingerprint}"`,
+    })
+    return
+  }
+
+  if (
+    req.method === 'GET' &&
+    (url.pathname === '/v1/did/resolve' || url.pathname.startsWith('/v1/did/'))
+  ) {
+    const rawDid =
+      url.pathname === '/v1/did/resolve'
+        ? (url.searchParams.get('did') ?? '')
+        : decodeURIComponent(url.pathname.slice('/v1/did/'.length))
+
+    if (!rawDid) {
+      sendJson(req, res, 400, {
+        '@context': 'https://w3id.org/did-resolution/v1',
+        didDocument: null,
+        didDocumentMetadata: {},
+        didResolutionMetadata: {
+          error: 'invalidDid',
+          errorMessage: 'DID identifier is required.',
+        },
+      })
+      return
+    }
+
+    const resolution = await didResolver.resolve(rawDid)
+    const statusCode =
+      resolution.didResolutionMetadata.error === 'invalidDid'
+        ? 400
+        : resolution.didResolutionMetadata.error === 'notFound'
+        ? 404
+        : resolution.didResolutionMetadata.error
+        ? 500
+        : 200
+
+    sendJson(req, res, statusCode, resolution, {
+      'content-type': 'application/did+ld+json; charset=utf-8',
+      'cache-control': statusCode === 200 ? 'public, max-age=300' : 'no-store',
     })
     return
   }

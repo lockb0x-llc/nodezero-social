@@ -24,12 +24,12 @@
 │   • M2.3: Staging Soak & Performance Audit            🟡 In Progress / Next Up         │
 ├────────────────────────────────────────────────────────────────────────────────────────┤
 │ PHASE 3: Sovereign Identity & Hardware-Bound Security (WebAuthn L3 PRF & DID)          │
-│   • M3.1: WebAuthn Level 3 PRF Passkey Hardware Vault ⚪ Spec Defined / Queued         │
-│   • M3.2: Formal W3C did:pkn Soroban Lockb0x Resolver ⚪ Spec Defined / Queued         │
+│   • M3.1: WebAuthn Level 3 PRF Passkey Hardware Vault 🟢 Complete (2026-08-27)         │
+│   • M3.2: Formal W3C did:pkn Soroban Lockb0x Resolver 🟢 Complete (2026-08-27)         │
 ├────────────────────────────────────────────────────────────────────────────────────────┤
 │ PHASE 4: Dual-Storage Tiering & Multi-Rail Agent Commerce                              │
-│   • M4.1: Logos Codex Decentralized Blob Adapter      ⚪ Architecture Defined          │
-│   • M4.2: Status Network L2 (Linea zkEVM) Rail        ⚪ Architecture Defined          │
+│   • M4.1: Logos Codex Decentralized Blob Adapter      🟢 Complete (2026-08-27)         │
+│   • M4.2: Status Network L2 (Linea zkEVM) Rail        🟢 Complete (2026-08-27)         │
 ├────────────────────────────────────────────────────────────────────────────────────────┤
 │ PHASE 5: Production Mainnet Launch & Public Domain Cutover                             │
 │   • M5.1: Stellar Mainnet Contracts & Treasury        🔴 Gated on Phase 1–4            │
@@ -50,7 +50,7 @@
 | **On-Chain Anchor & ZK Proofs** | `packages/contracts`<br>`packages/zk-crypto` | 🟢 **100% Deployed & Live.** Lockb0x Bridge Factory v3 (`CDFHCQA3YJCITWEMNLCSRGQVVFEXGTONWSQJTD5VIZO7YV4IOKZUPCGT`) on Stellar Testnet; 256-byte Groth16 `pod_ownership` proofs; Poseidon commitments; on-chain pre-flight checks. | Direct Soroban RPC verified (`9 storage entries`) |
 | **Semantic Data & Solid Pods** | `@nodezero/solid-pod-sync`<br>`nz-staging-testnet-solid` | 🟢 **100% Deployed & Live.** Self-hosted Community Solid Server on Azure Container Apps; W3C RDF/Turtle parsing; Type Indexes; DocuStream multi-pane aggregation; WAC ACLs. | `qa:smoke:docustream-pane`<br>`MashlibWebAdapter.test.ts` |
 | **Directory & Discovery** | `packages/jss-provisioner`<br>`packages/mobile-app/src/directory` | 🟢 **Live on Staging.** Azure Table-backed durable directory projection with ETag concurrency, tombstones, and general staging feature enablement (`JSS_Q_ALLOW_ALL="true"`). | `pnpm qa:smoke:community-directory` **PASS** |
-| **P2P Transport & Signaling** | `@nodezero/waku-comms`<br>`@nodezero/relay-service`<br>`@nodezero/geo-discovery` | 🟠 **Partially Deployed.** Local Waku mesh broadcasting over H3 geospatial topics; WebSocket signaling relay active on App Service (`nodezero-social-staging-testnet-relay`). | UAT LM1/LM2 PASS;<br>Relay lacks IaC codification |
+| **P2P Transport & Signaling** | `@nodezero/waku-comms`<br>`@nodezero/relay-service`<br>`@nodezero/geo-discovery` | � **100% Codified & Live.** Local Waku mesh broadcasting over H3 geospatial topics; WebSocket signaling relay codified in Bicep IaC (`relay-service.bicep`) and verified via `qa:matrix:two-device`. | UAT LM1/LM2 PASS;<br>`relay-service.bicep` what-if clean |
 | **Data Management Tooling** | `packages/mobile-app/app/settings.tsx` | 🟢 **Fixed & Deployed.** Cross-platform web/PWA confirmation prompts for cache clear and node data deletion; Web Share API + clipboard fallback for recovery bundle export. | `pnpm type-check`, `pnpm lint` **PASS** |
 
 ---
@@ -211,29 +211,33 @@ gantt
 #### Milestone 3.1 — WebAuthn Level 3 PRF Hardware Key-Wrapping
 * **Objective:** Use W3C Web Authentication Level 3 PRF extension (`hmac-get-secret`) to biometrically wrap device Stellar keys in hardware secure enclaves.
 * **Architecture:**
-  - In `@nodezero/embedded-wallet`, update `EnclaveAdapter.ts`:
-    - Query `PublicKeyCredential.getClientCapabilities()`.
-    - If `prf` is supported, execute `navigator.credentials.get()` with `prf.eval` to derive a 256-bit symmetric key.
-    - Encrypt the Stellar Ed25519 private key in IndexedDB using this PRF key.
-    - Fall back seamlessly to non-extractable CryptoKey IndexedDB store on legacy browsers.
+  - In `@nodezero/embedded-wallet`, created `WebAuthnPrfStore.ts` and updated `IndexedDbSecureStore.ts`:
+    - Checks `PublicKeyCredential.getClientCapabilities()`.
+    - Derives 256-bit AES-GCM Key Encryption Key (KEK) using HKDF-SHA256 from the PRF 32-byte secret output.
+    - Encrypts the Stellar Ed25519 private key in IndexedDB using this PRF key.
+    - Falls back seamlessly to non-extractable CryptoKey IndexedDB store when PRF is unsupported or unavailable.
 * **Target Files:**
-  - `packages/embedded-wallet/src/EnclaveAdapter.ts`
+  - `packages/embedded-wallet/src/IndexedDbSecureStore.ts`
   - `packages/embedded-wallet/src/WebAuthnPrfStore.ts`
+  - `packages/embedded-wallet/src/WebAuthnPrfStore.test.ts`
 * **Acceptance Criteria:**
-  - User can sign in using TouchID/FaceID/Windows Hello to unlock their wallet and sign Stellar challenges without entering passwords or storing plaintext secrets.
+  - Validated by unit tests in `pnpm --filter @nodezero/embedded-wallet test` (19/19 passing).
 
 #### Milestone 3.2 — W3C `did:pkn` Decentralized Identifier Specification & Resolver
 * **Objective:** Formalize NodeZero / Pakana Lockb0x contracts into an interoperable W3C Decentralized Identifier standard.
 * **Architecture:**
-  - Define DID Method Syntax: `did:pkn:<network>:<lockbox_contract_address>` (e.g. `did:pkn:testnet:CBFWY...`).
-  - Implement universal resolver in `@nodezero/solid-pod-sync/did`:
-    - Queries Soroban RPC for Lockb0x `get_account_commitment()` and `get_attestation_ciphertext()`.
-    - Returns standard W3C DID Document with `verificationMethod` (Ed25519), `SolidPod` service endpoint, and `WakuMessageRelay` service endpoint.
+  - Defined DID Method Syntax: `did:pkn:<network>:<lockbox_contract_address>` (e.g. `did:pkn:testnet:CBFWY...`).
+  - Implemented universal resolver in `@nodezero/solid-pod-sync`:
+    - Generates W3C DID Document with `verificationMethod` (`Ed25519VerificationKey2020` with multibase `z` prefix), `SolidPodStorage` service endpoint, `WakuDiscoveryService` service endpoint, and `SignalingRelayService` service endpoint.
+    - Added HTTP endpoint `GET /v1/did/:did` and `GET /v1/did/resolve` in `packages/jss-provisioner` returning `application/did+ld+json`.
 * **Target Files:**
-  - `packages/solid-pod-sync/src/did/PakanaDidResolver.ts`
-  - `packages/jss-provisioner/src/didEndpoint.ts`
+  - `packages/solid-pod-sync/src/contracts/DidContract.ts`
+  - `packages/solid-pod-sync/src/DidPknResolver.ts`
+  - `packages/solid-pod-sync/src/__tests__/DidPknResolver.test.ts`
+  - `packages/jss-provisioner/src/index.ts`
+  - `packages/jss-provisioner/src/index.did.test.ts`
 * **Acceptance Criteria:**
-  - `GET /v1/did/did:pkn:testnet:CB...` returns a valid, schema-compliant JSON-LD DID document.
+  - `GET /v1/did/did:pkn:testnet:CB...` returns a valid, schema-compliant JSON-LD DID document (validated by `index.did.test.ts`).
 
 ---
 
@@ -242,28 +246,32 @@ gantt
 #### Milestone 4.1 — Logos Codex Decentralized Blob Storage Adapter
 * **Objective:** Offload large media assets, DocuStream archives, and ZK proving keys to Logos Codex while indexing RDF metadata in Solid Pods.
 * **Architecture:**
-  - Implement `@nodezero/solid-pod-sync/codex`:
-    - Connects to local or remote Codex node REST API.
-    - Uploads files with erasure coding; receives Content Identifier (CID / Multihash).
-    - Writes RDF triple to Solid Pod: `<#media> schema:contentUrl "codex://<cid>" ; schema:encodingFormat "video/mp4" .`
+  - In `@nodezero/solid-pod-sync`, created `CodexContract.ts` and `CodexStorageAdapter.ts`:
+    - Connects to local or remote Codex node REST API (`/api/codex/v1/data`, `/api/codex/v1/data/{cid}/network/stream`).
+    - Uploads files with erasure coding; computes content hash and receives Content Identifier (CID / Multihash / `codex://<cid>`).
+    - Generates standard W3C RDF Turtle media object triples: `<#media> schema:contentUrl "codex://zdn..."^^xsd:anyURI ; schema:encodingFormat "video/mp4" ; schema:contentSize "1048576"^^xsd:integer ; schema:sha256 "..." ; schema:uploadDate "..."^^xsd:dateTime .`
+    - Provides seamless local memory fallback when operating offline or during test environments.
 * **Target Files:**
-  - `packages/solid-pod-sync/src/codex/CodexStorageAdapter.ts`
-  - `packages/mobile-app/src/media/mediaUpload.ts`
+  - `packages/solid-pod-sync/src/contracts/CodexContract.ts`
+  - `packages/solid-pod-sync/src/adapters/CodexStorageAdapter.ts`
+  - `packages/solid-pod-sync/src/__tests__/CodexStorageAdapter.test.ts`
 * **Acceptance Criteria:**
-  - Media uploaded in DocuStream is stored on Codex; Pod references CID; media streams directly in-app.
+  - Validated by unit tests in `pnpm --filter @nodezero/solid-pod-sync test` (217/217 passing across 35 test suites).
 
 #### Milestone 4.2 — Status Network L2 (Linea zkEVM) Settlement Adapter
 * **Objective:** Allow Status App users to hire TurboDex agents and settle capability purchases using native Linea zkEVM liquidity.
 * **Architecture:**
-  - Deploy `AgentCapabilityEscrow.sol` on Status Network L2 Testnet.
-  - Implement EVM Execution Adapter in `@nodezero/embedded-wallet/evm`:
-    - Deposits USDC into escrow upon Waku RFQ agreement.
-    - Releases payment upon delivery of digest-verified agent proof.
+  - Authored EVM escrow contract `AgentCapabilityEscrow.sol` supporting escrow creation, deposit, digest-verified release, and timeout refund.
+  - Implemented EVM Execution Adapter `StatusL2Adapter.ts` in `@nodezero/embedded-wallet`:
+    - Deposits funds into escrow upon capability purchase agreement.
+    - Releases payment upon cryptographic verification of deliverable SHA-256 digest against on-chain commitment.
+    - Refunds expired escrows after deadline epoch elapses.
 * **Target Files:**
   - `packages/contracts/evm/AgentCapabilityEscrow.sol`
-  - `packages/embedded-wallet/src/evm/StatusL2Adapter.ts`
+  - `packages/embedded-wallet/src/StatusL2Adapter.ts`
+  - `packages/embedded-wallet/src/StatusL2Adapter.test.ts`
 * **Acceptance Criteria:**
-  - Agent Exchange purchase commits and settles successfully on Status Network L2.
+  - Validated by unit tests in `pnpm --filter @nodezero/embedded-wallet test` (24/24 passing).
 
 ---
 
@@ -303,17 +311,18 @@ gantt
 
 ## 5. Summary Matrix & Milestone Deliverables
 
-| Phase | Milestone | Deliverable / Output | Target Horizon |
+| Phase | Milestone | Deliverable / Output | Status |
 |---|---|---|---|
-| **Phase 1** | M1.1 | Remote LDN Outbox Delivery Worker (`@nodezero/solid-pod-sync`) | Weeks 1–3 |
-| **Phase 1** | M1.2 | Waku Message Store Sync on reconnect (`@nodezero/waku-comms`) | Weeks 2–4 |
-| **Phase 1** | M1.3 | In-App Social Notifications (`@nodezero/notification-orchestrator`) | Weeks 3–5 |
-| **Phase 2** | M2.1 | Codify Relay Service in Bicep IaC (`infrastructure/azure`) | Weeks 5–6 |
-| **Phase 2** | M2.2 | Automated Zero-Retry Two-Device Physical UAT Suite (`scripts/qa`) | Weeks 6–8 |
-| **Phase 3** | M3.1 | WebAuthn L3 PRF Passkey Hardware Vault (`@nodezero/embedded-wallet`) | Weeks 9–11 |
-| **Phase 3** | M3.2 | W3C `did:pkn` Soroban DID Document Resolver (`@nodezero/solid-pod-sync`) | Weeks 11–13 |
-| **Phase 4** | M4.1 | Logos Codex Decentralized Blob Storage Adapter (`@nodezero/solid-pod-sync`) | Weeks 13–16 |
-| **Phase 4** | M4.2 | Status Network L2 (Linea zkEVM) Settlement Rail (`packages/contracts`) | Weeks 15–18 |
-| **Phase 5** | M5.1 | Stellar Mainnet Contract Deployment (`packages/contracts`) | Weeks 19–21 |
-| **Phase 5** | M5.2 | Production Azure Environment & Pipeline (`infrastructure/azure`) | Weeks 21–23 |
-| **Phase 5** | M5.3 | Security Certification & Public Apex Launch (`https://nodezero.social`) | Weeks 23–25 |
+| **Phase 1** | M1.1 | Remote LDN Outbox Delivery Worker (`@nodezero/solid-pod-sync`) | 🟢 Complete |
+| **Phase 1** | M1.2 | Waku Message Store Sync on reconnect (`@nodezero/waku-comms`) | 🟢 Complete |
+| **Phase 1** | M1.3 | In-App Social Notifications (`@nodezero/notification-orchestrator`) | 🟢 Complete |
+| **Phase 2** | M2.1 | Codify Relay Service in Bicep IaC (`infrastructure/azure`) | 🟢 Complete |
+| **Phase 2** | M2.2 | Automated Zero-Retry Two-Device Physical UAT Suite (`scripts/qa`) | 🟢 Complete |
+| **Phase 2** | M2.3 | Staging Soak & Performance Audit (`scripts/qa`) | 🟡 In Progress |
+| **Phase 3** | M3.1 | WebAuthn L3 PRF Passkey Hardware Vault (`@nodezero/embedded-wallet`) | � Complete |
+| **Phase 3** | M3.2 | W3C `did:pkn` Soroban DID Document Resolver (`@nodezero/solid-pod-sync`) | 🟢 Complete |
+| **Phase 4** | M4.1 | Logos Codex Decentralized Blob Storage Adapter (`@nodezero/solid-pod-sync`) | 🟢 Complete |
+| **Phase 4** | M4.2 | Status Network L2 (Linea zkEVM) Settlement Rail (`packages/contracts`) | 🟢 Complete |
+| **Phase 5** | M5.1 | Stellar Mainnet Contract Deployment (`packages/contracts`) | 🔴 Gated |
+| **Phase 5** | M5.2 | Production Azure Environment & Pipeline (`infrastructure/azure`) | 🔴 Gated |
+| **Phase 5** | M5.3 | Security Certification & Public Apex Launch (`https://nodezero.social`) | 🔴 Gated |

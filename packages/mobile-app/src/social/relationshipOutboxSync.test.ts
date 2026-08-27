@@ -40,13 +40,13 @@ function setup(receiptStatus: DeliveryReceipt['status'] = 'pending', blocked = f
     managers: {
       deliveryReceiptManager: {
         listDeliveryReceipts: async () => [{ ...pendingReceipt, status: receiptStatus }],
-        recordDeliveryReceipt: async (_root, r) => {
+        recordDeliveryReceipt: async (_root: string, r: DeliveryReceipt) => {
           recordedReceipts.push(r)
           return r
         },
       },
       relationshipOutboxManager: {
-        readActivity: async (_root, id) => (id === activityId ? activity : null),
+        readActivity: async (_root: string, id: string) => (id === activityId ? activity : null),
       },
       moderationManager: {
         isBlocked: async () => blocked,

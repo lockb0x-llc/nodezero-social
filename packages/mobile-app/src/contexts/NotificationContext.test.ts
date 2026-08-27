@@ -7,13 +7,13 @@ void test('NotificationHistoryRecord types and structure validate correctly', ()
     kind: 'event',
     recordedAt: '2026-08-27T12:00:00.000Z',
     event: {
-      version: 1,
       eventId: 'evt-1',
+      type: 'social.relationship_request',
       category: 'social',
       priority: 'normal',
       occurredAt: '2026-08-27T12:00:00.000Z',
       summary: 'Alice sent you a relationship request',
-      sourceWebId: 'https://solid.nodezero.social/alice/profile/card#me',
+      resourceRefs: ['https://solid.nodezero.social/alice/profile/card#me'],
     },
   }
 

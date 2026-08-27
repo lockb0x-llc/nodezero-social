@@ -82,6 +82,33 @@ export {
 	OutboxDeliveryError,
 	createProvisionerActivityDeliverer,
 } from './OutboxDeliveryWorker.js'
+export {
+	DidPknResolver,
+	createDidPknDocument,
+	decodeStellarAddressToBytes,
+	encodeBase58,
+	encodeMultibaseBase58Btc,
+	encodeEd25519PublicKeyMultibase,
+} from './DidPknResolver.js'
+export {
+	DID_PKN_METHOD,
+	DID_PKN_REGEX,
+	parseDidPkn,
+	isValidDidPkn,
+} from './contracts/DidContract.js'
+export {
+	CODEX_URI_PREFIX,
+	CODEX_CID_REGEX,
+	isValidCodexCid,
+	normalizeCodexUri,
+	extractCodexCid,
+	validateCodexBlobDescriptor,
+	assertValidCodexBlobDescriptor,
+} from './contracts/CodexContract.js'
+export {
+	CodexStorageAdapter,
+	CodexStorageError,
+} from './adapters/CodexStorageAdapter.js'
 export { createSolidPodSyncManagers } from './createSolidPodSyncManagers.js'
 export { mergeAndQueryActivities } from './DocustreamAggregation.js'
 export { buildQueryIndex, queryStreamItems } from './QueryApi.js'
@@ -306,3 +333,25 @@ export type {
 	MashlibWebAdapterOptions,
 } from './adapters/MashlibWebAdapter.js'
 export type { ActivityStreamsRelationshipDocument } from './adapters/ActivityStreamsRelationshipAdapter.js'
+export type {
+	DidDocument,
+	DidVerificationMethod,
+	DidService,
+	DidResolutionResult,
+	DidResolutionMetadata,
+	DidDocumentMetadata,
+	ParsedDidPkn,
+	DidNetwork,
+} from './contracts/DidContract.js'
+export type {
+	LockboxContractData,
+	CreateDidPknDocumentParams,
+	LockboxLookupFn,
+} from './DidPknResolver.js'
+export type {
+	CodexBlobUploadInput,
+	CodexBlobDescriptor,
+	CodexStorageNodeInfo,
+	CodexStorageValidationIssue,
+} from './contracts/CodexContract.js'
+export type { CodexStorageAdapterOptions } from './adapters/CodexStorageAdapter.js'
