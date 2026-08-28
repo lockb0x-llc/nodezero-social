@@ -111,6 +111,7 @@ export {
 } from './adapters/CodexStorageAdapter.js'
 export { createSolidPodSyncManagers } from './createSolidPodSyncManagers.js'
 export { PodArchiveExporter, PodArchiveError } from './PodArchiveExporter.js'
+export { PodArchiveRestorer } from './PodArchiveRestorer.js'
 export { parseContainedResourceUrls } from './PodContainerParser.js'
 export {
 	archivePathForResource,
@@ -126,6 +127,10 @@ export type {
 	PodArchiveResource,
 	PodArchiveResourceKind,
 	PodArchiveResourceStatus,
+	PodArchiveRestoreConflictPolicy,
+	PodArchiveRestoreItem,
+	PodArchiveRestoreOptions,
+	PodArchiveRestoreReport,
 } from './PodArchiveTypes.js'
 export { mergeAndQueryActivities } from './DocustreamAggregation.js'
 export { buildQueryIndex, queryStreamItems } from './QueryApi.js'

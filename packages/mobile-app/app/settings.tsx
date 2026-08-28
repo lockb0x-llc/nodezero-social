@@ -24,9 +24,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useRouter } from 'expo-router'
 import { useNodeZeroSession } from '../src/contexts/NodeZeroSessionContext'
 import { useWallet } from '../src/contexts/WalletContext'
-import { PodArchiveExporter } from '@nodezero/solid-pod-sync'
+import { PodArchiveExporter, PodArchiveRestorer } from '@nodezero/solid-pod-sync'
 import { buildPodArchiveZip } from '../src/podArchive/zipWriter'
 import { deliverPodArchive } from '../src/podArchive/delivery'
+import { readPodArchiveZip } from '../src/podArchive/zipReader'
 import { aesthetic } from '../src/theme/aesthetic'
 import { readContentPreferences, writeContentPreferences } from '../src/preferences/contentPreferences'
 
@@ -233,6 +234,39 @@ export default function SettingsScreen(): JSX.Element {
         setDataActionStatus(err instanceof Error ? `Pod export failed: ${err.message}` : 'Pod export failed.')
       })
       .finally(() => setIsExporting(false))
+  }, [authFetch, podUrl])
+
+  const restorePodDataDryRun = useCallback((): void => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') {
+      setDataActionStatus('Solid Pod restore preview is currently available on the web.')
+      return
+    }
+    if (!podUrl) {
+      setDataActionStatus('Restore preview failed: no authenticated Pod is available.')
+      return
+    }
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'application/zip,.zip'
+    input.onchange = (): void => {
+      const file = input.files?.[0]
+      if (!file) return
+      setIsExporting(true)
+      setDataActionStatus('Validating Pod archive...')
+      void file.arrayBuffer()
+        .then((buffer) => readPodArchiveZip(new Uint8Array(buffer)))
+        .then(({ manifest, entries }) => new PodArchiveRestorer({ fetch: authFetch }).dryRun(podUrl, manifest, entries))
+        .then((report) => {
+          const planned = report.items.filter((item) => item.status === 'planned').length
+          const conflicts = report.items.filter((item) => item.action === 'conflict' || item.action === 'failed').length
+          setDataActionStatus(`Restore preview ready: ${planned} planned item(s), ${conflicts} conflict(s). No changes were made.`)
+        })
+        .catch((err: unknown) => {
+          setDataActionStatus(err instanceof Error ? `Restore preview failed: ${err.message}` : 'Restore preview failed.')
+        })
+        .finally(() => setIsExporting(false))
+    }
+    input.click()
   }, [authFetch, podUrl])
 
   const performDeleteData = useCallback((): void => {
@@ -553,6 +587,15 @@ export default function SettingsScreen(): JSX.Element {
           accessibilityLabel="Export Solid Pod data"
         >
           <Text style={styles.actionButtonText}>{isExporting ? 'Exporting...' : 'Export Solid Pod Data'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={restorePodDataDryRun}
+          disabled={isExporting}
+          accessibilityRole="button"
+          accessibilityLabel="Preview Solid Pod restore"
+        >
+          <Text style={styles.actionButtonText}>{isExporting ? 'Working...' : 'Preview Solid Pod Restore'}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.dangerButton}

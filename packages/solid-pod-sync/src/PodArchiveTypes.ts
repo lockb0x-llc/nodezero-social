@@ -47,3 +47,35 @@ export interface PodArchiveExportResult {
   manifest: PodArchiveManifest
   entries: PodArchiveEntry[]
 }
+
+export type PodArchiveRestoreConflictPolicy =
+  | 'fail'
+  | 'skip'
+  | 'overwrite'
+  | 'overwrite-if-unchanged'
+
+export interface PodArchiveRestoreOptions {
+  conflictPolicy?: PodArchiveRestoreConflictPolicy
+  applyControlResources?: boolean
+  dryRun?: boolean
+  signal?: AbortSignal
+  onProgress?: (progress: PodArchiveProgress) => void
+}
+
+export type PodArchiveRestoreAction = 'create' | 'update' | 'skip' | 'conflict' | 'failed'
+
+export interface PodArchiveRestoreItem {
+  archivePath: string
+  targetUrl: string
+  kind: PodArchiveResourceKind
+  action: PodArchiveRestoreAction
+  status: 'planned' | 'applied' | 'failed'
+  error?: string
+}
+
+export interface PodArchiveRestoreReport {
+  targetPodUrl: string
+  dryRun: boolean
+  items: PodArchiveRestoreItem[]
+  warnings: string[]
+}
