@@ -110,6 +110,23 @@ export {
 	CodexStorageError,
 } from './adapters/CodexStorageAdapter.js'
 export { createSolidPodSyncManagers } from './createSolidPodSyncManagers.js'
+export { PodArchiveExporter, PodArchiveError } from './PodArchiveExporter.js'
+export { parseContainedResourceUrls } from './PodContainerParser.js'
+export {
+	archivePathForResource,
+	canonicalizePodResource,
+	canonicalizePodRoot,
+} from './PodResourcePath.js'
+export type {
+	PodArchiveEntry,
+	PodArchiveExportResult,
+	PodArchiveLimits,
+	PodArchiveManifest,
+	PodArchiveProgress,
+	PodArchiveResource,
+	PodArchiveResourceKind,
+	PodArchiveResourceStatus,
+} from './PodArchiveTypes.js'
 export { mergeAndQueryActivities } from './DocustreamAggregation.js'
 export { buildQueryIndex, queryStreamItems } from './QueryApi.js'
 export {

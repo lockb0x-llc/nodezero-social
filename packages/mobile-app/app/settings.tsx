@@ -24,14 +24,19 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useRouter } from 'expo-router'
 import { useNodeZeroSession } from '../src/contexts/NodeZeroSessionContext'
 import { useWallet } from '../src/contexts/WalletContext'
+import { PodArchiveExporter } from '@nodezero/solid-pod-sync'
+import { buildPodArchiveZip } from '../src/podArchive/zipWriter'
+import { deliverPodArchive } from '../src/podArchive/delivery'
 import { aesthetic } from '../src/theme/aesthetic'
 import { readContentPreferences, writeContentPreferences } from '../src/preferences/contentPreferences'
 
 const recoveryExportWarning =
   'This bundle contains your private wallet key. Anyone with it controls your node. Store it securely and never share it.'
+const podExportWarning =
+  'This exports data from your Solid Pod without wallet keys. Resources that cannot be read will be listed in the archive manifest.'
 
 export default function SettingsScreen(): JSX.Element {
-  const { signOut, webId, podUrl, lockbox, sessionCreatedAt } = useNodeZeroSession()
+  const { signOut, webId, podUrl, authFetch, lockbox, sessionCreatedAt } = useNodeZeroSession()
   const router = useRouter()
   const {
     walletInfo,
@@ -195,6 +200,40 @@ export default function SettingsScreen(): JSX.Element {
       { text: 'Export', onPress: performRecoveryExport },
     ])
   }, [performRecoveryExport])
+
+  const exportPodData = useCallback((): void => {
+    if (Platform.OS !== 'web') {
+      setDataActionStatus('Solid Pod archive export is currently available on the web.')
+      return
+    }
+    if (!podUrl) {
+      setDataActionStatus('Export failed: no authenticated Pod is available.')
+      return
+    }
+    if (typeof globalThis.confirm === 'function' && !globalThis.confirm(podExportWarning)) return
+    setIsExporting(true)
+    setDataActionStatus('Reading Solid Pod...')
+    void new PodArchiveExporter(
+      { fetch: authFetch },
+      { onProgress: ({ completed, discovered }) => setDataActionStatus(`Reading Solid Pod... ${completed}/${discovered}`) },
+    )
+      .export(podUrl)
+      .then(async (result) => {
+        const bytes = buildPodArchiveZip(result)
+        const outcome = await deliverPodArchive(
+          `nodezero-pod-${new Date().toISOString().slice(0, 10)}.zip`,
+          bytes,
+        )
+        const warningSuffix = result.manifest.warnings.length > 0
+          ? ` ${result.manifest.warnings.length} resource warning(s) are recorded in the manifest.`
+          : ''
+        setDataActionStatus(`Solid Pod archive ${outcome}.${warningSuffix}`)
+      })
+      .catch((err: unknown) => {
+        setDataActionStatus(err instanceof Error ? `Pod export failed: ${err.message}` : 'Pod export failed.')
+      })
+      .finally(() => setIsExporting(false))
+  }, [authFetch, podUrl])
 
   const performDeleteData = useCallback((): void => {
     setIsDeleting(true)
@@ -502,9 +541,18 @@ export default function SettingsScreen(): JSX.Element {
           onPress={exportData}
           disabled={isExporting}
           accessibilityRole="button"
-          accessibilityLabel="Export recovery bundle"
+          accessibilityLabel="Export identity recovery bundle"
         >
-          <Text style={styles.actionButtonText}>{isExporting ? 'Exporting…' : '⬇  Export Recovery Bundle'}</Text>
+          <Text style={styles.actionButtonText}>{isExporting ? 'Exporting...' : 'Export Identity Recovery Bundle'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={exportPodData}
+          disabled={isExporting}
+          accessibilityRole="button"
+          accessibilityLabel="Export Solid Pod data"
+        >
+          <Text style={styles.actionButtonText}>{isExporting ? 'Exporting...' : 'Export Solid Pod Data'}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.dangerButton}
