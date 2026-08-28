@@ -19,9 +19,10 @@ interface WebAnchor {
   click: () => void
 }
 
-export async function deliverPodArchive(
+export async function deliverFile(
   fileName: string,
   bytes: Uint8Array,
+  mimeType: string,
 ): Promise<PodArchiveDeliveryOutcome> {
   if (typeof document === 'undefined') {
     const cacheDirectory = FileSystem.cacheDirectory
@@ -35,10 +36,12 @@ export async function deliverPodArchive(
       throw new Error('Native sharing is unavailable.')
     }
     try {
-      await Sharing.shareAsync(uri, { mimeType: 'application/zip', dialogTitle: fileName })
+      await Sharing.shareAsync(uri, { mimeType, dialogTitle: fileName })
       return 'shared'
     } finally {
-      await FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => undefined)
+      setTimeout(() => {
+        void FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => undefined)
+      }, 5 * 60 * 1000)
     }
   }
 
@@ -52,7 +55,7 @@ export async function deliverPodArchive(
 
   const blobBytes = bytes.slice().buffer as ArrayBuffer
   const file = typeof File !== 'undefined'
-    ? new File([blobBytes], fileName, { type: 'application/zip' })
+    ? new File([blobBytes], fileName, { type: mimeType })
     : null
   if (file && browser.navigator?.share && browser.navigator.canShare?.({ files: [file] })) {
     try {
@@ -64,7 +67,7 @@ export async function deliverPodArchive(
     }
   }
 
-  const blob = new Blob([blobBytes], { type: 'application/zip' })
+  const blob = new Blob([blobBytes], { type: mimeType })
   const href = URL.createObjectURL(blob)
   const anchor = browser.document.createElement('a')
   anchor.href = href
@@ -80,10 +83,23 @@ export async function deliverPodArchive(
 }
 
 function toBase64(bytes: Uint8Array): string {
-  let binary = ''
-  const chunkSize = 0x8000
-  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize))
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+  let result = ''
+  for (let index = 0; index < bytes.length; index += 3) {
+    const first = bytes[index]
+    const second = bytes[index + 1]
+    const third = bytes[index + 2]
+    result += alphabet[first >> 2]
+    result += alphabet[((first & 3) << 4) | (second === undefined ? 0 : second >> 4)]
+    result += second === undefined ? '==' : alphabet[((second & 15) << 2) | (third === undefined ? 0 : third >> 6)]
+    result += third === undefined ? '=' : alphabet[third & 63]
   }
-  return globalThis.btoa(binary)
+  return result
+}
+
+export async function deliverPodArchive(
+  fileName: string,
+  bytes: Uint8Array,
+): Promise<PodArchiveDeliveryOutcome> {
+  return deliverFile(fileName, bytes, 'application/zip')
 }

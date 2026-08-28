@@ -64,4 +64,36 @@ describe('Pod archive restorer', () => {
     expect(report.items[0]).toMatchObject({ action: 'skip', status: 'planned', kind: 'acl' })
     expect(fetch).not.toHaveBeenCalled()
   })
+
+  it('creates containers with the LDP BasicContainer link', async () => {
+    const containerManifest = manifest()
+    containerManifest.resources[0] = {
+      ...containerManifest.resources[0],
+      sourceUrl: `${sourceRoot}public/empty/`,
+      archivePath: 'pod/public/empty/.container',
+      mediaType: 'text/turtle',
+      kind: 'container',
+      size: 0,
+    }
+    const containerEntry = { ...entry(), ...containerManifest.resources[0], bytes: new Uint8Array() }
+    const fetch = jestGlobal.fn()
+      .mockResolvedValueOnce(new Response(null, { status: 404 }))
+      .mockResolvedValueOnce(new Response(null, { status: 201 }))
+    const report = await new PodArchiveRestorer({ fetch }, { dryRun: false }).restore(targetRoot, containerManifest, [containerEntry])
+    expect(report.items[0]).toMatchObject({ kind: 'container', status: 'applied' })
+    expect(fetch).toHaveBeenNthCalledWith(2, `${targetRoot}public/empty/`, expect.objectContaining({
+      method: 'PUT',
+      headers: expect.objectContaining({ link: '<http://www.w3.org/ns/ldp#BasicContainer>; rel="type"' }),
+      body: '',
+    }))
+  })
+
+  it('fails closed when overwrite-if-unchanged lacks matching ETags', async () => {
+    const fetch = jestGlobal.fn().mockResolvedValue(new Response(null, { status: 200 }))
+    const report = await new PodArchiveRestorer(
+      { fetch },
+      { conflictPolicy: 'overwrite-if-unchanged' },
+    ).dryRun(targetRoot, manifest(), [entry()])
+    expect(report.items[0]).toMatchObject({ action: 'conflict', status: 'failed' })
+  })
 })

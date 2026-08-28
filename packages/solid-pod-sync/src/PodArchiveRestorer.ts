@@ -114,7 +114,7 @@ export class PodArchiveRestorer {
       }
       if (action === 'update' && this.options.conflictPolicy === 'overwrite-if-unchanged') {
         const currentEtag = existing.headers.get('etag')
-        if (manifestResource.etag && currentEtag && currentEtag !== manifestResource.etag) {
+        if (!manifestResource.etag || !currentEtag || currentEtag !== manifestResource.etag) {
           items.push({ archivePath: entry.archivePath, targetUrl, kind: entry.kind, action: 'conflict', status: 'failed', error: 'Target ETag changed since export.' })
           continue
         }
@@ -122,18 +122,41 @@ export class PodArchiveRestorer {
 
       const item: PodArchiveRestoreItem = { archivePath: entry.archivePath, targetUrl, kind: entry.kind, action, status: 'planned' }
       if (!dryRun) {
-        const headers: Record<string, string> = { 'content-type': manifestResource.mediaType ?? 'application/octet-stream' }
-        if (action === 'update' && this.options.conflictPolicy === 'overwrite-if-unchanged' && manifestResource.etag) {
-          headers['if-match'] = manifestResource.etag
-        }
-        const body = entry.bytes.slice().buffer as ArrayBuffer
-        const response = await this.session.fetch(targetUrl, { method: 'PUT', headers, body, redirect: 'error' })
-        if (!response.ok) {
-          item.status = 'failed'
-          item.action = 'failed'
-          item.error = `HTTP ${response.status}`
+        if (entry.kind === 'container') {
+          if (action === 'create') {
+            const response = await this.session.fetch(targetUrl, {
+              method: 'PUT',
+              headers: {
+                'content-type': 'text/turtle',
+                link: '<http://www.w3.org/ns/ldp#BasicContainer>; rel="type"',
+              },
+              body: '',
+              redirect: 'error',
+            })
+            if (!response.ok) {
+              item.status = 'failed'
+              item.action = 'failed'
+              item.error = `HTTP ${response.status}`
+            } else {
+              item.status = 'applied'
+            }
+          } else {
+            item.status = 'applied'
+          }
         } else {
-          item.status = 'applied'
+          const headers: Record<string, string> = { 'content-type': manifestResource.mediaType ?? 'application/octet-stream' }
+          if (action === 'update' && this.options.conflictPolicy === 'overwrite-if-unchanged' && manifestResource.etag) {
+            headers['if-match'] = manifestResource.etag
+          }
+          const body = entry.bytes.slice().buffer as ArrayBuffer
+          const response = await this.session.fetch(targetUrl, { method: 'PUT', headers, body, redirect: 'error' })
+          if (!response.ok) {
+            item.status = 'failed'
+            item.action = 'failed'
+            item.error = `HTTP ${response.status}`
+          } else {
+            item.status = 'applied'
+          }
         }
       }
       items.push(item)
@@ -153,10 +176,19 @@ function validateManifest(manifest: PodArchiveManifest): void {
     throw new PodArchiveError('pod_restore_version', 'Pod archive format is not supported.')
   }
   canonicalizePodRoot(manifest.podUrl)
+  const paths = new Set<string>()
   for (const resource of manifest.resources) {
     if (!resource.archivePath.startsWith('pod/')) throw new PodArchiveError('pod_restore_path', `Invalid archive path: ${resource.archivePath}.`)
     if (resource.archivePath.includes('..') || resource.archivePath.includes('\\')) {
       throw new PodArchiveError('pod_restore_path', `Invalid archive path: ${resource.archivePath}.`)
+    }
+    if (paths.has(resource.archivePath)) throw new PodArchiveError('pod_restore_duplicate_path', `Duplicate archive path: ${resource.archivePath}.`)
+    paths.add(resource.archivePath)
+    if (resource.status === 'exported') {
+      const canonicalSource = canonicalizePodResource(manifest.podUrl, resource.sourceUrl)
+      if (canonicalSource !== resource.sourceUrl) {
+        throw new PodArchiveError('pod_restore_source_url', `Source URL is outside or not canonical: ${resource.sourceUrl}.`)
+      }
     }
   }
 }
@@ -164,7 +196,7 @@ function validateManifest(manifest: PodArchiveManifest): void {
 function targetUrlForArchivePath(targetRoot: string, archivePath: string): string {
   if (!archivePath.startsWith('pod/')) throw new PodArchiveError('pod_restore_path', `Invalid archive path: ${archivePath}.`)
   const relative = archivePath.slice(4)
-  const targetPath = relative.endsWith('/index') ? `${relative.slice(0, -5)}` : relative
+  const targetPath = relative.endsWith('/.container') ? relative.slice(0, -10) : relative
   const resourceUrl = targetPath ? new URL(targetPath, targetRoot).toString() : targetRoot
   return canonicalizePodResource(targetRoot, resourceUrl)
 }

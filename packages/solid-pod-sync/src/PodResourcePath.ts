@@ -25,12 +25,23 @@ export function archivePathForResource(podRoot: string, resourceUrl: string): st
   const root = new URL(canonicalizePodRoot(podRoot))
   const resource = new URL(canonicalizePodResource(root.toString(), resourceUrl))
   const relative = decodeURIComponent(resource.pathname.slice(root.pathname.length))
-  if (!relative || relative.endsWith('/')) return `pod/${relative}index`
+  if (!relative || relative.endsWith('/')) return archivePathForContainer(podRoot, resourceUrl)
   const segments = relative.split('/')
   if (segments.some((segment) => !segment || segment === '.' || segment === '..')) {
     throw new Error(`Pod resource cannot be represented safely: ${resourceUrl}`)
   }
   return `pod/${segments.join('/')}`
+}
+
+export function archivePathForContainer(podRoot: string, resourceUrl: string): string {
+  const root = new URL(canonicalizePodRoot(podRoot))
+  const resource = new URL(canonicalizePodResource(root.toString(), resourceUrl))
+  const relative = decodeURIComponent(resource.pathname.slice(root.pathname.length))
+  const segments = relative.split('/').filter(Boolean)
+  if (segments.some((segment) => segment === '.' || segment === '..' || segment.includes('\\'))) {
+    throw new Error(`Pod container cannot be represented safely: ${resourceUrl}`)
+  }
+  return segments.length > 0 ? `pod/${segments.join('/')}/.container` : 'pod/.container'
 }
 
 function isWithinPath(rootPath: string, candidatePath: string): boolean {

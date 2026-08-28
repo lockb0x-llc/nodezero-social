@@ -114,6 +114,7 @@ export { PodArchiveExporter, PodArchiveError } from './PodArchiveExporter.js'
 export { PodArchiveRestorer } from './PodArchiveRestorer.js'
 export { parseContainedResourceUrls } from './PodContainerParser.js'
 export {
+	archivePathForContainer,
 	archivePathForResource,
 	canonicalizePodResource,
 	canonicalizePodRoot,

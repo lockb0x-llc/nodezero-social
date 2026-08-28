@@ -18,7 +18,6 @@ import {
   TouchableOpacity,
   Alert,
   Platform,
-  Share,
 } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useRouter } from 'expo-router'
@@ -26,7 +25,7 @@ import { useNodeZeroSession } from '../src/contexts/NodeZeroSessionContext'
 import { useWallet } from '../src/contexts/WalletContext'
 import { PodArchiveExporter, PodArchiveRestorer } from '@nodezero/solid-pod-sync'
 import { buildPodArchiveZip } from '../src/podArchive/zipWriter'
-import { deliverPodArchive } from '../src/podArchive/delivery'
+import { deliverFile, deliverPodArchive } from '../src/podArchive/delivery'
 import { readPodArchiveZip } from '../src/podArchive/zipReader'
 import * as DocumentPicker from 'expo-document-picker'
 import * as FileSystem from 'expo-file-system'
@@ -40,6 +39,7 @@ const podExportWarning =
 
 interface SelectedArchive {
   uri: string
+  cleanup?: () => void
 }
 
 function pickWebArchive(): Promise<SelectedArchive | null> {
@@ -53,7 +53,12 @@ function pickWebArchive(): Promise<SelectedArchive | null> {
     input.accept = 'application/zip,.zip'
     input.onchange = (): void => {
       const file = input.files?.[0]
-      resolve(file ? { uri: URL.createObjectURL(file) } : null)
+      if (!file) {
+        resolve(null)
+        return
+      }
+      const uri = URL.createObjectURL(file)
+      resolve({ uri, cleanup: (): void => URL.revokeObjectURL(uri) })
     }
     input.click()
   })
@@ -159,79 +164,19 @@ export default function SettingsScreen(): JSX.Element {
     router.replace('/')
   }, [router, signOut])
 
-  const deliverBundle = useCallback(async (fileName: string, json: string): Promise<void> => {
-    if (Platform.OS === 'web') {
-      // 1. Try Web Share API with file if supported on mobile browsers
-      if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
-        try {
-          if (
-            typeof File !== 'undefined' &&
-            navigator.canShare &&
-            navigator.canShare({ files: [new File([json], fileName, { type: 'application/json' })] })
-          ) {
-            const file = new File([json], fileName, { type: 'application/json' })
-            await navigator.share({
-              title: fileName,
-              files: [file],
-            })
-            return
-          }
-        } catch (shareErr) {
-          if (shareErr instanceof Error && shareErr.name === 'AbortError') return
-        }
-      }
-
-      // 2. Try anchor download
-      let downloadTriggered = false
-      if (typeof document !== 'undefined') {
-        try {
-          const blob = new Blob([json], { type: 'application/json' })
-          const href = URL.createObjectURL(blob)
-          const anchor = document.createElement('a')
-          anchor.href = href
-          anchor.download = fileName
-          document.body.appendChild(anchor)
-          anchor.click()
-          document.body.removeChild(anchor)
-          URL.revokeObjectURL(href)
-          downloadTriggered = true
-        } catch (dlErr) {
-          console.warn('[Settings] Anchor download failed:', dlErr)
-        }
-      }
-
-      // 3. Fallback: Copy to clipboard if on web
-      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-        try {
-          await navigator.clipboard.writeText(json)
-          if (!downloadTriggered) {
-            setDataActionStatus('Recovery bundle copied to clipboard (file download unavailable).')
-            return
-          }
-        } catch {
-          // clipboard unavailable
-        }
-      }
-
-      if (downloadTriggered) return
-    }
-
-    void Share.share({ title: fileName, message: json })
-  }, [])
-
   const performRecoveryExport = useCallback((): void => {
     setIsExporting(true)
     setDataActionStatus(null)
     void exportRecoveryBundle()
       .then(async ({ fileName, json }) => {
-        await deliverBundle(fileName, json)
-        setDataActionStatus('Recovery bundle exported.')
+        const outcome = await deliverFile(fileName, new TextEncoder().encode(json), 'application/json')
+        setDataActionStatus(`Identity recovery bundle ${outcome}.`)
       })
       .catch((err: unknown) => {
         setDataActionStatus(err instanceof Error ? `Export failed: ${err.message}` : 'Export failed.')
       })
       .finally(() => setIsExporting(false))
-  }, [deliverBundle, exportRecoveryBundle])
+  }, [exportRecoveryBundle])
 
   const exportData = useCallback(() => {
     if (Platform.OS === 'web' && typeof globalThis.confirm === 'function') {
@@ -317,6 +262,7 @@ export default function SettingsScreen(): JSX.Element {
           setDataActionStatus(err instanceof Error ? `Restore preview failed: ${err.message}` : 'Restore preview failed.')
         })
         .finally(() => setIsExporting(false))
+        .finally(() => selectedArchive.cleanup?.())
     }
     void restoreSelectedArchive()
   }, [authFetch, podUrl])

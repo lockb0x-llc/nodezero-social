@@ -1,4 +1,5 @@
 import {
+  archivePathForContainer,
   archivePathForResource,
   canonicalizePodResource,
   canonicalizePodRoot,
@@ -59,7 +60,7 @@ export class PodArchiveExporter {
     let totalBytes = 0
     let completed = 0
 
-    while (queue.length > 0 && entries.length < this.options.maxResources) {
+    while (queue.length > 0 && resources.length < this.options.maxResources) {
       this.throwIfAborted()
       const batch = queue.splice(0, this.options.concurrency)
       const results = await Promise.all(batch.map(async ({ url, depth }) => {
@@ -83,8 +84,25 @@ export class PodArchiveExporter {
           resources.push(result)
           if (result.kind === 'container' && result.depth < this.options.maxDepth) {
             for (const child of result.children) {
-              const canonicalChild = canonicalizePodResource(root, child)
-              if (!visited.has(canonicalChild)) queue.push({ url: canonicalChild, depth: result.depth + 1 })
+              try {
+                const canonicalChild = canonicalizePodResource(root, child)
+                if (!visited.has(canonicalChild)) queue.push({ url: canonicalChild, depth: result.depth + 1 })
+              } catch (error) {
+                const message = error instanceof Error ? error.message : 'Invalid child resource.'
+                warnings.push(`${child}: ${message}`)
+                resources.push({
+                  sourceUrl: child,
+                  archivePath: safeArchivePath(root, child),
+                  mediaType: null,
+                  etag: null,
+                  size: 0,
+                  kind: 'failed',
+                  status: 'failed',
+                  error: message,
+                  depth: result.depth + 1,
+                  children: [],
+                })
+              }
             }
           }
         }
@@ -137,10 +155,14 @@ export class PodArchiveExporter {
       const children = mediaType && (mediaType === 'text/turtle' || mediaType === 'application/ld+json')
         ? parseContainedResourceUrls(bytes, mediaType, sourceUrl)
         : []
-      const kind = children.length > 0 || sourceUrl === root ? 'container' : classifyControlResource(sourceUrl)
+      const kind = isContainerResponse(response, bytes, mediaType) || children.length > 0 || sourceUrl === root
+        ? 'container'
+        : classifyControlResource(sourceUrl)
       return {
         sourceUrl,
-        archivePath: archivePathForResource(root, sourceUrl),
+        archivePath: kind === 'container'
+          ? archivePathForContainer(root, sourceUrl)
+          : archivePathForResource(root, sourceUrl),
         mediaType,
         etag: response.headers.get('etag'),
         size: bytes.byteLength,
@@ -189,13 +211,29 @@ function safeArchivePath(root: string, url: string): string {
   try {
     return archivePathForResource(root, url)
   } catch {
-    return 'pod/failed-resource'
+    return `pod/.failed/${encodeURIComponent(url)}`
   }
+}
+
+function isContainerResponse(response: Response, bytes: Uint8Array, mediaType: string | null): boolean {
+  const link = response.headers.get('link') ?? ''
+  if (/<http:\/\/www\.w3\.org\/ns\/ldp#(?:Container|BasicContainer)>\s*;\s*rel="?type"?/i.test(link)) {
+    return true
+  }
+  if (mediaType !== 'text/turtle' && mediaType !== 'application/ld+json') return false
+  const text = new TextDecoder().decode(bytes)
+  return /(?:a|<http:\/\/www\.w3\.org\/1999\/02\/22-rdf-syntax-ns#type>)\s+(?:ldp:)?(?:Container|BasicContainer|<http:\/\/www\.w3\.org\/ns\/ldp#(?:Container|BasicContainer)>)/i.test(text)
 }
 
 async function readBoundedBytes(response: Response, maxBytes: number, signal?: AbortSignal): Promise<Uint8Array> {
   if (signal?.aborted) throw new PodArchiveError('pod_export_cancelled', 'Pod export was cancelled.')
-  if (!response.body) return new Uint8Array(await response.arrayBuffer())
+  if (!response.body) {
+    const bytes = new Uint8Array(await response.arrayBuffer())
+    if (bytes.byteLength > maxBytes) {
+      throw new PodArchiveError('pod_resource_size', `Resource exceeds ${maxBytes} bytes.`)
+    }
+    return bytes
+  }
   const reader = response.body.getReader() as ReadableStreamDefaultReader<Uint8Array>
   const chunks: Uint8Array[] = []
   let size = 0

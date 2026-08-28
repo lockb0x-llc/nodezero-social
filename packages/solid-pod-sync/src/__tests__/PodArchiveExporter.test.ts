@@ -30,8 +30,8 @@ describe('Pod archive exporter', () => {
     }
     const result = await new PodArchiveExporter({ fetch }).export(root)
     expect(result.entries.map((entry) => entry.archivePath)).toEqual([
-      'pod/index',
-      'pod/public/nested/index',
+      'pod/.container',
+      'pod/public/nested/.container',
       'pod/public/nested/photo.bin',
     ])
     expect([...result.entries[2].bytes]).toEqual([0, 255, 1])
@@ -57,5 +57,33 @@ describe('Pod archive exporter', () => {
     expect(() => canonicalizePodResource(root, 'https://mallory.example/pod/secret'))
       .toThrow('outside the authenticated Pod namespace')
     expect(archivePathForResource(root, `${root}public/file.txt`)).toBe('pod/public/file.txt')
+  })
+
+  it('preserves empty containers using LDP response metadata', async () => {
+    const empty = `${root}empty/`
+    const fetch = async (input: string | URL | Request): Promise<Response> => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+      if (url === root) return response(`@prefix ldp: <http://www.w3.org/ns/ldp#> . <${root}> ldp:contains <${empty}> .`, 'text/turtle')
+      return response('@prefix ldp: <http://www.w3.org/ns/ldp#> .', 'text/turtle', {
+        link: '<http://www.w3.org/ns/ldp#BasicContainer>; rel="type"',
+      })
+    }
+    const result = await new PodArchiveExporter({ fetch }).export(root)
+    expect(result.entries).toContainEqual(expect.objectContaining({ sourceUrl: empty, kind: 'container', archivePath: 'pod/empty/.container' }))
+  })
+
+  it('records invalid children and enforces size for non-streaming responses', async () => {
+    const external = 'https://mallory.example/secret'
+    const fetch = async (input: string | URL | Request): Promise<Response> => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+      if (url === root) return response(`@prefix ldp: <http://www.w3.org/ns/ldp#> . <${root}> ldp:contains <${external}> .`, 'text/turtle')
+      return new Response(new Uint8Array([1, 2, 3]), { status: 200, headers: { 'content-type': 'application/octet-stream', 'content-length': '3' } })
+    }
+    const result = await new PodArchiveExporter({ fetch }, { maxResourceBytes: 1000 }).export(root)
+    expect(result.manifest.warnings.join(' ')).toContain('outside the authenticated Pod namespace')
+    expect(result.manifest.resources).toContainEqual(expect.objectContaining({ sourceUrl: external, status: 'failed' }))
+
+    const oversized = await new PodArchiveExporter({ fetch: async (): Promise<Response> => new Response(new Uint8Array([1, 2, 3]), { headers: { 'content-type': 'application/octet-stream' } }) }, { maxResourceBytes: 2 }).export(root)
+    expect(oversized.manifest.warnings.join(' ')).toContain('Resource exceeds 2 bytes')
   })
 })
