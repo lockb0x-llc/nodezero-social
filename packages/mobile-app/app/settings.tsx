@@ -28,6 +28,8 @@ import { PodArchiveExporter, PodArchiveRestorer } from '@nodezero/solid-pod-sync
 import { buildPodArchiveZip } from '../src/podArchive/zipWriter'
 import { deliverPodArchive } from '../src/podArchive/delivery'
 import { readPodArchiveZip } from '../src/podArchive/zipReader'
+import * as DocumentPicker from 'expo-document-picker'
+import * as FileSystem from 'expo-file-system'
 import { aesthetic } from '../src/theme/aesthetic'
 import { readContentPreferences, writeContentPreferences } from '../src/preferences/contentPreferences'
 
@@ -35,6 +37,46 @@ const recoveryExportWarning =
   'This bundle contains your private wallet key. Anyone with it controls your node. Store it securely and never share it.'
 const podExportWarning =
   'This exports data from your Solid Pod without wallet keys. Resources that cannot be read will be listed in the archive manifest.'
+
+interface SelectedArchive {
+  uri: string
+}
+
+function pickWebArchive(): Promise<SelectedArchive | null> {
+  return new Promise((resolve) => {
+    if (typeof document === 'undefined') {
+      resolve(null)
+      return
+    }
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'application/zip,.zip'
+    input.onchange = (): void => {
+      const file = input.files?.[0]
+      resolve(file ? { uri: URL.createObjectURL(file) } : null)
+    }
+    input.click()
+  })
+}
+
+function fromBase64(encoded: string): Uint8Array {
+  const binary = globalThis.atob(encoded)
+  const bytes = new Uint8Array(binary.length)
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index)
+  return bytes
+}
+
+function confirmPodRestore(message: string): Promise<boolean> {
+  if (Platform.OS === 'web' && typeof globalThis.confirm === 'function') {
+    return Promise.resolve(globalThis.confirm(message))
+  }
+  return new Promise((resolve) => {
+    Alert.alert('Restore Solid Pod Data', message, [
+      { text: 'Cancel', style: 'cancel', onPress: (): void => resolve(false) },
+      { text: 'Restore', onPress: (): void => resolve(true) },
+    ])
+  })
+}
 
 export default function SettingsScreen(): JSX.Element {
   const { signOut, webId, podUrl, authFetch, lockbox, sessionCreatedAt } = useNodeZeroSession()
@@ -203,15 +245,11 @@ export default function SettingsScreen(): JSX.Element {
   }, [performRecoveryExport])
 
   const exportPodData = useCallback((): void => {
-    if (Platform.OS !== 'web') {
-      setDataActionStatus('Solid Pod archive export is currently available on the web.')
-      return
-    }
     if (!podUrl) {
       setDataActionStatus('Export failed: no authenticated Pod is available.')
       return
     }
-    if (typeof globalThis.confirm === 'function' && !globalThis.confirm(podExportWarning)) return
+    if (Platform.OS === 'web' && typeof globalThis.confirm === 'function' && !globalThis.confirm(podExportWarning)) return
     setIsExporting(true)
     setDataActionStatus('Reading Solid Pod...')
     void new PodArchiveExporter(
@@ -236,37 +274,51 @@ export default function SettingsScreen(): JSX.Element {
       .finally(() => setIsExporting(false))
   }, [authFetch, podUrl])
 
-  const restorePodDataDryRun = useCallback((): void => {
-    if (Platform.OS !== 'web' || typeof document === 'undefined') {
-      setDataActionStatus('Solid Pod restore preview is currently available on the web.')
-      return
-    }
+  const restorePodData = useCallback((): void => {
     if (!podUrl) {
       setDataActionStatus('Restore preview failed: no authenticated Pod is available.')
       return
     }
-    const input = document.createElement('input')
-    input.type = 'file'
-    input.accept = 'application/zip,.zip'
-    input.onchange = (): void => {
-      const file = input.files?.[0]
-      if (!file) return
+    const restoreSelectedArchive = async (): Promise<void> => {
+      const selection = Platform.OS === 'web'
+        ? await pickWebArchive()
+        : await DocumentPicker.getDocumentAsync({ type: 'application/zip', copyToCacheDirectory: true })
+      if (!selection || ('canceled' in selection && selection.canceled)) return
+      const selectedArchive: SelectedArchive = 'uri' in selection
+        ? selection
+        : { uri: selection.assets?.[0]?.uri ?? '' }
+      if (!selectedArchive.uri) return
       setIsExporting(true)
       setDataActionStatus('Validating Pod archive...')
-      void file.arrayBuffer()
-        .then((buffer) => readPodArchiveZip(new Uint8Array(buffer)))
-        .then(({ manifest, entries }) => new PodArchiveRestorer({ fetch: authFetch }).dryRun(podUrl, manifest, entries))
-        .then((report) => {
+      const bytes = Platform.OS === 'web'
+        ? fetch(selectedArchive.uri).then((response) => response.arrayBuffer()).then((buffer) => new Uint8Array(buffer))
+        : FileSystem.readAsStringAsync(selectedArchive.uri, { encoding: FileSystem.EncodingType.Base64 }).then(fromBase64)
+      void bytes
+        .then(readPodArchiveZip)
+        .then(async ({ manifest, entries }) => {
+          const restorer = new PodArchiveRestorer({ fetch: authFetch })
+          const report = await restorer.dryRun(podUrl, manifest, entries)
           const planned = report.items.filter((item) => item.status === 'planned').length
           const conflicts = report.items.filter((item) => item.action === 'conflict' || item.action === 'failed').length
-          setDataActionStatus(`Restore preview ready: ${planned} planned item(s), ${conflicts} conflict(s). No changes were made.`)
+          const confirmed = await confirmPodRestore(
+            `Restore preview: ${planned} item(s) planned, ${conflicts} conflict(s). Existing resources will not be overwritten. ACL and ACP resources will be skipped. Continue?`,
+          )
+          if (!confirmed || planned === 0) {
+            setDataActionStatus(confirmed ? 'Restore cancelled: no resources are eligible.' : 'Restore cancelled. No changes were made.')
+            return
+          }
+          setDataActionStatus('Restoring Solid Pod data...')
+          const restored = await new PodArchiveRestorer({ fetch: authFetch }, { dryRun: false }).restore(podUrl, manifest, entries)
+          const applied = restored.items.filter((item) => item.status === 'applied').length
+          const failed = restored.items.filter((item) => item.status === 'failed').length
+          setDataActionStatus(`Solid Pod restore complete: ${applied} applied, ${failed} failed. Control resources remain skipped.`)
         })
         .catch((err: unknown) => {
           setDataActionStatus(err instanceof Error ? `Restore preview failed: ${err.message}` : 'Restore preview failed.')
         })
         .finally(() => setIsExporting(false))
     }
-    input.click()
+    void restoreSelectedArchive()
   }, [authFetch, podUrl])
 
   const performDeleteData = useCallback((): void => {
@@ -590,12 +642,12 @@ export default function SettingsScreen(): JSX.Element {
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.actionButton}
-          onPress={restorePodDataDryRun}
+          onPress={restorePodData}
           disabled={isExporting}
           accessibilityRole="button"
-          accessibilityLabel="Preview Solid Pod restore"
+          accessibilityLabel="Restore Solid Pod data"
         >
-          <Text style={styles.actionButtonText}>{isExporting ? 'Working...' : 'Preview Solid Pod Restore'}</Text>
+          <Text style={styles.actionButtonText}>{isExporting ? 'Working...' : 'Restore Solid Pod Data'}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.dangerButton}
