@@ -85,11 +85,13 @@ export function NotificationProvider({ children }: { children: ReactNode }): JSX
     }
 
     void refreshNotifications()
-    const interval = setInterval(() => {
+    const interval = setInterval((): void => {
       void refreshNotifications()
     }, REFRESH_INTERVAL_MS)
 
-    return () => clearInterval(interval)
+    return (): void => {
+      clearInterval(interval)
+    }
   }, [refreshNotifications, status, webId])
 
   const value = useMemo<NotificationContextValue>(

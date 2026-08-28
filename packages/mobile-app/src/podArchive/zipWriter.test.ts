@@ -26,7 +26,11 @@ void test('writes the manifest and exact resource bytes into a ZIP', () => {
       bytes: new Uint8Array([0, 255, 1]),
     }],
   }
-  const files = unzipSync(buildPodArchiveZip(result))
-  assert.deepEqual(JSON.parse(new TextDecoder().decode(files['manifest.json'])), result.manifest)
-  assert.deepEqual([...files['pod/photo.bin']], [0, 255, 1])
+  const files = unzipSync(buildPodArchiveZip(result)) as Record<string, Uint8Array>
+  const manifestBytes = files['manifest.json']
+  const photoBytes = files['pod/photo.bin']
+  assert.ok(manifestBytes)
+  assert.ok(photoBytes)
+  assert.deepEqual(JSON.parse(new TextDecoder().decode(manifestBytes)), result.manifest)
+  assert.deepEqual([...photoBytes], [0, 255, 1])
 })

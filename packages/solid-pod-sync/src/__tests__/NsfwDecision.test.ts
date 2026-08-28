@@ -25,7 +25,7 @@ describe('NsfwDecision', () => {
 
   it('supports injected scanner for deterministic contract testing', () => {
     const scanner = {
-      scan: (_urls: string[]) => ({ isNsfw: true, matchedUrls: [] }),
+      scan: (_urls: string[]): { isNsfw: boolean; matchedUrls: string[] } => ({ isNsfw: true, matchedUrls: [] }),
     }
 
     expect(hasNsfwSignals({ externalUrl: 'https://example.com' }, { scanner })).toBe(true)

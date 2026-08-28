@@ -1,0 +1,28 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "allowJs": true,
+    "checkJs": false,
+    "rootDir": ".",
+    "baseUrl": ".",
+    "paths": {
+      "@nodezero/embedded-wallet": ["packages/embedded-wallet/src/index.ts"],
+      "@nodezero/geo-discovery": ["packages/geo-discovery/src/index.ts"],
+      "@nodezero/p2p-comms": ["packages/p2p-comms/src/index.ts"],
+      "@nodezero/solid-pod-sync": ["packages/solid-pod-sync/src/index.ts"],
+      "@nodezero/waku-comms": ["packages/waku-comms/src/index.ts"],
+      "@nodezero/zk-crypto": ["packages/zk-crypto/src/index.ts"]
+    }
+  },
+  "include": [
+    "*.js",
+    "*.ts",
+    "packages/**/*.js",
+    "packages/**/*.ts",
+    "packages/**/*.tsx",
+    "scripts/**/*.js",
+    "scripts/**/*.ts"
+  ],
+  "exclude": ["node_modules", "dist", "**/dist", ".agent-worktrees"]
+}

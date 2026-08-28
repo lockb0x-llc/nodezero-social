@@ -91,7 +91,7 @@ describe('W3C did:pkn Decentralized Identifier Resolver', () => {
       expect(doc.alsoKnownAs).toEqual(['https://solid.nodezero.social/alice/profile/card#me'])
 
       expect(doc.verificationMethod).toHaveLength(1)
-      const vm = doc.verificationMethod![0]!
+      const vm = doc.verificationMethod![0]
       expect(vm.id).toBe(`${TEST_DID}#stellar-key`)
       expect(vm.type).toBe('Ed25519VerificationKey2020')
       expect(vm.controller).toBe(TEST_DID)

@@ -215,7 +215,7 @@ export default function SettingsScreen(): JSX.Element {
     setDataActionStatus('Reading Solid Pod...')
     void new PodArchiveExporter(
       { fetch: authFetch },
-      { onProgress: ({ completed, discovered }) => setDataActionStatus(`Reading Solid Pod... ${completed}/${discovered}`) },
+      { onProgress: ({ completed, discovered }): void => setDataActionStatus(`Reading Solid Pod... ${completed}/${discovered}`) },
     )
       .export(podUrl)
       .then(async (result) => {

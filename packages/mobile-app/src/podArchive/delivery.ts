@@ -1,10 +1,30 @@
 export type PodArchiveDeliveryOutcome = 'shared' | 'saved' | 'cancelled'
 
+interface WebNavigator {
+  canShare?: (data: { files: File[] }) => boolean
+  share: (data: { title: string; files: File[] }) => Promise<void>
+}
+
+interface WebDocument {
+  body: { appendChild: (element: WebAnchor) => void; removeChild: (element: WebAnchor) => void }
+  createElement: (tagName: 'a') => WebAnchor
+}
+
+interface WebAnchor {
+  href: string
+  download: string
+  click: () => void
+}
+
 export async function deliverPodArchive(
   fileName: string,
   bytes: Uint8Array,
 ): Promise<PodArchiveDeliveryOutcome> {
-  if (typeof window === 'undefined' || typeof document === 'undefined') {
+  const browser = globalThis as unknown as {
+    navigator?: WebNavigator
+    document?: WebDocument
+  }
+  if (!browser.document) {
     throw new Error('Solid Pod archive export is currently available on the web.')
   }
 
@@ -12,9 +32,9 @@ export async function deliverPodArchive(
   const file = typeof File !== 'undefined'
     ? new File([blobBytes], fileName, { type: 'application/zip' })
     : null
-  if (file && typeof navigator.share === 'function' && navigator.canShare?.({ files: [file] })) {
+  if (file && browser.navigator?.share && browser.navigator.canShare?.({ files: [file] })) {
     try {
-      await navigator.share({ title: fileName, files: [file] })
+      await browser.navigator.share({ title: fileName, files: [file] })
       return 'shared'
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') return 'cancelled'
@@ -24,14 +44,14 @@ export async function deliverPodArchive(
 
   const blob = new Blob([blobBytes], { type: 'application/zip' })
   const href = URL.createObjectURL(blob)
-  const anchor = document.createElement('a')
+  const anchor = browser.document.createElement('a')
   anchor.href = href
   anchor.download = fileName
-  document.body.appendChild(anchor)
+  browser.document.body.appendChild(anchor)
   try {
     anchor.click()
   } finally {
-    document.body.removeChild(anchor)
+    browser.document.body.removeChild(anchor)
     setTimeout(() => URL.revokeObjectURL(href), 0)
   }
   return 'saved'

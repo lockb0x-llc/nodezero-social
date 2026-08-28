@@ -18,7 +18,7 @@ import {
 const BASE32_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
 const BASE32_MAP: Record<string, number> = {}
 for (let i = 0; i < BASE32_ALPHABET.length; i++) {
-  BASE32_MAP[BASE32_ALPHABET[i]!] = i
+  BASE32_MAP[BASE32_ALPHABET[i]] = i
 }
 
 const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
@@ -33,7 +33,7 @@ export function decodeStellarAddressToBytes(stellarAddress: string): Uint8Array 
   let byteIndex = 0
 
   for (let i = 0; i < clean.length; i++) {
-    const val = BASE32_MAP[clean[i]!]
+    const val = BASE32_MAP[clean[i]]
     if (val === undefined) return null
     buffer = (buffer << 5) | val
     bitsLeft += 5
@@ -52,9 +52,9 @@ export function decodeStellarAddressToBytes(stellarAddress: string): Uint8Array 
 export function encodeBase58(bytes: Uint8Array): string {
   const digits: number[] = [0]
   for (let i = 0; i < bytes.length; i++) {
-    let carry = bytes[i]!
+    let carry = bytes[i]
     for (let j = 0; j < digits.length; j++) {
-      carry += digits[j]! << 8
+      carry += digits[j] << 8
       digits[j] = carry % 58
       carry = (carry / 58) | 0
     }
@@ -71,7 +71,7 @@ export function encodeBase58(bytes: Uint8Array): string {
 
   let result = '1'.repeat(leadingZeros)
   for (let i = digits.length - 1; i >= 0; i--) {
-    result += BASE58_ALPHABET[digits[i]!]
+    result += BASE58_ALPHABET[digits[i]]
   }
   return result
 }

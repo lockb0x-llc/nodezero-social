@@ -53,7 +53,7 @@ function bufferToHex(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer)
   let hex = ''
   for (let i = 0; i < bytes.length; i++) {
-    hex += bytes[i]!.toString(16).padStart(2, '0')
+    hex += bytes[i].toString(16).padStart(2, '0')
   }
   return hex
 }
@@ -70,7 +70,7 @@ export class CodexStorageAdapter {
       .trim()
       .replace(/\/+$/, '')
     this.useLocalFallback = options?.useLocalFallback ?? true
-    this.fetchImpl = options?.customFetch ?? (globalThis.fetch as (input: string, init?: Record<string, unknown>) => Promise<Response>)
+    this.fetchImpl = options?.customFetch ?? globalThis.fetch
     this.cryptoProvider = options?.crypto ?? (globalThis.crypto as unknown as CryptoLike)
   }
 
@@ -86,7 +86,7 @@ export class CodexStorageAdapter {
     const sizeBytes = bytes.byteLength
     const hashBuffer = await this.cryptoProvider.subtle.digest(
       'SHA-256',
-      bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
+      bytes,
     )
     const sha256Hex = bufferToHex(hashBuffer)
     const uploadedAt = new Date().toISOString()

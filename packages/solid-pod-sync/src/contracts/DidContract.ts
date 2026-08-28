@@ -49,7 +49,7 @@ export interface DidDocument {
 
 export interface DidResolutionMetadata {
   contentType?: string
-  error?: 'invalidDid' | 'notFound' | 'representationNotSupported' | 'internalError' | string
+  error?: string
   errorMessage?: string
   retrieved?: string
 }
@@ -78,7 +78,7 @@ export function parseDidPkn(did: string): ParsedDidPkn | null {
     did: did.trim(),
     method: 'pkn',
     network: match[1] as DidNetwork,
-    contractAddress: match[2] as string,
+    contractAddress: match[2],
   }
 }
 
