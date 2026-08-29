@@ -383,6 +383,27 @@ export async function writePodDocument(
 }
 
 /**
+ * Deletes a single Pod resource using a fresh client_credentials access token.
+ * Returns true when the resource was removed or already absent (404), so
+ * best-effort account-deletion callers can treat "already gone" as success.
+ */
+export async function deletePodResource(
+  baseUrl: string,
+  credentials: ClientCredentials,
+  resourceUrl: string,
+): Promise<boolean> {
+  const token = await mintPodAccessToken(baseUrl, credentials)
+  const res = await fetch(resourceUrl, {
+    method: 'DELETE',
+    headers: {
+      authorization: `DPoP ${token.accessToken}`,
+      dpop: token.proof(resourceUrl, 'DELETE'),
+    },
+  })
+  return res.ok || res.status === 404
+}
+
+/**
  * Persists the NodeZero account profile (WebID <-> Stellar pairing + on-chain
  * lockb0x references) as a JSON document inside the user's own Pod, so the
  * account data lives with the user from creation. Returns the document URL.

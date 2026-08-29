@@ -10,6 +10,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { ProvisionStore } from './store.js'
 import {
   createSolidAccount,
+  deletePodResource,
   mintPodAccessToken,
   patchPodProfileAnchor,
   probePodAccess,
@@ -2849,6 +2850,63 @@ export async function handleHttpRequest(
         clearBrowserSessionCookie()
       )
     }
+    return
+  }
+
+  if (req.method === 'POST' && url.pathname === '/v1/account/delete') {
+    // Self-service "right to be forgotten": best-effort deletes the account's
+    // discoverable Pod resources, hard-unlists it from the community
+    // directory, then permanently revokes stored credentials and sessions so
+    // the provisioner can never act as this identity again.
+    const claims = verifyBearerSession(req)
+    if (!claims) {
+      sendJson(req, res, 401, {
+        error: 'A valid NodeZero session is required.',
+        code: 'session_invalid',
+      })
+      return
+    }
+    const webId = claims.sub
+    const podUrl = claims.pod.endsWith('/') ? claims.pod : `${claims.pod}/`
+    const stored = await credentialStore.findByWebId(webId).catch(() => null)
+
+    const podResourcesDeleted: string[] = []
+    const warnings: string[] = []
+    if (stored) {
+      const credentials = { id: stored.clientCredentialsId, secret: stored.clientCredentialsSecret }
+      for (const relativePath of ['profile/card', 'nodezero-account.json', 'public/discovery/manifest']) {
+        const resourceUrl = `${podUrl}${relativePath}`
+        try {
+          const removed = await deletePodResource(SOLID_CSS_BASE_URL, credentials, resourceUrl)
+          if (removed) podResourcesDeleted.push(relativePath)
+          else warnings.push(`${relativePath}: unexpected response deleting Pod resource.`)
+        } catch (error) {
+          warnings.push(`${relativePath}: ${error instanceof Error ? error.message : 'delete failed'}`)
+        }
+      }
+    } else {
+      warnings.push('No stored Pod credentials were found for this account.')
+    }
+
+    try {
+      communityDirectory.setListing(webId, false)
+    } catch (error) {
+      warnings.push(
+        `Directory unlist failed: ${error instanceof Error ? error.message : 'unknown error'}`
+      )
+    }
+
+    const credentialsRemoved = await credentialStore.revokeByWebId(webId)
+    const refreshTokensRevoked = sessions.revokeByWebId(webId)
+    evictPodTokenCache(webId)
+
+    sendJson(req, res, 200, {
+      status: 'ok',
+      podResourcesDeleted,
+      warnings,
+      credentialsRemoved,
+      refreshTokensRevoked,
+    })
     return
   }
 

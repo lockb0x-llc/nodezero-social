@@ -50,6 +50,7 @@ export default function CommunityDirectoryScreen(): JSX.Element {
   const [acceptedRelationships, setAcceptedRelationships] = useState<string[]>([])
   const [features, setFeatures] = useState<DirectoryFeatureAvailability>(NO_DIRECTORY_FEATURES)
   const [featuresLoading, setFeaturesLoading] = useState(true)
+  const [ownProfilePublished, setOwnProfilePublished] = useState(false)
   const pageCacheRef = useRef<DirectoryPageCacheEntry | null>(null)
   const directoryRecordsRef = useRef<DirectoryRecord[]>([])
 
@@ -80,6 +81,7 @@ export default function CommunityDirectoryScreen(): JSX.Element {
         )
         directoryRecordsRef.current = dedupedRecords
         setNextCursor(result.page.nextCursor)
+        setOwnProfilePublished(dedupedRecords.some((record) => record.webId === effectiveWebId))
         const seed = new Map<string, DirectoryRecord | undefined>([
           [effectiveWebId, undefined],
           ...connections.map((connection): [string, DirectoryRecord | undefined] => [
@@ -258,6 +260,12 @@ export default function CommunityDirectoryScreen(): JSX.Element {
           Public Pod-owner manifests, ranked by your explicit public context.
         </Text>
 
+        {!ownProfilePublished ? (
+          <Text style={styles.directoryGateHintText}>
+            Use the Profile tab to publish your Profile to the Directory to view profiles and connect with others.
+          </Text>
+        ) : null}
+
         {connectionStatus ? (
           <Text
             style={[
@@ -337,6 +345,10 @@ export default function CommunityDirectoryScreen(): JSX.Element {
                     ) : null}
                   </View>
                   <View style={styles.actionColumn}>
+                    {!isSelf && !ownProfilePublished ? (
+                      <Text style={styles.directoryGateHintText}>Publish your profile to interact</Text>
+                    ) : (
+                      <>
                     {!isSelf && features.peerProfile ? (
                       <TouchableOpacity
                         style={styles.profileButton}
@@ -493,6 +505,8 @@ export default function CommunityDirectoryScreen(): JSX.Element {
                         <Text style={styles.directoryConnectButtonText}>Report</Text>
                       </TouchableOpacity>
                     ) : null}
+                      </>
+                    )}
                   </View>
                 </View>
               )
@@ -601,6 +615,11 @@ const styles = StyleSheet.create({
   },
   directoryHintText: {
     color: aesthetic.color.textMid,
+    fontSize: 12,
+    marginBottom: 10,
+  },
+  directoryGateHintText: {
+    color: aesthetic.color.accentSoft,
     fontSize: 12,
     marginBottom: 10,
   },

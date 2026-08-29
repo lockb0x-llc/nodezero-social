@@ -22,6 +22,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useRouter } from 'expo-router'
 import { useNodeZeroSession } from '../src/contexts/NodeZeroSessionContext'
+import { getProvisionerUrl } from '../src/contexts/NodeZeroSessionContext'
 import { useWallet } from '../src/contexts/WalletContext'
 import { PodArchiveExporter, PodArchiveRestorer } from '@nodezero/solid-pod-sync'
 import { buildPodArchiveZip } from '../src/podArchive/zipWriter'
@@ -270,26 +271,39 @@ export default function SettingsScreen(): JSX.Element {
   const performDeleteData = useCallback((): void => {
     setIsDeleting(true)
     setDataActionStatus(null)
-    void deleteNodeData({ unlinkIdentity: true, clearAllLocalCache: true })
-      .then(async ({ unlinkedIdentity, walletDestroyed, localStateCleared, warnings }) => {
-        const status =
-          walletDestroyed && localStateCleared
-            ? (unlinkedIdentity ? 'Node deleted and identity unlinked.' : 'Node deleted (local unlink only).')
-            : 'Node delete completed with partial cleanup.'
-        const warningSuffix = warnings.length > 0 ? ` Warning: ${warnings.join(' ')}` : ''
-        setDataActionStatus(`${status}${warningSuffix}`)
-        await signOut()
-        router.replace('/')
-      })
+    void (async (): Promise<void> => {
+      let podDeleteWarning = ''
+      try {
+        const provisionerUrl = getProvisionerUrl()
+        if (provisionerUrl) {
+          const response = await authFetch(`${provisionerUrl}/v1/account/delete`, { method: 'POST' })
+          if (!response.ok) {
+            podDeleteWarning = ' Solid Pod deletion could not be confirmed; contact support if this persists.'
+          }
+        }
+      } catch {
+        podDeleteWarning = ' Solid Pod deletion could not be confirmed; contact support if this persists.'
+      }
+      const { unlinkedIdentity, walletDestroyed, localStateCleared, warnings } =
+        await deleteNodeData({ unlinkIdentity: true, clearAllLocalCache: true })
+      const status =
+        walletDestroyed && localStateCleared
+          ? (unlinkedIdentity ? 'Node deleted and identity unlinked.' : 'Node deleted (local unlink only).')
+          : 'Node delete completed with partial cleanup.'
+      const warningSuffix = warnings.length > 0 ? ` Warning: ${warnings.join(' ')}` : ''
+      setDataActionStatus(`${status}${warningSuffix}${podDeleteWarning}`)
+      await signOut()
+      router.replace('/')
+    })()
       .catch((err: unknown) => {
         setDataActionStatus(err instanceof Error ? `Delete failed: ${err.message}` : 'Delete failed.')
       })
       .finally(() => setIsDeleting(false))
-  }, [deleteNodeData, router, signOut])
+  }, [authFetch, deleteNodeData, router, signOut])
 
   const deleteData = useCallback(() => {
     const message =
-      'This unlinks your identity on-chain, destroys your local wallet key, and clears local node state. A new wallet and lockb0x are provisioned on next sign-in. This cannot be undone.'
+      'This unlinks your identity on-chain, deletes your Solid Pod entry and Directory listing, destroys your local wallet key, and clears local node state. A new wallet and lockb0x are provisioned on next sign-in. This cannot be undone.'
     if (Platform.OS === 'web' && typeof globalThis.confirm === 'function') {
       if (globalThis.confirm(`Delete Node Data\n\n${message}`)) {
         performDeleteData()
