@@ -13,7 +13,7 @@ on:
           - deploy
           - clean-deploy
       directory_rollout:
-        description: Run cohort-specific Directory validation and E2E gate for this deployment (base Milestone Q features are always enabled on staging-testnet)
+        description: Directory feature rollout for this staging deployment
         required: true
         default: 'off'
         type: choice
@@ -484,6 +484,10 @@ jobs:
           COHORT_KEY: ${{ secrets.JSS_Q_COHORT_KEY }}
           COHORT_HASHES: ${{ secrets.JSS_Q_COHORT_HASHES }}
         run: |
+          directory_enabled=false
+          if [ "${{ inputs.directory_rollout }}" = "cohort" ]; then
+            directory_enabled=true
+          fi
           az webapp config set \
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --name "$JSS_PROVISIONER_APP_NAME" \
@@ -507,11 +511,10 @@ jobs:
               JSS_SOLID_CSS_POD_LOCK_RETRY_BASE_DELAY_MS="1000" \
               JSS_ALLOWED_ORIGINS="https://staging.nodezero.social,https://nodezero.social,https://www.nodezero.social,https://solid.nodezero.social,http://localhost:19006,http://localhost:8081" \
               JSS_BROWSER_SESSION_ENABLED="true" \
-              JSS_Q_DIRECTORY_ENABLED="true" \
-              JSS_Q_PEER_PROFILE_ENABLED="true" \
-              JSS_Q_RELATIONSHIP_ENABLED="true" \
-              JSS_Q_TRANSPORT_ENABLED="true" \
-              JSS_Q_ALLOW_ALL="true" \
+              JSS_Q_DIRECTORY_ENABLED="$directory_enabled" \
+              JSS_Q_PEER_PROFILE_ENABLED="false" \
+              JSS_Q_RELATIONSHIP_ENABLED="false" \
+              JSS_Q_TRANSPORT_ENABLED="false" \
               SCM_DO_BUILD_DURING_DEPLOYMENT="false" \
               ENABLE_ORYX_BUILD="false" \
               JSS_LOCKBOX_FACTORY_MODE="soroban" \
@@ -718,6 +721,7 @@ jobs:
         env:
           EXPECTED_COMMIT: ${{ github.sha }}
           EXPECTED_PAYLOAD_SHA256: ${{ steps.package-provisioner.outputs.payload_sha256 }}
+          EXPECTED_DIRECTORY_ENABLED: ${{ inputs.directory_rollout == 'cohort' && 'true' || 'false' }}
         run: |
           set -euo pipefail
           health_url="https://${JSS_PROVISIONER_APP_NAME}.azurewebsites.net/health"
@@ -732,6 +736,7 @@ jobs:
               --arg commit "$EXPECTED_COMMIT" \
               --arg payload "$EXPECTED_PAYLOAD_SHA256" \
               --arg artifact "$expected_artifact_sha" \
+              --argjson directory "$EXPECTED_DIRECTORY_ENABLED" \
               '.build.commit == $commit and
                .build.payloadSha256 == $payload and
                .build.configuredArtifactSha256 == $artifact and
@@ -739,10 +744,10 @@ jobs:
                .communityDirectory.ready == true and
                .transportIdentity.ready == true and
                .session.signingKeyConfigured == true and
-               .milestoneQ.flags.directory == true and
-               .milestoneQ.flags["peer-profile"] == true and
-               .milestoneQ.flags.relationship == true and
-               .milestoneQ.flags.transport == true' \
+               .milestoneQ.flags.directory == $directory and
+               .milestoneQ.flags["peer-profile"] == false and
+               .milestoneQ.flags.relationship == false and
+               .milestoneQ.flags.transport == false' \
               "$1" >/dev/null
           }
 
@@ -773,10 +778,10 @@ jobs:
               directory_ready="$(jq -r '.communityDirectory.ready // false' /tmp/provisioner-health.json)"
               transport_ready="$(jq -r '.transportIdentity.ready // false' /tmp/provisioner-health.json)"
               signing_key_ready="$(jq -r '.session.signingKeyConfigured // false' /tmp/provisioner-health.json)"
-              q_directory_enabled="$(jq -r '.milestoneQ.flags.directory // false' /tmp/provisioner-health.json)"
-              q_peer_profile_enabled="$(jq -r '.milestoneQ.flags["peer-profile"] // false' /tmp/provisioner-health.json)"
-              q_relationship_enabled="$(jq -r '.milestoneQ.flags.relationship // false' /tmp/provisioner-health.json)"
-              q_transport_enabled="$(jq -r '.milestoneQ.flags.transport // false' /tmp/provisioner-health.json)"
+              q_directory_enabled="$(jq -r '.milestoneQ.flags.directory // true' /tmp/provisioner-health.json)"
+              q_peer_profile_enabled="$(jq -r '.milestoneQ.flags["peer-profile"] // true' /tmp/provisioner-health.json)"
+              q_relationship_enabled="$(jq -r '.milestoneQ.flags.relationship // true' /tmp/provisioner-health.json)"
+              q_transport_enabled="$(jq -r '.milestoneQ.flags.transport // true' /tmp/provisioner-health.json)"
               if health_contract_matches /tmp/provisioner-health.json; then
                 consecutive_healthy=$((consecutive_healthy + 1))
                 echo "Provisioner health and provenance passed on attempt ${attempt} (${consecutive_healthy}/3 consecutive)."
@@ -1350,10 +1355,10 @@ jobs:
               }
             },
             "qFlags": {
-              "directory": true,
-              "peerProfile": true,
-              "relationship": true,
-              "transport": true
+              "directory": false,
+              "peerProfile": false,
+              "relationship": false,
+              "transport": false
             },
             "sha256": {
               "provisionerZip": "${provisioner_sha}",
