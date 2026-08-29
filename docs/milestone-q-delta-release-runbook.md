@@ -1,5 +1,16 @@
 # Milestone Q Delta Release Runbook
 
+> **Superseded (2026-08-XX):** The cohort/rollout gating described in this
+> runbook has been removed. `directory_rollout`, `JSS_Q_COHORT_KEY`,
+> `JSS_Q_COHORT_HASHES`, and the associated `validate-directory-cohort-states`,
+> `hash-milestone-q-cohort`, `bootstrap-directory-cohort`, and
+> `staging-directory-publication-evidence` scripts no longer exist.
+> `MilestoneQControls` now grants all Milestone Q features (Directory,
+> peer-profile, relationship, transport) unconditionally to any authenticated
+> staging-testnet session, so staging can be used for full E2E validation
+> without a rollout ceremony. This document is retained for historical context
+> only.
+
 Date prepared: 2026-08-02
 Target branch: `testnet`
 Target environment: `staging-testnet`

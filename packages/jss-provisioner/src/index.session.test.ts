@@ -22,7 +22,6 @@ import {
   RelationshipDeliveryAssertionManager,
 } from './relationshipDeliveryAssertions.js'
 import { SessionTokenManager } from './sessionTokens.js'
-import { hashCohortIdentity } from './milestoneQControls.js'
 
 // ---------------------------------------------------------------------------
 // Mock CSS
@@ -275,18 +274,6 @@ before(async () => {
   process.env.JSS_RELATIONSHIP_DELIVERY_SIGNING_KEY = 'unit-test-delivery-signing-key-32b!'
   process.env.JSS_Q_RELATIONSHIP_ENABLED = 'true'
   process.env.JSS_Q_TRANSPORT_ENABLED = 'true'
-  process.env.JSS_Q_COHORT_KEY = 'session-route-test-cohort-key'
-  const cohortWebIds = [
-    ...Array.from({ length: 100 }, (_, index) => `${cssBaseUrl}/alice${index + 1}/profile/card#me`),
-    'https://alice.example/profile/card#me',
-    'https://bob.example/profile/card#me',
-    'https://rate-limited.example/profile/card#me',
-    'https://blocked-route.example/profile/card#me',
-    'https://verify-rate.example/profile/card#me',
-  ]
-  process.env.JSS_Q_COHORT_HASHES = cohortWebIds
-    .map((webId) => hashCohortIdentity(webId, process.env.JSS_Q_COHORT_KEY!))
-    .join(',')
   process.env.JSS_RELATIONSHIP_DELIVERY_RATE_LIMIT = '1'
   process.env.JSS_RELATIONSHIP_DELIVERY_RATE_WINDOW_MS = '60000'
   process.env.JSS_RELATIONSHIP_VERIFY_RATE_LIMIT = '2'

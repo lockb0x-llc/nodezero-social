@@ -7,6 +7,8 @@ Reviewed against: `docs/system-description.md`, `docs/architecture.md`, `docs/ad
 
 > Historical evidence documents (Milestone G/H/I/Q evidence summaries) describe the release at their recorded date and are intentionally not rewritten. This review is a fresh, current-state audit layered on top of them.
 
+> **Update (2026-08-XX):** Milestone Q cohort/rollout gating (`directory_rollout`, `JSS_Q_COHORT_KEY`, `JSS_Q_COHORT_HASHES`, and the `validate-directory-cohort-states`/`hash-milestone-q-cohort`/`bootstrap-directory-cohort`/`staging-directory-publication-evidence` scripts) has been removed. All Milestone Q features are now unconditionally enabled for any authenticated staging-testnet session so staging can be used for full E2E validation. References below to cohort rollout being blocked are historical.
+
 ---
 
 ## 1. Executive Summary

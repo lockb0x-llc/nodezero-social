@@ -9,20 +9,12 @@ import { after, before, test } from 'node:test'
 import { SessionTokenManager } from './sessionTokens.js'
 import type { CommunityDirectoryRecord } from './communityDirectory.js'
 import type { PublicPeerProfileResult } from './publicPeerProfile.js'
-import { hashCohortIdentity } from './milestoneQControls.js'
 import { CommunityDirectoryRefreshError } from './communityDirectoryRefresh.js'
 
 process.env.JSS_SOLID_CSS_BASE_URL = 'https://solid.nodezero.social'
 process.env.JSS_ISSUER_URL = 'https://staging.nodezero.social'
 process.env.JSS_INTERNAL_API_KEY = 'test-internal-key'
 process.env.JSS_SESSION_SIGNING_KEY = 'directory-route-test-session-key-32b!'
-process.env.JSS_Q_DIRECTORY_ENABLED = 'true'
-process.env.JSS_Q_PEER_PROFILE_ENABLED = 'true'
-process.env.JSS_Q_COHORT_KEY = 'directory-route-test-cohort-key'
-process.env.JSS_Q_COHORT_HASHES = hashCohortIdentity(
-  'https://solid.nodezero.social/alice/profile/card#me',
-  process.env.JSS_Q_COHORT_KEY
-)
 process.env.JSS_COMMUNITY_DIRECTORY_AVATAR_MAX_CONCURRENCY = '1'
 const tempDirectory = mkdtempSync(join(tmpdir(), 'nz-jss-index-community-directory-'))
 process.env.JSS_COMMUNITY_DIRECTORY_STORE_PATH = join(tempDirectory, 'community-directory.json')
@@ -141,7 +133,7 @@ void test('/v1/milestone-q/features requires a valid NodeZero session', async ()
   })
 })
 
-void test('/v1/milestone-q/features returns session-bound cohort availability', async () => {
+void test('/v1/milestone-q/features returns all features enabled for any authenticated session', async () => {
   const bobSession = new SessionTokenManager({
     signingKey: process.env.JSS_SESSION_SIGNING_KEY,
     issuer: 'https://staging.nodezero.social',
@@ -150,34 +142,28 @@ void test('/v1/milestone-q/features returns session-bound cohort availability', 
     podUrl: 'https://solid.nodezero.social/bob/',
   })
   await withServer(async (baseUrl) => {
-    const eligible = await fetch(`${baseUrl}/v1/milestone-q/features`, {
-      headers: { authorization: `Bearer ${directorySession.accessToken}` },
-    })
-    assert.equal(eligible.status, 200)
-    assert.equal(eligible.headers.get('cache-control'), 'private, no-store')
-    assert.deepEqual(await eligible.json(), {
+    const allFeaturesEnabled = {
       version: 1,
       features: {
         directory: true,
         peerProfile: true,
-        relationship: false,
-        transport: false,
+        relationship: true,
+        transport: true,
       },
-    })
+    }
 
-    const ineligible = await fetch(`${baseUrl}/v1/milestone-q/features`, {
+    const alice = await fetch(`${baseUrl}/v1/milestone-q/features`, {
+      headers: { authorization: `Bearer ${directorySession.accessToken}` },
+    })
+    assert.equal(alice.status, 200)
+    assert.equal(alice.headers.get('cache-control'), 'private, no-store')
+    assert.deepEqual(await alice.json(), allFeaturesEnabled)
+
+    const bob = await fetch(`${baseUrl}/v1/milestone-q/features`, {
       headers: { authorization: `Bearer ${bobSession.accessToken}` },
     })
-    assert.equal(ineligible.status, 200)
-    assert.deepEqual(await ineligible.json(), {
-      version: 1,
-      features: {
-        directory: false,
-        peerProfile: false,
-        relationship: false,
-        transport: false,
-      },
-    })
+    assert.equal(bob.status, 200)
+    assert.deepEqual(await bob.json(), allFeaturesEnabled)
   })
 })
 
@@ -210,12 +196,12 @@ void test('/v1/community-directory/index honors cache validators', async () => {
   })
 })
 
-void test('/v1/community-directory/index denies an authenticated non-cohort viewer', async () => {
+void test('/v1/community-directory/index grants access to any authenticated viewer', async () => {
   await withServer(async (baseUrl) => {
     const response = await fetch(`${baseUrl}/v1/community-directory/index`, {
       headers: { authorization: `Bearer ${nonCohortSession.accessToken}` },
     })
-    assert.equal(response.status, 404)
+    assert.equal(response.status, 200)
   })
 })
 
@@ -274,7 +260,7 @@ void test('/v1/community-directory/refresh derives the owner from the session', 
   )
 })
 
-void test('/v1/community-directory/refresh suppresses listing for a non-cohort owner', async () => {
+void test('/v1/community-directory/refresh allows listing for any authenticated owner', async () => {
   let allowListing: boolean | undefined
   await withServer(
     async (baseUrl) => {
@@ -286,9 +272,9 @@ void test('/v1/community-directory/refresh suppresses listing for a non-cohort o
       assert.deepEqual(await response.json(), {
         status: 'ok',
         listed: false,
-        available: false,
+        available: true,
       })
-      assert.equal(allowListing, false)
+      assert.equal(allowListing, true)
     },
     {
       refreshCommunityDirectoryProjection: (
@@ -514,7 +500,7 @@ void test('/v1/community-directory/avatar requires an authenticated eligible vie
   })
 })
 
-void test('/v1/community-directory/avatar denies an authenticated non-cohort viewer', async () => {
+void test('/v1/community-directory/avatar returns not-found when no record is stored', async () => {
   let readCalled = false
   await withServer(
     async (baseUrl) => {
@@ -527,7 +513,7 @@ void test('/v1/community-directory/avatar denies an authenticated non-cohort vie
         body: JSON.stringify({ webId: directorySession.webId }),
       })
       assert.equal(response.status, 404)
-      assert.equal(readCalled, false)
+      assert.equal(readCalled, true)
     },
     {
       readDirectoryRecord: () => {
@@ -538,7 +524,7 @@ void test('/v1/community-directory/avatar denies an authenticated non-cohort vie
   )
 })
 
-void test('/v1/community-directory/avatar rejects a stored owner outside the current cohort', async () => {
+void test('/v1/community-directory/avatar proxies a stored owner regardless of who publishes it', async () => {
   let fetchCalled = false
   await withServer(
     async (baseUrl) => {
@@ -550,8 +536,8 @@ void test('/v1/community-directory/avatar rejects a stored owner outside the cur
         },
         body: JSON.stringify({ webId: nonCohortSession.webId }),
       })
-      assert.equal(response.status, 404)
-      assert.equal(fetchCalled, false)
+      assert.equal(response.status, 200)
+      assert.equal(fetchCalled, true)
     },
     {
       readDirectoryRecord: (): Promise<CommunityDirectoryRecord> =>
@@ -564,9 +550,14 @@ void test('/v1/community-directory/avatar rejects a stored owner outside the cur
           avatarUrl: 'https://cdn.example/avatar.png',
           manifestExpiresAt: '2099-08-12T12:00:00.000Z',
         }),
-      fetchDirectoryAvatar: () => {
+      fetchDirectoryAvatar: (url: string) => {
         fetchCalled = true
-        throw new Error('must not fetch')
+        return Promise.resolve({
+          finalUrl: url,
+          status: 200,
+          contentType: 'image/png',
+          body: Buffer.from([1, 2, 3]),
+        })
       },
     }
   )
