@@ -30,7 +30,7 @@ const checks = [
   [
     'Guarded rollback workflow',
     '.github/workflows/staging-rollback.yml',
-    /Force Milestone Q flags off/,
+    /Configure retained Milestone Q settings/,
   ],
   [
     'Registered baseline dispatcher',
@@ -189,7 +189,7 @@ const relayHealthLines = new Set((relayHealthBlock ?? '').split('\n').map((line)
 for (const predicate of [
   `[ "$(jq -r '.identityVerifierConfigured // false' /tmp/relay-health.json)" = "true" ] && \\`,
   `[ "$(jq -r '.identityVerifierReachable // false' /tmp/relay-health.json)" = "true" ] && \\`,
-  `jq -e '.transportEnabled == false' /tmp/relay-health.json >/dev/null && \\`,
+  `jq -e '.transportEnabled == true' /tmp/relay-health.json >/dev/null && \\`,
   `[ "$(jq -r '.build.commit // empty' /tmp/relay-health.json)" = "$EXPECTED_COMMIT" ] && \\`,
   `[ "$(jq -r '.build.payloadSha256 // empty' /tmp/relay-health.json)" = "$EXPECTED_PAYLOAD_SHA256" ]; then`,
 ]) {

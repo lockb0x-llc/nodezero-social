@@ -210,7 +210,7 @@ jobs:
           tenant-id: ${{ env.AZURE_TENANT_ID }}
           subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Force Milestone Q flags off
+      - name: Configure retained Milestone Q settings
         id: force-dark
         env:
           EXPECTED_COMMIT: ${{ inputs.expected_commit }}
@@ -223,10 +223,10 @@ jobs:
             --settings \
               JSS_BUILD_COMMIT="$EXPECTED_COMMIT" \
               JSS_BUILD_ARTIFACT_SHA256="$provisioner_artifact_sha" \
-              JSS_Q_DIRECTORY_ENABLED=false \
-              JSS_Q_PEER_PROFILE_ENABLED=false \
-              JSS_Q_RELATIONSHIP_ENABLED=false \
-              JSS_Q_TRANSPORT_ENABLED=false \
+              JSS_Q_DIRECTORY_ENABLED="true" \
+              JSS_Q_PEER_PROFILE_ENABLED="true" \
+              JSS_Q_RELATIONSHIP_ENABLED="true" \
+              JSS_Q_TRANSPORT_ENABLED="true" \
             --output none
 
       - name: Redeploy retained provisioner artifact
@@ -257,10 +257,10 @@ jobs:
               [ "$(jq -r '.communityDirectory.backend // empty' <<<"$health")" = "table" ] || q_health_ok=false
               [ "$(jq -r '.communityDirectory.ready // false' <<<"$health")" = "true" ] || q_health_ok=false
               [ "$(jq -r '.transportIdentity.ready // false' <<<"$health")" = "true" ] || q_health_ok=false
-              jq -e '.milestoneQ.flags.directory == false' <<<"$health" >/dev/null || q_health_ok=false
-              jq -e '.milestoneQ.flags["peer-profile"] == false' <<<"$health" >/dev/null || q_health_ok=false
-              jq -e '.milestoneQ.flags.relationship == false' <<<"$health" >/dev/null || q_health_ok=false
-              jq -e '.milestoneQ.flags.transport == false' <<<"$health" >/dev/null || q_health_ok=false
+              jq -e '.milestoneQ.flags.directory == true' <<<"$health" >/dev/null || q_health_ok=false
+              jq -e '.milestoneQ.flags["peer-profile"] == true' <<<"$health" >/dev/null || q_health_ok=false
+              jq -e '.milestoneQ.flags.relationship == true' <<<"$health" >/dev/null || q_health_ok=false
+              jq -e '.milestoneQ.flags.transport == true' <<<"$health" >/dev/null || q_health_ok=false
             fi
             if [ "$(jq -r '.build.commit // empty' <<<"$health")" = "$EXPECTED_COMMIT" ] && \
                [ "$(jq -r '.build.payloadSha256 // empty' <<<"$health")" = "$expected_payload" ] && \
@@ -324,7 +324,7 @@ jobs:
             if [ "$(jq -r '.build.commit // empty' <<<"$health")" = "$EXPECTED_COMMIT" ] && \
                [ "$(jq -r '.build.payloadSha256 // empty' <<<"$health")" = "$expected_payload" ] && \
                [ "$(jq -r '.identityVerifierReachable // false' <<<"$health")" = "true" ] && \
-               jq -e '.transportEnabled == false' <<<"$health" >/dev/null; then
+               jq -e '.transportEnabled == true' <<<"$health" >/dev/null; then
               exit 0
             fi
             sleep 10
@@ -413,26 +413,26 @@ jobs:
               [ "$(jq -r '.build.commit // empty' <<<"$relay_json")" = "$EXPECTED_COMMIT" ] || relay_ok=false
               [ "$(jq -r '.build.payloadSha256 // empty' <<<"$relay_json")" = "$expected_relay_payload" ] || relay_ok=false
               [ "$(jq -r '.identityVerifierReachable // false' <<<"$relay_json")" = "true" ] || relay_ok=false
-              jq -e '.transportEnabled == false' <<<"$relay_json" >/dev/null || relay_ok=false
+              jq -e '.transportEnabled == true' <<<"$relay_json" >/dev/null || relay_ok=false
             fi
             q_health_ok=true
             if [ "$SOURCE_KIND" = "deployment" ]; then
-              jq -e '.milestoneQ.flags.directory == false' <<<"$provisioner_json" >/dev/null || q_health_ok=false
-              jq -e '.milestoneQ.flags["peer-profile"] == false' <<<"$provisioner_json" >/dev/null || q_health_ok=false
-              jq -e '.milestoneQ.flags.relationship == false' <<<"$provisioner_json" >/dev/null || q_health_ok=false
-              jq -e '.milestoneQ.flags.transport == false' <<<"$provisioner_json" >/dev/null || q_health_ok=false
+              jq -e '.milestoneQ.flags.directory == true' <<<"$provisioner_json" >/dev/null || q_health_ok=false
+              jq -e '.milestoneQ.flags["peer-profile"] == true' <<<"$provisioner_json" >/dev/null || q_health_ok=false
+              jq -e '.milestoneQ.flags.relationship == true' <<<"$provisioner_json" >/dev/null || q_health_ok=false
+              jq -e '.milestoneQ.flags.transport == true' <<<"$provisioner_json" >/dev/null || q_health_ok=false
             fi
             live_settings="$(az webapp config appsettings list --resource-group "$AZURE_RESOURCE_GROUP" --name "$JSS_PROVISIONER_APP_NAME" -o json)"
-            settings_dark=true
+            settings_enabled=true
             for setting in JSS_Q_DIRECTORY_ENABLED JSS_Q_PEER_PROFILE_ENABLED JSS_Q_RELATIONSHIP_ENABLED JSS_Q_TRANSPORT_ENABLED; do
-              [ "$(jq -r --arg setting "$setting" '.[] | select(.name == $setting) | .value' <<<"$live_settings")" = "false" ] || settings_dark=false
+              [ "$(jq -r --arg setting "$setting" '.[] | select(.name == $setting) | .value' <<<"$live_settings")" = "true" ] || settings_enabled=false
             done
             if [ "$(jq -r '.build.commit // empty' <<<"$provisioner_json")" = "$EXPECTED_COMMIT" ] && \
               [ "$(jq -r '.build.payloadSha256 // empty' <<<"$provisioner_json")" = "$expected_provisioner_payload" ] && \
               [ "$(jq -r '.build.configuredArtifactSha256 // empty' <<<"$provisioner_json")" = "$expected_artifact" ] && \
               [ "$relay_ok" = "true" ] && \
               [ "$q_health_ok" = "true" ] && \
-              [ "$settings_dark" = "true" ] && \
+              [ "$settings_enabled" = "true" ] && \
                [ "$(jq -r '.commit // empty' <<<"$marker_json")" = "$EXPECTED_COMMIT" ] && \
               [ "$(jq -r '.environment // empty' <<<"$marker_json")" = "staging-testnet" ] && \
               [ "$(jq -r '.workflow // empty' <<<"$marker_json")" = "staging-rollback" ] && \
