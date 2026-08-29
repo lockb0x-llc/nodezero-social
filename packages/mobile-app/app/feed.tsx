@@ -30,6 +30,7 @@ import { loadFeedSyncCheckpoint, saveFeedSyncCheckpoint } from '../src/solid/syn
 import { aesthetic } from '../src/theme/aesthetic'
 import { readContentPreferences, writeContentPreferences } from '../src/preferences/contentPreferences'
 import { collectNsfwAuthors, filterVisiblePosts } from '../src/feed/postVisibility'
+import { filterSocialStreamItems } from '../src/feed/socialStreamFilter'
 
 interface FeedPost {
   id: string
@@ -133,7 +134,7 @@ export default function GlobalFeedScreen(): JSX.Element {
           externalUrl: ownerProfile?.externalUrl,
           avatarUrl: ownerProfile?.avatarUrl,
         })
-        const myStreamItems = await docustreamManager.listActivities(podRoot)
+        const myStreamItems = filterSocialStreamItems(await docustreamManager.listActivities(podRoot))
         if (myStreamItems.length > 0) {
           activityBatches.push({
             sourceWebId: webId,
@@ -156,7 +157,7 @@ export default function GlobalFeedScreen(): JSX.Element {
               externalUrl: profile?.externalUrl,
               avatarUrl: profile?.avatarUrl,
             })
-            const streamItems = await docustreamManager.listActivities(peerPodRoot)
+            const streamItems = filterSocialStreamItems(await docustreamManager.listActivities(peerPodRoot))
 
             if (streamItems.length > 0) {
               activityBatches.push({
