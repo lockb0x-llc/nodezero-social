@@ -476,8 +476,8 @@ jobs:
               JSS_PUBLIC_PROVISIONER_BASE_URL="https://api.nodezero.social" \
               JSS_APP_ORIGIN="https://staging.nodezero.social" \
               JSS_SOLID_CSS_BASE_URL="https://solid.nodezero.social" \
-              JSS_SOLID_CSS_POD_LOCK_RETRY_ATTEMPTS="8" \
-              JSS_SOLID_CSS_POD_LOCK_RETRY_BASE_DELAY_MS="1000" \
+              JSS_SOLID_CSS_POD_LOCK_RETRY_ATTEMPTS="5" \
+              JSS_SOLID_CSS_POD_LOCK_RETRY_BASE_DELAY_MS="300" \
               JSS_ALLOWED_ORIGINS="https://staging.nodezero.social,https://nodezero.social,https://www.nodezero.social,https://solid.nodezero.social,http://localhost:19006,http://localhost:8081" \
               JSS_BROWSER_SESSION_ENABLED="true" \
               JSS_Q_DIRECTORY_ENABLED="true" \

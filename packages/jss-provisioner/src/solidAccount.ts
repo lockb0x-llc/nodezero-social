@@ -335,6 +335,28 @@ export async function mintPodAccessToken(
   }
 }
 
+// Onboarding issues several sequential writes (account document, profile
+// anchor patch, etc.) against the same freshly-created credentials. Reuse the
+// still-live token across them instead of paying a full OIDC round trip per
+// write; unrelated callers (Pod proxy, directory refresh) keep minting via
+// mintPodAccessToken directly and are unaffected.
+const PROVISIONING_TOKEN_SLACK_MS = 30_000
+const provisioningTokenCache = new Map<string, PodAccessToken>()
+
+async function mintPodAccessTokenCached(
+  baseUrl: string,
+  credentials: ClientCredentials
+): Promise<PodAccessToken> {
+  const cacheKey = `${baseUrl}|${credentials.id}`
+  const cached = provisioningTokenCache.get(cacheKey)
+  if (cached && cached.expiresAtMs - PROVISIONING_TOKEN_SLACK_MS > Date.now()) {
+    return cached
+  }
+  const token = await mintPodAccessToken(baseUrl, credentials)
+  provisioningTokenCache.set(cacheKey, token)
+  return token
+}
+
 /**
  * Fail-closed Pod probe: verifies the minted token can actually read the Pod
  * root. Used at session issuance so a NodeZero session is never handed out
@@ -363,7 +385,7 @@ export async function writePodDocument(
   credentials: ClientCredentials,
   options: { resourceUrl: string; contentType: string; body: string }
 ): Promise<string> {
-  const token = await mintPodAccessToken(baseUrl, credentials)
+  const token = await mintPodAccessTokenCached(baseUrl, credentials)
 
   const res = await fetch(options.resourceUrl, {
     method: 'PUT',
@@ -392,7 +414,7 @@ export async function deletePodResource(
   credentials: ClientCredentials,
   resourceUrl: string,
 ): Promise<boolean> {
-  const token = await mintPodAccessToken(baseUrl, credentials)
+  const token = await mintPodAccessTokenCached(baseUrl, credentials)
   const res = await fetch(resourceUrl, {
     method: 'DELETE',
     headers: {
@@ -440,7 +462,7 @@ export async function patchPodProfileAnchor(
   anchor: { lockboxContractId: string; stellarPublicKey: string; accountCommitmentHex: string }
 ): Promise<string> {
   const cardUrl = webId.split('#')[0]
-  const token = await mintPodAccessToken(baseUrl, credentials)
+  const token = await mintPodAccessTokenCached(baseUrl, credentials)
 
   const lit = (s: string): string => `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
   const sparql =

@@ -49,8 +49,8 @@ param cssDataPath string = '/data'
 @description('Optional extra CLI args appended to the CSS container command.')
 param cssExtraArgs array = []
 
-@description('Azure Files share size in GiB for Pod + account data.')
-@minValue(1)
+@description('Azure Premium Files share size in GiB for Pod + account data (100 GiB minimum for Premium file shares).')
+@minValue(100)
 @maxValue(1024)
 param fileShareQuotaGb int = 100
 
@@ -150,9 +150,9 @@ resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' = {
   location: location
   tags: commonTags
   sku: {
-    name: 'Standard_LRS'
+    name: 'Premium_LRS'
   }
-  kind: 'StorageV2'
+  kind: 'FileStorage'
   properties: {
     minimumTlsVersion: 'TLS1_2'
     allowBlobPublicAccess: false
