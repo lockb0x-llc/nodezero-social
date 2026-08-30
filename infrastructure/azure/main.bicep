@@ -58,6 +58,9 @@ param apiHostLabel string = 'api'
 @description('Public Azure hostname of the staging provisioner App Service.')
 param provisionerPublicHostName string = '${appName}-${environmentName}-provisioner.azurewebsites.net'
 
+@description('Existing dedicated storage account hosting the shared credentials + Community Directory Azure Table (nzcredentialsv4). Declared here so it is never silently destroyed by an unrelated storage change again; deleting/recreating this account destroys every provisioned account\'s credentials and the entire directory.')
+param credentialsStorageAccountName string = 'nzcredsstagingtn01'
+
 var resourceToken = toLower(uniqueString(resourceGroup().id, appName, environmentName))
 var storageAccountName = 'st${take(resourceToken, 22)}'
 var keyVaultName = take('${replace(appName, '-', '')}${replace(environmentName, '-', '')}kv${resourceToken}', 24)
@@ -132,6 +135,34 @@ resource zkArtifactsContainer 'Microsoft.Storage/storageAccounts/blobServices/co
   properties: {
     publicAccess: 'Blob'
   }
+}
+
+// Shared credentials + Community Directory store. Kept as its own account
+// (Standard/StorageV2, Table service only) so it can never be collapsed onto
+// a Premium/FileStorage-kind account, which cannot host Table service at all.
+resource credentialsStorage 'Microsoft.Storage/storageAccounts@2023-05-01' = {
+  name: credentialsStorageAccountName
+  location: location
+  tags: commonTags
+  sku: {
+    name: 'Standard_LRS'
+  }
+  kind: 'StorageV2'
+  properties: {
+    minimumTlsVersion: 'TLS1_2'
+    allowBlobPublicAccess: false
+    supportsHttpsTrafficOnly: true
+  }
+}
+
+resource credentialsTableService 'Microsoft.Storage/storageAccounts/tableServices@2023-05-01' = {
+  parent: credentialsStorage
+  name: 'default'
+}
+
+resource credentialsTable 'Microsoft.Storage/storageAccounts/tableServices/tables@2023-05-01' = {
+  parent: credentialsTableService
+  name: 'nzcredentialsv4'
 }
 
 resource keyVault 'Microsoft.KeyVault/vaults@2023-02-01' = {
