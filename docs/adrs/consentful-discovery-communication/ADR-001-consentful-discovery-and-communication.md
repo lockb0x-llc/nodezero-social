@@ -228,7 +228,7 @@ Negative:
 - [Architecture](../../architecture.md)
 - [Milestone Q implementation plan](../../consentful-pod-owner-discovery-and-communication-plan.md)
 - [Environment isolation matrix](../../environment-isolation-matrix.md)
-- [Staging UAT checklist](../../staging-uat-checklist.md)
+- [Release verification](../../process/release-verification.md)
 - [Solid Protocol](https://solidproject.org/TR/protocol)
 - [Linked Data Notifications](https://www.w3.org/TR/ldn/)
 - [ActivityStreams 2.0](https://www.w3.org/TR/activitystreams-core/)

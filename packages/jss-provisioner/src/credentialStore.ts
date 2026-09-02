@@ -117,6 +117,11 @@ export function stellarKeyRowKey(stellarPublicKey: string): string {
   return `spk-${createHash('sha256').update(stellarPublicKey.trim()).digest('hex')}`
 }
 
+/** Table-safe deterministic row key for the lockb0x-contract index. */
+export function lockboxContractRowKey(contractId: string): string {
+  return `lbx-${createHash('sha256').update(contractId.trim()).digest('hex')}`
+}
+
 function browserSessionRowKey(token: string): string {
   return `${BROWSER_SESSION_ROW_PREFIX}${createHash('sha256').update(token).digest('hex')}`
 }
@@ -638,6 +643,18 @@ export class CredentialStore {
         index as unknown as BackendRow
       )
     }
+
+    // Secondary index: lockb0x contract ID -> WebID, so a `did:pkn` identifier can be
+    // resolved to its real owner and per-identity verification key.
+    if (persisted.userLockboxContractId) {
+      const index: PersistedIndexRecord = {
+        webIdsJson: JSON.stringify([persisted.webId]),
+      }
+      await this.backend.put(
+        lockboxContractRowKey(persisted.userLockboxContractId),
+        index as unknown as BackendRow
+      )
+    }
   }
 
   private mapRecord(persisted: BackendRow): StoredCredentialRecord {
@@ -690,6 +707,18 @@ export class CredentialStore {
 
     const records = await Promise.all(webIds.map((webId) => this.findByWebId(webId)))
     return records.filter((record): record is StoredCredentialRecord => record !== null)
+  }
+
+  /** Resolves credentials from a per-user lockb0x contract ID via the index row. */
+  async findByLockboxContractId(contractId: string): Promise<StoredCredentialRecord | null> {
+    if (!contractId.trim()) return null
+    const index = await this.backend.get(lockboxContractRowKey(contractId))
+    const webId = this.readIndexedWebIds(index)[0] ?? null
+    if (!webId) return null
+    const record = await this.findByWebId(webId)
+    // Guard against a stale index row pointing at a reassigned contract.
+    if (!record || record.userLockboxContractId?.trim() !== contractId.trim()) return null
+    return record
   }
 
   async saveBrowserSession(

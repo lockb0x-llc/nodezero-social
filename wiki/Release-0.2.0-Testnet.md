@@ -29,8 +29,8 @@ baseline for continued Testnet development.
 
 - Commit: `77c95112157a8f2cb36710a99e1932eb6ebe5938`
 - GitHub Actions run: `30599014484` (`success`)
-- Milestone evidence: ../docs/milestone-i-release-evidence-summary.md
-- UAT checklist: ../docs/staging-uat-checklist.md
+- Milestone evidence: ../docs/archive/2026-milestone-i/milestone-i-release-evidence-summary.md
+- Release verification: ../docs/process/release-verification.md
 
 ## Scope boundary
 

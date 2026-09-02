@@ -80,6 +80,7 @@ Security events capture policy decisions using: `decision`, `ruleId`,
 ## Related docs
 
 - `docs/environment-isolation-matrix.md`
-- `docs/testnet-azure-release-requirements.md`
+- `docs/standards/known-non-conformance.md`
+- `docs/archive/2026-pre-staging/testnet-azure-release-requirements.md` (archived)
 - `docs/system-description.md`
 - `docs/adrs/consentful-discovery-communication/ADR-001-consentful-discovery-and-communication.md`

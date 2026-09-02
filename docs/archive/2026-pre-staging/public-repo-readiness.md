@@ -1,3 +1,18 @@
+> # ⛔ SUPERSEDED — CONTAINS FALSE ARCHITECTURE CLAIMS
+>
+> **Archived 2026-09-01.** Superseded by [`docs/executive-summary.md`](../../executive-summary.md).
+> Retained for provenance only. **Do not use for open-source or public launch messaging.**
+>
+> **Known-false claims if read as current:**
+> - Asserts **Solid OIDC is the live sign-in path**. That path was removed by the
+>   internal-auth cutover; authentication is now internal-only via device Stellar
+>   signatures, and the browser never contacts the Solid server.
+> - Names the ZK circuit `pod_ownership`; the deployed circuit is `pod_stellar_bridge_v3`.
+>
+> See [`docs/archive/README.md`](../README.md) for archive rules.
+
+---
+
 # Open-Source Readiness Assessment
 
 **Date:** 2026-07-10  

@@ -25,7 +25,8 @@ Contract source is maintained in the Rust package and deployed to Stellar TestNe
 
 ## References
 
-- `docs/testnet-azure-release-requirements.md`
+- `docs/standards/zk-attestation.md`
+- `docs/archive/2026-pre-staging/testnet-azure-release-requirements.md` (archived)
 - `docs/staging-runtime-implementation-roadmap.md`
 
 ## Credits

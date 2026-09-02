@@ -58,11 +58,19 @@ Milestone Q discovery and communication resources must also be profile-scoped:
   commitments must remain environment-scoped.
 - Consent and directory records do not migrate across profiles automatically.
 
-## Identity provider defaults
+## Identity provider
 
-The Node Zero Community Server is the default identity provider in every
-sign-in/signup surface. `solidcommunity.net` is a secondary option for users
-with an external Solid Pod — it must never be presented as the default.
+Authentication is **internal-only**. The provisioner is the sole identity authority, and
+the Node Zero Community Server is the Pod host — users never authenticate against it.
+
+External identity providers are **not offered anywhere**. There is no `solidcommunity.net`
+option, no OIDC redirect, no bridge ticket, and no user-facing password. This is enforced
+by `scripts/policy/validate-env-isolation.sh`, which fails the build if
+`@inrupt/solid-client-authn-browser` appears in the app manifest or if the OIDC bridge
+route reappears.
+
+`NZ_NODEZERO_ISSUER_URL` identifies the Pod host origin for URL recognition and WebID
+derivation. `NZ_JSS_PROVISIONER_URL` identifies the session and proxy authority.
 
 | Profile | Node Zero Community Server issuer (`NZ_NODEZERO_ISSUER_URL`) |
 |---|---|

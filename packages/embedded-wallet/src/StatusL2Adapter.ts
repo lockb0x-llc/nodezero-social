@@ -71,7 +71,7 @@ function bufferToHex(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer)
   let hex = ''
   for (let i = 0; i < bytes.length; i++) {
-    hex += bytes[i]!.toString(16).padStart(2, '0')
+    hex += bytes[i].toString(16).padStart(2, '0')
   }
   return hex
 }
@@ -252,9 +252,9 @@ export class StatusL2Adapter {
   /**
    * Queries the current status of an escrow agreement.
    */
-  async getEscrowStatus(agreementId: string): Promise<EscrowStatusResult | null> {
+  getEscrowStatus(agreementId: string): Promise<EscrowStatusResult | null> {
     const record = this.inMemoryEscrows.get(agreementId)
-    return record ? { ...record } : null
+    return Promise.resolve(record ? { ...record } : null)
   }
 
   /**
@@ -265,10 +265,9 @@ export class StatusL2Adapter {
     expectedDigestHex: string,
   ): Promise<boolean> {
     const bytes = deliverableBytes instanceof Uint8Array ? deliverableBytes : new Uint8Array(deliverableBytes)
-    const digestBuffer = await this.cryptoProvider.subtle.digest(
-      'SHA-256',
-      bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
-    )
+    const input = new ArrayBuffer(bytes.byteLength)
+    new Uint8Array(input).set(bytes)
+    const digestBuffer = await this.cryptoProvider.subtle.digest('SHA-256', input)
     const computedHex = `0x${bufferToHex(digestBuffer)}`
     return computedHex.toLowerCase() === expectedDigestHex.toLowerCase()
   }

@@ -1,3 +1,10 @@
+> 📌 **HISTORICAL EVIDENCE — accurate as of 2026-07-30. Immutable; never edit.**
+> Not a statement of current behavior. Its `GO` decision covers `v0.2.0-testnet`,
+> **not** the currently deployed commit `3cb6450`. Current status:
+> [`docs/executive-summary.md`](../../executive-summary.md).
+
+---
+
 # Milestone I Release Evidence Summary
 
 Date (UTC): 2026-07-30

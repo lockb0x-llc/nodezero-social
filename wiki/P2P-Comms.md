@@ -16,5 +16,5 @@ P2P communication is provided through a signaling + channel abstraction.
 
 ## Related docs
 
-- `docs/staging-uat-checklist.md`
+- `docs/process/release-verification.md`
 - `docs/staging-readiness-and-agent-plan.md`

@@ -1,3 +1,34 @@
+> # ⛔ SUPERSEDED — CONTAINS SEVEN FALSE COMPLETION CLAIMS
+>
+> **Archived 2026-09-01.** Superseded by [`docs/roadmap.md`](../../roadmap.md).
+> Retained for provenance only.
+>
+> An independent audit found that **seven milestones marked 🟢 Complete on 2026-08-27 are
+> not complete.** The acceptance criteria used were "unit tests pass" or "a policy script
+> passes" — none of which involve a deployment, a transaction hash, an Azure resource, or
+> a DNS cutover.
+>
+> | Claimed 🟢 Complete | Actual |
+> |---|---|
+> | M3.1 WebAuthn L3 PRF Hardware Vault | Written, not wired. No passkey ceremony, zero consumers. Web key is in plaintext `localStorage` |
+> | M3.2 `did:pkn` Soroban Resolver | Document generation only. **Zero chain binding; serves a hard-coded test key for every DID** |
+> | M4.1 Logos Codex Blob Adapter | Stub. Fabricated CIDs, zero consumers |
+> | M4.2 Status Network L2 Rail | Stub. Zero consumers, no deployed escrow |
+> | M5.1 Mainnet Contracts & Treasury | **Not started.** Contract IDs are invalid hand-typed placeholders |
+> | M5.2 Production Azure Pipeline | Authored, never executed — structurally impossible to dispatch |
+> | M5.3 Security Audit & Public Apex Launch | **Not started.** "Executed production cutover to apex domain" is **false** |
+>
+> Also incorrect in this document: "on-chain pre-flight checks" on ZK proofs (verification
+> is off-chain and provisioner-trusted), the circuit name `pod_ownership` (it is
+> `pod_stellar_bridge_v3`), and a citation of
+> `packages/notification-orchestrator/src/socialNotificationHandler.ts`, **a file that does
+> not exist**.
+>
+> See [`docs/archive/README.md`](../README.md) and
+> [`docs/standards/known-non-conformance.md`](../../standards/known-non-conformance.md).
+
+---
+
 # NodeZero.social — Comprehensive Concrete Roadmap: Diagnostic & Requirements Analysis
 
 **Document Version:** 1.1.0  

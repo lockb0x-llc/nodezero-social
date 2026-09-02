@@ -1,3 +1,20 @@
+> # ⛔ SUPERSEDED — DO NOT USE AS CURRENT STATUS
+>
+> **Archived 2026-09-01.** Superseded by [`docs/executive-summary.md`](../../executive-summary.md)
+> and [`docs/roadmap.md`](../../roadmap.md). Retained for provenance only.
+>
+> **Known-false claims if read as current:**
+> - Self-contradictory on cohort gating: the update banner below says gating was removed,
+>   while §4.4 and §7 still list `JSS_Q_COHORT_KEY` secrets and `pnpm qa:bootstrap:directory-cohort`
+>   as active blockers. Those scripts were **deleted** in commit `ac17e35`.
+> - Predates `did:pkn`, Pod export/restore, the Codex and Status L2 adapters, WebAuthn PRF,
+>   and the relay Bicep IaC work.
+> - Its "last deployed marker" reference (`5d0d3532b…`) is stale; staging now serves `3cb6450`.
+>
+> See [`docs/archive/README.md`](../README.md) for archive rules.
+
+---
+
 # NodeZero Social — Featureset Status Review and Production Roadmap
 
 Date (UTC): 2026-08-19
@@ -225,7 +242,7 @@ Phases A and B directly execute the user's stated priority (ship the Directory/C
 ## 8. Strategic Ecosystem Symbiosis: Status, Logos/Waku, Solid Pods, and Pakana DID
 
 For detailed architectural integration models, diagrams, and DID document specifications, see the dedicated strategic architecture blueprint:
-**[`docs/strategic-architecture-status-waku-pakana-solid.md`](strategic-architecture-status-waku-pakana-solid.md)**.
+**[`docs/strategic-architecture-status-waku-pakana-solid.md`](../../strategic-architecture-status-waku-pakana-solid.md)**.
 
 ### 8.1 Key Strategic Pillars
 1. **Symbiosis over Competition (Status & NodeZero):**

@@ -1,3 +1,21 @@
+> # ⛔ SUPERSEDED — INOPERABLE RUNBOOK, DO NOT FOLLOW
+>
+> **Archived 2026-09-01.** Superseded by
+> [`docs/process/release-verification.md`](../../process/release-verification.md).
+> Retained for provenance only.
+>
+> **This runbook cannot be executed.** Its Phases 4–7 instruct operators to run four
+> scripts that were **deleted** in commit `ac17e35`:
+> `qa:bootstrap:directory-cohort`, `hash-milestone-q-cohort`,
+> `validate-directory-cohort-states`, `staging-directory-publication-evidence`.
+>
+> Phases 8 (rollback rehearsal) and 9 (soak) remain conceptually valid and have been
+> carried forward into the successor document. Nothing else here should be actioned.
+>
+> See [`docs/archive/README.md`](../README.md) for archive rules.
+
+---
+
 # Milestone Q Delta Release Runbook
 
 > **Superseded (2026-08-XX):** The cohort/rollout gating described in this

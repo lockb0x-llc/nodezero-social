@@ -54,7 +54,7 @@ claims must retain this distinction.
 | Production Mainnet | Not implemented | Separate contracts, resources, approvals, and release evidence are required. |
 
 The accepted Testnet evidence is recorded in
-[Milestone I Release Evidence](milestone-i-release-evidence-summary.md). Historical
+[Milestone I Release Evidence](archive/2026-milestone-i/milestone-i-release-evidence-summary.md). Historical
 evidence describes the release at its recorded date and is not rewritten when future
 plans change.
 
@@ -124,4 +124,4 @@ outside this milestone.
 - [Milestone Q implementation plan](consentful-pod-owner-discovery-and-communication-plan.md)
 - [Environment isolation matrix](environment-isolation-matrix.md)
 - [Staging runtime roadmap](staging-runtime-implementation-roadmap.md)
-- [Staging UAT checklist](staging-uat-checklist.md)
+- [Release verification](process/release-verification.md)

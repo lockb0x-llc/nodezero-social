@@ -159,7 +159,7 @@ Workspace-level default checks:
 Staging gate checks (when relevant):
 - `pnpm qa:smoke`
 - `pnpm qa:smoke:auth` (blocking identity gate: new-user onboarding + returning-user authentication E2E)
-- Manual journeys in `docs/staging-uat-checklist.md`
+- Manual journeys in `docs/process/release-verification.md`
 
 Application-feature proofs (`pnpm qa:smoke:docustream-pane`, `qa:smoke:mashlib-*`)
 are NOT part of the identity gate; run them separately for feature work.

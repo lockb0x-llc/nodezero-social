@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
-import { MilestoneQControls } from './milestoneQControls.js'
+import { MilestoneQControls, parseDisabledFeatures } from './milestoneQControls.js'
 
 const alice = 'https://solid.nodezero.social/alice/profile/card#me'
 const bob = 'https://solid.nodezero.social/bob/profile/card#me'
@@ -27,6 +27,27 @@ void test('features fail closed without an authenticated WebID', () => {
   const controls = new MilestoneQControls()
   assert.equal(controls.isEnabled('directory'), false)
   assert.equal(controls.isEnabled('transport', ''), false)
+})
+
+void test('NC-10: the runtime kill-switch disables a feature for every authenticated WebID', () => {
+  const controls = new MilestoneQControls({ disabledFeatures: ['transport'] })
+
+  assert.equal(controls.isEnabled('transport', alice), false)
+  assert.equal(controls.isEnabled('transport', bob), false)
+  assert.equal(controls.isConfigured('transport'), false)
+  assert.equal(controls.flags().transport, false)
+  assert.equal(controls.availability(alice).transport, false)
+
+  // Unaffected features stay available.
+  assert.equal(controls.isEnabled('directory', alice), true)
+  assert.equal(controls.flags().directory, true)
+})
+
+void test('NC-10: the kill-switch parses a feature list and ignores unknown names', () => {
+  assert.deepEqual(parseDisabledFeatures('transport, directory'), ['transport', 'directory'])
+  assert.deepEqual(parseDisabledFeatures('TRANSPORT'), ['transport'])
+  assert.deepEqual(parseDisabledFeatures('not-a-feature'), [])
+  assert.deepEqual(parseDisabledFeatures(undefined), [])
 })
 
 void test('telemetry snapshots contain aggregate feature outcomes only', () => {

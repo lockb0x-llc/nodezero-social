@@ -4,9 +4,11 @@ on:
   pull_request:
     branches:
       - main
+      - testnet
   push:
     branches:
       - main
+      - testnet
 
 jobs:
   validate-and-test:
@@ -40,6 +42,15 @@ jobs:
       - name: Validate DocuStream remains enabled
         run: pnpm policy:validate-docustream-enabled
 
+      - name: Validate PWA structural invariants
+        run: pnpm policy:validate-pwa
+
+      - name: Validate fail-closed attestation path
+        run: pnpm policy:validate-attestation-fail-closed
+
+      - name: Validate consentful discovery invariants
+        run: pnpm policy:validate-consentful-discovery
+
       - name: Lint
         run: pnpm lint
 
@@ -62,3 +73,6 @@ jobs:
 
       - name: Contract tests
         run: pnpm test:contracts
+
+      - name: Production dependency audit (no high/critical advisories)
+        run: pnpm qa:validate:production-audit

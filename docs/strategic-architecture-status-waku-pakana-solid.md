@@ -1,6 +1,22 @@
 # Strategic Architecture: NodeZero.social, Status Ecosystem, Logos/Waku, Solid Pods, and Pakana Lockb0x DID
 
-**Status:** Approved Strategic Architecture & Implementation Blueprint  
+> ⚠️ **Corrections applied 2026-09-01.** This document describes **strategic intent**, not
+> delivered capability. An independent audit found that several subsystems referenced here
+> are written but not wired:
+>
+> - **`did:pkn`** — the deployed resolver has **no Soroban binding** and returns a
+>   hard-coded public key for every DID. See
+>   [`standards/known-non-conformance.md` NC-01](standards/known-non-conformance.md).
+> - **WebAuthn L3 PRF** — primitive only; no passkey ceremony, zero consumers (NC-03).
+> - **Logos Codex and Status L2 adapters** — stubs with zero consumers (NC-08).
+> - **ZK verification is off-chain and provisioner-trusted**, not on-chain (NC-04).
+> - The ZK circuit is **`pod_stellar_bridge_v3`**, not `pod_ownership`.
+>
+> For verified current status see [`executive-summary.md`](executive-summary.md).
+> For sequenced work see [`roadmap.md`](roadmap.md).
+> For the formal DID method specification see [`standards/did-pkn-method.md`](standards/did-pkn-method.md).
+
+**Status:** Strategic blueprint — **aspirational, not a status report**  
 **Date:** August 2026  
 **Scope:** `@nodezero-social` Monorepo, TurboDex Agent Exchange, Status App Symbiosis, and Pakana Financial/DID Plane
 

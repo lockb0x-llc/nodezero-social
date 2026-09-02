@@ -185,11 +185,14 @@ enforces that staging and production values never mix. See
 - Stellar TestNet setup runbook: `scripts/stellar/setup-treasury-deployer.sh`
 - Two-account funding model (Treasury + Deployer): `packages/jss-provisioner/src/deployerTopup.ts`
 - Runtime implementation roadmap: `docs/staging-runtime-implementation-roadmap.md`
-- UAT checklist: `docs/staging-uat-checklist.md`
-- `v0.2.0-testnet` evidence: `docs/milestone-i-release-evidence-summary.md`
+- Release verification gate: `docs/process/release-verification.md`
+- CI and validation gates: `docs/process/ci-and-gates.md`
+- `v0.2.0-testnet` evidence: `docs/archive/2026-milestone-i/milestone-i-release-evidence-summary.md`
 - Release notes: `CHANGELOG.md`
 - Feature progress + upstream attribution: `docs/feature-implementation-attribution.md`
 - System purpose and capability state: `docs/system-description.md`
+- **Current verified status: `docs/executive-summary.md`** · **Plan: `docs/roadmap.md`**
+- **Standards conformance: `docs/standards/conformance-matrix.md`**
 - Consentful discovery decision: `docs/adrs/consentful-discovery-communication/ADR-001-consentful-discovery-and-communication.md`
 - Milestone Q implementation plan: `docs/consentful-pod-owner-discovery-and-communication-plan.md`
 

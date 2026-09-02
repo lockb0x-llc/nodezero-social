@@ -152,7 +152,7 @@ For infra/env/deploy changes, additionally run:
 For staging readiness or release work, additionally run:
 - `pnpm qa:smoke`
 - `pnpm qa:smoke:auth` (blocking onboarding/authentication E2E gate — identity only)
-- Manual checks from `docs/staging-uat-checklist.md` (document PASS/FAIL)
+- Manual checks from `docs/process/release-verification.md` (document PASS/FAIL)
 
 For Milestone Q changes, additionally run the focused package checks for every
 touched social/transport package and, once implemented:

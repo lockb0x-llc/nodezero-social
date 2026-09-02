@@ -19,6 +19,7 @@ overrides:
   send: 0.19.0
   'undici@6': 6.28.0
   uuid: 11.1.1
+  browserslist: 4.28.7
 allowBuilds:
   blake-hash: true
   esbuild: true

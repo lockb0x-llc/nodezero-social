@@ -80,7 +80,7 @@ Prepare NodeZero Social for public open-source launch by authoring comprehensive
 
 > **QA collaboration gate**: Before capturing any journey screenshot, confirm with QA_RELEASE_AGENT (via inbox) that the journey passes the smoke suite. Use QA's pass/fail matrix as the authoritative list of journeys ready for documentation capture.
 
-1. Read QA_RELEASE_AGENT's latest pass/fail inbox post and `docs/staging-uat-checklist.md` to enumerate validated journeys.
+1. Read QA_RELEASE_AGENT's latest pass/fail inbox post and `docs/process/release-verification.md` to enumerate validated journeys.
 2. For each journey, use `mcp_playwright_browser_navigate`, `mcp_playwright_browser_take_screenshot`, and `mcp_playwright_browser_evaluate` to capture visual evidence.
 3. Store screenshots as `docs/screenshots/<journey>-<step>.png`.
 4. Record videos where the journey spans multiple steps; store as `docs/videos/<journey>.webm`.

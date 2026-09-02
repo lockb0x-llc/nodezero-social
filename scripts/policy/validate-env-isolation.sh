@@ -135,4 +135,48 @@ file_contains_literal "$RELAY_BICEP" "'staging-testnet'" || fail "relay-service.
 file_contains_literal "$RELAY_BICEP" "'production-mainnet'" || fail "relay-service.bicep missing production-mainnet allowed environment value."
 pass "Relay service infrastructure guardrails validated."
 
+# 10) Contract manifest integrity: every recorded contract id must be a valid
+#     56-character Stellar strkey, and testnet ids must never appear in mainnet
+#     artifacts (or vice versa). This closes the gap that allowed hand-authored
+#     placeholder mainnet ids to pass validation. See NC-06.
+MAINNET_MANIFEST="$REPO_ROOT/deployments/stellar-mainnet.contracts.json"
+TESTNET_MANIFEST="$REPO_ROOT/deployments/stellar-testnet.contracts.json"
+MAINNET_PARAMS="$REPO_ROOT/infrastructure/azure/main.parameters.production-mainnet.json"
+
+# Valid Soroban contract strkey: 'C' + 55 chars from the RFC4648 base32 alphabet
+# (A-Z and 2-7). Digits 0, 1, 8 and 9 are not valid base32 symbols.
+STRKEY_RE='^C[A-Z2-7]{55}$'
+
+assert_contract_ids_valid() {
+  local file="$1" label="$2"
+  [ -f "$file" ] || return 0
+  local ids
+  ids="$(grep -oE '"(id|identityContractId|lockboxContractId)"[[:space:]]*:[[:space:]]*"[^"]*"' "$file" \
+    | sed -E 's/.*:[[:space:]]*"([^"]*)"/\1/' | grep -v '^$' || true)"
+  local id
+  for id in $ids; do
+    if ! printf '%s' "$id" | grep -qE "$STRKEY_RE"; then
+      fail "$label contains an invalid Stellar contract id '$id' (expected 56-char strkey). Placeholder or hand-authored values are not permitted."
+    fi
+  done
+}
+
+assert_contract_ids_valid "$MAINNET_MANIFEST" "Mainnet contract manifest"
+assert_contract_ids_valid "$MAINNET_PARAMS" "Production-mainnet Bicep parameters"
+
+# Cross-lane leakage: no testnet contract id may appear in a mainnet artifact.
+if [ -f "$TESTNET_MANIFEST" ]; then
+  TESTNET_IDS="$(grep -oE '"id"[[:space:]]*:[[:space:]]*"C[A-Z2-7]{55}"' "$TESTNET_MANIFEST" \
+    | sed -E 's/.*"(C[A-Z2-7]{55})"/\1/' | sort -u || true)"
+  for tid in $TESTNET_IDS; do
+    for mfile in "$MAINNET_MANIFEST" "$MAINNET_PARAMS"; do
+      [ -f "$mfile" ] || continue
+      if grep -q "$tid" "$mfile"; then
+        fail "TestNet contract id $tid leaked into $(basename "$mfile") (environment isolation violation)."
+      fi
+    done
+  done
+fi
+pass "Contract manifest integrity validated."
+
 echo "[policy] All environment-isolation policy checks passed."

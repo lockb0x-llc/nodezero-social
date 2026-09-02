@@ -1,0 +1,334 @@
+# The `did:pkn` DID Method Specification
+
+**Method name:** `pkn` (Pakana Lockb0x Network)
+**Specification status:** Draft — **not submitted to the W3C DID Specification Registries**
+**Conforms to:** [W3C Decentralized Identifiers (DIDs) v1.0](https://www.w3.org/TR/did-core/) (Recommendation, 19 July 2022)
+**Status date:** 2026-09-01 · **Branch:** `testnet` @ `3cb6450`
+
+---
+
+## ⚠ Implementation Status — read before anything else
+
+This document specifies the **intended** `did:pkn` method. The deployed implementation
+does **not** meet it.
+
+| Capability | Specified | Deployed |
+|---|---|---|
+| DID syntax parsing | ✅ | ✅ `DID_PKN_REGEX` |
+| DID Document generation | ✅ | ✅ `createDidPknDocument()` |
+| Resolution result envelope | ✅ | ✅ DID Resolution v1 shape |
+| **Per-identity key material** | ✅ | ✅ **Fixed 2026-09-01** — resolved from the owner's credential record |
+| **Existence check** (unknown subject → `notFound`) | ✅ | ✅ **Fixed 2026-09-01** |
+| **Network isolation** (mainnet DID ≠ testnet state) | ✅ | ✅ **Fixed 2026-09-01** |
+| **Resolution read directly from the Soroban contract** | ✅ | ❌ Provisioner-trusted lookup, not an on-chain read |
+| Update / Deactivate operations | ✅ | ❌ Not implemented |
+| `keyAgreement` relationship | ✅ | ❌ Never populated |
+| Truthful `created` / `updated` metadata | ✅ | ❌ Fabricated at resolution time (NC-02) |
+| Universal Resolver driver | ✅ | ❌ Does not exist |
+| W3C registry entry | ✅ | ❌ Not submitted |
+
+> ✅ **The critical hazard is fixed.** The resolver previously returned one hard-coded
+> `Ed25519VerificationKey2020` for **every** identifier and resolved any 56-character
+> string — an authentication-bypass primitive. It now resolves only real subjects, returns
+> that subject's own key, enforces the network segment, and is disabled unless
+> `JSS_DID_RESOLVER_ENABLED=true`. See [NC-01](known-non-conformance.md).
+>
+> ⚠️ **Still not registry-ready.** Resolution reads the provisioner's credential store
+> rather than the Soroban contract, so it inherits the provisioner trust boundary
+> ([NC-04](known-non-conformance.md)). Do not submit this method to the W3C registry or
+> promote third-party integration until §7 is complete.
+
+---
+
+## 1. Introduction
+
+### 1.1 Motivation
+
+NodeZero anchors each user's Pod-ownership attestation in a dedicated Soroban smart
+contract (a "lockb0x") on the Stellar network. That contract is already a durable,
+publicly auditable, per-user identity anchor holding a Poseidon account commitment, a Pod
+binding, and a Groth16 proof hash.
+
+`did:pkn` exposes that anchor as a W3C Decentralized Identifier so that ecosystems outside
+NodeZero can resolve a NodeZero identity into a standard DID Document — obtaining the
+subject's Ed25519 verification key and its service endpoints (Solid Pod, Waku shard,
+signaling relay) — without depending on NodeZero-proprietary APIs.
+
+### 1.2 Design goals
+
+1. **Chain-anchored.** The authoritative source is the Soroban contract, not a NodeZero
+   database.
+2. **Environment-isolated.** A `testnet` identifier can never be confused with a `mainnet`
+   identifier — consistent with NodeZero's environment isolation policy.
+3. **Self-controlled.** The DID subject is its own controller.
+4. **Service-discoverable.** The document carries the endpoints needed to actually
+   interact with the subject.
+
+---
+
+## 2. Method syntax
+
+### 2.1 ABNF
+
+```abnf
+pkn-did      = "did:pkn:" pkn-network ":" pkn-idstring
+pkn-network  = "testnet" / "mainnet" / "local"
+pkn-idstring = 56(UPPER-ALPHA / DIGIT)   ; Stellar contract strkey
+UPPER-ALPHA  = %x41-5A                    ; A-Z
+DIGIT        = %x30-39                    ; 0-9
+```
+
+Implemented as `DID_PKN_REGEX` in
+[`packages/solid-pod-sync/src/contracts/DidContract.ts`](../../packages/solid-pod-sync/src/contracts/DidContract.ts):
+
+```js
+/^did:pkn:(testnet|mainnet|local):([A-Z0-9]{56})$/
+```
+
+### 2.2 Examples
+
+```
+did:pkn:testnet:CBFWY2ZF73N5SDH4PQFPR7E5SHWTMMPJOI4ZT675CQLXBYDGNR2VCSPO
+did:pkn:mainnet:CDFHCQA3YJCITWEMNLCSRGQVVFEXGTONWSQJTD5VIZO7YV4IOKZUPCGT
+```
+
+### 2.3 Known syntax defects
+
+These are specification-level defects in the current form and MUST be corrected before
+registry submission:
+
+1. **The idstring is not checksum-validated.** `[A-Z0-9]{56}` accepts strings that are not
+   valid Stellar strkeys. It does not enforce the leading `C` version byte, the base32
+   alphabet (which excludes `0`, `1`, `8`), or the CRC-16 checksum. `did:pkn:testnet:` +
+   56 zeros parses successfully. The stricter form used elsewhere in the repository is
+   `^C[A-Z0-9]{55}$` plus strkey decoding. **This method SHOULD require full strkey
+   validation.**
+2. **`local` shares the identifier namespace with `mainnet`.** A developer-machine
+   identifier is syntactically indistinguishable from a production one to any consumer
+   that only pattern-matches the method. Consider removing `local` from the registered
+   syntax.
+
+---
+
+## 3. DID Document
+
+### 3.1 Template
+
+Generated by `createDidPknDocument()` in
+[`packages/solid-pod-sync/src/DidPknResolver.ts`](../../packages/solid-pod-sync/src/DidPknResolver.ts):
+
+```jsonc
+{
+  "@context": [
+    "https://www.w3.org/ns/did/v1",
+    "https://w3id.org/security/suites/ed25519-2020/v1"
+  ],
+  "id": "did:pkn:testnet:C…",
+  "controller": "did:pkn:testnet:C…",
+  "alsoKnownAs": ["https://solid.nodezero.social/alice/profile/card#me"],
+  "verificationMethod": [{
+    "id": "did:pkn:testnet:C…#stellar-key",
+    "type": "Ed25519VerificationKey2020",
+    "controller": "did:pkn:testnet:C…",
+    "stellarAddress": "G…",
+    "publicKeyMultibase": "z…"
+  }],
+  "authentication":       ["did:pkn:testnet:C…#stellar-key"],
+  "assertionMethod":      ["did:pkn:testnet:C…#stellar-key"],
+  "capabilityInvocation": ["did:pkn:testnet:C…#stellar-key"],
+  "capabilityDelegation": ["did:pkn:testnet:C…#stellar-key"],
+  "service": [
+    { "id": "…#solid-pod", "type": "SolidPodStorage",       "serviceEndpoint": "<webId>" },
+    { "id": "…#waku-mesh", "type": "WakuDiscoveryService",  "serviceEndpoint": "<topic>" },
+    { "id": "…#p2p-relay", "type": "SignalingRelayService", "serviceEndpoint": "<wss://…>" }
+  ]
+}
+```
+
+`alsoKnownAs` and each `service` entry are emitted only when the corresponding value is
+known.
+
+### 3.2 Key encoding
+
+The Stellar account address (`G…`) is decoded to 32 raw Ed25519 bytes — validating length
+56, leading `G`, and version byte `0x30` — then re-encoded as multibase:
+multicodec prefix `0xed 0x01`, base58btc, `z` prefix. This is conformant.
+
+### 3.3 Service types
+
+| Type | Endpoint | Purpose |
+|---|---|---|
+| `SolidPodStorage` | WebID URI | Authoritative Pod storage and ActivityStreams inbox |
+| `WakuDiscoveryService` | Waku content topic | P2P messaging and discovery shard |
+| `SignalingRelayService` | `wss://` URL | WebRTC signaling relay |
+
+These type names are **not registered** in the DID Specification Registries.
+
+### 3.4 Document-level conformance defects
+
+1. **`stellarAddress` is an undefined term.** It appears on the verification method but is
+   defined by neither `@context` entry. Under strict JSON-LD processing it will be dropped
+   or raise an error. DID Core §4 requires all properties be defined by the contexts. It
+   MUST be moved into a published NodeZero context, expressed as a full IRI, or removed.
+2. **`description` on service entries** has the same problem.
+3. **`keyAgreement` is never populated**, so `did:pkn` documents cannot support
+   encryption-to-DID.
+
+---
+
+## 4. Operations
+
+### 4.1 Create
+
+A `did:pkn` identifier comes into existence when the NodeZero provisioner deploys a
+per-user `lockb0x` child contract via the Lockb0x Bridge Factory. The identifier is
+derived from the resulting contract address. There is no separate DID registration
+transaction.
+
+### 4.2 Read (Resolve)
+
+**Endpoint:**
+
+```
+GET /v1/did/{did}
+GET /v1/did/resolve?did={did}
+```
+
+Unauthenticated. Returns `application/did+ld+json`. `Cache-Control: public, max-age=300`
+on success, `no-store` on error.
+
+**Specified algorithm:**
+
+1. Parse the DID against §2.1. On failure → `invalidDid`.
+2. Verify the network segment matches the resolver's environment profile.
+3. Read the Soroban contract at the given address via RPC (`getLedgerEntries`).
+4. If no contract exists, or it is not a Lockb0x child of a recognised factory →
+   `notFound`.
+5. Extract the account commitment, Pod binding, and controlling Stellar public key from
+   contract storage.
+6. Construct the DID Document per §3.
+7. Return with `didDocumentMetadata` reflecting **actual** contract creation and last
+   update ledger times.
+
+**Deployed algorithm** — [`packages/jss-provisioner/src/index.ts`](../../packages/jss-provisioner/src/index.ts):
+
+Steps 3–5 and 7 are absent. The injected `LockboxLookupFn` searches the in-memory
+Community Directory projection and, failing that, returns a synthetic record for **any**
+56-character string. In both branches the `stellarPublicKey` is a **hard-coded literal**
+that is also the unit-test fixture. There is no Soroban RPC call and no `stellar-sdk`
+import in the resolution path. The `network` segment influences only a Waku topic string.
+
+Consequences: `did:pkn:mainnet:<any 56 chars>` returns `200` with a valid-looking document
+on a network where no contract is deployed; `created` and `updated` are set to *resolution
+time*, so two resolutions of the same DID disagree; `deactivated` is always `false` and
+the deactivation path is unreachable.
+
+### 4.3 Update — **not implemented**
+
+No mechanism exists to rotate the verification key or change service endpoints.
+
+### 4.4 Deactivate — **not implemented**
+
+Per DID Core, a deactivated DID MUST resolve with `didDocument: null` and
+`didDocumentMetadata.deactivated: true`. The field is read from contract data that is
+never populated, so this path is unreachable.
+
+### 4.5 Resolution result
+
+```jsonc
+{
+  "@context": "https://w3id.org/did-resolution/v1",
+  "didDocument": { /* §3.1, or null on error */ },
+  "didDocumentMetadata": { "created": "…", "updated": "…", "deactivated": false },
+  "didResolutionMetadata": { "contentType": "application/did+ld+json", "retrieved": "…" }
+}
+```
+
+Error codes: `invalidDid` (400), `notFound` (404), `internalError` (500). These are the
+DID Core standard codes and the mapping is correct.
+
+Not supported: DID URL dereferencing (`?service=`, path, fragment), `versionId` /
+`versionTime` resolution, content negotiation (the `Accept` header is ignored).
+
+---
+
+## 5. Security considerations
+
+Per DID Core §10.
+
+### 5.1 Key material integrity — **currently violated**
+
+The verification key MUST be read from the identifier's own on-chain contract. The
+deployed resolver returns a constant. See [NC-01](known-non-conformance.md). Until fixed,
+**no consumer may treat a `did:pkn` document as authoritative for any purpose.**
+
+### 5.2 Identifier squatting / enumeration
+
+Because resolution performs no existence check, an attacker can mint plausible documents
+for arbitrary 56-character strings and point them at attacker-controlled service
+endpoints. Existence verification against the chain is mandatory to close this.
+
+### 5.3 Network confusion
+
+The `network` segment MUST be validated against the resolver's environment profile. It
+currently is not: a `mainnet` DID resolves against staging directory state and returns a
+staging relay endpoint. This conflicts with the environment isolation policy.
+
+### 5.4 Trust in the anchor
+
+Even when correctly implemented, `did:pkn` inherits the trust boundary described in
+[zk-attestation.md](zk-attestation.md): Pod-ownership proof verification is performed
+**off-chain** by the NodeZero provisioner, and the chain stores only a proof hash. The
+contract attests that the provisioner accepted a proof, not that the chain verified one.
+
+### 5.5 Key rotation and compromise
+
+With no Update or Deactivate operation, a compromised Stellar key cannot be revoked at the
+DID layer. This MUST be resolved before any production use.
+
+---
+
+## 6. Privacy considerations
+
+- DID Documents are public and unauthenticated by design. They MUST contain only
+  information the subject has explicitly chosen to publish.
+- The `alsoKnownAs` WebID and the `SolidPodStorage` endpoint **correlate a chain identity
+  to a Pod identity**. Emitting them for a user who has not opted into public listing
+  would violate the consent model in
+  [ADR-001](../adrs/consentful-discovery-communication/ADR-001-consentful-discovery-and-communication.md).
+  A conformant implementation MUST gate `alsoKnownAs` and Pod service emission on the
+  subject's public-indexing consent. **The current implementation does not check consent**
+  — it derives the WebID from the directory projection or synthesises one.
+- Private interests, Trust Circles, blocks, location history, and relationship state MUST
+  NEVER appear in a DID Document.
+
+---
+
+## 7. Path to registration
+
+Before submitting to the [W3C DID Specification Registries](https://www.w3.org/TR/did-spec-registries/):
+
+1. Close [NC-01](known-non-conformance.md) — implement real on-chain resolution.
+2. Enforce full Stellar strkey validation (§2.3).
+3. Publish a NodeZero JSON-LD context defining `stellarAddress`, or remove it (§3.4).
+4. Register or namespace the three service types (§3.3).
+5. Implement Update and Deactivate, or formally declare the method immutable and document
+   the key-compromise consequence.
+6. Return truthful `created` / `updated` metadata from ledger data.
+7. Gate `alsoKnownAs` and Pod service emission on consent (§6).
+8. Publish a Universal Resolver driver.
+9. Add conformance tests against the W3C DID Test Suite.
+
+---
+
+## 8. References
+
+- [W3C DID Core v1.0](https://www.w3.org/TR/did-core/)
+- [W3C DID Resolution](https://w3c-ccg.github.io/did-resolution/)
+- [W3C DID Specification Registries](https://www.w3.org/TR/did-spec-registries/)
+- [Ed25519 Signature Suite 2020](https://w3id.org/security/suites/ed25519-2020/v1)
+- [Stellar strkey (SEP-0023)](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0023.md)
+- Implementation: [`DidPknResolver.ts`](../../packages/solid-pod-sync/src/DidPknResolver.ts),
+  [`DidContract.ts`](../../packages/solid-pod-sync/src/contracts/DidContract.ts)
+- Tests: [`DidPknResolver.test.ts`](../../packages/solid-pod-sync/src/__tests__/DidPknResolver.test.ts),
+  [`index.did.test.ts`](../../packages/jss-provisioner/src/index.did.test.ts)

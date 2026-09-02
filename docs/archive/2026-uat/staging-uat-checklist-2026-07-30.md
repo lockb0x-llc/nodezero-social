@@ -1,3 +1,22 @@
+> # 📌 HISTORICAL EVIDENCE — SIGNED UAT SNAPSHOT (2026-07-30)
+>
+> **Archived 2026-09-01. Immutable — never edit.**
+>
+> This is the signed UAT checklist as it stood for release `v0.2.0-testnet`
+> (workflow run `30599014484`). **Its `GO` sign-off is void as current certification:**
+> staging now serves commit `3cb6450` (run `33284499441`), several releases later.
+>
+> The live release gate is [`docs/process/release-verification.md`](../../process/release-verification.md),
+> which re-issues this matrix with every row unset except rows re-executed against the
+> deployed commit.
+>
+> **Do not cite rows from this file as current evidence.** In particular it contains
+> PASS rows recorded against `solidcommunity.net` WebIDs — an external identity path the
+> current architecture forbids — and an instruction referencing a plaintext credential
+> file that is deliberately not carried forward.
+
+---
+
 # Staging-TestNet UAT Checklist
 
 Release gate for the NodeZero.social `staging-testnet` environment. The
@@ -86,7 +105,7 @@ Validate the nav bar overflow fix and the Settings access path change introduced
 The CD rows above preserve baseline Directory acceptance. They do not certify the
 Milestone Q consent model. Q3 implementation is complete locally; run the following
 cases against one exact deployed SHA using two distinct accounts and zero retries.
-Follow [the Milestone Q delta release runbook](milestone-q-delta-release-runbook.md)
+Follow [the Milestone Q delta release runbook](../2026-milestone-q-cohort/milestone-q-delta-release-runbook.md)
 for cohort enablement, physical-device lanes, rollback, and evidence handling.
 
 ### Consentful discovery and communication (Milestone Q)

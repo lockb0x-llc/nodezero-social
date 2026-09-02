@@ -6,23 +6,24 @@
   "rpcUrl": "https://soroban-rpc.mainnet.stellar.org",
   "sourceAccount": "nodezero-mainnet-deployer",
   "strictMainnetMode": true,
+  "_comment": "NO MAINNET DEPLOYMENT EXISTS. Contract IDs are null until scripts/stellar/deploy-mainnet.sh performs a real deployment and records genuine 56-character strkeys with their initTx/wasmHash/operator provenance. Never hand-author values here; scripts/policy/validate-env-isolation.sh rejects any id that is not a valid strkey. See docs/standards/known-non-conformance.md (NC-06).",
   "contracts": {
     "identity": {
-      "id": "CBMAINNETIDENTITY000000000000000000000000000000000000000000000",
-      "deploymentMode": "mainnet-production"
+      "id": null,
+      "deploymentMode": "not-deployed"
     },
     "lockbox": {
-      "id": "CBMAINNETLOCKBOX00000000000000000000000000000000000000000000000",
-      "deploymentMode": "mainnet-production"
+      "id": null,
+      "deploymentMode": "not-deployed"
     },
     "lockboxFactory": {
-      "id": "CBMAINNETFACTORY0000000000000000000000000000000000000000000000",
-      "deploymentMode": "mainnet-production"
+      "id": null,
+      "deploymentMode": "not-deployed"
     },
     "lockboxBridgeV3": {
-      "id": "CBMAINNETBRIDGEV3000000000000000000000000000000000000000000000",
-      "deploymentMode": "mainnet-production"
+      "id": null,
+      "deploymentMode": "not-deployed"
     }
   },
-  "generatedAt": "2026-08-27T00:00:00Z"
+  "generatedAt": null
 }

@@ -22,7 +22,7 @@ This document is the single source of truth for tracking:
 4. Outstanding implementation gaps and the work needed to close them.
 5. The delta between the staging-testnet footprint and the future `production-mainnet` footprint at `app.nodezero.social`.
 
-It complements (does not replace) the [staging UAT checklist](staging-uat-checklist.md) and
+It complements (does not replace) the [release verification](process/release-verification.md) and
 [environment isolation matrix](environment-isolation-matrix.md).
 
 ---
@@ -271,8 +271,8 @@ Each row is a discrete unit of work. Mark ✅ when complete with evidence.
 |---|---|---|---|
 | PLAN-01 | Foundation runbook published and linked to runtime roadmap | ✅ Done | [data-backpack-docustream-foundation-runbook.md](data-backpack-docustream-foundation-runbook.md) (created 2026-07-04) |
 | PLAN-02 | ADR template pack created for five Phase 0 blocker decisions | ✅ Done | [adrs/data-backpack-docustream/README.md](adrs/data-backpack-docustream/README.md) + ADR-001..005 templates |
-| PLAN-03 | Week-by-week execution tracker created with phase-aligned schedule | ✅ Done | [data-backpack-docustream-weekly-execution-tracker.md](data-backpack-docustream-weekly-execution-tracker.md) |
-| PLAN-04 | Assign named owners and target dates across tracker + ADR pack | ✅ Done | Owner/date fields prefilled in [data-backpack-docustream-weekly-execution-tracker.md](data-backpack-docustream-weekly-execution-tracker.md) and ADR-001..005 (2026-07-04) |
+| PLAN-03 | Week-by-week execution tracker created with phase-aligned schedule | ✅ Done | [data-backpack-docustream-weekly-execution-tracker.md](archive/2026-pre-staging/data-backpack-docustream-weekly-execution-tracker.md) (archived) |
+| PLAN-04 | Assign named owners and target dates across tracker + ADR pack | ✅ Done | Owner/date fields prefilled in [data-backpack-docustream-weekly-execution-tracker.md](archive/2026-pre-staging/data-backpack-docustream-weekly-execution-tracker.md) (archived) and ADR-001..005 (2026-07-04) |
 
 ### 6.7 Milestone Q: Consentful discovery and communication
 
@@ -417,7 +417,7 @@ az webapp config appsettings list \
 
 *Related documents:*
 - [Environment isolation matrix](environment-isolation-matrix.md)
-- [Staging UAT checklist](staging-uat-checklist.md)
+- [Release verification](process/release-verification.md)
 - [Staging deployment blueprint](staging-deployment-blueprint.md)
-- [TestNet Azure release requirements](testnet-azure-release-requirements.md)
-- [Milestone G release evidence summary](milestone-g-release-evidence-summary.md)
+- [TestNet Azure release requirements](archive/2026-pre-staging/testnet-azure-release-requirements.md) (archived)
+- [Milestone G release evidence summary](archive/2026-milestone-g/milestone-g-release-evidence-summary.md) (archived)

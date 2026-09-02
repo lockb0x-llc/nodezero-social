@@ -53,10 +53,11 @@ flowchart LR
 - Monorepo overview: ../README.md
 - Changelog: ../CHANGELOG.md
 - Feature progress + upstream attribution: ../docs/feature-implementation-attribution.md
-- Milestone H evidence summary: ../docs/milestone-h-release-evidence-summary.md
-- Milestone I evidence summary: ../docs/milestone-i-release-evidence-summary.md
-- Staging release requirements: ../docs/testnet-azure-release-requirements.md
-- Staging UAT checklist: ../docs/staging-uat-checklist.md
+- Milestone H evidence summary: ../docs/archive/2026-milestone-h/milestone-h-release-evidence-summary.md
+- Milestone I evidence summary: ../docs/archive/2026-milestone-i/milestone-i-release-evidence-summary.md
+- Staging release requirements: ../docs/archive/2026-pre-staging/testnet-azure-release-requirements.md
+- Release verification: ../docs/process/release-verification.md
+- Current verified status: ../docs/executive-summary.md
 - Runtime status and evidence: ../docs/staging-runtime-implementation-roadmap.md
 - System purpose and trust posture: ../docs/system-description.md
 - Milestone Q implementation plan: ../docs/consentful-pod-owner-discovery-and-communication-plan.md

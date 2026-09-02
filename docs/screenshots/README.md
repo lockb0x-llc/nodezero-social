@@ -38,4 +38,4 @@ cross-origin architecture and are not current release proof.
 ## Source references
 
 - QA matrix source: `.agents/shared-inbox/inbox.md`
-- Journey list source: `docs/staging-uat-checklist.md`
+- Journey list source: `docs/process/release-verification.md`

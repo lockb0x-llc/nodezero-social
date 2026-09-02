@@ -1,3 +1,9 @@
+> 📌 **HISTORICAL EVIDENCE — accurate as of 2026-07-10. Immutable; never edit.**
+> Not a statement of current behavior. Current status:
+> [`docs/executive-summary.md`](../../executive-summary.md).
+
+---
+
 # Milestone H Release Evidence Summary
 
 Date (UTC): 2026-07-10

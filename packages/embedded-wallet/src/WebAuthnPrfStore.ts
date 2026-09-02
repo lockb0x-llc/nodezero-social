@@ -84,7 +84,10 @@ export async function checkWebAuthnPrfSupport(options?: {
 
 function toArrayBuffer(data: Uint8Array | ArrayBuffer): ArrayBuffer {
   if (data instanceof ArrayBuffer) return data
-  return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer
+  // Copy into a fresh ArrayBuffer: `data.buffer` widens to ArrayBufferLike.
+  const out = new ArrayBuffer(data.byteLength)
+  new Uint8Array(out).set(data)
+  return out
 }
 
 /**
@@ -180,8 +183,8 @@ export class WebAuthnPrfKeyProvider {
     const readTransaction = database.transaction(KEY_STORE, 'readonly')
     const existing = await new Promise<{ id: string; key: CryptoKey } | undefined>((resolve, reject) => {
       const request = readTransaction.objectStore(KEY_STORE).get(WRAPPING_KEY_ID) as IDBRequest<{ id: string; key: CryptoKey } | undefined>
-      request.onsuccess = () => resolve(request.result)
-      request.onerror = () => reject(request.error ?? new Error('Failed to read wrapping key'))
+      request.onsuccess = (): void => resolve(request.result)
+      request.onerror = (): void => reject(request.error ?? new Error('Failed to read wrapping key'))
     })
 
     if (existing?.key) return existing.key
@@ -195,8 +198,9 @@ export class WebAuthnPrfKeyProvider {
     const store = writeTransaction.objectStore(KEY_STORE)
     store.put({ id: WRAPPING_KEY_ID, key: generated })
     await new Promise<void>((resolve, reject) => {
-      writeTransaction.oncomplete = () => resolve()
-      writeTransaction.onerror = () => reject(writeTransaction.error ?? new Error('Failed to save wrapping key'))
+      writeTransaction.oncomplete = (): void => resolve()
+      writeTransaction.onerror = (): void =>
+        reject(writeTransaction.error ?? new Error('Failed to save wrapping key'))
     })
     return generated
   }

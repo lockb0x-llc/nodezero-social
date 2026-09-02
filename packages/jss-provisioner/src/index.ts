@@ -59,6 +59,7 @@ import {
   DidPknResolver,
   type DidNetwork,
   type LockboxContractData,
+  type LockboxLookupFn,
 } from '@nodezero/solid-pod-sync'
 // Stellar StrKey base32 decode + Ed25519 verify using Web Crypto API
 const _B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
@@ -289,6 +290,8 @@ export interface RequestHandlerOverrides {
     publicIndexing: boolean
   }>
   getPodProxySuppressionRevision?: (webId: string) => Promise<number | null>
+  resolveDidLockbox?: LockboxLookupFn
+  didResolverEnabled?: boolean
 }
 const knownSolidAccountEmails = new Set<string>()
 const notificationPublisher = createNotificationEventPublisherFromEnv()
@@ -306,29 +309,40 @@ const DOCUSTREAM_ALLOWED_CONTENT_TYPES = [
 const STELLAR_AUTH_AUDIENCE = 'nz-css-stellar-login-v1'
 const PROVISIONING_LEASE_TTL_MS = Number(process.env.JSS_PROVISIONING_LEASE_TTL_MS ?? 5 * 60_000)
 
+/**
+ * NC-01: `did:pkn` resolution is bound to real per-identity key material.
+ *
+ * The previous implementation returned a hard-coded Ed25519 public key for every DID and
+ * resolved any 56-character string, which let one key holder's signatures validate for
+ * every identity. Resolution now requires a stored credential record whose lockb0x
+ * contract matches the DID, and whose network matches this deployment's profile.
+ * See docs/standards/known-non-conformance.md (NC-01).
+ */
+const DID_RESOLVER_ENABLED = String(process.env.JSS_DID_RESOLVER_ENABLED ?? '').trim() === 'true'
+
+const DID_RESOLVER_NETWORK: DidNetwork = (() => {
+  const profile = (process.env.NZ_ENV_PROFILE ?? 'local').trim()
+  if (profile === 'production-mainnet') return 'mainnet'
+  if (profile === 'staging-testnet') return 'testnet'
+  return 'local'
+})()
+
 const didResolver = new DidPknResolver(
   async (contractAddress: string, network: DidNetwork): Promise<LockboxContractData | null> => {
-    const publicIndex = communityDirectory.buildPublicIndex()
-    const member = publicIndex.members.find((m) => m.webId.includes(contractAddress))
-    if (member) {
-      return {
-        contractAddress,
-        stellarPublicKey: 'GB7P35TY56RILQHQOEXOHPR6O3OD6I62E4S5L3F3WFF7K332463F7YQI',
-        webId: member.webId,
-        wakuTopic: `/nodezero-${network}/1/default/proto`,
-        relayUrl: process.env.JSS_RELAY_URL ?? 'wss://relay.staging.nodezero.social/ws',
-      }
+    // A mainnet identifier must never resolve against testnet state, or vice versa.
+    if (network !== DID_RESOLVER_NETWORK) return null
+
+    const record = await credentialStore.findByLockboxContractId(contractAddress).catch(() => null)
+    if (!record?.stellarPublicKey || !record.webId) return null
+
+    const relayUrl = process.env.JSS_RELAY_URL?.trim()
+    return {
+      contractAddress,
+      stellarPublicKey: record.stellarPublicKey,
+      webId: record.webId,
+      wakuTopic: `/nodezero-${network}/1/default/proto`,
+      ...(relayUrl ? { relayUrl } : {}),
     }
-    if (contractAddress && contractAddress.length === 56) {
-      return {
-        contractAddress,
-        stellarPublicKey: 'GB7P35TY56RILQHQOEXOHPR6O3OD6I62E4S5L3F3WFF7K332463F7YQI',
-        webId: `${SOLID_CSS_BASE_URL || 'https://solid.nodezero.social'}/profile/card#me`,
-        wakuTopic: `/nodezero-${network}/1/default/proto`,
-        relayUrl: process.env.JSS_RELAY_URL ?? 'wss://relay.staging.nodezero.social/ws',
-      }
-    }
-    return null
   }
 )
 
@@ -1144,6 +1158,15 @@ export async function handleHttpRequest(
     req.method === 'GET' &&
     (url.pathname === '/v1/did/resolve' || url.pathname.startsWith('/v1/did/'))
   ) {
+    if (!(overrides.didResolverEnabled ?? DID_RESOLVER_ENABLED)) {
+      sendJson(req, res, 404, { error: 'Not found.' }, { 'cache-control': 'no-store' })
+      return
+    }
+
+    const activeDidResolver = overrides.resolveDidLockbox
+      ? new DidPknResolver(overrides.resolveDidLockbox)
+      : didResolver
+
     const rawDid =
       url.pathname === '/v1/did/resolve'
         ? (url.searchParams.get('did') ?? '')
@@ -1162,7 +1185,7 @@ export async function handleHttpRequest(
       return
     }
 
-    const resolution = await didResolver.resolve(rawDid)
+    const resolution = await activeDidResolver.resolve(rawDid)
     const statusCode =
       resolution.didResolutionMetadata.error === 'invalidDid'
         ? 400
@@ -1233,7 +1256,7 @@ export async function handleHttpRequest(
   if (req.method === 'GET' && url.pathname === '/v1/community-directory/index') {
     const claims = verifyBearerSession(req)
     if (!claims || !milestoneQControls.isEnabled('directory', claims.sub)) {
-      milestoneQControls.count('directory', claims ? 'cohort-denied' : 'unauthorized')
+      milestoneQControls.count('directory', claims ? 'feature-disabled' : 'unauthorized')
       sendJson(req, res, 404, { error: 'Not found' })
       return
     }
@@ -1306,7 +1329,7 @@ export async function handleHttpRequest(
       return
     }
     const directoryAvailable = milestoneQControls.isEnabled('directory', claims.sub)
-    if (!directoryAvailable) milestoneQControls.count('directory', 'cohort-denied')
+    if (!directoryAvailable) milestoneQControls.count('directory', 'feature-disabled')
     const refreshLimit = communityDirectoryRefreshRateLimiter.consume(claims.sub)
     if (!refreshLimit.allowed) {
       sendJson(
@@ -1528,7 +1551,7 @@ export async function handleHttpRequest(
       return
     }
     if (!milestoneQControls.isEnabled('peer-profile', claims.sub)) {
-      milestoneQControls.count('peer-profile', 'cohort-denied')
+      milestoneQControls.count('peer-profile', 'feature-disabled')
       sendJson(req, res, 404, { error: 'Not found' })
       return
     }
@@ -1610,7 +1633,7 @@ export async function handleHttpRequest(
       return
     }
     if (!milestoneQControls.isEnabled('transport', claims.sub)) {
-      milestoneQControls.count('transport', 'cohort-denied')
+      milestoneQControls.count('transport', 'feature-disabled')
       sendJson(req, res, 404, { error: 'Not found' })
       return
     }
@@ -1739,7 +1762,7 @@ export async function handleHttpRequest(
       return
     }
     if (!milestoneQControls.isEnabled('relationship', claims.sub)) {
-      milestoneQControls.count('relationship', 'cohort-denied')
+      milestoneQControls.count('relationship', 'feature-disabled')
       sendJson(req, res, 404, { error: 'Not found' })
       return
     }
@@ -1820,7 +1843,7 @@ export async function handleHttpRequest(
       return
     }
     if (!milestoneQControls.isEnabled('relationship', claims.sub)) {
-      milestoneQControls.count('relationship', 'cohort-denied')
+      milestoneQControls.count('relationship', 'feature-disabled')
       sendJson(req, res, 404, { error: 'Not found' })
       return
     }

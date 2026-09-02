@@ -73,4 +73,4 @@ Rollback:
 - `docs/environment-isolation-matrix.md`
 - `docs/staging-readiness-and-agent-plan.md`
 - `docs/staging-runtime-implementation-roadmap.md`
-- `docs/testnet-azure-release-requirements.md`
+- `docs/archive/2026-pre-staging/testnet-azure-release-requirements.md` (archived)

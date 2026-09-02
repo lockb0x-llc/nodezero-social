@@ -3,6 +3,18 @@
 This document describes the NodeZero Social system architecture, component
 responsibilities, trust boundaries, and threat model.
 
+**Status date:** 2026-09-01 · **Verified against:** `testnet` @ `3cb6450`
+
+> **Trust boundary notice.** Groth16 proof verification is performed **off-chain by the
+> NodeZero provisioner**; the chain stores only a `ProofHash`. The contract attests that
+> the provisioner accepted a proof, not that the chain verified one. See
+> [`standards/zk-attestation.md`](standards/zk-attestation.md) and
+> [NC-04](standards/known-non-conformance.md).
+>
+> For verified feature status see [`executive-summary.md`](executive-summary.md).
+> For standards conformance and known gaps see
+> [`standards/conformance-matrix.md`](standards/conformance-matrix.md).
+
 ---
 
 ## System diagram
@@ -14,7 +26,7 @@ responsibilities, trust boundaries, and threat model.
    │    Stellar keypair encrypted in profile-scoped         │
    │    IndexedDB (web) or expo-secure-store (native).      │
    │                                                        │
-   │  pod_ownership Groth16 Proof (snarkjs / WASM)          │
+   │  pod_stellar_bridge_v3 Groth16 Proof (snarkjs / WASM)   │
    │    Private: identitySecret = SHA256(stellarSecret) mod F│
    │    Public:  accountCommitment = Poseidon(identitySecret)│
    │             claimHash = H(canonical Pod-ownership claim)│
@@ -113,7 +125,7 @@ authenticated session; they never participate in establishing one.
 ### New-user onboarding (seamless "Create Your Node")
 
 1. User enters handle and notification email on the landing page.
-2. Device generates the pod_ownership Groth16 proof and encrypted claim.
+2. Device generates the pod_stellar_bridge_v3 Groth16 proof and encrypted claim.
 3. App calls provisioner `POST /v1/solid-account` (no password in the
    contract — the ephemeral CSS password is server-internal).
 4. Provisioner creates the CSS account + Pod, mints + encrypts per-user
