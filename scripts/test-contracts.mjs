@@ -8,6 +8,21 @@ import path from "node:path";
 const contractsDir = path.join(process.cwd(), "packages", "contracts");
 const env = { ...process.env };
 
+/**
+ * `packages/contracts/.cargo/config.toml` pins `build.target = wasm32-unknown-unknown`
+ * for production artifacts. Unit tests must run on the host instead: soroban-sdk's
+ * `testutils` needs std, serde_json, and rand, none of which resolve for wasm32.
+ */
+function hostTargetTriple() {
+  const probe = spawnSync("rustc", ["-vV"], { encoding: "utf8" });
+  const host = /^host:\s*(\S+)$/m.exec(probe.stdout ?? "")?.[1];
+  if (!host) {
+    console.error("Unable to determine the host Rust target from `rustc -vV`.");
+    process.exit(1);
+  }
+  return host;
+}
+
 let result;
 
 if (process.platform === "win32") {
@@ -45,7 +60,7 @@ if (process.platform === "win32") {
 } else {
   result = spawnSync("cargo", ["test"], {
     cwd: contractsDir,
-    env,
+    env: { ...env, CARGO_BUILD_TARGET: env.CARGO_BUILD_TARGET || hostTargetTriple() },
     stdio: "inherit",
   });
 }
