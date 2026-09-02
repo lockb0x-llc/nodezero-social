@@ -17,7 +17,7 @@ is written.
 | [NC-11](#nc-11--the-ldn-inbox-was-never-advertised-on-the-webid-profile-card) LDN inbox never advertised | High | ✅ Fixed in code 2026-09-01; needs deployed re-test |
 | [NC-01](#nc-01--didpkn-resolver-returned-a-constant-key-for-every-did) `did:pkn` constant key | Critical | ✅ Resolved 2026-09-01 |
 | NC-02 fabricated DID metadata | Medium | ✅ Resolved 2026-09-01 |
-| NC-03 WebAuthn PRF unused; key in plaintext | High | Open |
+| [NC-03](#nc-03--key-material-at-rest-recovery-bundle-encrypted-prf-still-unwired) Key material at rest | High | ⚠️ Bundle encrypted + PRF ceremony implemented; enablement pending |
 | NC-04 ZK verification off-chain | Medium | Open (documented) |
 | NC-05 AS2 is a relationship subset | Medium | Open (by design) |
 | NC-06 mainnet placeholders | High | ⚠️ Hazard removed; no deployment exists |
@@ -210,28 +210,98 @@ Core (`didDocument: null` + `deactivated: true`).
 
 ---
 
-## NC-03 — WebAuthn PRF is implemented but unused; web wallet key is in plaintext
+## NC-03 — Key material at rest: bundle encrypted, PRF implemented, enablement pending
 
-**Severity:** High (security) · **Status:** Open
-**Code:** `packages/embedded-wallet/src/WebAuthnPrfStore.ts`,
+**Severity:** High (security) · **Status:** ⚠️ **Substantially addressed 2026-09-01/02**
+**Code:** `packages/mobile-app/src/wallet/recoveryBundleCrypto.ts`,
+`packages/mobile-app/src/wallet/recoveryBundle.ts`,
+`packages/embedded-wallet/src/WebAuthnPrfStore.ts`,
 `packages/mobile-app/src/contexts/WalletContext.tsx`
 
-The HKDF-SHA256 → AES-GCM-256 derivation is cryptographically sound and unit-tested, but
-**no passkey ceremony exists** — `navigator.credentials.create()` / `.get()` appear nowhere
-in the codebase. `setPrfSecret()` is called only from a unit test. `WalletContext`
-constructs `EnclaveAdapter`, never `createHardwareBoundSecureStore`. On web that resolves
-to `WebLocalStorageSecureStore`.
+The Stellar secret key is exposed in two places. One is now closed.
 
-**Impact.** On `staging.nodezero.social` the **Stellar Ed25519 secret key is stored in
-plaintext `localStorage`** — XSS-readable, no hardware binding, no encryption at rest —
-while documentation described a "hardware vault". The PRF module is dead code shipped in
-the user bundle via a barrel re-export.
+### ✅ Closed: the exported recovery bundle
 
-**Not affected:** on-chain Ed25519 signing and the ZK Poseidon commitment are unchanged.
-The PRF key was only ever a wrapping KEK.
+The bundle previously exported the **raw Stellar secret in cleartext JSON**, bound only to
+profile and network. It is now **recovery bundle v2**: the WebID and wallet keys are
+encrypted with **AES-256-GCM** under a key derived from a user-chosen password via
+**PBKDF2-SHA256 at 600,000 iterations**, with a fresh salt and IV per export.
 
-**Remediation.** Implement the ceremony and wire it into `WalletContext`, or remove the
-export and correct all documentation.
+- Export prompts for a password, requires confirmation, and enforces a
+  12-character minimum. The password is never stored and cannot be recovered.
+- Import prompts for the password and fails closed on a wrong password or any tampering
+  (GCM authentication).
+- Environment binding (`envProfile`, `stellarNetworkPassphrase`) stays cleartext so a
+  wrong-lane bundle is rejected **before** a password is requested.
+- v1 (unencrypted) bundles are **rejected on import** with an actionable message, removing
+  the plaintext path entirely.
+- A downgraded `iterations` value is rejected, so an attacker cannot weaken the KDF by
+  editing the file.
+
+**On ZIP encryption.** Legacy ZipCrypto was considered and rejected: it is broken by a
+known-plaintext attack, and this payload starts with a fixed JSON preamble — exactly the
+condition that attack requires. AES-256-GCM under PBKDF2 is the same primitive WinZip AES
+uses, without the broken legacy mode and without adding an archive dependency.
+
+12 unit tests cover round-trip, cleartext-absence, wrong password, ciphertext tampering,
+v1 rejection, profile/network mismatch, malformed payloads, KDF downgrade, passphrase
+minimum, and salt/IV freshness. `scripts/qa/staging-auth-evidence.mjs` Journey 0 now
+generates a v2 bundle in Node and answers the password prompt; the Node ciphertext was
+verified to decrypt under the app's WebCrypto path.
+
+### ⚠️ Correction to the original finding
+
+The 2026-09-01 audit recorded that *"the Stellar Ed25519 secret key is stored in plaintext
+`localStorage`"*. **That was wrong**, and it was repeated in this register and the
+executive summary before being caught on 2026-09-02.
+
+`EnclaveAdapter` *does* contain a `WebLocalStorageSecureStore` branch, but it is only
+reached when no store is supplied. `WalletContext` explicitly passes
+`IndexedDbSecureStore` on web, which encrypts every record with **AES-GCM under a
+non-extractable `CryptoKey`**. The app has never written wallet secrets to `localStorage`.
+
+The real residual risk was narrower, and is what the PRF work addresses: the wrapping key
+is **origin-bound but not user-presence-bound**. It is non-extractable, so an XSS attacker
+cannot exfiltrate it — but they could invoke the store within the page and decrypt records
+**silently, with no user gesture**.
+
+### ✅ Closed: passkey ceremony and fail-closed storage (2026-09-02)
+
+- `registerPrfPasskey()` creates a platform passkey with `extensions: { prf: {} }`,
+  `residentKey: 'required'`, and `userVerification: 'required'`. It **fails closed** if the
+  authenticator does not report `prf.enabled`, rather than registering a passkey that
+  cannot derive a secret.
+- `assertPrfSecret()` evaluates `prf.eval.first` against a profile-scoped salt for the
+  named credential, requiring a biometric or PIN gesture.
+- `unlockPrfProvider()` ties the two together and binds the derived HKDF→AES-GCM key.
+- **The silent software fallback is removed.** `getWrappingKey()` previously generated a
+  non-PRF AES key when unbound; since nothing ever bound it, that was the *only* path taken
+  — so wiring the module up would have reported hardware protection while providing none.
+  It now throws `PrfUnavailableError` unless `allowSoftwareFallback` is explicitly set.
+- `hardwareProtection.ts` provides the lifecycle: capability probe, enable (register →
+  unlock → re-wrap existing keyring records), and per-session unlock. Migration skips an
+  unreadable record instead of stranding the whole keyring.
+
+23 tests across the ceremony, fail-closed store, and lifecycle — including that a failed
+enable does not claim protection, and that an unbound store refuses writes.
+
+### ❌ Still open: enablement is not yet a user-facing flow
+
+The capability is implemented and tested but **not yet switched on**, because turning it on
+by default has two consequences that need a product decision:
+
+1. **Every app load would require a biometric prompt** before wallet records can be read.
+   That is arguably a better "one-tap sign in", but it changes the core flow.
+2. **`qa:smoke:auth` would break.** The blocking identity gate drives a real browser with
+   no authenticator; enabling PRF by default requires a Playwright virtual authenticator in
+   that gate first.
+
+Remaining work: settings UI to enable/disable, unlock-on-load handling, a defined path for
+browsers without PRF, the virtual-authenticator work in the auth gate, and UAT plus
+device-matrix rows.
+
+**Not affected:** on-chain Ed25519 signing and the Poseidon commitment are unchanged. The
+PRF key is a wrapping KEK only, never a signing or commitment key.
 
 ---
 

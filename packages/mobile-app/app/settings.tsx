@@ -24,6 +24,10 @@ import { useRouter } from 'expo-router'
 import { useNodeZeroSession } from '../src/contexts/NodeZeroSessionContext'
 import { getProvisionerUrl } from '../src/contexts/NodeZeroSessionContext'
 import { useWallet } from '../src/contexts/WalletContext'
+import {
+  assertUsablePassphrase,
+  MIN_RECOVERY_PASSPHRASE_LENGTH,
+} from '../src/wallet/recoveryBundleCrypto'
 import { PodArchiveExporter, PodArchiveRestorer } from '@nodezero/solid-pod-sync'
 import { buildPodArchiveZip } from '../src/podArchive/zipWriter'
 import { deliverFile, deliverPodArchive } from '../src/podArchive/delivery'
@@ -34,7 +38,7 @@ import { aesthetic } from '../src/theme/aesthetic'
 import { readContentPreferences, writeContentPreferences } from '../src/preferences/contentPreferences'
 
 const recoveryExportWarning =
-  'This bundle contains your private wallet key. Anyone with it controls your node. Store it securely and never share it.'
+  'This bundle contains your private wallet key, encrypted with a password you choose. Anyone with both the file and the password controls your node. The password is never stored and cannot be recovered.'
 const podExportWarning =
   'This exports data from your Solid Pod without wallet keys. Resources that cannot be read will be listed in the archive manifest.'
 
@@ -165,10 +169,10 @@ export default function SettingsScreen(): JSX.Element {
     router.replace('/')
   }, [router, signOut])
 
-  const performRecoveryExport = useCallback((): void => {
+  const performRecoveryExport = useCallback((passphrase: string): void => {
     setIsExporting(true)
     setDataActionStatus(null)
-    void exportRecoveryBundle()
+    void exportRecoveryBundle(passphrase)
       .then(async ({ fileName, json }) => {
         const outcome = await deliverFile(fileName, new TextEncoder().encode(json), 'application/json')
         setDataActionStatus(`Identity recovery bundle ${outcome}.`)
@@ -180,14 +184,33 @@ export default function SettingsScreen(): JSX.Element {
   }, [exportRecoveryBundle])
 
   const exportData = useCallback(() => {
-    if (Platform.OS === 'web' && typeof globalThis.confirm === 'function') {
-      if (globalThis.confirm(recoveryExportWarning)) performRecoveryExport()
+    if (Platform.OS !== 'web' || typeof globalThis.prompt !== 'function') {
+      setDataActionStatus(
+        'Export failed: password-protected recovery export is available in the NodeZero PWA.'
+      )
       return
     }
-    Alert.alert('Export Recovery Bundle', recoveryExportWarning, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Export', onPress: performRecoveryExport },
-    ])
+    if (typeof globalThis.confirm === 'function' && !globalThis.confirm(recoveryExportWarning)) return
+
+    const passphrase = globalThis.prompt(
+      `Choose a password for this recovery bundle (minimum ${MIN_RECOVERY_PASSPHRASE_LENGTH} characters).\n\n` +
+        'This password is never stored and cannot be recovered. Without it the bundle is unusable.'
+    )
+    if (passphrase === null) return
+
+    const confirmation = globalThis.prompt('Re-enter the recovery password to confirm.')
+    if (confirmation === null) return
+    if (confirmation !== passphrase) {
+      setDataActionStatus('Export failed: the passwords did not match.')
+      return
+    }
+    try {
+      assertUsablePassphrase(passphrase)
+    } catch (err) {
+      setDataActionStatus(err instanceof Error ? `Export failed: ${err.message}` : 'Export failed.')
+      return
+    }
+    performRecoveryExport(passphrase)
   }, [performRecoveryExport])
 
   const exportPodData = useCallback((): void => {

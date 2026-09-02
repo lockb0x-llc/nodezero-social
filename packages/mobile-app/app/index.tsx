@@ -844,7 +844,14 @@ export default function LandingScreen(): JSX.Element {
       if (!file) return
       setError(null)
       setErrorAction(null)
-      setCreateNotice('Validating recovery bundle…')
+
+      const passphrase =
+        typeof globalThis.prompt === 'function'
+          ? globalThis.prompt('Enter the password for this recovery bundle.')
+          : null
+      if (passphrase === null) return
+
+      setCreateNotice('Decrypting recovery bundle…')
       void file
         .text()
         .then((json) => {
@@ -852,7 +859,8 @@ export default function LandingScreen(): JSX.Element {
           return parseRecoveryBundle(
             json,
             extra?.envProfile ?? 'local',
-            extra?.stellarNetworkPassphrase ?? ''
+            extra?.stellarNetworkPassphrase ?? '',
+            passphrase
           )
         })
         .then((identity) => importRecoveryIdentity(identity))

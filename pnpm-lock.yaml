@@ -240,6 +240,9 @@ importers:
       '@types/react-native':
         specifier: ^0.73.0
         version: 0.73.0(@babel/core@7.29.7)(@babel/preset-env@7.29.7(@babel/core@7.29.7))(@types/react@18.2.79)(react@18.2.0)
+      fake-indexeddb:
+        specifier: ^6.2.5
+        version: 6.2.5
       tsx:
         specifier: ^4.19.2
         version: 4.22.4

@@ -1,32 +1,35 @@
 # WebAuthn Level 3 PRF Extension
 
-**Status date:** 2026-09-01
-**Conformance:** **Primitive only — not part of the current security model**
+**Status date:** 2026-09-02
+**Conformance:** **Implemented and tested; enablement pending a product decision**
 
 ---
 
 ## ⚠ Implementation Status
 
-> **This feature is not in use.** The key-derivation primitive is implemented and
-> unit-tested, but there is **no passkey ceremony and no consumer**. It is dead code in
-> the shipped bundle.
+> **The ceremony is implemented.** Registration requests the `prf` extension and fails
+> closed if the authenticator does not report support; assertion evaluates
+> `prf.eval.first` under user verification; the derived secret binds an HKDF→AES-GCM
+> wrapping key for `IndexedDbSecureStore`. The silent non-PRF fallback has been removed.
 >
-> On web, the Stellar Ed25519 secret key is stored in **plaintext `localStorage`**.
+> **It is not switched on by default.** See the enablement section below.
 >
-> Tracked as [NC-03](known-non-conformance.md). Documentation previously described this as
-> a delivered "hardware vault"; that was false.
+> **Correction:** earlier documentation stated the web wallet key was in plaintext
+> `localStorage`. That was wrong — records are AES-GCM encrypted in IndexedDB under a
+> non-extractable key. The real gap was that the wrapping key is origin-bound but not
+> user-presence-bound. See [NC-03](known-non-conformance.md).
 
 | Component | State |
 |---|---|
-| Capability probe (`checkWebAuthnPrfSupport`) | ✅ Implemented |
-| HKDF-SHA256 → AES-GCM-256 derivation | ✅ Implemented, unit-tested |
-| `WebAuthnPrfKeyProvider` | ✅ Implemented |
-| `createHardwareBoundSecureStore` | ✅ Implemented |
-| **Passkey registration ceremony** | ❌ Absent — `navigator.credentials.create()` appears nowhere |
-| **Passkey assertion ceremony** | ❌ Absent — `navigator.credentials.get()` appears nowhere |
-| **PRF extension request** (`extensions: { prf: { eval: { first } } }`) | ❌ Absent |
-| **Wired into `WalletContext`** | ❌ No — constructs `EnclaveAdapter` instead |
-| **Any production consumer** | ❌ None. `setPrfSecret()` is called only from a unit test |
+| Capability probe (`checkWebAuthnPrfSupport`) | ✅ |
+| HKDF-SHA256 → AES-GCM-256 derivation | ✅ |
+| **Passkey registration** (`registerPrfPasskey`) | ✅ Implemented 2026-09-02 |
+| **PRF assertion** (`assertPrfSecret`) | ✅ Implemented 2026-09-02 |
+| **Fail-closed wrapping key** | ✅ Silent software fallback removed |
+| **Enable / unlock lifecycle + keyring re-wrap** | ✅ `hardwareProtection.ts` |
+| Settings UI to enable | ❌ Pending |
+| Unlock-on-load flow | ❌ Pending |
+| Virtual authenticator in `qa:smoke:auth` | ❌ Pending — blocks default-on |
 
 ---
 
@@ -95,7 +98,12 @@ XSS-readable, no encryption at rest, no hardware binding.
    web/PWA.
 4. **Remove or hard-fail the silent fallback** so an unbound store cannot masquerade as
    hardware-protected.
-5. Define the recovery path for users whose authenticator is lost — the recovery bundle
+5. Define the recovery path for users whose authenticator is lost.
+   **✅ Prerequisite satisfied 2026-09-01:** the recovery bundle is now encrypted with
+   AES-256-GCM under a PBKDF2-SHA256 password key (see
+   [NC-03](known-non-conformance.md)). Hardware-binding the device key is only meaningful
+   once the escape hatch is also protected — previously the bundle exported the raw secret
+   in cleartext, so binding the key would have moved the weak link rather than removing it.
    must remain usable.
 6. Add UAT rows and device-matrix coverage.
 

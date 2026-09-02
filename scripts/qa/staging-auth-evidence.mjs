@@ -30,6 +30,7 @@ import { chromium } from '@playwright/test'
 import { Contract, Keypair, rpc, scValToNative } from '@stellar/stellar-sdk'
 import { appendFile, mkdir } from 'node:fs/promises'
 import { dirname } from 'node:path'
+import { createCipheriv, pbkdf2Sync, randomBytes } from 'node:crypto'
 
 const baseUrl = (process.env.STAGING_BASE_URL || 'https://staging.nodezero.social').replace(/\/$/, '')
 const solidHost = (process.env.SOLID_HOST || 'solid.nodezero.social').toLowerCase()
@@ -185,21 +186,55 @@ async function probeDocustreamPane(page) {
   }
 }
 
-async function verifySignedOutRecoveryImport(browser) {
-  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } })
-  const page = await context.newPage()
-  const keypair = Keypair.random()
-  const bundle = JSON.stringify({
-    bundleVersion: 1,
-    exportedAt: new Date().toISOString(),
-    envProfile: 'staging-testnet',
-    stellarNetworkPassphrase: 'Test SDF Network ; September 2015',
+const RECOVERY_EVIDENCE_PASSWORD = 'staging-recovery-evidence-passphrase'
+
+/**
+ * Builds a v2 (encrypted) recovery bundle using the same scheme as the app:
+ * PBKDF2-SHA256 (600k) -> AES-256-GCM, with the GCM tag appended to the ciphertext
+ * exactly as WebCrypto emits it.
+ */
+function buildEncryptedRecoveryBundle(keypair, password) {
+  const salt = randomBytes(16)
+  const iv = randomBytes(12)
+  const key = pbkdf2Sync(password, salt, 600_000, 32, 'sha256')
+  const plaintext = JSON.stringify({
     webId: 'https://solid.nodezero.social/recovery-evidence/profile/card#me',
     wallet: { publicKey: keypair.publicKey(), secretKey: keypair.secret() },
   })
 
+  const cipher = createCipheriv('aes-256-gcm', key, iv)
+  const ciphertext = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()])
+  const sealed = Buffer.concat([ciphertext, cipher.getAuthTag()])
+
+  return JSON.stringify({
+    bundleVersion: 2,
+    exportedAt: new Date().toISOString(),
+    envProfile: 'staging-testnet',
+    stellarNetworkPassphrase: 'Test SDF Network ; September 2015',
+    encrypted: {
+      kdf: 'PBKDF2-SHA256',
+      iterations: 600_000,
+      saltB64: salt.toString('base64'),
+      cipher: 'AES-256-GCM',
+      ivB64: iv.toString('base64'),
+      ciphertextB64: sealed.toString('base64'),
+    },
+  })
+}
+
+async function verifySignedOutRecoveryImport(browser) {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } })
+  const page = await context.newPage()
+  const keypair = Keypair.random()
+  const bundle = buildEncryptedRecoveryBundle(keypair, RECOVERY_EVIDENCE_PASSWORD)
+
+  // The import flow prompts for the bundle password before decrypting.
+  page.on('dialog', (dialog) => {
+    void dialog.accept(RECOVERY_EVIDENCE_PASSWORD)
+  })
+
   try {
-    log('Journey 0: signed-out recovery bundle → encrypted local identity')
+    log('Journey 0: signed-out encrypted recovery bundle → encrypted local identity')
     await page.goto(`${baseUrl}/`, { waitUntil: 'domcontentloaded', timeout: 60_000 })
     const chooserPromise = page.waitForEvent('filechooser')
     await page.getByRole('button', { name: 'Restore identity from recovery bundle' }).click()

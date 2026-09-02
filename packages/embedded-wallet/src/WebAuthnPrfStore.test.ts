@@ -73,7 +73,7 @@ void test('WebAuthnPrfKeyProvider caches PRF derived key and protects records', 
   assert.equal(retrieved, 'BIO-PROTECTED-STELLAR-KEY')
 })
 
-void test('createHardwareBoundSecureStore falls back gracefully to standard wrapping when PRF not set', async () => {
+void test('NC-03: an unbound hardware store refuses writes instead of silently downgrading', async () => {
   const indexedDB = new IDBFactory()
   const store = createHardwareBoundSecureStore({
     profile: 'staging-testnet',
@@ -81,7 +81,22 @@ void test('createHardwareBoundSecureStore falls back gracefully to standard wrap
     crypto: webcrypto as unknown as Crypto,
   })
 
+  await assert.rejects(
+    store.setItemAsync('standard_secret', 'FALLBACK-STELLAR-KEY'),
+    /not unlocked/i,
+    'a store without a PRF secret must not quietly generate a software key'
+  )
+})
+
+void test('software wrapping is reachable only via explicit opt-in', async () => {
+  const indexedDB = new IDBFactory()
+  const store = createHardwareBoundSecureStore({
+    profile: 'staging-testnet',
+    indexedDB,
+    crypto: webcrypto as unknown as Crypto,
+    allowSoftwareFallback: true,
+  })
+
   await store.setItemAsync('standard_secret', 'FALLBACK-STELLAR-KEY')
-  const retrieved = await store.getItemAsync('standard_secret')
-  assert.equal(retrieved, 'FALLBACK-STELLAR-KEY')
+  assert.equal(await store.getItemAsync('standard_secret'), 'FALLBACK-STELLAR-KEY')
 })

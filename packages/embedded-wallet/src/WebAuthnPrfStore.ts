@@ -90,6 +90,157 @@ function toArrayBuffer(data: Uint8Array | ArrayBuffer): ArrayBuffer {
   return out
 }
 
+/** Thrown when a hardware-bound store is requested but PRF is not usable. */
+export class PrfUnavailableError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'PrfUnavailableError'
+  }
+}
+
+export function base64UrlEncode(bytes: Uint8Array): string {
+  let binary = ''
+  for (const byte of bytes) binary += String.fromCharCode(byte)
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+export function base64UrlDecode(value: string): Uint8Array {
+  const padded = value.replace(/-/g, '+').replace(/_/g, '/')
+  const binary = atob(padded.padEnd(Math.ceil(padded.length / 4) * 4, '='))
+  const out = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i)
+  return out
+}
+
+/** Identifies the passkey that holds the wallet's PRF secret. */
+export interface PrfPasskeyRecord {
+  credentialId: string
+  createdAt: string
+}
+
+interface PrfExtensionResults {
+  prf?: { enabled?: boolean; results?: { first?: ArrayBuffer } }
+}
+
+interface CeremonyOptions {
+  profile: string
+  credentialsContainer?: CredentialsContainer | undefined
+  crypto?: Crypto | undefined
+  rpId?: string | undefined
+  userName?: string | undefined
+  userDisplayName?: string | undefined
+  timeoutMs?: number | undefined
+}
+
+function requireCredentials(options: CeremonyOptions): CredentialsContainer {
+  const credentials = options.credentialsContainer ?? globalThis.navigator?.credentials
+  if (!credentials?.create || !credentials.get) {
+    throw new PrfUnavailableError('WebAuthn is not available in this environment.')
+  }
+  return credentials
+}
+
+/**
+ * Registers a platform passkey with the PRF extension enabled.
+ *
+ * Returns the credential id, which the caller must persist: PRF evaluation on
+ * subsequent unlocks requires naming this exact credential.
+ *
+ * @throws PrfUnavailableError when the authenticator does not report PRF support.
+ */
+export async function registerPrfPasskey(
+  options: CeremonyOptions & { userId?: Uint8Array | undefined }
+): Promise<PrfPasskeyRecord> {
+  const credentials = requireCredentials(options)
+  const cryptoProvider = options.crypto ?? globalThis.crypto
+  const challenge = cryptoProvider.getRandomValues(new Uint8Array(32))
+  const userId = options.userId ?? cryptoProvider.getRandomValues(new Uint8Array(32))
+
+  const created = (await credentials.create({
+    publicKey: {
+      challenge: toArrayBuffer(challenge),
+      rp: { name: 'NodeZero', ...(options.rpId ? { id: options.rpId } : {}) },
+      user: {
+        id: toArrayBuffer(userId),
+        name: options.userName ?? `nodezero-${options.profile}`,
+        displayName: options.userDisplayName ?? 'NodeZero Wallet',
+      },
+      // ES256 then RS256; the wallet never uses this key to sign, it only carries PRF.
+      pubKeyCredParams: [
+        { type: 'public-key', alg: -7 },
+        { type: 'public-key', alg: -257 },
+      ],
+      authenticatorSelection: {
+        authenticatorAttachment: 'platform',
+        residentKey: 'required',
+        userVerification: 'required',
+      },
+      timeout: options.timeoutMs ?? 120_000,
+      extensions: { prf: {} } as AuthenticationExtensionsClientInputs,
+    },
+  })) as PublicKeyCredential | null
+
+  if (!created) {
+    throw new PrfUnavailableError('Passkey registration was cancelled.')
+  }
+
+  const results = created.getClientExtensionResults() as PrfExtensionResults
+  if (results.prf?.enabled !== true) {
+    throw new PrfUnavailableError(
+      'This authenticator registered a passkey but does not support the PRF extension.'
+    )
+  }
+
+  return {
+    credentialId: base64UrlEncode(new Uint8Array(created.rawId)),
+    createdAt: new Date().toISOString(),
+  }
+}
+
+/**
+ * Evaluates the PRF for a registered passkey, returning the raw secret.
+ *
+ * Requires a user-verification gesture (biometric or PIN), which is the property that
+ * makes this meaningfully stronger than an origin-bound software key: a silent script
+ * cannot obtain the secret without user presence.
+ */
+export async function assertPrfSecret(
+  options: CeremonyOptions & { credentialId: string; salt: Uint8Array }
+): Promise<Uint8Array> {
+  const credentials = requireCredentials(options)
+  const cryptoProvider = options.crypto ?? globalThis.crypto
+  const challenge = cryptoProvider.getRandomValues(new Uint8Array(32))
+
+  const assertion = (await credentials.get({
+    publicKey: {
+      challenge: toArrayBuffer(challenge),
+      ...(options.rpId ? { rpId: options.rpId } : {}),
+      allowCredentials: [
+        {
+          type: 'public-key',
+          id: toArrayBuffer(base64UrlDecode(options.credentialId)),
+        },
+      ],
+      userVerification: 'required',
+      timeout: options.timeoutMs ?? 120_000,
+      extensions: {
+        prf: { eval: { first: toArrayBuffer(options.salt) } },
+      } as AuthenticationExtensionsClientInputs,
+    },
+  })) as PublicKeyCredential | null
+
+  if (!assertion) {
+    throw new PrfUnavailableError('Passkey verification was cancelled.')
+  }
+
+  const results = assertion.getClientExtensionResults() as PrfExtensionResults
+  const first = results.prf?.results?.first
+  if (!first) {
+    throw new PrfUnavailableError('Authenticator did not return a PRF evaluation result.')
+  }
+  return new Uint8Array(first)
+}
+
 /**
  * Derives a 256-bit AES-GCM wrapping CryptoKey from a 32-byte PRF secret output using HKDF-SHA256.
  */
@@ -135,6 +286,7 @@ export class WebAuthnPrfKeyProvider {
   readonly rpId?: string | undefined
   readonly salt: Uint8Array
   private readonly cryptoProvider: Crypto
+  private readonly allowSoftwareFallback: boolean
   private cachedWrappingKey: CryptoKey | null = null
   private isPrfBound = false
 
@@ -143,10 +295,13 @@ export class WebAuthnPrfKeyProvider {
     crypto?: Crypto | undefined
     rpId?: string | undefined
     salt?: Uint8Array | undefined
+    /** Opt-in only. Without PRF the store is not hardware-bound. */
+    allowSoftwareFallback?: boolean | undefined
   }) {
     this.profile = options.profile
     this.cryptoProvider = options.crypto ?? globalThis.crypto
     this.rpId = options.rpId
+    this.allowSoftwareFallback = options.allowSoftwareFallback ?? false
     this.salt = options.salt ?? new TextEncoder().encode(`nodezero.prf.evaluation.salt.v1.${options.profile}`)
   }
 
@@ -175,6 +330,14 @@ export class WebAuthnPrfKeyProvider {
   async getWrappingKey(database: IDBDatabase, crypto: Crypto): Promise<CryptoKey> {
     if (this.cachedWrappingKey) {
       return this.cachedWrappingKey
+    }
+
+    // Fail closed: silently generating a software key here would report success while
+    // providing no hardware binding at all. Software fallback must be explicit.
+    if (!this.allowSoftwareFallback) {
+      throw new PrfUnavailableError(
+        'Wallet storage is not unlocked. Complete passkey verification before accessing wallet records.'
+      )
     }
 
     const KEY_STORE = 'keys'
@@ -207,8 +370,10 @@ export class WebAuthnPrfKeyProvider {
 }
 
 /**
- * Creates an ISecureStore backed by WebAuthn PRF key wrapping when available,
- * falling back gracefully to standard encrypted IndexedDB storage.
+ * Creates an ISecureStore whose wrapping key is derived from a WebAuthn PRF secret.
+ *
+ * The store fails closed until {@link WebAuthnPrfKeyProvider.setPrfSecret} has been called
+ * with a passkey assertion result, unless `allowSoftwareFallback` is explicitly enabled.
  */
 export function createHardwareBoundSecureStore(
   options: WebAuthnPrfOptions,
@@ -219,6 +384,7 @@ export function createHardwareBoundSecureStore(
     crypto: options.crypto,
     rpId: options.rpId,
     salt: options.salt,
+    allowSoftwareFallback: options.allowSoftwareFallback,
   })
 
   return new IndexedDbSecureStore({
@@ -228,4 +394,40 @@ export function createHardwareBoundSecureStore(
     crypto: options.crypto,
     wrappingKeyProvider: (db, crypto) => provider.getWrappingKey(db, crypto),
   })
+}
+
+/**
+ * Unlocks a PRF provider by running the passkey assertion and binding the derived key.
+ *
+ * Registers a new passkey when no record is supplied, returning the record so the caller
+ * can persist it for subsequent unlocks.
+ */
+export async function unlockPrfProvider(
+  provider: WebAuthnPrfKeyProvider,
+  options: CeremonyOptions & { record?: PrfPasskeyRecord | undefined }
+): Promise<PrfPasskeyRecord> {
+  const record =
+    options.record ??
+    (await registerPrfPasskey({
+      profile: options.profile,
+      credentialsContainer: options.credentialsContainer,
+      crypto: options.crypto,
+      rpId: options.rpId ?? provider.rpId,
+      userName: options.userName,
+      userDisplayName: options.userDisplayName,
+      timeoutMs: options.timeoutMs,
+    }))
+
+  const secret = await assertPrfSecret({
+    profile: options.profile,
+    credentialsContainer: options.credentialsContainer,
+    crypto: options.crypto,
+    rpId: options.rpId ?? provider.rpId,
+    timeoutMs: options.timeoutMs,
+    credentialId: record.credentialId,
+    salt: provider.salt,
+  })
+
+  await provider.setPrfSecret(secret)
+  return record
 }

@@ -28,6 +28,7 @@ import type { OnboardingConfigDescriptor } from '../onboarding/seamlessSignup'
 import type { ProgressStep } from '../components/ProgressStepLadder'
 import Constants from 'expo-constants'
 import { useNodeZeroSession } from './NodeZeroSessionContext'
+import { RECOVERY_BUNDLE_VERSION, sealRecoveryBundle } from '../wallet/recoveryBundle'
 
 type AttestationStatus = 'idle' | 'verifying' | 'verified' | 'unlinked' | 'error'
 
@@ -86,8 +87,8 @@ interface WalletContextValue {
   verificationSteps: ProgressStep[]
   /** Machine-verifiable attestation details for QA and diagnostics. */
   attestationDetails: AttestationDetails
-  /** Builds a portable recovery bundle (includes the private key) for export. */
-  exportRecoveryBundle: () => Promise<{ fileName: string; json: string }>
+  /** Builds a portable, password-encrypted recovery bundle for export. */
+  exportRecoveryBundle: (passphrase: string) => Promise<{ fileName: string; json: string }>
   /**
    * Produces the on-device Pod-ownership attestation (a `pod_ownership` Groth16
    * proof + Stellar-encrypted claim) for the seamless onboarding flow. The
@@ -598,28 +599,31 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
     webId,
   ])
 
-  const exportRecoveryBundle = useCallback(async (): Promise<{
+  const exportRecoveryBundle = useCallback(async (passphrase: string): Promise<{
     fileName: string
     json: string
   }> => {
     const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
     const info = walletInfo ?? (await getWalletService().getWalletInfo())
     const secret = await getWalletService().exportSecret()
-    const pairingRaw = await AsyncStorage.getItem(PAIRING_ATTESTATION_STORAGE_KEY)
+    if (!secret) {
+      throw new Error('This identity has no exportable secret key on this device.')
+    }
     const exportedAt = new Date().toISOString()
 
+    // Wallet keys and WebID are encrypted; only environment binding stays readable so a
+    // wrong-lane bundle is rejected before a password is requested.
+    const encrypted = await sealRecoveryBundle(
+      { webId: webId ?? null, publicKey: info.publicKey, secretKey: secret },
+      passphrase
+    )
+
     const bundle = {
-      bundleVersion: 1,
+      bundleVersion: RECOVERY_BUNDLE_VERSION,
       exportedAt,
       envProfile: appExtra?.envProfile ?? 'local',
       stellarNetworkPassphrase: appExtra?.stellarNetworkPassphrase ?? null,
-      webId: webId ?? null,
-      wallet: {
-        publicKey: info.publicKey,
-        secretKey: secret,
-      },
-      attestation: attestationDetails,
-      pairingRecord: pairingRaw ? (JSON.parse(pairingRaw) as unknown) : null,
+      encrypted,
     }
 
     const stamp = exportedAt.replace(/[:.]/g, '').replace(/-/g, '')
@@ -627,7 +631,7 @@ export function WalletProvider({ children }: { children: ReactNode }): JSX.Eleme
       fileName: `nodezero-recovery-${stamp}.json`,
       json: JSON.stringify(bundle, null, 2),
     }
-  }, [attestationDetails, walletInfo, webId])
+  }, [walletInfo, webId])
 
   const deleteNodeData = useCallback(
     async (options?: {

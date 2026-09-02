@@ -240,8 +240,13 @@ entry NC-01.
    ✅ **Fixed.** `ci.yml` now runs on `testnet`, with four previously orphaned gates wired in.
 4. **Milestone Q privacy gate QA1 unexecuted while Q is fully enabled** (§5). ⬜ Still open —
    requires live staging runs.
-5. **Web wallet secret in plaintext `localStorage`**, while PRF hardware binding sits unused.
-   ⬜ Still open — deferred pending a recovery-path decision (NC-03).
+5. ~~**Web wallet secret in plaintext `localStorage`**~~ — ⚠️ **This claim was wrong and is
+   retracted.** Web wallet records are AES-GCM encrypted in IndexedDB under a
+   non-extractable key; the `localStorage` branch is an `EnclaveAdapter` fallback the app
+   never takes. The real gap was that the wrapping key is origin-bound but not
+   user-presence-bound. The WebAuthn PRF ceremony and fail-closed store are now implemented
+   (2026-09-02); enabling it by default is pending a product decision. See
+   [NC-03](standards/known-non-conformance.md).
 6. ~~**Eleven gates exist and run nowhere.**~~
    ⚠️ **Reduced.** Four wired; `qa:smoke:community-directory`, `test:e2e`, `qa:matrix:two-device`,
    and the `qa:q4:*` suite remain orphaned.

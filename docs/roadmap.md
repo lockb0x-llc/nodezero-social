@@ -110,7 +110,7 @@ remove it and document the decision.** Do not leave exports with no consumers.
 | # | Subsystem | Decision required |
 |---|---|---|
 | D1 | **`did:pkn` resolver** | Either bind resolution to the Soroban `lockb0x` contract (real key material per identity) **or disable the public endpoint**. It must not remain live serving a constant key — see NC-01 |
-| D2 | **WebAuthn PRF** | Implement the passkey ceremony and wire `createHardwareBoundSecureStore` into `WalletContext`, replacing plaintext `localStorage` — or remove the export |
+| D2 | **WebAuthn PRF** | ✅ **Implemented 2026-09-02** — passkey registration + assertion ceremony, fail-closed wrapping key (silent software fallback removed), enable/unlock lifecycle with keyring re-wrap, 23 tests. Recovery bundle encrypted 2026-09-01. **Remaining:** settings UI, unlock-on-load, virtual authenticator in `qa:smoke:auth` before default-on. See [NC-03](standards/known-non-conformance.md) |
 | D3 | **Logos Codex adapter** | Implement real multihash CIDs and integrate against an actual Codex node, or mark explicitly as a design spike and stop reporting it |
 | D4 | **Status Network L2 rail** | Same: real deployed escrow, or explicit spike status |
 

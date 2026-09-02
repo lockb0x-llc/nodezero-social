@@ -12,15 +12,20 @@
  * The user never sees a seed phrase, wallet address, or gas fee prompt.
  */
 
-export { EnclaveAdapter, MissingIdentitySecretError } from './EnclaveAdapter.js'
+export { EnclaveAdapter, MissingIdentitySecretError, type ISecureStore } from './EnclaveAdapter.js'
 export { IndexedDbSecureStore, IndexedDbStorageError } from './IndexedDbSecureStore.js'
 export {
   checkWebAuthnPrfSupport,
   deriveKeyFromPrfSecret,
   WebAuthnPrfKeyProvider,
   createHardwareBoundSecureStore,
+  registerPrfPasskey,
+  assertPrfSecret,
+  unlockPrfProvider,
+  PrfUnavailableError,
   type WebAuthnCapabilities,
   type WebAuthnPrfOptions,
+  type PrfPasskeyRecord,
 } from './WebAuthnPrfStore.js'
 export {
   StatusL2Adapter,
