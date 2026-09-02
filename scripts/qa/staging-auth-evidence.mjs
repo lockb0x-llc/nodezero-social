@@ -282,6 +282,146 @@ async function verifySignedOutRecoveryImport(browser) {
   }
 }
 
+/**
+ * Attaches a CDP virtual authenticator with PRF support so passkey ceremonies can run
+ * headlessly. Returns a detach function, or null when the browser cannot provide one.
+ *
+ * User verification is pre-satisfied (`isUserVerified`), which is what lets an automated
+ * run complete a ceremony that would otherwise require a biometric gesture.
+ */
+async function attachVirtualAuthenticator(page) {
+  let client
+  try {
+    client = await page.context().newCDPSession(page)
+    await client.send('WebAuthn.enable')
+  } catch (error) {
+    log(`Virtual authenticator unavailable: ${error instanceof Error ? error.message : String(error)}`)
+    return null
+  }
+
+  const baseOptions = {
+    protocol: 'ctap2',
+    ctap2Version: 'ctap2_1',
+    transport: 'internal',
+    hasResidentKey: true,
+    hasUserVerification: true,
+    isUserVerified: true,
+    automaticPresenceSimulation: true,
+  }
+
+  // `hasPrf` is what actually makes the virtual authenticator evaluate PRF. Note that
+  // `extensions: ['prf']` is *accepted* by CDP but does nothing on its own — verified
+  // empirically against Chromium 149: it returns `prf.enabled === false` and no secret.
+  let authenticatorId = null
+  for (const options of [{ ...baseOptions, hasPrf: true }, baseOptions]) {
+    try {
+      const result = await client.send('WebAuthn.addVirtualAuthenticator', { options })
+      authenticatorId = result.authenticatorId
+      if (options.hasPrf) log('Virtual authenticator attached with PRF support (hasPrf).')
+      else log('Virtual authenticator attached WITHOUT PRF support.')
+      break
+    } catch {
+      // Try the next option shape.
+    }
+  }
+
+  if (!authenticatorId) {
+    log('Virtual authenticator could not be added.')
+    return null
+  }
+
+  return async () => {
+    try {
+      await client.send('WebAuthn.removeVirtualAuthenticator', { authenticatorId })
+      await client.send('WebAuthn.disable')
+    } catch {
+      // Detaching is best-effort; the context is torn down immediately after.
+    }
+  }
+}
+
+/**
+ * Journey 5: proves the PRF passkey ceremony runs end-to-end in a real browser.
+ *
+ * This is the gate that must pass before hardware protection can be enabled by default.
+ * It is advisory while the feature is opt-in: a browser without PRF must not fail the
+ * identity gate.
+ */
+async function verifyPasskeyPrfCeremony(browser) {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } })
+  const page = await context.newPage()
+
+  try {
+    log('Journey 5: WebAuthn PRF passkey ceremony (virtual authenticator)')
+    await page.goto(`${baseUrl}/`, { waitUntil: 'domcontentloaded', timeout: 60_000 })
+
+    const detach = await attachVirtualAuthenticator(page)
+    if (!detach) {
+      log('Journey 5 SKIPPED: no virtual authenticator available in this browser.')
+      return { supported: false, prfEvaluated: false }
+    }
+
+    try {
+      const result = await page.evaluate(async () => {
+        const enc = new TextEncoder()
+        const challenge = crypto.getRandomValues(new Uint8Array(32))
+        const userId = crypto.getRandomValues(new Uint8Array(32))
+
+        const created = await navigator.credentials.create({
+          publicKey: {
+            challenge,
+            rp: { name: 'NodeZero' },
+            user: { id: userId, name: 'prf-evidence', displayName: 'PRF Evidence' },
+            pubKeyCredParams: [{ type: 'public-key', alg: -7 }],
+            authenticatorSelection: {
+              authenticatorAttachment: 'platform',
+              residentKey: 'required',
+              userVerification: 'required',
+            },
+            extensions: { prf: {} },
+          },
+        })
+        if (!created) return { registered: false }
+
+        const regExt = created.getClientExtensionResults()
+        const assertion = await navigator.credentials.get({
+          publicKey: {
+            challenge: crypto.getRandomValues(new Uint8Array(32)),
+            allowCredentials: [{ type: 'public-key', id: created.rawId }],
+            userVerification: 'required',
+            extensions: { prf: { eval: { first: enc.encode('nodezero.prf.evidence.salt') } } },
+          },
+        })
+
+        const assertExt = assertion ? assertion.getClientExtensionResults() : {}
+        const first = assertExt?.prf?.results?.first
+        return {
+          registered: true,
+          prfEnabled: regExt?.prf?.enabled === true,
+          prfSecretBytes: first ? new Uint8Array(first).length : 0,
+        }
+      })
+
+      if (!result.registered) fail('Journey 5: virtual authenticator did not register a passkey.')
+
+      if (result.prfEnabled && result.prfSecretBytes > 0) {
+        log(`Journey 5 PASS: PRF evaluated, ${result.prfSecretBytes}-byte secret returned.`)
+        return { supported: true, prfEvaluated: true }
+      }
+
+      log(
+        `Journey 5 PARTIAL: passkey registered but PRF not evaluated (enabled=${String(result.prfEnabled)}, bytes=${result.prfSecretBytes}). ` +
+          'Hardware protection must remain opt-in until this reports a PRF secret.'
+      )
+      return { supported: true, prfEvaluated: false }
+    } finally {
+      await detach()
+    }
+  } finally {
+    await context.close()
+  }
+}
+
 async function waitForAuthenticatedSurface(page, timeoutMs) {
   await page.waitForURL((url) => /\/(feed|onboarding|local)([/?#]|$)/.test(url.pathname), {
     timeout: timeoutMs,
@@ -485,6 +625,9 @@ async function main() {
 
   const browser = await chromium.launch()
   await verifySignedOutRecoveryImport(browser)
+  const prfCeremony = await verifyPasskeyPrfCeremony(browser)
+  await publishOutput('prf_ceremony_supported', String(prfCeremony.supported))
+  await publishOutput('prf_ceremony_evaluated', String(prfCeremony.prfEvaluated))
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } })
   const page = await context.newPage()
   const capturedSession = { current: null }

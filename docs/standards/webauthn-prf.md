@@ -27,9 +27,23 @@
 | **PRF assertion** (`assertPrfSecret`) | ✅ Implemented 2026-09-02 |
 | **Fail-closed wrapping key** | ✅ Silent software fallback removed |
 | **Enable / unlock lifecycle + keyring re-wrap** | ✅ `hardwareProtection.ts` |
-| Settings UI to enable | ❌ Pending |
-| Unlock-on-load flow | ❌ Pending |
-| Virtual authenticator in `qa:smoke:auth` | ❌ Pending — blocks default-on |
+| Settings UI to enable | ✅ Implemented 2026-09-02 |
+| Unlock-on-load flow | ✅ `useHardwareProtection` + `adoptHardwareWalletStore` |
+| Virtual authenticator in `qa:smoke:auth` | ✅ Journey 5, advisory |
+| Enabled by default | ❌ Deliberately opt-in — see below |
+
+### Why it is opt-in, not default
+
+A PRF-bound store cannot be read without a user-verification gesture, so default-on would
+require a biometric prompt on **every** app load. That is a product decision, not a
+technical one. It also excludes browsers and authenticators without PRF, which remain a
+significant share.
+
+**Empirical note on the test harness.** The CDP virtual authenticator **accepts**
+`extensions: ['prf']` but does nothing with it — verified against Chromium 149, which
+returns `prf.enabled === false` and no secret. The option that actually works is
+**`hasPrf: true`**, which yields a 32-byte PRF secret. Journey 5 tries `hasPrf` first and
+falls back, reporting `PARTIAL` rather than passing if PRF is not evaluated.
 
 ---
 

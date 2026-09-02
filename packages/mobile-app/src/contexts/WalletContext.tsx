@@ -20,6 +20,7 @@ import {
   EnclaveAdapter,
   IndexedDbSecureStore,
   WalletService,
+  type ISecureStore,
   type WalletInfo,
   type WalletIdentity,
 } from '@nodezero/embedded-wallet'
@@ -140,6 +141,21 @@ const WalletContext = createContext<WalletContextValue | null>(null)
 
 // Singleton instances – only created once per app session.
 let _adapter: EnclaveAdapter | null = null
+
+/** Set when hardware protection is unlocked for this session; swaps the wallet store. */
+let _hardwareStore: ISecureStore | null = null
+
+/**
+ * Rebuilds the wallet singletons against a PRF-bound store.
+ *
+ * Called after a successful passkey unlock. Resetting both singletons is required because
+ * the adapter caches the store it was constructed with.
+ */
+export function adoptHardwareWalletStore(store: ISecureStore): void {
+  _hardwareStore = store
+  _adapter = new EnclaveAdapter(store)
+  _walletService = null
+}
 let _walletService: WalletService | null = null
 
 function assertNetworkCoherence(appExtra: Record<string, string> | undefined): void {
@@ -179,7 +195,9 @@ function getWalletService(): WalletService {
     // built-in in-memory store on web so the wallet can still provision.
     const appExtra = Constants.expoConfig?.extra as Record<string, string> | undefined
     const envProfile = appExtra?.envProfile ?? 'local'
-    const store = Platform.OS === 'web'
+    const store = _hardwareStore
+      ? _hardwareStore
+      : Platform.OS === 'web'
       ? new IndexedDbSecureStore({ profile: envProfile })
       : SecureStore
     _adapter = new EnclaveAdapter(store)

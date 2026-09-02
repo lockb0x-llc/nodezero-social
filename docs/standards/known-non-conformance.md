@@ -285,20 +285,33 @@ cannot exfiltrate it — but they could invoke the store within the page and dec
 23 tests across the ceremony, fail-closed store, and lifecycle — including that a failed
 enable does not claim protection, and that an unbound store refuses writes.
 
-### ❌ Still open: enablement is not yet a user-facing flow
+### ✅ Closed: enablement flow (2026-09-02)
 
-The capability is implemented and tested but **not yet switched on**, because turning it on
-by default has two consequences that need a product decision:
+- **Settings UI** — a *Device Security* section offers "Protect Wallet with a Passkey",
+  then "Unlock Wallet with Passkey" once enabled, plus an opt-out. It is hidden entirely
+  on devices that cannot support it.
+- **Unlock-on-load** — `useHardwareProtection` drives the ceremony and calls
+  `adoptHardwareWalletStore()`, which rebuilds the wallet singletons against the PRF-bound
+  store.
+- **Persisted state fails safe** — an `enabled` flag without a credential id reads as
+  disabled, so the app never claims protection it cannot unlock. Corrupt state degrades to
+  disabled rather than throwing.
+- **`qa:smoke:auth` Journey 5** attaches a CDP virtual authenticator and runs a real
+  registration + PRF assertion in-browser.
 
-1. **Every app load would require a biometric prompt** before wallet records can be read.
-   That is arguably a better "one-tap sign in", but it changes the core flow.
-2. **`qa:smoke:auth` would break.** The blocking identity gate drives a real browser with
-   no authenticator; enabling PRF by default requires a Playwright virtual authenticator in
-   that gate first.
+> **Empirical finding worth recording.** The CDP virtual authenticator **accepts**
+> `extensions: ['prf']` but does not evaluate PRF — verified against Chromium 149, which
+> returns `prf.enabled === false` and a zero-length secret. The working option is
+> **`hasPrf: true`**, which returns a 32-byte secret. A harness using the documented-looking
+> `extensions` form would have silently reported no PRF support and been mistaken for a
+> browser limitation.
 
-Remaining work: settings UI to enable/disable, unlock-on-load handling, a defined path for
-browsers without PRF, the virtual-authenticator work in the auth gate, and UAT plus
-device-matrix rows.
+### ⚠️ Remaining: default-on is a product decision
+
+Hardware protection is **opt-in**. Turning it on by default would require a biometric
+prompt on every app load, and would exclude browsers and authenticators without PRF. That
+tradeoff needs a product call, not an engineering one. Device-matrix rows across
+Safari/Chrome/Firefox and platform authenticators are also still outstanding.
 
 **Not affected:** on-chain Ed25519 signing and the Poseidon commitment are unchanged. The
 PRF key is a wrapping KEK only, never a signing or commitment key.

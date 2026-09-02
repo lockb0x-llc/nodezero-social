@@ -28,6 +28,7 @@ import {
   assertUsablePassphrase,
   MIN_RECOVERY_PASSPHRASE_LENGTH,
 } from '../src/wallet/recoveryBundleCrypto'
+import { useHardwareProtection } from '../src/wallet/useHardwareProtection'
 import { PodArchiveExporter, PodArchiveRestorer } from '@nodezero/solid-pod-sync'
 import { buildPodArchiveZip } from '../src/podArchive/zipWriter'
 import { deliverFile, deliverPodArchive } from '../src/podArchive/delivery'
@@ -114,6 +115,9 @@ export default function SettingsScreen(): JSX.Element {
     identities.find((identity) => identity.keyId === activeIdentityKeyId) ??
     identities[0] ??
     null
+
+  const hardware = useHardwareProtection()
+  const identityKeyIds = identities.map((identity) => identity.keyId)
 
   // Load persisted NSFW setting on mount.
   React.useEffect(() => {
@@ -602,6 +606,51 @@ export default function SettingsScreen(): JSX.Element {
         })}
       </View>
 
+      {/* ── Device Security ──────────────────────────────────────── */}
+      {hardware.available || hardware.enabled ? (
+        <>
+          <Text style={styles.sectionHeader}>Device Security</Text>
+          <View style={styles.card}>
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => {
+                void (hardware.enabled ? hardware.unlock() : hardware.enable(identityKeyIds))
+              }}
+              disabled={hardware.busy}
+              accessibilityRole="button"
+              accessibilityLabel={
+                hardware.enabled ? 'Unlock wallet with passkey' : 'Protect wallet with a passkey'
+              }
+            >
+              <Text style={styles.actionButtonText}>
+                {hardware.busy
+                  ? 'Working…'
+                  : hardware.enabled
+                    ? hardware.unlocked
+                      ? 'Wallet unlocked with passkey'
+                      : 'Unlock Wallet with Passkey'
+                    : 'Protect Wallet with a Passkey'}
+              </Text>
+            </TouchableOpacity>
+            {hardware.enabled ? (
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={() => void hardware.disable()}
+                disabled={hardware.busy}
+                accessibilityRole="button"
+                accessibilityLabel="Stop using a passkey on this device"
+              >
+                <Text style={styles.actionButtonText}>Stop Using a Passkey on This Device</Text>
+              </TouchableOpacity>
+            ) : null}
+            <Text style={styles.hardwareHint}>
+              {hardware.status ??
+                'Requires a fingerprint, face, or PIN check before your wallet key can be read on this device. Your key never leaves the device either way.'}
+            </Text>
+          </View>
+        </>
+      ) : null}
+
       {/* ── Data Management ──────────────────────────────────────── */}
       <Text style={styles.sectionHeader}>Data Management</Text>
       <View style={styles.card}>
@@ -729,6 +778,7 @@ const styles = StyleSheet.create({
   dangerButtonText: { color: aesthetic.color.danger, fontSize: 14, fontWeight: '600' },
   actionButton: { padding: 14, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: aesthetic.color.border },
   actionButtonText: { color: aesthetic.color.textHigh, fontSize: 14, fontWeight: '600' },
+  hardwareHint: { color: aesthetic.color.textLow, fontSize: 12, lineHeight: 18, padding: 14 },
   identityOption: {
     flexDirection: 'row',
     alignItems: 'center',
