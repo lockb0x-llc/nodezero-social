@@ -13,7 +13,7 @@
   },
   "scripts": {
     "build": "tsc --project tsconfig.json",
-    "test": "echo \"No tests yet for @nodezero/p2p-comms\"",
+    "test": "tsx --test src/**/*.test.ts",
     "lint": "eslint src --ext .ts",
     "type-check": "tsc --noEmit",
     "clean": "rm -rf dist"
@@ -23,6 +23,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
-    "typescript": "^5.4.5"
+    "typescript": "^5.4.5",
+    "tsx": "^4.19.2"
   }
 }

@@ -134,8 +134,12 @@ jobs:
             [ "$(jq -r '.sourceRunId' "$manifest")" = "$EXPECTED_SOURCE_RUN" ]
             [ "$(jq -r '.sourceRunAttempt' "$manifest")" = "$EXPECTED_SOURCE_ATTEMPT" ]
           fi
+          # Milestone Q features are unconditionally enabled since ac17e35, and
+          # staging-deploy.yml records them as true in every retained manifest.
+          # Containment is now the JSS_Q_DISABLED_FEATURES runtime kill-switch, not
+          # a dark rollback. Asserting "false" here made rollback unsatisfiable.
           for flag in directory peerProfile relationship transport; do
-            [ "$(jq -r ".qFlags.${flag}" "$manifest")" = "false" ]
+            [ "$(jq -r ".qFlags.${flag}" "$manifest")" = "true" ]
           done
           expected_provisioner_sha="$(jq -r '.sha256.provisionerZip // empty' "$manifest")"
           expected_provisioner_tree="$(jq -r '.sha256.provisionerTree // empty' "$manifest")"

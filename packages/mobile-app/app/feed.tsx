@@ -31,6 +31,8 @@ import { aesthetic } from '../src/theme/aesthetic'
 import { readContentPreferences, writeContentPreferences } from '../src/preferences/contentPreferences'
 import { collectNsfwAuthors, filterVisiblePosts } from '../src/feed/postVisibility'
 import { filterSocialStreamItems } from '../src/feed/socialStreamFilter'
+import { rankFeedPosts } from '../src/feed/rankingWeights'
+import { listTrustCircleMembers } from '../src/social/trustCircleStore'
 
 interface FeedPost {
   id: string
@@ -54,6 +56,7 @@ export default function GlobalFeedScreen(): JSX.Element {
   const [isTunerOpen, setIsTunerOpen] = useState(false)
   const [serendipity, setSerendipity] = useState(80)
   const [deepTies, setDeepTies] = useState(50)
+  const [trustCircleWebIds, setTrustCircleWebIds] = useState<string[]>([])
   const [showNsfw, setShowNsfw] = useState(false)
   const [showAuthModeHint, setShowAuthModeHint] = useState(false)
   const [isSyncCheckpointReady, setIsSyncCheckpointReady] = useState(false)
@@ -95,6 +98,16 @@ export default function GlobalFeedScreen(): JSX.Element {
       setShowNsfw(preferences.showNsfw)
     })
   }, [])
+
+  useEffect(() => {
+    if (!isLoggedIn || !webId) {
+      setTrustCircleWebIds([])
+      return
+    }
+    void listTrustCircleMembers(webId, { fetch: authFetch })
+      .then(setTrustCircleWebIds)
+      .catch(() => setTrustCircleWebIds([]))
+  }, [authFetch, isLoggedIn, webId])
 
   const fetchFeed = useCallback(async (): Promise<void> => {
     if (!isLoggedIn || !webId || !isSyncCheckpointReady) return
@@ -214,15 +227,30 @@ export default function GlobalFeedScreen(): JSX.Element {
         return streamItemToFeedPost(item, authorWebId ?? 'unknown', authorName)
       })
 
-      const combined = [...mergedPosts, ...connectionPosts.flat()]
-        .flat()
-        .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+      const combined = [...mergedPosts, ...connectionPosts.flat()].flat()
       const nsfwAuthors = collectNsfwAuthors(authorMetadata)
-      setPosts(filterVisiblePosts(combined, showNsfw, nsfwAuthors))
+      const visible = filterVisiblePosts(combined, showNsfw, nsfwAuthors)
+      setPosts(
+        rankFeedPosts(visible, {
+          deepTies,
+          serendipity,
+          trustCircleWebIds,
+          ownerWebId: webId,
+        })
+      )
     } catch (err) {
       console.error('[GlobalFeedScreen] fetchFeed error:', err)
     }
-  }, [authFetch, isLoggedIn, isSyncCheckpointReady, showNsfw, webId])
+  }, [
+    authFetch,
+    deepTies,
+    isLoggedIn,
+    isSyncCheckpointReady,
+    serendipity,
+    showNsfw,
+    trustCircleWebIds,
+    webId,
+  ])
 
   useEffect(() => {
     if (!isSyncCheckpointReady) {
@@ -352,11 +380,14 @@ export default function GlobalFeedScreen(): JSX.Element {
           <View style={styles.tunerSheet} onStartShouldSetResponder={() => true}>
             <View style={styles.tunerHandle} />
             <Text style={styles.tunerTitle}>Your Personal Algorithm</Text>
-            <Text style={styles.tunerSubtitle}>You control what you see. Tune your signal.</Text>
+            <Text style={styles.tunerSubtitle}>
+              Newest first, always. These only shift how far a post can surface — never what
+              you receive.
+            </Text>
 
             <View style={styles.sliderGroup}>
               <View style={styles.sliderHeader}>
-                <Text style={styles.sliderLabel}>Serendipity</Text>
+                <Text style={styles.sliderLabel}>Wider Network</Text>
                 <Text style={styles.sliderValue}>{serendipity > 75 ? 'High' : serendipity > 40 ? 'Med' : 'Low'}</Text>
               </View>
               <Slider
@@ -368,7 +399,9 @@ export default function GlobalFeedScreen(): JSX.Element {
                 minimumTrackTintColor="#6C63FF"
                 maximumTrackTintColor="#333"
               />
-              <Text style={styles.sliderDescription}>Discover new nodes in your wider H3 area.</Text>
+              <Text style={styles.sliderDescription}>
+                Surface connections outside your Trust Circle as if up to 6h newer.
+              </Text>
             </View>
 
             <View style={styles.sliderGroup}>
@@ -385,7 +418,10 @@ export default function GlobalFeedScreen(): JSX.Element {
                 minimumTrackTintColor="#6C63FF"
                 maximumTrackTintColor="#333"
               />
-              <Text style={styles.sliderDescription}>Prioritize posts from your immediate Trust Circles.</Text>
+              <Text style={styles.sliderDescription}>
+                Surface Trust Circle posts as if up to 12h newer. At zero, order is strictly
+                chronological.
+              </Text>
             </View>
 
             <View style={styles.sfwRow}>

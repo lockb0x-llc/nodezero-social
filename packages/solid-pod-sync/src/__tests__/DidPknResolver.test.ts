@@ -141,6 +141,52 @@ describe('W3C did:pkn Decentralized Identifier Resolver', () => {
       expect(result.didDocumentMetadata.deactivated).toBe(false)
     })
 
+    it('NC-02: omits created/updated rather than fabricating them from resolution time', async () => {
+      const resolver = new DidPknResolver(async () => ({
+        contractAddress: TEST_CONTRACT,
+        stellarPublicKey: TEST_STELLAR_PUBKEY,
+        webId: 'https://solid.nodezero.social/alice/profile/card#me',
+      }))
+
+      const first = await resolver.resolve(TEST_DID)
+      const second = await resolver.resolve(TEST_DID)
+
+      expect(first.didDocumentMetadata.created).toBeUndefined()
+      expect(first.didDocumentMetadata.updated).toBeUndefined()
+      // Two resolutions of the same DID must agree.
+      expect(first.didDocumentMetadata).toEqual(second.didDocumentMetadata)
+    })
+
+    it('NC-02: surfaces ledger timestamps when the source provides them', async () => {
+      const resolver = new DidPknResolver(async () => ({
+        contractAddress: TEST_CONTRACT,
+        stellarPublicKey: TEST_STELLAR_PUBKEY,
+        webId: 'https://solid.nodezero.social/alice/profile/card#me',
+        createdAt: '2026-08-01T00:00:00.000Z',
+        updatedAt: '2026-08-09T00:00:00.000Z',
+      }))
+
+      const result = await resolver.resolve(TEST_DID)
+
+      expect(result.didDocumentMetadata.created).toBe('2026-08-01T00:00:00.000Z')
+      expect(result.didDocumentMetadata.updated).toBe('2026-08-09T00:00:00.000Z')
+    })
+
+    it('NC-02: a deactivated DID resolves to a null document per DID Core', async () => {
+      const resolver = new DidPknResolver(async () => ({
+        contractAddress: TEST_CONTRACT,
+        stellarPublicKey: TEST_STELLAR_PUBKEY,
+        webId: 'https://solid.nodezero.social/alice/profile/card#me',
+        deactivated: true,
+      }))
+
+      const result = await resolver.resolve(TEST_DID)
+
+      expect(result.didDocument).toBeNull()
+      expect(result.didDocumentMetadata.deactivated).toBe(true)
+      expect(result.didResolutionMetadata.error).toBeUndefined()
+    })
+
     it('returns notFound resolution metadata when contract does not exist', async () => {
       const resolver = new DidPknResolver(async () => null)
       const result = await resolver.resolve(TEST_DID)

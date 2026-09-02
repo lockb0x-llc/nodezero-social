@@ -66,6 +66,7 @@ const FOAF_MAKER = 'http://xmlns.com/foaf/0.1/maker'
 const FOAF_PRIMARY_TOPIC = 'http://xmlns.com/foaf/0.1/primaryTopic'
 const FOAF_NAME = 'http://xmlns.com/foaf/0.1/name'
 const FOAF_IMG = 'http://xmlns.com/foaf/0.1/img'
+const LDP_INBOX = 'http://www.w3.org/ns/ldp#inbox'
 /** Shape of a NodeZero user profile stored in a Solid Pod. */
 export interface UserProfile {
   /** The user's display name. */
@@ -299,6 +300,51 @@ export class ProfileManager {
    * @param containerPath - Full URL of the LDP container whose ACL should be updated.
    * @param isPublic - `true` to grant public read; `false` to restrict to owner only.
    */
+  /**
+   * Advertises or withdraws the LDN inbox (`ldp:inbox`) on the WebID profile card.
+   *
+   * Senders resolve the recipient's profile document to locate their inbox; without this
+   * triple, delivery fails closed with `inbox_unavailable`. Advertisement is bound to the
+   * owner's `inboundContactRequests` consent, so withdrawing consent removes the triple.
+   */
+  async setInboxAdvertisement(
+    podRootUrl: string,
+    enabled: boolean,
+    options: { datasetPath?: string } = {}
+  ): Promise<string> {
+    const base = podRootUrl.replace(/\/$/, '')
+    const datasetPath = options.datasetPath ?? 'profile/card'
+    const datasetUrl = `${base}/${datasetPath}`
+    const webId = `${datasetUrl}#me`
+    const inboxUrl = `${base}/social/inbox/`
+
+    let dataset: SolidDataset
+    let etag: string | null = null
+    let existingProfileThing: import('@inrupt/solid-client').Thing
+
+    try {
+      const snapshot = await getSolidDatasetSnapshot(datasetUrl, this.session.fetch)
+      dataset = snapshot.dataset
+      etag = snapshot.etag
+      existingProfileThing = getThing(dataset, webId) ?? createThing({ url: webId })
+    } catch (err) {
+      if (!isNotFoundError(err)) throw err
+      // Nothing to withdraw from a profile that does not exist yet.
+      if (!enabled) return datasetUrl
+      dataset = createSolidDataset()
+      existingProfileThing = createThing({ url: webId })
+    }
+
+    const builder = buildThing(existingProfileThing).removeAll(LDP_INBOX)
+    const profileThing = enabled ? builder.setUrl(LDP_INBOX, inboxUrl).build() : builder.build()
+
+    dataset = setThing(dataset, profileThing)
+    const targetUrl = getSourceUrl(dataset) || datasetUrl
+    await saveSolidDatasetWithPatchFallback(targetUrl, dataset, this.session.fetch, etag)
+
+    return datasetUrl
+  }
+
   async updateWebACL(containerPath: string, isPublic: boolean): Promise<void> {
     const aclUrl = `${containerPath.replace(/\/$/, '')}/.acl`
 

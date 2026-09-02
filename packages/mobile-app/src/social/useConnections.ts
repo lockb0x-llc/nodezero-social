@@ -172,10 +172,12 @@ export function useConnections({
     setConnectionStatus(null)
     try {
       const podRoot = `${effectiveWebId.split('/profile/')[0]}/`
-      const { discoveryConsentManager } = getSolidPodSyncManagers({ fetch: authFetch })
+      const { discoveryConsentManager, profileManager } = getSolidPodSyncManagers({ fetch: authFetch })
       await discoveryConsentManager.updateConsent(podRoot, {
         inboundContactRequests: enabled,
       })
+      // Senders discover the inbox from the WebID profile card, not from consent state.
+      await profileManager.setInboxAdvertisement(podRoot, enabled)
       if (enabled) await syncIncomingRequests()
       else setIncomingRequests([])
       setConnectionStatus({

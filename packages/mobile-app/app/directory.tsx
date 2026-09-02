@@ -437,28 +437,30 @@ export default function CommunityDirectoryScreen(): JSX.Element {
                       </TouchableOpacity>
                     ) : null}
 
-                    <TouchableOpacity
-                      style={[
-                        styles.trustCircleButton,
-                        !actionPolicy.canAddTrustCircle &&
-                          !actionPolicy.canRemoveTrustCircle &&
-                          styles.directoryConnectButtonDisabled,
-                      ]}
-                      onPress={() => void toggleTrustCircle(entry.webId)}
-                      disabled={
-                        (!actionPolicy.canAddTrustCircle && !actionPolicy.canRemoveTrustCircle) ||
-                        trustCircleBusyWebId === entry.webId
-                      }
-                      activeOpacity={aesthetic.motion.pressOpacity}
-                    >
-                      {trustCircleBusyWebId === entry.webId ? (
-                        <ActivityIndicator color="#FFF" size="small" />
-                      ) : (
-                        <Text style={styles.directoryConnectButtonText}>
-                          {inTrustCircle ? 'Remove Circle' : 'Add Circle'}
-                        </Text>
-                      )}
-                    </TouchableOpacity>
+                    {!isSelf ? (
+                      <TouchableOpacity
+                        style={[
+                          styles.trustCircleButton,
+                          !actionPolicy.canAddTrustCircle &&
+                            !actionPolicy.canRemoveTrustCircle &&
+                            styles.directoryConnectButtonDisabled,
+                        ]}
+                        onPress={() => void toggleTrustCircle(entry.webId)}
+                        disabled={
+                          (!actionPolicy.canAddTrustCircle && !actionPolicy.canRemoveTrustCircle) ||
+                          trustCircleBusyWebId === entry.webId
+                        }
+                        activeOpacity={aesthetic.motion.pressOpacity}
+                      >
+                        {trustCircleBusyWebId === entry.webId ? (
+                          <ActivityIndicator color="#FFF" size="small" />
+                        ) : (
+                          <Text style={styles.directoryConnectButtonText}>
+                            {inTrustCircle ? 'Remove Circle' : 'Add Circle'}
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                    ) : null}
 
                     {!isSelf && actionPolicy.canBlock ? (
                       <TouchableOpacity

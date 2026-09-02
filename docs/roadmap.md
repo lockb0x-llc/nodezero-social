@@ -40,6 +40,7 @@ Anything short of this is **Implemented (unverified)**, **Written, not wired**, 
 | 1 | M1.1 Remote LDN outbox delivery | 🟢 Complete | 🟡 **Implemented, unverified** | `OutboxDeliveryWorker.ts` + 7 unit tests. No live delivery proof; no SSRF/credential-free egress assertion in any gate |
 | 1 | M1.2 Waku store sync on reconnect | 🟢 Complete | 🟡 **Implemented, unverified** | Unit-level only |
 | 1 | M1.3 In-app social notifications | 🟢 Complete | 🔴 **Not implemented** | Cited `notification-orchestrator/src/socialNotificationHandler.ts` — **file does not exist**. No `social.*` event producer anywhere |
+| 3 | Q plan Phase 3.7 serendipity / deep-ties weights | 🟢 Complete (Q3B) | 🔴 **Not implemented** | Sliders render and set state but feed no ranking logic; `feed.tsx` imports no Trust Circle data. See [NC-12](standards/known-non-conformance.md) |
 | 2 | M2.1 Relay codified in Bicep IaC | 🟢 Complete | 🟢 **Complete** | `infrastructure/azure/relay-service.bicep` + parameters exist and are real |
 | 2 | M2.2 Two-device zero-retry matrix | 🟢 Complete | 🔴 **Not started as specified** | `two-device-e2e-matrix.mjs` is an **in-process logic simulation** with `Keypair.random()` — no browser, no device, no network. Wired into no workflow |
 | 2 | M2.3 Staging soak & performance audit | 🟡 In progress | 🔴 **Not started** | No soak tooling, no workflow, no evidence artifact |
@@ -71,7 +72,7 @@ Nothing downstream is trustworthy until these land. No new features in this phas
 | A3 | Wire `qa:validate:production-audit` | The dependency CVE gate named for production did not run | ✅ Done — surfaced 2 real high advisories in `browserslist`, fixed via `4.28.7` override |
 | A5 | Extend `validate-env-isolation.sh` to validate **mainnet manifest contents** | The blind spot that let placeholder IDs be marked "Complete" | ✅ Done — strkey validation + cross-lane leak check, proven by negative test |
 | A4 | Replace the static consent "smoke" gates with live assertions | `policy:validate-consentful-discovery` and `qa:smoke:consentful-discovery` are `readFile`-only greps; they prove nothing about deployed behavior | ⬜ Open |
-| A6 | Add tests for `packages/p2p-comms` | Zero tests behind an always-passing `echo` stub inside `pnpm -r test` | ⬜ Open |
+| A6 | Add tests for `packages/p2p-comms` | ✅ **Done 2026-09-01** — always-passing `echo` stub replaced with `tsx --test`; 7 `SignalRelay` tests covering auth-challenge signing, fail-closed on signing failure, sender-spoofing rejection, send-before-connect, malformed frames, and connect-only-after-ack |
 | A7 | Wire remaining orphans: `qa:smoke:community-directory`, `test:e2e`, `qa:matrix:two-device` | Cited as evidence, run nowhere | ⬜ Open |
 
 ### Phase B — Certify Milestone Q (highest product priority)
@@ -84,7 +85,7 @@ acceptance rows have never been executed. Close that gap before anything else sh
 | B1 | Execute **QA1** — the privacy gate: no private interests, Trust Circles, blocks, H3/reveal history, message content, credentials, or tokens in the public index or telemetry | QA1 signed against the deployed commit |
 | B2 | Execute the remaining 14 Milestone Q UAT rows (QD1–QD5, QR0–QR4, QS1, QN1, QN2, QC1) | All signed against deployed commit, zero retries |
 | B3 | Restore a **runtime kill-switch** for discovery/relationship/transport | ✅ **Done 2026-09-01** — `JSS_Q_DISABLED_FEATURES` disables any of `directory`, `peer-profile`, `relationship`, `transport` at runtime |
-| B4 | Repair the rollback workflow's dark-state assertions and **rehearse rollback both directions** | Reverse and forward restoration both proven |
+| B4 | Repair the rollback workflow's dark-state assertions and **rehearse rollback both directions** | ⚠️ **Repair done 2026-09-01** — the `qFlags == "false"` manifest assertion made rollback unsatisfiable against every bundle the pipeline produces; now expects `true`. **Rehearsal still outstanding** |
 | B5 | Build a real two-device matrix (two accounts, two physical devices, zero retries) | Replaces the in-process simulation; wired into a workflow |
 | B6 | Run the 24-hour soak; record a sanitized artifact under `docs/qa/` | No severity-1/2 regression |
 | B7 | Write the missing ADR for the cohort-gating removal (`ac17e35` re-committed a change `7973189` had reverted as a policy violation, with no decision record) | ADR merged |
@@ -95,9 +96,11 @@ acceptance rows have never been executed. Close that gap before anything else sh
 |---|---|---|
 | C1 | Implement social notifications end-to-end — a `social.*` event producer plus orchestrator handling | Documented complete; **does not exist** |
 | C2 | Prove non-local broadcast/DM recipient inbox delivery against a live external Pod | Unit-tested only |
-| C3 | Add SSRF-resistance and credential-free-egress assertions for `OutboxDeliveryWorker` | Named hard rule in the workspace instructions, **untested** |
+| C3 | Add SSRF-resistance and credential-free-egress assertions for `OutboxDeliveryWorker` | ✅ **Done 2026-09-01** — delivery-boundary tests assert no `authorization`/`cookie`/`dpop` reaches an external origin, and that private/loopback/link-local recipients are rejected through the real credential-free fetch. [NC-09](standards/known-non-conformance.md) |
 | C4 | Add a Pod export→restore round-trip fidelity gate and UAT row | 11 unit tests, no acceptance row |
 | C5 | Add UAT rows for the five shipped features that have none: `did:pkn`, outbox worker, Codex, Pod portability, WebAuthn PRF | No acceptance coverage |
+| C6 | **Re-test the two-device connect journey on deployed staging** | ⚠️ [NC-11](standards/known-non-conformance.md) fixed in code — `ldp:inbox` was never advertised on the WebID profile card, so **no relationship request could be delivered to anyone**. Found by manual QR0/QR1 testing. Existing accounts must toggle inbound requests off→on to trigger the profile-card write |
+| C7 | **Decide: wire or remove the Feed ranking controls** | ✅ **Done 2026-09-01** — wired to bounded deterministic weights (Trust Circle ≤ 12h, wider network ≤ 6h, expressed as a time shift so recency is preserved and slider-zero equals chronological). Serendipity relabelled **Wider Network** because the Feed has no H3-sourced content to rank. 10 unit tests. [NC-12](standards/known-non-conformance.md) |
 
 ### Phase D — Finish or withdraw the unwired subsystems
 

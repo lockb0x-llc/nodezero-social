@@ -13,15 +13,17 @@ is written.
 
 | Entry | Severity | Status |
 |---|---|---|
+| [NC-12](#nc-12--feed-ranking-controls-are-non-functional-placeholder-ui) Feed ranking sliders were dead UI | Medium | ✅ Resolved 2026-09-01 |
+| [NC-11](#nc-11--the-ldn-inbox-was-never-advertised-on-the-webid-profile-card) LDN inbox never advertised | High | ✅ Fixed in code 2026-09-01; needs deployed re-test |
 | [NC-01](#nc-01--didpkn-resolver-returned-a-constant-key-for-every-did) `did:pkn` constant key | Critical | ✅ Resolved 2026-09-01 |
-| NC-02 fabricated DID metadata | Medium | Open |
+| NC-02 fabricated DID metadata | Medium | ✅ Resolved 2026-09-01 |
 | NC-03 WebAuthn PRF unused; key in plaintext | High | Open |
 | NC-04 ZK verification off-chain | Medium | Open (documented) |
 | NC-05 AS2 is a relationship subset | Medium | Open (by design) |
 | NC-06 mainnet placeholders | High | ⚠️ Hazard removed; no deployment exists |
 | NC-07 no Verifiable Credentials | Medium | Open (claim hygiene) |
 | NC-08 Codex fabricated CIDs | Low | Open |
-| NC-09 LDN egress SSRF untested | Medium | Open |
+| NC-09 LDN egress SSRF untested | Medium | ✅ Resolved 2026-09-01 |
 | NC-10 no runtime kill-switch | Medium | ✅ Resolved 2026-09-01 |
 
 > Fixes landed on `testnet` @ working tree 2026-09-01 and are **verified locally**
@@ -35,6 +37,123 @@ is written.
 | **High** | Materially weakens a security or conformance claim |
 | **Medium** | Real gap; contained impact |
 | **Low** | Cosmetic or documentation-only |
+
+---
+
+## NC-12 — Feed ranking controls were non-functional placeholder UI
+
+**Severity:** Medium (misleading UI) · **Status:** ✅ **Resolved 2026-09-01**
+**Code:** `packages/mobile-app/src/feed/rankingWeights.ts`, `packages/mobile-app/app/feed.tsx`
+**Found by:** manual UI review, not by any automated gate
+
+**Was:** the Feed exposed two sliders — **Serendipity** ("Discover new nodes in your wider
+H3 area") and **Deep Ties (FOAF)** ("Prioritize posts from your immediate Trust Circles") —
+and **neither affected anything**. Both were local `useState` values that were rendered and
+set but never read by any filter, sort, or query, and `feed.tsx` contained zero Trust
+Circle imports.
+
+The Milestone Q plan, Phase 3 item 7, specifies *"Wire serendipity and deep-ties controls
+to documented deterministic weights"*, and Q3B was recorded complete. The controls existed;
+the weights did not.
+
+### Resolution: bounded, deterministic, recency-preserving weights
+
+`rankFeedPosts()` in `src/feed/rankingWeights.ts` implements the documented weights. The
+design is constrained by the Feed's stated principle — *"no engagement-farming algorithm.
+Newest first. Period."* — so ranking is expressed as a **bounded time shift**, not a score:
+
+| Author class | Maximum boost |
+|---|---|
+| Trust Circle member | 12 hours (`TRUST_CIRCLE_MAX_BOOST_HOURS`) |
+| Accepted connection outside the Trust Circle | 6 hours (`WIDER_NETWORK_MAX_BOOST_HOURS`) |
+| The viewer's own posts | none |
+
+A boosted post surfaces *as if published up to N hours more recently*. Properties:
+
+- **Deterministic** — no randomness, no engagement signals; ties break on post id so the
+  order is stable across renders and devices.
+- **Opt-out by default** — at slider value 0 the output is exactly the previous
+  chronological order.
+- **Bounded and explainable** — the UI now states the actual effect ("as if up to 12h
+  newer") instead of an unquantified claim.
+- **Never changes what you receive** — only ordering. Ranking cannot surface content from
+  anyone you have not accepted.
+
+Ten unit tests cover zero-weighting equivalence to chronological order, reordering at full
+weight, sub-threshold non-reordering, own-post exemption, bound enforcement, clamping of
+out-of-range and non-finite values, stability, and unparseable-timestamp handling.
+
+### Honest relabelling
+
+The Serendipity slider claimed to "discover new nodes in your wider H3 area". The Feed
+contains only accepted connections and the viewer's own posts — **there is no H3-sourced
+content to rank**, and introducing some would carry its own consent implications. Rather
+than ship a label that lies, the control is now **"Wider Network"**: it boosts accepted
+connections outside your Trust Circle. That is a real axis over content that actually
+exists. A genuine proximity-discovery feed remains future work.
+
+### Related: Trust Circle naming and scope
+
+Trust Circle is **not** a trust level, permission grant, or follow relationship. It is a
+**private, sender-side audience list**:
+
+- It requires an **already-accepted** relationship (`canAddTrustCircle: accepted && !inTrustCircle`),
+  so it cannot be applied to a stranger.
+- It has **no inbound effect** — it does not change what you receive (NC-12 above confirms
+  the only UI claiming otherwise is inert).
+- It can only **narrow** outbound audiences. `composeRecipients.ts` filters to
+  accepted-and-unblocked regardless, so membership never grants reachability.
+
+The name implies a permission or trust tier and grants neither. A future rename toward
+"audience group" or "close connections" would better match behaviour. Tracked as a UX item,
+not a defect.
+
+**Fixed alongside this entry:** the Trust Circle button rendered on the signed-in user's
+**own** Directory card, where it was permanently disabled and inert. Every other peer
+action (Block, Mute, Report) was already guarded by `!isSelf`; the Trust Circle button was
+the only one missing that guard. Now hidden on the own card.
+
+---
+
+## NC-11 — The LDN inbox was never advertised on the WebID profile card
+
+**Severity:** High (functional) · **Status:** ✅ **Fixed in code 2026-09-01** — needs deployed re-test
+**Spec clause:** [LDN](https://www.w3.org/TR/ldn/) §Discovery
+**Code:** `packages/solid-pod-sync/src/ProfileManager.ts`, `packages/mobile-app/src/social/useConnections.ts`
+**Found by:** manual two-device testing (QR0/QR1), not by any automated gate
+
+**Symptom:** connecting to a discovered Directory member failed with
+`Add failed: Recipient WebID does not advertise an inbox.` (`422 inbox_unavailable`).
+
+**Root cause.** Every other link in the chain existed:
+
+- `/social/inbox/` **is** created by `PodLayoutManager` with a `public-append` ACL;
+- the sender **does** resolve the recipient via `WebIdDiscoveryClient`, which reads
+  `ldp:inbox` from the WebID profile document body or `Link` header;
+- the recipient **does** read their inbox via `relationshipInboxSync`, gated on
+  `inboundContactRequests`.
+
+But **nothing ever wrote `ldp:inbox` into the profile card.** The only writer of the
+predicate was `DiscoveryManifestManager`, which puts `inboxUrl` in the *discovery manifest*
+— a different resource that inbox discovery does not consult. So no relationship request
+could ever be delivered to any user.
+
+A second defect compounded it: the manifest's `inboxUrl` was gated on `publicIndexing`,
+whereas ADR-001 makes **`inboundContactRequests`** the axis that governs accepting contact.
+
+**Why tests missed it.** `relationshipDelivery.test.ts` mocks a profile that already
+contains the `ldp:inbox` triple, so the suite encoded the intended contract while the
+writer was never implemented. Both consent gates are static source greps and cannot catch
+a missing runtime write.
+
+**Fixed by** `ProfileManager.setInboxAdvertisement(podRoot, enabled)`, which adds the
+`ldp:inbox` triple when inbound contact requests are enabled and removes it when revoked,
+without disturbing unrelated profile data. It is called from `setInboundRequestsEnabled`,
+so advertisement follows consent. Four regression tests cover advertise, withdraw,
+unrelated-data preservation, and not creating a profile document merely to withdraw.
+
+**Still required:** re-run the two-device connect journey against deployed staging. The fix
+is verified locally only.
 
 ---
 
@@ -204,17 +323,29 @@ mark both explicitly as design spikes and stop reporting them as delivered.
 
 ---
 
-## NC-09 — LDN outbound delivery has no SSRF-resistance test coverage
+## NC-09 — LDN outbound delivery had no SSRF-resistance test coverage
 
-**Severity:** Medium (security) · **Status:** Open
-**Code:** `packages/solid-pod-sync/src/OutboxDeliveryWorker.ts`
+**Severity:** Medium (security) · **Status:** ✅ **Resolved 2026-09-01**
+**Code:** `packages/jss-provisioner/src/relationshipDelivery.ts`, `publicResourceFetcher.ts`
 
 Credential-free, SSRF-resistant external delivery is a named hard rule in the workspace
-instructions. The worker has 7 unit tests, **none** asserting SSRF resistance or that
-NodeZero bearer credentials are never forwarded to an external origin.
+instructions. The protection itself already existed and was well covered at the fetcher
+layer (15 cases spanning private/CGNAT/mapped-IPv4/local-IPv6 blocking, DNS-address
+pinning against rebinding, redirect revalidation, and a no-authorization request
+contract). What was missing was any assertion at the **delivery boundary** that it is
+actually used.
 
-**Remediation.** Add explicit vectors (embedded private IPv4/IPv6, redirect-to-internal,
-DNS rebinding, credential leakage) and wire them into the consent policy gate.
+**Fixed by** two tests on `deliverRelationshipActivity`:
+
+1. no `authorization`, `cookie`, or `dpop` header reaches an external origin on either the
+   discovery fetch or the inbox POST;
+2. private, loopback, and link-local recipient WebIDs are rejected through the **default**
+   `createCredentialFreePublicFetch` path.
+
+Note on (2): an earlier draft injected a mock `publicFetch`, which silently bypassed the
+very layer under test and produced a false failure. SSRF validation lives inside the
+default fetch — by design, since URL parsing alone cannot defend against DNS rebinding —
+so the test must exercise the real wiring.
 
 ---
 

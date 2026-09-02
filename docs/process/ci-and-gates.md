@@ -168,10 +168,18 @@ No production rollback workflow exists; `staging-rollback.yml` is staging-scoped
 
 Well built — 17 steps, digest-verified retained-artifact restore.
 
-> **Never rehearsed.** And its verification steps assert a **"dark state"** for Milestone Q
-> flags, while the current deploy hard-codes all four flags `true`. **These assertions are
-> likely unsatisfiable against any bundle the current pipeline produces.** See
-> [NC-10](../standards/known-non-conformance.md).
+> 🔴 **It was structurally broken until 2026-09-01, and has never been rehearsed.**
+>
+> `staging-deploy.yml` writes `qFlags: {directory: true, peerProfile: true, relationship: true, transport: true}`
+> into every retained rollback manifest. `staging-rollback.yml` asserted every
+> `qFlags.*` equalled `"false"`. **No bundle the current pipeline produces could ever
+> satisfy that check**, so rollback would have aborted at manifest validation — meaning
+> there was no working rollback path at all.
+>
+> Commit `dbb5354` had updated the *health* assertions to expect `true` but missed this
+> *manifest* assertion. Fixed 2026-09-01; the check now expects `true`, consistent with the
+> rest of the workflow. **Still unrehearsed** — a repaired workflow is not a proven one.
+> See [`../roadmap.md`](../roadmap.md) item B4.
 
 ---
 

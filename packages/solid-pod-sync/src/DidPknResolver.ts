@@ -236,6 +236,24 @@ export class DidPknResolver {
         }
       }
 
+      // NC-02: a deactivated DID resolves to a null document per DID Core §7.1.3.
+      if (lockboxData.deactivated === true) {
+        return {
+          '@context': 'https://w3id.org/did-resolution/v1',
+          didDocument: null,
+          didDocumentMetadata: {
+            deactivated: true,
+            canonicalId: parsed.did,
+            ...(lockboxData.createdAt ? { created: lockboxData.createdAt } : {}),
+            ...(lockboxData.updatedAt ? { updated: lockboxData.updatedAt } : {}),
+          },
+          didResolutionMetadata: {
+            contentType: 'application/did+ld+json',
+            retrieved: new Date().toISOString(),
+          },
+        }
+      }
+
       const didDocument = createDidPknDocument({
         did: parsed.did,
         stellarPublicKey: lockboxData.stellarPublicKey,
@@ -244,11 +262,13 @@ export class DidPknResolver {
         relayUrl: lockboxData.relayUrl,
       })
 
+      // NC-02: omit created/updated when the source has no ledger timestamp. Defaulting
+      // them to resolution time made two resolutions of the same DID disagree.
       const didDocumentMetadata: DidDocumentMetadata = {
-        deactivated: lockboxData.deactivated ?? false,
-        created: lockboxData.createdAt ?? new Date().toISOString(),
-        updated: lockboxData.updatedAt ?? new Date().toISOString(),
+        deactivated: false,
         canonicalId: parsed.did,
+        ...(lockboxData.createdAt ? { created: lockboxData.createdAt } : {}),
+        ...(lockboxData.updatedAt ? { updated: lockboxData.updatedAt } : {}),
       }
 
       return {
